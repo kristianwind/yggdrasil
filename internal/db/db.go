@@ -208,6 +208,8 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "servers", "install_status", "TEXT NOT NULL DEFAULT 'pending'")
 	addColumnIfMissing(db, "backup_targets", "keep_n", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing(db, "users", "totp_secret", "TEXT") // encrypted; pending until enabled
+	addColumnIfMissing(db, "users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
 	return nil
 }
 

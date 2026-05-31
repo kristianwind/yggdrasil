@@ -1,11 +1,13 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/kristianwind/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/totp"
 )
 
 // simple in-memory rate limiter: max 5 attempts per IP per minute
@@ -49,6 +51,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Code     string `json:"code"` // TOTP, when 2FA is enabled
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -56,10 +59,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID, hash, role string
+	var totpEnabled int
+	var totpSecret sql.NullString
 	err := s.db.QueryRow(
-		"SELECT id, password_hash, role FROM users WHERE username=? AND disabled=0",
+		"SELECT id, password_hash, role, totp_enabled, totp_secret FROM users WHERE username=? AND disabled=0",
 		req.Username,
-	).Scan(&userID, &hash, &role)
+	).Scan(&userID, &hash, &role, &totpEnabled, &totpSecret)
 	if err != nil {
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
 		return
@@ -69,6 +74,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil || !ok {
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
 		return
+	}
+
+	// Second factor, when enabled.
+	if totpEnabled == 1 {
+		if req.Code == "" {
+			jsonError(w, "2fa_required", http.StatusUnauthorized)
+			return
+		}
+		secret, derr := s.cipher.Decrypt(totpSecret.String)
+		if derr != nil || !totp.Validate(secret, req.Code) {
+			jsonError(w, "invalid 2FA code", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	token, err := auth.GenerateToken(userID, req.Username, role, s.cfg.Auth.SecretKey, s.cfg.Auth.SessionTTL)

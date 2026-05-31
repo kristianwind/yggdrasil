@@ -4,16 +4,23 @@
 
   let username = $state("");
   let password = $state("");
+  let code = $state("");
+  let needCode = $state(false);
   let busy = $state(false);
 
   async function submit(e) {
     e.preventDefault();
     busy = true;
     try {
-      await login(username, password);
+      await login(username, password, code);
       location.hash = "#/";
     } catch (err) {
-      toast(err.message === "unauthorized" ? "Invalid credentials" : err.message, "error");
+      if (err.message === "2fa_required") {
+        needCode = true;
+        toast("Enter your 2FA code", "info");
+      } else {
+        toast(err.message === "unauthorized" ? "Invalid credentials" : err.message, "error");
+      }
     } finally {
       busy = false;
     }
@@ -35,6 +42,13 @@
       <label class="label" for="p">Password</label>
       <input id="p" class="input" type="password" bind:value={password} autocomplete="current-password" />
     </div>
+    {#if needCode}
+      <div>
+        <label class="label" for="c">2FA code</label>
+        <input id="c" class="input font-mono tracking-widest" bind:value={code} inputmode="numeric"
+          placeholder="123456" autocomplete="one-time-code" />
+      </div>
+    {/if}
     <button class="btn-primary w-full" disabled={busy}>
       {busy ? "Signing in…" : "Sign in"}
     </button>

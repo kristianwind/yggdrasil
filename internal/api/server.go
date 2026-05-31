@@ -77,6 +77,12 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/auth/logout", s.handleLogout)
 		r.Get("/api/auth/me", s.handleMe)
 
+		// Two-factor auth (TOTP)
+		r.Get("/api/auth/2fa", s.handle2FAStatus)
+		r.Post("/api/auth/2fa/setup", s.handle2FASetup)
+		r.Post("/api/auth/2fa/enable", s.handle2FAEnable)
+		r.Post("/api/auth/2fa/disable", s.handle2FADisable)
+
 		// Gameskills (Runes)
 		r.Get("/api/gameskills", s.handleListGameskills)
 		r.Post("/api/gameskills", s.handleUploadGameskill)

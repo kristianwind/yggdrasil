@@ -206,7 +206,9 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [ ] Import running servers from Pterodactyl / AMP (out of scope — risks the
       gameskill model; skipped per the spec's own caution)
 - [ ] Multi-node / wings-style (large; future)
-- [ ] 2FA on login (TOTP; candidate next)
+- [x] 2FA on login (TOTP, RFC 6238, dependency-free): enroll (setup→confirm),
+      required at login, disable with a code; secret encrypted at rest. Verified
+      end-to-end against an independent TOTP implementation.
 - [ ] Disk dashboard with alerts (low-disk notify candidate)
 
 ## Notes & Decisions

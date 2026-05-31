@@ -7,6 +7,48 @@
   let showCreate = $state(false);
   let form = $state(blank());
 
+  // Two-factor auth
+  let twofa = $state({ enabled: false });
+  let twofaSetup = $state(null); // { secret, uri }
+  let twofaCode = $state("");
+
+  async function load2fa() {
+    try {
+      twofa = await api.get("/auth/2fa");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  async function start2fa() {
+    try {
+      twofaSetup = await api.post("/auth/2fa/setup");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function enable2fa() {
+    try {
+      await api.post("/auth/2fa/enable", { code: twofaCode });
+      toast("2FA enabled", "success");
+      twofaSetup = null;
+      twofaCode = "";
+      await load2fa();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function disable2fa() {
+    const c = prompt("Enter a current 2FA code to disable:");
+    if (c === null) return;
+    try {
+      await api.post("/auth/2fa/disable", { code: c });
+      toast("2FA disabled", "success");
+      await load2fa();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   // Message templates
   let templates = $state([]);
   let editing = $state(null); // { id?, name, body }
@@ -188,6 +230,7 @@
     loadTokens();
     loadChannels();
     loadSteam();
+    load2fa();
   });
 
   async function create() {
@@ -224,6 +267,37 @@
 </script>
 
 <h1 class="text-2xl font-semibold mb-6">Settings</h1>
+
+<!-- Two-factor auth -->
+<h2 class="text-xl font-semibold mb-2">Two-factor authentication</h2>
+<p class="text-muted mb-4 text-sm">Protect your account with a TOTP authenticator app.</p>
+<div class="card p-4 mb-10">
+  {#if twofa.enabled}
+    <div class="flex items-center gap-3">
+      <span class="badge bg-accent2/20 text-accent">enabled</span>
+      <span class="flex-1 text-sm text-muted">A code from your authenticator is required at login.</span>
+      <button class="btn-danger" onclick={disable2fa}>Disable</button>
+    </div>
+  {:else if twofaSetup}
+    <p class="text-sm mb-2">
+      Add this secret to your authenticator app (or scan the otpauth URI), then enter a code to
+      confirm:
+    </p>
+    <code class="block break-all text-xs bg-black/40 p-2 rounded mb-1">{twofaSetup.secret}</code>
+    <code class="block break-all text-[10px] text-muted bg-black/30 p-2 rounded mb-3">{twofaSetup.uri}</code>
+    <div class="flex gap-2">
+      <input class="input font-mono tracking-widest" bind:value={twofaCode} placeholder="123456" inputmode="numeric" />
+      <button class="btn-primary" onclick={enable2fa}>Confirm & enable</button>
+      <button class="btn-ghost" onclick={() => (twofaSetup = null)}>Cancel</button>
+    </div>
+  {:else}
+    <div class="flex items-center gap-3">
+      <span class="badge bg-border text-muted">disabled</span>
+      <span class="flex-1 text-sm text-muted">Add a second factor to your login.</span>
+      <button class="btn-primary" onclick={start2fa}>Enable 2FA</button>
+    </div>
+  {/if}
+</div>
 
 <!-- Steam authorization -->
 <h2 class="text-xl font-semibold mb-2">Steam account</h2>

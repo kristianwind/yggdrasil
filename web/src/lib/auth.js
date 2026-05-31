@@ -14,8 +14,8 @@ export async function loadUser() {
   }
 }
 
-export async function login(username, password) {
-  const res = await api.post("/auth/login", { username, password }, { allow401: true });
+export async function login(username, password, code) {
+  const res = await api.post("/auth/login", { username, password, code }, { allow401: true });
   setToken(res.token);
   await loadUser();
   return res;

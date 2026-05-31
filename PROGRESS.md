@@ -183,9 +183,9 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [x] Frontend: egg import on Runes; tokens + notifications in Settings
 - [x] Verified: notify unit tests, egg import test, API (token auth 200 / bad 401,
       egg import), bundle embeds all new UI
-- [ ] Email/SMTP notifications (deferred; webhook/Telegram/Discord cover most)
-- [ ] XML gameskill import (deferred; egg + YAML cover the common cases)
-- [ ] docs/API.md (folds into Phase 10 docs)
+- [x] Email/SMTP notifications (net/smtp; host/port/user/pass/from/to + UI)
+- [x] XML gameskill import (internal/gameskill/xml.go, unit-tested + UI button)
+- [x] docs/API.md (done in Phase 10)
 
 ### Phase 10 — PWA polish + docs + end-to-end test 🟡 MOSTLY DONE
 - [x] PWA manifest (SVG + 192/512 PNG icons), service worker (v2), installable

@@ -7,16 +7,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/smtp"
 	"net/url"
+	"strconv"
 	"time"
 )
 
 // Config is a decrypted notification channel.
 type Config struct {
-	Type   string `json:"type"`              // telegram | discord | webhook
+	Type   string `json:"type"`              // telegram | discord | webhook | email
 	Token  string `json:"token,omitempty"`   // telegram bot token
 	ChatID string `json:"chat_id,omitempty"` // telegram chat id
 	URL    string `json:"url,omitempty"`     // discord/webhook URL
+	// Email (SMTP)
+	Host     string `json:"host,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	From     string `json:"from,omitempty"`
+	To       string `json:"to,omitempty"`
 }
 
 var client = &http.Client{Timeout: 10 * time.Second}
@@ -30,9 +39,31 @@ func Send(cfg Config, text string) error {
 		return sendDiscord(cfg, text)
 	case "webhook":
 		return sendWebhook(cfg, text)
+	case "email":
+		return sendEmail(cfg, text)
 	default:
 		return fmt.Errorf("unsupported notification type %q", cfg.Type)
 	}
+}
+
+func sendEmail(cfg Config, text string) error {
+	if cfg.Host == "" || cfg.From == "" || cfg.To == "" {
+		return fmt.Errorf("email needs host, from and to")
+	}
+	port := cfg.Port
+	if port == 0 {
+		port = 587
+	}
+	addr := cfg.Host + ":" + strconv.Itoa(port)
+	msg := []byte("From: " + cfg.From + "\r\n" +
+		"To: " + cfg.To + "\r\n" +
+		"Subject: Yggdrasil notification\r\n" +
+		"\r\n" + text + "\r\n")
+	var auth smtp.Auth
+	if cfg.Username != "" {
+		auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+	}
+	return smtp.SendMail(addr, auth, cfg.From, []string{cfg.To}, msg)
 }
 
 func sendTelegram(cfg Config, text string) error {

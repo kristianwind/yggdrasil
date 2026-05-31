@@ -78,6 +78,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/gameskills", s.handleListGameskills)
 		r.Post("/api/gameskills", s.handleUploadGameskill)
 		r.Post("/api/gameskills/import-egg", s.handleImportEgg)
+		r.Post("/api/gameskills/import-xml", s.handleImportXML)
 		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
 		r.Delete("/api/gameskills/{id}", s.handleDeleteGameskill)
 

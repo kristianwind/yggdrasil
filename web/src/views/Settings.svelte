@@ -55,7 +55,18 @@
   // Notifications
   let channels = $state([]);
   let showNotify = $state(false);
-  let notifyForm = $state({ type: "telegram", token: "", chat_id: "", url: "" });
+  let notifyForm = $state({
+    type: "telegram",
+    token: "",
+    chat_id: "",
+    url: "",
+    host: "",
+    port: 587,
+    username: "",
+    password: "",
+    from: "",
+    to: "",
+  });
 
   async function loadTokens() {
     try {
@@ -97,7 +108,7 @@
       await api.post("/notifications", notifyForm);
       toast("Channel added", "success");
       showNotify = false;
-      notifyForm = { type: "telegram", token: "", chat_id: "", url: "" };
+      notifyForm = { type: "telegram", token: "", chat_id: "", url: "", host: "", port: 587, username: "", password: "", from: "", to: "" };
       await loadChannels();
     } catch (e) {
       toast(e.message, "error");
@@ -322,6 +333,7 @@
           <option value="telegram">Telegram</option>
           <option value="discord">Discord webhook</option>
           <option value="webhook">Generic webhook</option>
+          <option value="email">Email (SMTP)</option>
         </select>
       </div>
       {#if notifyForm.type === "telegram"}
@@ -332,6 +344,37 @@
         <div>
           <label class="label" for="n-chat">Chat ID</label>
           <input id="n-chat" class="input" bind:value={notifyForm.chat_id} />
+        </div>
+      {:else if notifyForm.type === "email"}
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="n-host">SMTP host</label>
+            <input id="n-host" class="input" bind:value={notifyForm.host} />
+          </div>
+          <div>
+            <label class="label" for="n-port">Port</label>
+            <input id="n-port" class="input" type="number" bind:value={notifyForm.port} />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="n-user">Username</label>
+            <input id="n-user" class="input" bind:value={notifyForm.username} autocomplete="off" />
+          </div>
+          <div>
+            <label class="label" for="n-pass">Password</label>
+            <input id="n-pass" class="input" type="password" bind:value={notifyForm.password} autocomplete="off" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="n-from">From</label>
+            <input id="n-from" class="input" bind:value={notifyForm.from} placeholder="ygg@example.com" />
+          </div>
+          <div>
+            <label class="label" for="n-to">To</label>
+            <input id="n-to" class="input" bind:value={notifyForm.to} placeholder="you@example.com" />
+          </div>
         </div>
       {:else}
         <div>

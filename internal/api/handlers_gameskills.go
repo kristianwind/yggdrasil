@@ -130,6 +130,40 @@ func (s *Server) handleImportEgg(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"id": gs.ID, "name": gs.Name})
 }
 
+// handleImportXML imports a gameskill expressed in XML.
+func (s *Server) handleImportXML(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		jsonError(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	gs, err := gameskill.ImportXML(data)
+	if err != nil {
+		jsonError(w, "xml import: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	yamlBlob, err := gameskill.ToYAML(gs)
+	if err != nil {
+		jsonError(w, "serialize: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = s.db.ExecContext(r.Context(), `
+		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin)
+		VALUES (?,?,?,?,?,0)
+		ON CONFLICT(id) DO UPDATE SET
+			name=excluded.name, category=excluded.category,
+			version=excluded.version, yaml_blob=excluded.yaml_blob
+	`, gs.ID, gs.Name, gs.Category, gs.Version, string(yamlBlob))
+	if err != nil {
+		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.auditLog(r, "gameskill.import_xml", "gameskill:"+gs.ID, map[string]string{"name": gs.Name})
+	w.WriteHeader(http.StatusCreated)
+	jsonOK(w, map[string]string{"id": gs.ID, "name": gs.Name})
+}
+
 func (s *Server) handleDeleteGameskill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 

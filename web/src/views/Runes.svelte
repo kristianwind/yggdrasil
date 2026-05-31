@@ -61,6 +61,29 @@
     }
   }
 
+  async function importXml(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploading = true;
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/gameskills/import-xml", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("ygg_token") || ""}` },
+        body: text,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "import failed");
+      toast(`Imported: ${data.name}`, "success");
+      await load();
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      uploading = false;
+      e.target.value = "";
+    }
+  }
+
   async function del(r) {
     if (!confirm(`Delete rune "${r.name}"?`)) return;
     try {
@@ -77,8 +100,12 @@
   <h1 class="text-2xl font-semibold">Runes</h1>
   <div class="flex gap-2">
     <label class="btn-ghost cursor-pointer">
-      Import Pterodactyl egg
+      Import egg
       <input type="file" accept=".json" class="hidden" onchange={importEgg} />
+    </label>
+    <label class="btn-ghost cursor-pointer">
+      Import XML
+      <input type="file" accept=".xml" class="hidden" onchange={importXml} />
     </label>
     <label class="btn-primary cursor-pointer">
       {uploading ? "Carving…" : "Carve a rune (upload)"}

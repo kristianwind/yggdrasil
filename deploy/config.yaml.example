@@ -1,0 +1,28 @@
+# Yggdrasil configuration.
+# Everything else is managed from the web UI.
+
+server:
+  host: "0.0.0.0"      # bind address
+  port: 8080           # web UI / API port
+
+database:
+  path: "/var/lib/yggdrasil/yggdrasil.db"
+
+auth:
+  # Generated automatically on first boot if left empty. Keep it secret.
+  secret_key: ""
+  session_ttl_hours: 168   # 7 days
+
+docker:
+  socket: "unix:///var/run/docker.sock"
+
+ports:
+  # Host port range Yggdrasil allocates to game servers (conflict-free).
+  range_min: 25000
+  range_max: 30000
+
+admin:
+  # First admin, created on first boot only. Leave password empty to have one
+  # generated and printed to the service log. Clear these after first start.
+  username: "admin"
+  password: ""

@@ -1,0 +1,28 @@
+[Unit]
+Description=Yggdrasil Game Server Management Panel
+Documentation=https://github.com/yggdrasil-panel/yggdrasil
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=yggdrasil
+Group=yggdrasil
+# The service user must be in the 'docker' group (handled by install.sh).
+ExecStart=/usr/local/bin/yggdrasil --config /etc/yggdrasil/config.yaml
+Restart=on-failure
+RestartSec=5
+# State / data
+StateDirectory=yggdrasil
+WorkingDirectory=/var/lib/yggdrasil
+
+# Hardening (kept compatible with Docker socket access)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/yggdrasil /etc/yggdrasil
+
+[Install]
+WantedBy=multi-user.target

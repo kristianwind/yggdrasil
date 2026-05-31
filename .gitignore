@@ -1,0 +1,24 @@
+# Binaries
+/yggdrasil
+/dist/
+*.exe
+/tmp/
+
+# Built frontend — produced by CI / `npm run build`, embedded at build time.
+# A placeholder web/dist/index.html is committed so the module builds without
+# a frontend toolchain; CI overwrites it with the real Svelte bundle.
+/web/node_modules/
+/web/.svelte-kit/
+
+# Local state
+*.db
+*.db-wal
+*.db-shm
+config.yaml
+!deploy/config.yaml.example
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

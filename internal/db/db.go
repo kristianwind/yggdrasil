@@ -1,0 +1,173 @@
+package db
+
+import (
+	"database/sql"
+	"fmt"
+
+	_ "modernc.org/sqlite"
+)
+
+func Open(path string) (*sql.DB, error) {
+	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", path)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	db.SetMaxOpenConns(1) // SQLite writer serialization
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return db, nil
+}
+
+const schema = `
+CREATE TABLE IF NOT EXISTS users (
+	id          TEXT PRIMARY KEY,
+	username    TEXT UNIQUE NOT NULL,
+	password_hash TEXT NOT NULL,
+	role        TEXT NOT NULL DEFAULT 'user',
+	disabled    INTEGER NOT NULL DEFAULT 0,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+	id          TEXT PRIMARY KEY,
+	user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	token_hash  TEXT UNIQUE NOT NULL,
+	expires_at  TEXT NOT NULL,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS realms (
+	id          TEXT PRIMARY KEY,
+	name        TEXT UNIQUE NOT NULL,
+	description TEXT,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS gameskills (
+	id          TEXT PRIMARY KEY,
+	name        TEXT NOT NULL,
+	category    TEXT,
+	version     INTEGER NOT NULL DEFAULT 1,
+	yaml_blob   TEXT NOT NULL,
+	builtin     INTEGER NOT NULL DEFAULT 0,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS servers (
+	id           TEXT PRIMARY KEY,
+	name         TEXT NOT NULL,
+	gameskill_id TEXT NOT NULL REFERENCES gameskills(id),
+	realm_id     TEXT REFERENCES realms(id),
+	status       TEXT NOT NULL DEFAULT 'stopped',
+	container_id TEXT,
+	env_json     TEXT NOT NULL DEFAULT '{}',
+	ports_json   TEXT NOT NULL DEFAULT '{}',
+	cpu_limit    REAL,
+	mem_limit_mb INTEGER,
+	data_dir     TEXT NOT NULL,
+	created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS port_allocations (
+	port        INTEGER PRIMARY KEY,
+	server_id   TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+	protocol    TEXT NOT NULL DEFAULT 'tcp',
+	name        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS backup_targets (
+	id             TEXT PRIMARY KEY,
+	name           TEXT NOT NULL,
+	type           TEXT NOT NULL,
+	config_enc     TEXT NOT NULL,
+	created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS backups (
+	id          TEXT PRIMARY KEY,
+	server_id   TEXT REFERENCES servers(id) ON DELETE SET NULL,
+	target_id   TEXT REFERENCES backup_targets(id) ON DELETE SET NULL,
+	path        TEXT,
+	size_bytes  INTEGER,
+	status      TEXT NOT NULL DEFAULT 'pending',
+	error_msg   TEXT,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+	completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS schedules (
+	id          TEXT PRIMARY KEY,
+	name        TEXT NOT NULL,
+	server_id   TEXT REFERENCES servers(id) ON DELETE CASCADE,
+	realm_id    TEXT REFERENCES realms(id) ON DELETE CASCADE,
+	cron_expr   TEXT NOT NULL,
+	action      TEXT NOT NULL,
+	args_json   TEXT NOT NULL DEFAULT '{}',
+	enabled     INTEGER NOT NULL DEFAULT 1,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+	id          TEXT PRIMARY KEY,
+	user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+	username    TEXT,
+	action      TEXT NOT NULL,
+	resource    TEXT,
+	detail_json TEXT,
+	ip          TEXT,
+	ts          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bans (
+	id          TEXT PRIMARY KEY,
+	player_name TEXT NOT NULL,
+	player_id   TEXT,
+	server_id   TEXT REFERENCES servers(id) ON DELETE CASCADE,
+	reason      TEXT,
+	banned_by   TEXT REFERENCES users(id) ON DELETE SET NULL,
+	expires_at  TEXT,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+	id          TEXT PRIMARY KEY,
+	user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	scope_type  TEXT NOT NULL,
+	scope_id    TEXT,
+	perms       TEXT NOT NULL DEFAULT '',
+	created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+	UNIQUE(user_id, scope_type, scope_id)
+);
+
+CREATE TABLE IF NOT EXISTS api_tokens (
+	id          TEXT PRIMARY KEY,
+	user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	name        TEXT NOT NULL,
+	token_hash  TEXT UNIQUE NOT NULL,
+	last_used_at TEXT,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+	id          TEXT PRIMARY KEY,
+	type        TEXT NOT NULL,
+	config_enc  TEXT NOT NULL,
+	enabled     INTEGER NOT NULL DEFAULT 1,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS migrations (
+	version INTEGER PRIMARY KEY,
+	applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`
+
+func migrate(db *sql.DB) error {
+	if _, err := db.Exec(schema); err != nil {
+		return fmt.Errorf("schema: %w", err)
+	}
+	return nil
+}

@@ -1,0 +1,85 @@
+gameskill:
+  id: minecraft-java
+  name: "Minecraft (Java)"
+  category: "Minecraft"
+  description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "minecraft"
+
+  docker:
+    # The JRE image depends on the resolved Java version (see install step).
+    image: "eclipse-temurin:{{JAVA_VERSION}}-jre"
+
+  variables:
+    - key: SERVER_TYPE
+      name: "Server software"
+      type: select
+      options: [vanilla, paper, purpur, fabric, forge]
+      default: paper
+    - key: MC_VERSION
+      name: "Minecraft version"
+      type: string
+      default: "latest"
+    - key: JAVA_VERSION
+      name: "Java runtime"
+      type: select
+      options: ["21", "17"]
+      default: "21"
+    - key: MEMORY_MB
+      name: "Max RAM (MB)"
+      type: int
+      default: 4096
+    - key: RCON_PORT
+      name: "RCON port (container-internal)"
+      type: int
+      default: 25575
+    - key: RCON_PASSWORD
+      name: "RCON password"
+      type: string
+      default: "change-me"
+    - key: EULA
+      name: "Accept the Minecraft EULA"
+      type: bool
+      default: false
+      required: true
+
+  install:
+    image: "eclipse-temurin:21-jre"
+    script: |
+      set -e
+      # Phase 3 fills in real download logic (Paper/Purpur APIs, Mojang manifest,
+      # Fabric/Forge installers) and resolves MC_VERSION="latest".
+      echo "eula={{EULA}}" > eula.txt
+      echo "Server type: {{SERVER_TYPE}}  MC version: {{MC_VERSION}}"
+
+  startup:
+    command: "java -Xmx{{MEMORY_MB}}M -jar server.jar nogui"
+    done_regex: 'Done \(.*\)! For help'
+    stop: "stop"
+
+  query:
+    type: minecraft
+
+  rcon:
+    enabled: true
+    type: minecraft
+    port_var: RCON_PORT
+    password_var: RCON_PASSWORD
+
+  config_files:
+    - "server.properties"
+    - "config/paper-world-defaults.yml"
+
+  ports:
+    - { name: game, default: 25565, protocol: tcp }
+    - { name: rcon, default: 25575, protocol: tcp }
+
+  anticheat:
+    antixray:
+      supported: true
+      config_hint: "Paper anti-xray (engine-mode 1/2) in config/paper-world-defaults.yml"
+    plugins_recommended: ["Grim", "Vulcan", "NoCheatPlus"]
+
+  backup:
+    include: ["world", "world_nether", "world_the_end", "server.properties", "plugins"]

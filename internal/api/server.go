@@ -1,0 +1,154 @@
+package api
+
+import (
+	"database/sql"
+	"embed"
+	"io/fs"
+	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/yggdrasil-panel/yggdrasil/internal/auth"
+	"github.com/yggdrasil-panel/yggdrasil/internal/config"
+	"github.com/yggdrasil-panel/yggdrasil/internal/docker"
+)
+
+type Server struct {
+	cfg    *config.Config
+	db     *sql.DB
+	docker *docker.Client
+	router *chi.Mux
+	webFS  fs.FS
+}
+
+func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
+	subFS, _ := fs.Sub(webFS, "web/dist")
+
+	s := &Server{
+		cfg:    cfg,
+		db:     db,
+		docker: dc,
+		webFS:  subFS,
+	}
+	s.router = s.buildRouter()
+	return s
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.router.ServeHTTP(w, r)
+}
+
+func (s *Server) buildRouter() *chi.Mux {
+	r := chi.NewRouter()
+
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowCredentials: true,
+	}))
+	r.Use(secureHeaders)
+
+	// Public routes
+	r.Post("/api/auth/login", s.handleLogin)
+
+	// Authenticated routes
+	r.Group(func(r chi.Router) {
+		r.Use(s.authMiddleware)
+		r.Post("/api/auth/logout", s.handleLogout)
+		r.Get("/api/auth/me", s.handleMe)
+
+		// Gameskills (Runes)
+		r.Get("/api/gameskills", s.handleListGameskills)
+		r.Post("/api/gameskills", s.handleUploadGameskill)
+		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
+		r.Delete("/api/gameskills/{id}", s.handleDeleteGameskill)
+
+		// Servers
+		r.Get("/api/servers", s.handleListServers)
+		r.Post("/api/servers", s.handleCreateServer)
+		r.Get("/api/servers/{id}", s.handleGetServer)
+		r.Delete("/api/servers/{id}", s.handleDeleteServer)
+		r.Post("/api/servers/{id}/start", s.handleStartServer)
+		r.Post("/api/servers/{id}/stop", s.handleStopServer)
+		r.Post("/api/servers/{id}/restart", s.handleRestartServer)
+		r.Get("/api/servers/{id}/stats", s.handleServerStats)
+		r.Get("/api/servers/{id}/logs", s.handleServerLogs)     // WebSocket
+		r.Get("/api/servers/{id}/console", s.handleConsole)     // WebSocket
+
+		// Files
+		r.Get("/api/servers/{id}/files", s.handleListFiles)
+		r.Get("/api/servers/{id}/files/content", s.handleReadFile)
+		r.Put("/api/servers/{id}/files/content", s.handleWriteFile)
+		r.Delete("/api/servers/{id}/files", s.handleDeleteFile)
+		r.Post("/api/servers/{id}/files/upload", s.handleUploadFile)
+		r.Get("/api/servers/{id}/files/download", s.handleDownloadFile)
+
+		// Realms
+		r.Get("/api/realms", s.handleListRealms)
+		r.Post("/api/realms", s.handleCreateRealm)
+		r.Put("/api/realms/{id}", s.handleUpdateRealm)
+		r.Delete("/api/realms/{id}", s.handleDeleteRealm)
+
+		// Users (admin only)
+		r.Get("/api/users", s.requireAdmin(s.handleListUsers))
+		r.Post("/api/users", s.requireAdmin(s.handleCreateUser))
+		r.Put("/api/users/{id}", s.requireAdmin(s.handleUpdateUser))
+		r.Delete("/api/users/{id}", s.requireAdmin(s.handleDeleteUser))
+
+		// Audit log
+		r.Get("/api/audit", s.requireAdmin(s.handleAuditLog))
+
+		// System info
+		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
+	})
+
+	// SPA fallback — serve index.html for all non-API routes
+	r.Handle("/*", http.FileServer(http.FS(s.webFS)))
+
+	return r
+}
+
+func secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenStr := extractToken(r)
+		if tokenStr == "" {
+			jsonError(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		claims, err := auth.ParseToken(tokenStr, s.cfg.Auth.SecretKey)
+		if err != nil {
+			jsonError(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+		r = r.WithContext(withClaims(r.Context(), claims))
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims := claimsFromContext(r.Context())
+		if claims == nil || claims.Role != "admin" {
+			jsonError(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}

@@ -123,7 +123,7 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [x] Verified: rbac unit tests, API enforcement test (403/filter/persist),
       browser-verified editor + end-to-end scoped-user access checks
 
-### Phase 7 — Backup + restore + schedules 🟡 7a BACKUPS DONE, 7b SCHEDULES NEXT
+### Phase 7 — Backup + restore + schedules ✅ DONE
 - [x] internal/crypto: AES-256-GCM, key from panel secret (unit-tested)
 - [x] internal/backup: tar.gz archive honoring backup.include, restore (traversal-
       guarded), retention (keep-N / keep-days) — unit-tested
@@ -136,10 +136,16 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
       Backups tab (run/list/restore/delete)
 - [x] Verified end-to-end without Docker (target create→test→backup done→file on
       disk; browser-verified UI)
-- [ ] **Scheduler: cron task runner** (7b) ← NEXT
-- [ ] Schedule types: backup, update, restart, in-game message, command, start/stop
-- [ ] Message templates with variables ({{minutes}}, {{server_name}})
-- [ ] Player-online check before disruptive operations
+- [x] Scheduler: cron task runner (robfig/cron, rebuilt on change), started on boot
+- [x] Schedule types: backup, restart, start, stop, command, message, update
+- [x] Scope: single server / realm / all servers; manual "run now" trigger
+- [x] internal/scheduler: template render + action/cron validation (unit-tested)
+- [x] Message templates: 5 defaults seeded, editable, {{minutes}}/{{server_name}}
+- [x] Player-online check (skip_if_players) before restart/update via query
+- [x] Command/message delivery via RCON with container-stdin fallback (Bedrock)
+- [x] API: schedules CRUD + run; templates CRUD (RBAC: server.schedule / admin)
+- [x] Frontend: Schedules page (action-conditional form) + templates editor
+- [x] Verified: unit tests, API (seed/validate/CRUD/run/toggle), browser UI
 
 ### Phase 8 — Anti-cheat + ban management
 - [ ] Paper anti-xray config surface (Minecraft Java)

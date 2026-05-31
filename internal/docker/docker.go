@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -298,5 +299,20 @@ func (c *Client) RunEphemeral(ctx context.Context, img, dataDir string, env []st
 // writer. Use it to feed log/console output to a WebSocket.
 func DemuxCopy(dst io.Writer, src io.Reader) error {
 	_, err := stdcopy.StdCopy(dst, dst, src)
+	return err
+}
+
+// SendStdin writes a single line to a running container's stdin (its console).
+// Used for games without RCON (e.g. Bedrock) to deliver scheduled commands.
+func (c *Client) SendStdin(ctx context.Context, id, line string) error {
+	hijack, err := c.dc.ContainerAttach(ctx, id, container.AttachOptions{Stream: true, Stdin: true})
+	if err != nil {
+		return err
+	}
+	defer hijack.Close()
+	if !strings.HasSuffix(line, "\n") {
+		line += "\n"
+	}
+	_, err = hijack.Conn.Write([]byte(line))
 	return err
 }

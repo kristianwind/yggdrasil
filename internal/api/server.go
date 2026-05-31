@@ -26,6 +26,7 @@ type Server struct {
 	webFS   fs.FS
 	install *progressHub // live install/build output, keyed by server id
 	cipher  *crypto.Cipher
+	sched   *schedulerState
 }
 
 func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
@@ -41,6 +42,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		cipher:  cipher,
 	}
 	s.router = s.buildRouter()
+	s.StartScheduler()
 	return s
 }
 
@@ -113,6 +115,18 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/backup", s.handleRunBackup)
 		r.Post("/api/backups/{id}/restore", s.handleRestoreBackup)
 		r.Delete("/api/backups/{id}", s.handleDeleteBackup)
+
+		// Schedules
+		r.Get("/api/schedules", s.handleListSchedules)
+		r.Post("/api/schedules", s.handleCreateSchedule)
+		r.Put("/api/schedules/{id}", s.handleUpdateSchedule)
+		r.Delete("/api/schedules/{id}", s.handleDeleteSchedule)
+		r.Post("/api/schedules/{id}/run", s.handleRunSchedule)
+
+		// Message templates (admin)
+		r.Get("/api/templates", s.handleListTemplates)
+		r.Post("/api/templates", s.requireAdmin(s.handleSaveTemplate))
+		r.Delete("/api/templates/{id}", s.requireAdmin(s.handleDeleteTemplate))
 
 		// Realms
 		r.Get("/api/realms", s.handleListRealms)

@@ -7,6 +7,38 @@
   let showCreate = $state(false);
   let form = $state(blank());
 
+  // Message templates
+  let templates = $state([]);
+  let editing = $state(null); // { id?, name, body }
+
+  async function loadTemplates() {
+    try {
+      templates = await api.get("/templates");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function saveTemplate() {
+    if (!editing.name || !editing.body) return toast("Name and body required", "warn");
+    try {
+      await api.post("/templates", editing);
+      toast("Template saved", "success");
+      editing = null;
+      await loadTemplates();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function deleteTemplate(t) {
+    if (!confirm(`Delete template "${t.name}"?`)) return;
+    try {
+      await api.del(`/templates/${t.id}`);
+      await loadTemplates();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   function blank() {
     return {
       name: "",
@@ -29,7 +61,10 @@
       toast(e.message, "error");
     }
   }
-  onMount(load);
+  onMount(() => {
+    load();
+    loadTemplates();
+  });
 
   async function create() {
     if (!form.name) return toast("Name required", "warn");
@@ -96,6 +131,52 @@
     </div>
   {/each}
 </div>
+
+<!-- Message templates -->
+<div class="flex items-center justify-between mt-10 mb-2">
+  <h2 class="text-xl font-semibold">In-game message templates</h2>
+  <button class="btn-primary" onclick={() => (editing = { name: "", body: "" })}>+ New template</button>
+</div>
+<p class="text-muted mb-4 text-sm">
+  Used by scheduled "in-game message" tasks. Variables like <code>{"{{minutes}}"}</code> and
+  <code>{"{{server_name}}"}</code> are substituted at send time. The body is the full console/RCON
+  command (e.g. <code>say …</code>).
+</p>
+
+<div class="card divide-y divide-border">
+  {#each templates as t}
+    <div class="flex items-center gap-3 px-4 py-3">
+      <div class="flex-1 min-w-0">
+        <div class="font-medium">{t.name} {#if t.builtin}<span class="badge bg-border text-muted ml-1">built-in</span>{/if}</div>
+        <div class="text-xs text-muted font-mono truncate">{t.body}</div>
+      </div>
+      <button class="btn-ghost" onclick={() => (editing = { id: t.id, name: t.name, body: t.body })}>Edit</button>
+      {#if !t.builtin}
+        <button class="btn-danger" onclick={() => deleteTemplate(t)}>Delete</button>
+      {/if}
+    </div>
+  {/each}
+</div>
+
+{#if editing}
+  <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+    <div class="card w-full max-w-lg p-5 space-y-3">
+      <h2 class="text-lg font-semibold">{editing.id ? "Edit" : "New"} template</h2>
+      <div>
+        <label class="label" for="m-name">Name</label>
+        <input id="m-name" class="input" bind:value={editing.name} />
+      </div>
+      <div>
+        <label class="label" for="m-body">Body (console/RCON command)</label>
+        <input id="m-body" class="input font-mono" bind:value={editing.body} placeholder="say Restarting in {{minutes}} min" />
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button class="btn-ghost flex-1" onclick={() => (editing = null)}>Cancel</button>
+        <button class="btn-primary flex-1" onclick={saveTemplate}>Save</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if showCreate}
   <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">

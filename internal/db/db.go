@@ -161,6 +161,14 @@ CREATE TABLE IF NOT EXISTS notifications (
 	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS message_templates (
+	id          TEXT PRIMARY KEY,
+	name        TEXT NOT NULL,
+	body        TEXT NOT NULL,
+	builtin     INTEGER NOT NULL DEFAULT 0,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS migrations (
 	version INTEGER PRIMARY KEY,
 	applied_at TEXT NOT NULL DEFAULT (datetime('now'))

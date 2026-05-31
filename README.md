@@ -3,6 +3,8 @@
 A self-hosted **game server management panel** for Debian/Ubuntu — think *AMP +
 Pterodactyl, but radically easier to install, update and maintain*.
 
+[![Yggdrasil dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
+
 - **One binary.** A single static Go binary with the web UI embedded. No separate
   database, no Redis, no required reverse proxy.
 - **One command to install.** The installer handles Docker and everything else.

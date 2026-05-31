@@ -76,15 +76,22 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [ ] Real Minecraft install logic (Paper/Purpur/Mojang/Fabric/Forge + latest resolve)
 - [ ] Frontend: "Carve a Rune" upload UI, auto-generated server creation form
 
-### Phase 4 — Remaining gameskills + query/RCON + resource graphs
-- [ ] minecraft-bedrock.yaml
-- [ ] rust.yaml (SteamCMD, A2S query, WebSocket RCON)
-- [ ] dayz.yaml (SteamCMD, BattlEye RCON, A2S query, caveats documented)
-- [ ] Steam authorization flow (one-time UI, persisted SteamCMD cache)
-- [ ] Query protocols: A2S (Steam games), Minecraft query
-- [ ] RCON: Minecraft, Rust WebSocket RCON, BattlEye
+### Phase 4 — Remaining gameskills + query/RCON 🟡 GAMESKILLS + PROTOCOLS DONE
+- [x] minecraft-bedrock.yaml (Mojang links API, no RCON, x86_64 caveat)
+- [x] rust.yaml (SteamCMD 258550 anon, A2S query, WebSocket RCON)
+- [x] dayz.yaml (SteamCMD 223350 owned-account, BattlEye RCON, A2S, caveats)
+- [x] App IDs verified via web research (Rust 258550, DayZ 223350/221100)
+- [x] Query protocols: A2S, Minecraft Java SLP, Bedrock ping (internal/query, tested)
+- [x] RCON: Source/Minecraft, Rust WebSocket, BattlEye (internal/rcon, tested)
+- [x] API: GET /servers/:id/query, POST /servers/:id/rcon
+- [x] Frontend: live player-count on server detail
+- [ ] Steam authorization flow (one-time UI, persisted SteamCMD sentry cache)
 - [ ] Resource graphs (time-series in SQLite, frontend charts)
-- [ ] startup done_regex detection
+- [ ] startup done_regex → running-state detection at runtime
+- [ ] Wire real install flow (docker.RunEphemeral) into server creation with
+      progress streaming + real Minecraft/Steam download logic
+      (NOTE: full install/run path needs a Docker daemon to verify; the dev
+      machine here has none, so these are coded but not yet end-to-end tested)
 
 ### Phase 5 — Realms + file management + config editor 🟡 BACKEND MOSTLY DONE
 - [x] Realms: CRUD API

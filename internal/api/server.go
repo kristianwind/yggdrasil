@@ -81,6 +81,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/stop", s.handleStopServer)
 		r.Post("/api/servers/{id}/restart", s.handleRestartServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
+		r.Get("/api/servers/{id}/query", s.handleServerQuery)
+		r.Post("/api/servers/{id}/rcon", s.handleServerRcon)
 		r.Get("/api/servers/{id}/logs", s.handleServerLogs)     // WebSocket
 		r.Get("/api/servers/{id}/console", s.handleConsole)     // WebSocket
 

@@ -1,0 +1,84 @@
+gameskill:
+  id: minecraft-bedrock
+  name: "Minecraft (Bedrock)"
+  category: "Minecraft"
+  description: "Mojang Bedrock dedicated server (no Steam, no RCON — console only)"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "minecraft"
+
+  # CAVEAT: The Bedrock dedicated server is x86_64-only. On arm64 hosts it must
+  # run under emulation (box64/qemu); native arm64 is not provided by Mojang.
+  docker:
+    image: "ubuntu:22.04"
+
+  variables:
+    - key: SERVER_NAME
+      name: "Server name"
+      type: string
+      default: "Yggdrasil Bedrock"
+    - key: GAMEMODE
+      name: "Default gamemode"
+      type: select
+      options: [survival, creative, adventure]
+      default: survival
+    - key: DIFFICULTY
+      name: "Difficulty"
+      type: select
+      options: [peaceful, easy, normal, hard]
+      default: easy
+    - key: MAX_PLAYERS
+      name: "Max players"
+      type: int
+      default: 10
+    - key: ALLOW_LIST
+      name: "Enable allow-list (whitelist)"
+      type: bool
+      default: false
+    - key: EULA
+      name: "Accept the Minecraft EULA and Privacy Policy"
+      type: bool
+      default: false
+      required: true
+
+  install:
+    image: "ubuntu:22.04"
+    script: |
+      set -e
+      apt-get update && apt-get install -y curl unzip ca-certificates
+      # Resolve the current Linux Bedrock download URL from Mojang's links API.
+      URL=$(curl -fsSL -A "Mozilla/5.0 (Yggdrasil)" \
+        "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links" \
+        | grep -o 'https[^"]*bin-linux/bedrock-server[^"]*\.zip' | head -1)
+      if [ -z "$URL" ]; then echo "Could not resolve Bedrock download URL"; exit 1; fi
+      echo "Downloading $URL"
+      curl -fsSL -A "Mozilla/5.0 (Yggdrasil)" -o /tmp/bedrock.zip "$URL"
+      # Preserve config files across updates; overwrite the binary/libs.
+      unzip -o /tmp/bedrock.zip -x "server.properties" "allowlist.json" "permissions.json" -d /data
+      [ -f /data/server.properties ] || unzip -o /tmp/bedrock.zip "server.properties" -d /data
+      chmod +x /data/bedrock_server || true
+
+  startup:
+    # Bedrock reads stdin for console commands (no RCON). LD_LIBRARY_PATH so it
+    # finds its bundled libs.
+    command: "LD_LIBRARY_PATH=. ./bedrock_server"
+    done_regex: 'Server started'
+    stop: "stop"
+
+  query:
+    type: minecraft-bedrock
+
+  rcon:
+    enabled: false   # Bedrock has no RCON; commands go to the container stdin
+
+  config_files:
+    - "server.properties"
+    - "allowlist.json"
+    - "permissions.json"
+
+  ports:
+    - { name: game,  default: 19132, protocol: udp }
+    - { name: game6, default: 19133, protocol: udp }
+
+  backup:
+    include: ["worlds", "server.properties", "allowlist.json", "permissions.json"]

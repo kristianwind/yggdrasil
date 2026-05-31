@@ -10,6 +10,7 @@
   let server = $state(null);
   let tab = $state("console");
   let stats = $state(null);
+  let status = $state(null); // player-count query result
   let statsTimer;
 
   // Console
@@ -61,6 +62,11 @@
       stats = await api.get(`/servers/${id}/stats`);
     } catch {
       stats = null;
+    }
+    try {
+      status = await api.get(`/servers/${id}/query`);
+    } catch {
+      status = null;
     }
   }
 
@@ -132,9 +138,13 @@
         <div class="text-lg font-semibold">{stats.mem_usage_mb?.toFixed(0)} MB</div>
       </div>
       <div class="card p-3">
-        <div class="text-xs text-muted">Mem limit</div>
+        <div class="text-xs text-muted">Players</div>
         <div class="text-lg font-semibold">
-          {stats.mem_limit_mb ? stats.mem_limit_mb.toFixed(0) + " MB" : "—"}
+          {#if status && status.online}
+            {status.players}{status.max_players ? ` / ${status.max_players}` : ""}
+          {:else}
+            —
+          {/if}
         </div>
       </div>
     </div>

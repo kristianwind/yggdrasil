@@ -1,0 +1,83 @@
+gameskill:
+  id: dayz
+  name: "DayZ"
+  category: "DayZ"
+  description: "DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "dayz"
+
+  # CAVEAT: The DayZ Linux dedicated server is supported via SteamCMD (app 223350)
+  # but has historically been finicky. Mods come from the *client* app (221100)
+  # Workshop. DayZ requires a real Steam login that OWNS the game — anonymous
+  # login does NOT work. Authorize the host's Steam account once via the UI
+  # (Settings → Steam) before installing; the sentry/credential cache is then
+  # reused for all future updates so Steam Guard is not re-triggered.
+  docker:
+    image: "cm2network/steamcmd:latest"
+
+  steam:
+    app_id: 223350        # DayZ Server (verified). Client/Workshop app: 221100
+    anonymous: false      # requires an account that owns DayZ → one-time auth flow
+
+  variables:
+    - key: SERVER_NAME
+      name: "Server name"
+      type: string
+      default: "A Yggdrasil DayZ Server"
+    - key: MAX_PLAYERS
+      name: "Max players"
+      type: int
+      default: 60
+    - key: GAME_PORT
+      name: "Game port"
+      type: int
+      default: 2302
+    - key: RCON_PASSWORD
+      name: "BattlEye RCON password"
+      type: string
+      default: "change-me"
+
+  install:
+    image: "cm2network/steamcmd:latest"
+    script: |
+      set -e
+      # Uses the persisted authorized-account cache (see Steam authorization).
+      # STEAM_USER is injected by Yggdrasil for non-anonymous gameskills.
+      steamcmd +force_install_dir /data +login "$STEAM_USER" \
+               +app_update 223350 validate +quit
+
+  startup:
+    command: >
+      ./DayZServer
+      -config=serverDZ.cfg
+      -port={{GAME_PORT}}
+      -BEpath=battleye
+      -dologs -adminlog -netlog -freezecheck
+    done_regex: 'Mission read'
+    # DayZ stops on SIGTERM.
+
+  query:
+    type: a2s
+
+  rcon:
+    enabled: true
+    type: battleye             # BattlEye BERcon protocol (UDP)
+    port_var: GAME_PORT
+    password_var: RCON_PASSWORD
+
+  config_files:
+    - "serverDZ.cfg"
+    - "battleye/beserver_x64.cfg"
+
+  ports:
+    - { name: game,  default: 2302,  protocol: udp }
+    - { name: query, default: 27016, protocol: udp }
+
+  anticheat:
+    battleye:
+      supported: true
+      config_hint: "BattlEye enabled via -BEpath=battleye; kick/ban events surface in the console"
+
+  backup:
+    include: ["mpmissions", "serverDZ.cfg", "battleye", "profiles"]

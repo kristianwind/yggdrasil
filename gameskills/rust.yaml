@@ -1,0 +1,97 @@
+gameskill:
+  id: rust
+  name: "Rust"
+  category: "Rust"
+  description: "Facepunch Rust dedicated server (SteamCMD, anonymous login)"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "rust"
+
+  docker:
+    # SteamCMD base image with the Steam runtime libs RustDedicated needs.
+    image: "cm2network/steamcmd:latest"
+
+  steam:
+    app_id: 258550        # Rust Dedicated Server (verified) — anonymous works
+    anonymous: true
+
+  variables:
+    - key: SERVER_NAME
+      name: "Server name (browser)"
+      type: string
+      default: "A Yggdrasil Rust Server"
+    - key: SERVER_DESCRIPTION
+      name: "Description"
+      type: string
+      default: "Powered by Yggdrasil"
+    - key: MAX_PLAYERS
+      name: "Max players"
+      type: int
+      default: 50
+    - key: WORLD_SIZE
+      name: "World size"
+      type: int
+      default: 3500
+    - key: SEED
+      name: "Map seed"
+      type: int
+      default: 12345
+    - key: RCON_PORT
+      name: "RCON port"
+      type: int
+      default: 28016
+    - key: RCON_PASSWORD
+      name: "RCON password"
+      type: string
+      default: "change-me"
+
+  install:
+    image: "cm2network/steamcmd:latest"
+    script: |
+      set -e
+      # Long download (several GB). Yggdrasil streams progress to the UI.
+      steamcmd +force_install_dir /data +login anonymous \
+               +app_update 258550 validate +quit
+
+  startup:
+    # Rust takes many +server.* / +rcon.* flags; RCON is WebSocket-based.
+    command: >
+      ./RustDedicated -batchmode -nographics
+      +server.identity "yggdrasil"
+      +server.hostname "{{SERVER_NAME}}"
+      +server.description "{{SERVER_DESCRIPTION}}"
+      +server.maxplayers {{MAX_PLAYERS}}
+      +server.worldsize {{WORLD_SIZE}}
+      +server.seed {{SEED}}
+      +server.port 28015
+      +rcon.web 1
+      +rcon.port {{RCON_PORT}}
+      +rcon.password "{{RCON_PASSWORD}}"
+    done_regex: 'SteamServer Initialized'
+    # No console stop command; Rust stops cleanly on SIGTERM.
+
+  query:
+    type: a2s
+
+  rcon:
+    enabled: true
+    type: rust-websocket        # Rust uses WebSocket RCON, not Source RCON
+    port_var: RCON_PORT
+    password_var: RCON_PASSWORD
+
+  config_files:
+    - "server/yggdrasil/cfg/server.cfg"
+    - "server/yggdrasil/cfg/users.cfg"
+
+  ports:
+    - { name: game,  default: 28015, protocol: udp }
+    - { name: query, default: 28015, protocol: udp }
+    - { name: rcon,  default: 28016, protocol: tcp }
+
+  anticheat:
+    # EAC ships with Rust and runs client-side; nothing to toggle server-side
+    # beyond keeping it enabled (default). Kick/ban events appear in the console.
+    plugins_recommended: ["EAC (built-in)", "VAC"]
+
+  backup:
+    include: ["server/yggdrasil"]

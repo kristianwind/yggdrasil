@@ -77,8 +77,14 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Gameskills (Runes)
 		r.Get("/api/gameskills", s.handleListGameskills)
 		r.Post("/api/gameskills", s.handleUploadGameskill)
+		r.Post("/api/gameskills/import-egg", s.handleImportEgg)
 		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
 		r.Delete("/api/gameskills/{id}", s.handleDeleteGameskill)
+
+		// API tokens (for automation)
+		r.Get("/api/tokens", s.handleListTokens)
+		r.Post("/api/tokens", s.handleCreateToken)
+		r.Delete("/api/tokens/{id}", s.handleDeleteToken)
 
 		// Servers
 		r.Get("/api/servers", s.handleListServers)
@@ -122,6 +128,12 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/schedules/{id}", s.handleUpdateSchedule)
 		r.Delete("/api/schedules/{id}", s.handleDeleteSchedule)
 		r.Post("/api/schedules/{id}/run", s.handleRunSchedule)
+
+		// Notification channels (admin-only)
+		r.Get("/api/notifications", s.requireAdmin(s.handleListNotifications))
+		r.Post("/api/notifications", s.requireAdmin(s.handleCreateNotification))
+		r.Delete("/api/notifications/{id}", s.requireAdmin(s.handleDeleteNotification))
+		r.Post("/api/notifications/{id}/test", s.requireAdmin(s.handleTestNotification))
 
 		// Centralized ban management (admin-only)
 		r.Get("/api/bans", s.requireAdmin(s.handleListBans))
@@ -204,6 +216,17 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			jsonError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		// API tokens (prefix) authenticate automation as their owning user.
+		if strings.HasPrefix(tokenStr, auth.APITokenPrefix) {
+			claims := s.claimsForAPIToken(r, tokenStr)
+			if claims == nil {
+				jsonError(w, "invalid api token", http.StatusUnauthorized)
+				return
+			}
+			r = r.WithContext(withClaims(r.Context(), claims))
+			next.ServeHTTP(w, r)
+			return
+		}
 		claims, err := auth.ParseToken(tokenStr, s.cfg.Auth.SecretKey)
 		if err != nil {
 			jsonError(w, "invalid token", http.StatusUnauthorized)
@@ -212,6 +235,21 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		r = r.WithContext(withClaims(r.Context(), claims))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// claimsForAPIToken resolves an API token to its owner's claims, or nil.
+func (s *Server) claimsForAPIToken(r *http.Request, token string) *auth.Claims {
+	hash := auth.HashToken(token)
+	var userID, username, role string
+	err := s.db.QueryRowContext(r.Context(), `
+		SELECT u.id, u.username, u.role FROM api_tokens t
+		JOIN users u ON u.id = t.user_id
+		WHERE t.token_hash=? AND u.disabled=0`, hash).Scan(&userID, &username, &role)
+	if err != nil {
+		return nil
+	}
+	s.db.Exec("UPDATE api_tokens SET last_used_at=datetime('now') WHERE token_hash=?", hash)
+	return &auth.Claims{UserID: userID, Username: username, Role: role}
 }
 
 func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {

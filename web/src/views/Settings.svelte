@@ -11,6 +11,80 @@
   let templates = $state([]);
   let editing = $state(null); // { id?, name, body }
 
+  // API tokens
+  let tokens = $state([]);
+  let newTokenName = $state("");
+  let createdToken = $state(null); // plaintext shown once
+
+  // Notifications
+  let channels = $state([]);
+  let showNotify = $state(false);
+  let notifyForm = $state({ type: "telegram", token: "", chat_id: "", url: "" });
+
+  async function loadTokens() {
+    try {
+      tokens = await api.get("/tokens");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function createToken() {
+    if (!newTokenName) return toast("Name required", "warn");
+    try {
+      const res = await api.post("/tokens", { name: newTokenName });
+      createdToken = res.token;
+      newTokenName = "";
+      await loadTokens();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function deleteToken(t) {
+    if (!confirm(`Delete token "${t.name}"?`)) return;
+    try {
+      await api.del(`/tokens/${t.id}`);
+      await loadTokens();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  async function loadChannels() {
+    try {
+      channels = await api.get("/notifications");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function createChannel() {
+    try {
+      await api.post("/notifications", notifyForm);
+      toast("Channel added", "success");
+      showNotify = false;
+      notifyForm = { type: "telegram", token: "", chat_id: "", url: "" };
+      await loadChannels();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function testChannel(c) {
+    try {
+      await api.post(`/notifications/${c.id}/test`);
+      toast("Test sent", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function deleteChannel(c) {
+    if (!confirm("Delete this channel?")) return;
+    try {
+      await api.del(`/notifications/${c.id}`);
+      await loadChannels();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   async function loadTemplates() {
     try {
       templates = await api.get("/templates");
@@ -64,6 +138,8 @@
   onMount(() => {
     load();
     loadTemplates();
+    loadTokens();
+    loadChannels();
   });
 
   async function create() {
@@ -128,6 +204,98 @@
       </div>
       <button class="btn-ghost" onclick={() => test(t)}>Test</button>
       <button class="btn-danger" onclick={() => del(t)}>Delete</button>
+    </div>
+  {/each}
+</div>
+
+<!-- Notifications -->
+<div class="flex items-center justify-between mt-10 mb-2">
+  <h2 class="text-xl font-semibold">Notifications</h2>
+  <button class="btn-primary" onclick={() => (showNotify = true)}>+ Add channel</button>
+</div>
+<p class="text-muted mb-4 text-sm">
+  Get notified on backups (done/failed) and servers starting/stopping, via Telegram, Discord, or a
+  generic webhook. Tokens are encrypted at rest.
+</p>
+<div class="card divide-y divide-border">
+  {#if channels.length === 0}
+    <div class="p-4 text-muted text-sm">No notification channels.</div>
+  {/if}
+  {#each channels as c}
+    <div class="flex items-center gap-3 px-4 py-3">
+      <div class="flex-1 font-medium capitalize">{c.type}</div>
+      <button class="btn-ghost" onclick={() => testChannel(c)}>Test</button>
+      <button class="btn-danger" onclick={() => deleteChannel(c)}>Delete</button>
+    </div>
+  {/each}
+</div>
+
+{#if showNotify}
+  <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+    <div class="card w-full max-w-md p-5 space-y-3">
+      <h2 class="text-lg font-semibold">Add notification channel</h2>
+      <div>
+        <label class="label" for="n-type">Type</label>
+        <select id="n-type" class="input" bind:value={notifyForm.type}>
+          <option value="telegram">Telegram</option>
+          <option value="discord">Discord webhook</option>
+          <option value="webhook">Generic webhook</option>
+        </select>
+      </div>
+      {#if notifyForm.type === "telegram"}
+        <div>
+          <label class="label" for="n-token">Bot token</label>
+          <input id="n-token" class="input" bind:value={notifyForm.token} />
+        </div>
+        <div>
+          <label class="label" for="n-chat">Chat ID</label>
+          <input id="n-chat" class="input" bind:value={notifyForm.chat_id} />
+        </div>
+      {:else}
+        <div>
+          <label class="label" for="n-url">Webhook URL</label>
+          <input id="n-url" class="input" bind:value={notifyForm.url} />
+        </div>
+      {/if}
+      <div class="flex gap-2 pt-2">
+        <button class="btn-ghost flex-1" onclick={() => (showNotify = false)}>Cancel</button>
+        <button class="btn-primary flex-1" onclick={createChannel}>Add</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- API tokens -->
+<div class="flex items-center justify-between mt-10 mb-2">
+  <h2 class="text-xl font-semibold">API tokens</h2>
+</div>
+<p class="text-muted mb-4 text-sm">
+  Drive Yggdrasil from automation (scripts, a home AI). A token acts as you and is shown only once.
+</p>
+{#if createdToken}
+  <div class="card border-accent2/40 bg-accent2/10 p-4 mb-3">
+    <div class="text-sm text-accent mb-1">New token — copy it now, it won't be shown again:</div>
+    <code class="block break-all text-xs bg-black/40 p-2 rounded">{createdToken}</code>
+    <button class="btn-ghost mt-2" onclick={() => (createdToken = null)}>Dismiss</button>
+  </div>
+{/if}
+<div class="flex gap-2 mb-3">
+  <input class="input" bind:value={newTokenName} placeholder="Token name (e.g. home-ai)" />
+  <button class="btn-primary" onclick={createToken}>Create</button>
+</div>
+<div class="card divide-y divide-border">
+  {#if tokens.length === 0}
+    <div class="p-4 text-muted text-sm">No API tokens.</div>
+  {/if}
+  {#each tokens as t}
+    <div class="flex items-center gap-3 px-4 py-3">
+      <div class="flex-1">
+        <div class="font-medium">{t.name}</div>
+        <div class="text-xs text-muted">
+          created {t.created_at}{t.last_used_at ? ` · last used ${t.last_used_at}` : " · never used"}
+        </div>
+      </div>
+      <button class="btn-danger" onclick={() => deleteToken(t)}>Delete</button>
     </div>
   {/each}
 </div>

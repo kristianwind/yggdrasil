@@ -255,6 +255,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) {
 	fail := func(msg string) {
 		s.db.Exec("UPDATE backups SET status='error', error_msg=?, completed_at=? WHERE id=?",
 			msg, time.Now().UTC().Format(time.RFC3339), backupID)
+		s.notifyAll("❌ Backup failed for " + s.serverName(serverID) + ": " + msg)
 	}
 	s.db.Exec("UPDATE backups SET status='running' WHERE id=?", backupID)
 
@@ -300,6 +301,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) {
 
 	s.db.Exec("UPDATE backups SET status='done', path=?, size_bytes=?, completed_at=? WHERE id=?",
 		name, size, time.Now().UTC().Format(time.RFC3339), backupID)
+	s.notifyAll("✅ Backup complete for " + s.serverName(serverID) + " (" + humanBytes(size) + ")")
 
 	s.applyRetention(ctx, serverID, targetID, tgt)
 }
@@ -366,6 +368,19 @@ func (s *Server) decryptTargetConfig(enc string) (backup.Config, error) {
 	}
 	err = json.Unmarshal([]byte(plain), &cfg)
 	return cfg, err
+}
+
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for x := n / unit; x >= unit; x /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGT"[exp])
 }
 
 func (s *Server) loadTargetConfig(ctx context.Context, targetID string) (*backup.Config, error) {

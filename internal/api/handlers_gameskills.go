@@ -95,6 +95,41 @@ func (s *Server) handleUploadGameskill(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"id": id, "name": gs.Name})
 }
 
+// handleImportEgg converts an uploaded Pterodactyl egg JSON into a gameskill,
+// stores it as a (non-builtin) rune, and returns its id.
+func (s *Server) handleImportEgg(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		jsonError(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	gs, err := gameskill.ImportEgg(data)
+	if err != nil {
+		jsonError(w, "egg import: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	yamlBlob, err := gameskill.ToYAML(gs)
+	if err != nil {
+		jsonError(w, "serialize: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = s.db.ExecContext(r.Context(), `
+		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin)
+		VALUES (?,?,?,?,?,0)
+		ON CONFLICT(id) DO UPDATE SET
+			name=excluded.name, category=excluded.category,
+			version=excluded.version, yaml_blob=excluded.yaml_blob
+	`, gs.ID, gs.Name, gs.Category, gs.Version, string(yamlBlob))
+	if err != nil {
+		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.auditLog(r, "gameskill.import_egg", "gameskill:"+gs.ID, map[string]string{"name": gs.Name})
+	w.WriteHeader(http.StatusCreated)
+	jsonOK(w, map[string]string{"id": gs.ID, "name": gs.Name})
+}
+
 func (s *Server) handleDeleteGameskill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 

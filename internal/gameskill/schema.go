@@ -124,6 +124,11 @@ func Parse(data []byte) (*Gameskill, error) {
 	return gs, nil
 }
 
+// ToYAML serializes a gameskill back to the wrapped YAML document form.
+func ToYAML(gs *Gameskill) ([]byte, error) {
+	return yaml.Marshal(fileWrapper{Gameskill: *gs})
+}
+
 func validate(gs *Gameskill) error {
 	if gs.ID == "" {
 		return fmt.Errorf("gameskill.id is required")

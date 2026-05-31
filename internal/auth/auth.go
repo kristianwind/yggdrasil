@@ -2,9 +2,11 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -105,6 +107,26 @@ func GenerateSecureKey(n int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// APITokenPrefix distinguishes API tokens from JWT session tokens.
+const APITokenPrefix = "ygg_"
+
+// GenerateAPIToken returns a new opaque API token (with prefix) and its SHA-256
+// hash for storage. The plaintext is shown to the user once and never stored.
+func GenerateAPIToken() (token, hash string, err error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+	token = APITokenPrefix + base64.RawURLEncoding.EncodeToString(b)
+	return token, HashToken(token), nil
+}
+
+// HashToken returns the hex SHA-256 of a token, for constant-storage lookup.
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func EnsureAdmin(db *sql.DB, username, password string) error {

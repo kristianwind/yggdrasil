@@ -38,6 +38,29 @@
     }
   }
 
+  async function importEgg(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploading = true;
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/gameskills/import-egg", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("ygg_token") || ""}` },
+        body: text,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "import failed");
+      toast(`Imported egg: ${data.name}`, "success");
+      await load();
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      uploading = false;
+      e.target.value = "";
+    }
+  }
+
   async function del(r) {
     if (!confirm(`Delete rune "${r.name}"?`)) return;
     try {
@@ -52,10 +75,16 @@
 
 <div class="flex items-center justify-between mb-2">
   <h1 class="text-2xl font-semibold">Runes</h1>
-  <label class="btn-primary cursor-pointer">
-    {uploading ? "Carving…" : "Carve a rune (upload)"}
-    <input type="file" accept=".yaml,.yml" class="hidden" onchange={upload} />
-  </label>
+  <div class="flex gap-2">
+    <label class="btn-ghost cursor-pointer">
+      Import Pterodactyl egg
+      <input type="file" accept=".json" class="hidden" onchange={importEgg} />
+    </label>
+    <label class="btn-primary cursor-pointer">
+      {uploading ? "Carving…" : "Carve a rune (upload)"}
+      <input type="file" accept=".yaml,.yml" class="hidden" onchange={upload} />
+    </label>
+  </div>
 </div>
 <p class="text-muted mb-6">A Rune is a declarative game definition. Upload your own YAML to add new games.</p>
 

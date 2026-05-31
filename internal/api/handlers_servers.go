@@ -323,6 +323,7 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		containerID, id)
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
+	s.notifyAll("▶️ " + srv.Name + " started")
 	jsonOK(w, map[string]string{"status": "running"})
 }
 
@@ -341,6 +342,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 	}
 	s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
 	s.auditLog(r, "server.stop", "server:"+id, nil)
+	s.notifyAll("⏹️ " + srv.Name + " stopped")
 	jsonOK(w, map[string]string{"status": "stopped"})
 }
 

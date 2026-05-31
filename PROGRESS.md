@@ -159,14 +159,20 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [x] Bans UI (list/ban/unban) + anti-cheat tab; API + browser verified
 - [ ] (deferred to later) violation-driven auto-ban rules; live kick/ban event feed
 
-### Phase 9 — Notifications + API tokens + importer
-- [ ] Telegram notifications
-- [ ] Discord webhook notifications
-- [ ] Email notifications (SMTP)
-- [ ] API tokens (per-user, scoped)
-- [ ] REST API documentation (docs/API.md)
-- [ ] Pterodactyl egg importer
-- [ ] XML gameskill import
+### Phase 9 — Notifications + API tokens + importer ✅ MOSTLY DONE
+- [x] internal/notify: Telegram, Discord webhook, generic webhook (httptest-tested)
+- [x] Notification channels (admin): CRUD + test send; secrets encrypted at rest
+- [x] Event hooks: backup done/failed, server start/stop → notifyAll
+- [x] API tokens (per-user, inherit owner role): create (shown once)/list/delete,
+      ygg_ prefix, SHA-256 stored; auth middleware accepts them (API-verified)
+- [x] Pterodactyl egg importer (internal/gameskill/egg.go): maps image/startup/
+      done_regex/install/config_files/variables (rules→type), unit-tested + UI
+- [x] Frontend: egg import on Runes; tokens + notifications in Settings
+- [x] Verified: notify unit tests, egg import test, API (token auth 200 / bad 401,
+      egg import), bundle embeds all new UI
+- [ ] Email/SMTP notifications (deferred; webhook/Telegram/Discord cover most)
+- [ ] XML gameskill import (deferred; egg + YAML cover the common cases)
+- [ ] docs/API.md (folds into Phase 10 docs)
 
 ### Phase 10 — PWA polish + docs + end-to-end test
 - [ ] PWA manifest, service worker, installability

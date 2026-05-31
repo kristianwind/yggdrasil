@@ -1,0 +1,151 @@
+// Package backup creates and restores server archives and ships them to storage
+// targets (local/NFS/CIFS mount, SFTP, SMB). Credentials are encrypted at rest
+// by the caller; this package never logs them.
+package backup
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// Archive writes a gzip-compressed tar of dataDir to w. When include is
+// non-empty, only those top-level paths (files or directories) are archived —
+// matching a gameskill's backup.include. Paths are stored relative to dataDir.
+func Archive(dataDir string, include []string, w io.Writer) error {
+	gz := gzip.NewWriter(w)
+	defer gz.Close()
+	tw := tar.NewWriter(gz)
+	defer tw.Close()
+
+	roots := include
+	if len(roots) == 0 {
+		roots = []string{"."}
+	}
+
+	for _, root := range roots {
+		base := filepath.Join(dataDir, root)
+		info, err := os.Stat(base)
+		if err != nil {
+			// An included path that doesn't exist is skipped, not fatal.
+			continue
+		}
+		if !info.IsDir() {
+			if err := addFile(tw, dataDir, base); err != nil {
+				return err
+			}
+			continue
+		}
+		err = filepath.Walk(base, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if fi.IsDir() {
+				return nil // tar entries for files carry their dir path
+			}
+			return addFile(tw, dataDir, path)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addFile(tw *tar.Writer, dataDir, path string) error {
+	rel, err := filepath.Rel(dataDir, path)
+	if err != nil {
+		return err
+	}
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	// Skip sockets/devices; only regular files and symlinks are archived.
+	if !fi.Mode().IsRegular() && fi.Mode()&os.ModeSymlink == 0 {
+		return nil
+	}
+
+	var link string
+	if fi.Mode()&os.ModeSymlink != 0 {
+		link, _ = os.Readlink(path)
+	}
+	hdr, err := tar.FileInfoHeader(fi, link)
+	if err != nil {
+		return err
+	}
+	hdr.Name = filepath.ToSlash(rel)
+	if err := tw.WriteHeader(hdr); err != nil {
+		return err
+	}
+	if fi.Mode().IsRegular() {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := io.Copy(tw, f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Restore extracts a gzip-tar archive from r into destDir, guarding against
+// path-traversal entries.
+func Restore(r io.Reader, destDir string) error {
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+
+	absDest, err := filepath.Abs(destDir)
+	if err != nil {
+		return err
+	}
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(absDest, filepath.Clean("/"+hdr.Name))
+		if target != absDest && !strings.HasPrefix(target, absDest+string(os.PathSeparator)) {
+			return fmt.Errorf("archive entry escapes destination: %s", hdr.Name)
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
+				return err
+			}
+		case tar.TypeSymlink:
+			os.MkdirAll(filepath.Dir(target), 0755)
+			os.Remove(target)
+			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return err
+			}
+		default:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(hdr.Mode))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // size bounded by archive
+				f.Close()
+				return err
+			}
+			f.Close()
+		}
+	}
+	return nil
+}

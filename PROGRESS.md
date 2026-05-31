@@ -123,16 +123,22 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [x] Verified: rbac unit tests, API enforcement test (403/filter/persist),
       browser-verified editor + end-to-end scoped-user access checks
 
-### Phase 7 — Backup + restore + schedules
-- [ ] Backup targets: NFS mount, CIFS/SMB mount, SFTP
-- [ ] Encrypted credential storage (AES-256-GCM)
-- [ ] On-demand + scheduled backups
-- [ ] Restore flow
-- [ ] Retention policy (keep N / keep X days)
-- [ ] Backup status UI
-- [ ] Scheduler: cron parser, task runner
-- [ ] Schedule types: backup, update, restart, in-game message, command
-- [ ] Message templates with variables
+### Phase 7 — Backup + restore + schedules 🟡 7a BACKUPS DONE, 7b SCHEDULES NEXT
+- [x] internal/crypto: AES-256-GCM, key from panel secret (unit-tested)
+- [x] internal/backup: tar.gz archive honoring backup.include, restore (traversal-
+      guarded), retention (keep-N / keep-days) — unit-tested
+- [x] Backup targets: local (also covers mounted NFS/CIFS), SFTP (pkg/sftp),
+      SMB/CIFS direct (go-smb2); credentials encrypted at rest
+- [x] On-demand backups (async, status on backups row), list, delete, restore
+      (stops container first); retention applied after each backup
+- [x] Backup targets API (admin) + per-server backups API (RBAC server.backup)
+- [x] Frontend: Settings→targets (type-conditional form, test/delete) + ServerDetail
+      Backups tab (run/list/restore/delete)
+- [x] Verified end-to-end without Docker (target create→test→backup done→file on
+      disk; browser-verified UI)
+- [ ] **Scheduler: cron task runner** (7b) ← NEXT
+- [ ] Schedule types: backup, update, restart, in-game message, command, start/stop
+- [ ] Message templates with variables ({{minutes}}, {{server_name}})
 - [ ] Player-online check before disruptive operations
 
 ### Phase 8 — Anti-cheat + ban management

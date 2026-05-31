@@ -10,6 +10,7 @@
   import Runes from "./views/Runes.svelte";
   import Users from "./views/Users.svelte";
   import Audit from "./views/Audit.svelte";
+  import Settings from "./views/Settings.svelte";
 
   let ready = $state(false);
 
@@ -31,6 +32,7 @@
     { path: "/runes", label: "Runes", icon: "ᚱ" },
     { path: "/users", label: "Users", icon: "👥", admin: true },
     { path: "/audit", label: "Audit log", icon: "📜", admin: true },
+    { path: "/settings", label: "Settings", icon: "⚙️", admin: true },
   ];
 
   let mobileOpen = $state(false);
@@ -101,6 +103,8 @@
           <Users />
         {:else if $route.parts[0] === "audit"}
           <Audit />
+        {:else if $route.parts[0] === "settings"}
+          <Settings />
         {:else}
           <Dashboard />
         {/if}

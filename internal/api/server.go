@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/kristianwind/yggdrasil/internal/auth"
 	"github.com/kristianwind/yggdrasil/internal/config"
+	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/docker"
 )
 
@@ -24,10 +25,12 @@ type Server struct {
 	router  *chi.Mux
 	webFS   fs.FS
 	install *progressHub // live install/build output, keyed by server id
+	cipher  *crypto.Cipher
 }
 
 func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
 	subFS, _ := fs.Sub(webFS, "web/dist")
+	cipher, _ := crypto.New(cfg.Auth.SecretKey)
 
 	s := &Server{
 		cfg:     cfg,
@@ -35,6 +38,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		docker:  dc,
 		webFS:   subFS,
 		install: newProgressHub(),
+		cipher:  cipher,
 	}
 	s.router = s.buildRouter()
 	return s
@@ -97,6 +101,18 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/servers/{id}/files", s.handleDeleteFile)
 		r.Post("/api/servers/{id}/files/upload", s.handleUploadFile)
 		r.Get("/api/servers/{id}/files/download", s.handleDownloadFile)
+
+		// Backup targets (admin-only global config)
+		r.Get("/api/backup/targets", s.requireAdmin(s.handleListBackupTargets))
+		r.Post("/api/backup/targets", s.requireAdmin(s.handleCreateBackupTarget))
+		r.Delete("/api/backup/targets/{id}", s.requireAdmin(s.handleDeleteBackupTarget))
+		r.Post("/api/backup/targets/{id}/test", s.requireAdmin(s.handleTestBackupTarget))
+
+		// Backups (per-server, RBAC: server.backup)
+		r.Get("/api/servers/{id}/backups", s.handleListBackups)
+		r.Post("/api/servers/{id}/backup", s.handleRunBackup)
+		r.Post("/api/backups/{id}/restore", s.handleRestoreBackup)
+		r.Delete("/api/backups/{id}", s.handleDeleteBackup)
 
 		// Realms
 		r.Get("/api/realms", s.handleListRealms)

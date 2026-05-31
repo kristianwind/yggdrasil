@@ -174,6 +174,8 @@ func migrate(db *sql.DB) error {
 	// Idempotent column additions for databases created by older versions.
 	addColumnIfMissing(db, "servers", "installed", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "servers", "install_status", "TEXT NOT NULL DEFAULT 'pending'")
+	addColumnIfMissing(db, "backup_targets", "keep_n", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
 	return nil
 }
 

@@ -24,6 +24,70 @@
   let installWs = $state(null);
   let installEl;
 
+  // Backups
+  let backups = $state([]);
+  let backupTargets = $state([]);
+  let selectedTarget = $state("");
+  let backupBusy = $state(false);
+
+  async function loadBackups() {
+    try {
+      [backups, backupTargets] = await Promise.all([
+        api.get(`/servers/${id}/backups`),
+        api.get("/backup/targets").catch(() => []),
+      ]);
+      if (!selectedTarget && backupTargets[0]) selectedTarget = backupTargets[0].id;
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  async function runBackup() {
+    if (!selectedTarget) return toast("Create a backup target in Settings first", "warn");
+    backupBusy = true;
+    try {
+      await api.post(`/servers/${id}/backup`, { target_id: selectedTarget });
+      toast("Backup started", "info");
+      setTimeout(loadBackups, 1500);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      backupBusy = false;
+    }
+  }
+
+  async function restoreBackup(b) {
+    if (!confirm("Restore this backup? The server will be stopped and files overwritten.")) return;
+    try {
+      await api.post(`/backups/${b.id}/restore`);
+      toast("Restored", "success");
+      await loadServer();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  async function deleteBackup(b) {
+    if (!confirm("Delete this backup?")) return;
+    try {
+      await api.del(`/backups/${b.id}`);
+      await loadBackups();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  function fmtSize(n) {
+    if (!n) return "—";
+    const u = ["B", "KB", "MB", "GB"];
+    let i = 0;
+    while (n >= 1024 && i < u.length - 1) {
+      n /= 1024;
+      i++;
+    }
+    return `${n.toFixed(1)} ${u[i]}`;
+  }
+
   async function loadServer() {
     try {
       const prev = server;
@@ -212,7 +276,7 @@
 
   <!-- Tabs -->
   <div class="flex gap-1 border-b border-border mb-4">
-    {#each [["console", "Console"], ["files", "Files"], ["install", "Install log"]] as [key, label]}
+    {#each [["console", "Console"], ["files", "Files"], ["backups", "Backups"], ["install", "Install log"]] as [key, label]}
       <button
         class="px-4 py-2 text-sm border-b-2 -mb-px {tab === key
           ? 'border-accent text-text'
@@ -220,6 +284,7 @@
         onclick={() => {
           tab = key;
           if (key === "install" && !installWs) connectInstallLog();
+          if (key === "backups") loadBackups();
         }}>{label}</button
       >
     {/each}
@@ -250,5 +315,51 @@
     {/if}
   {:else if tab === "files"}
     <FileManager serverId={id} />
+  {:else if tab === "backups"}
+    <div class="flex flex-wrap items-end gap-2 mb-4">
+      <div>
+        <label class="label" for="bt">Target</label>
+        <select id="bt" class="input" bind:value={selectedTarget}>
+          {#if backupTargets.length === 0}
+            <option value="">No targets — add one in Settings</option>
+          {/if}
+          {#each backupTargets as t}
+            <option value={t.id}>{t.name} ({t.type})</option>
+          {/each}
+        </select>
+      </div>
+      <button class="btn-primary" onclick={runBackup} disabled={backupBusy || !selectedTarget}>
+        {backupBusy ? "Starting…" : "Back up now"}
+      </button>
+      <button class="btn-ghost" onclick={loadBackups}>Refresh</button>
+    </div>
+
+    <div class="card divide-y divide-border">
+      {#if backups.length === 0}
+        <div class="p-4 text-muted text-sm">No backups yet.</div>
+      {/if}
+      {#each backups as b}
+        <div class="flex items-center gap-3 px-4 py-3">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm truncate">{b.created_at}</div>
+            <div class="text-xs text-muted">
+              {fmtSize(b.size_bytes)} ·
+              <span
+                class={b.status === "done"
+                  ? "text-accent"
+                  : b.status === "error"
+                    ? "text-danger"
+                    : "text-warn"}>{b.status}</span
+              >
+              {#if b.error}— {b.error}{/if}
+            </div>
+          </div>
+          {#if b.status === "done"}
+            <button class="btn-ghost" onclick={() => restoreBackup(b)}>Restore</button>
+          {/if}
+          <button class="btn-danger" onclick={() => deleteBackup(b)}>Delete</button>
+        </div>
+      {/each}
+    </div>
   {/if}
 {/if}

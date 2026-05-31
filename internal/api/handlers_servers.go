@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -138,15 +139,22 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		env[k] = v
 	}
 
-	// Allocate ports
+	// Allocate ports. Seed "taken" with host ports Docker already publishes (incl.
+	// orphaned containers), track picks within this request, and test-bind each
+	// candidate — so we never hand out a port that can't actually be bound.
 	allocatedPorts := map[string]int{}
+	taken, _ := s.docker.UsedHostPorts(r.Context())
+	if taken == nil {
+		taken = map[int]bool{}
+	}
 	for _, p := range gs.Ports {
-		hostPort, err := s.allocatePort(r.Context(), p.Default)
+		hostPort, err := s.allocatePort(r.Context(), p.Default, taken)
 		if err != nil {
 			jsonError(w, "port allocation failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		allocatedPorts[p.Name] = hostPort
+		taken[hostPort] = true
 	}
 
 	// Create data directory
@@ -248,6 +256,44 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	}
 	gs, env, ports := rt.gs, rt.env, rt.ports
 
+	// Reconcile host ports: if a previously-allocated port is now held by another
+	// container/process (e.g. an orphan from an earlier attempt), reallocate it so
+	// the container can bind. This is what was running on the host that this
+	// server itself wants — so we ignore ports our own (to-be-recreated) container
+	// would hold; those are released when we remove it below.
+	if srv.ContainerID != "" {
+		s.docker.Stop(r.Context(), srv.ContainerID, 5)
+		s.docker.Remove(r.Context(), srv.ContainerID)
+		s.db.ExecContext(r.Context(), "UPDATE servers SET container_id='' WHERE id=?", id)
+		srv.ContainerID = ""
+	}
+	reallocated := false
+	dockerUsed, _ := s.docker.UsedHostPorts(r.Context()) // our container is already removed above
+	taken := map[int]bool{}
+	for _, hp := range ports {
+		taken[hp] = true
+	}
+	for name, hp := range ports {
+		if !dockerUsed[hp] && hostPortAvailable(hp) {
+			continue
+		}
+		delete(taken, hp)
+		newPort, aerr := s.allocatePort(r.Context(), hp, taken)
+		if aerr != nil {
+			jsonError(w, "port reconcile: "+aerr.Error(), http.StatusInternalServerError)
+			return
+		}
+		ports[name] = newPort
+		taken[newPort] = true
+		s.db.ExecContext(r.Context(), "DELETE FROM port_allocations WHERE server_id=? AND name=?", id, name)
+		s.db.ExecContext(r.Context(), "INSERT INTO port_allocations (port, server_id, name) VALUES (?,?,?)", newPort, id, name)
+		reallocated = true
+	}
+	if reallocated {
+		portsJSON, _ := json.Marshal(ports)
+		s.db.ExecContext(r.Context(), "UPDATE servers SET ports_json=? WHERE id=?", string(portsJSON), id)
+	}
+
 	// Build docker env slice (server vars + PORT_<name> helpers).
 	envSlice := []string{}
 	for k, v := range env {
@@ -283,16 +329,10 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		"SELECT COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0) FROM servers WHERE id=?", id).
 		Scan(&cpuLimit, &memLimit)
 
-	// If container already exists, start it
-	if srv.ContainerID != "" {
-		if err := s.docker.Start(r.Context(), srv.ContainerID); err == nil {
-			s.db.ExecContext(r.Context(), "UPDATE servers SET status='running' WHERE id=?", id)
-			jsonOK(w, map[string]string{"status": "running"})
-			return
-		}
-		// container gone — recreate
-		s.docker.Remove(r.Context(), srv.ContainerID)
-	}
+	// Remove any orphaned container with our deterministic name so Create can't
+	// fail with a name conflict (the container is always (re)created fresh; game
+	// state lives in the /data volume).
+	s.docker.Remove(r.Context(), containerName)
 
 	// Pull image
 	s.docker.PullImage(r.Context(), image, io.Discard)
@@ -501,24 +541,41 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 }
 
 // Port allocation
-func (s *Server) allocatePort(ctx context.Context, preferred int) (int, error) {
-	// Check if preferred is free
-	if preferred >= s.cfg.Ports.RangeMin && preferred <= s.cfg.Ports.RangeMax {
-		var count int
-		s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM port_allocations WHERE port=?", preferred).Scan(&count)
-		if count == 0 {
-			return preferred, nil
+// allocatePort returns a free host port, preferring `preferred`. A port is free
+// only if it is not in the port_allocations table, not in `taken` (already
+// chosen earlier in this request), and not actually bound on the host.
+func (s *Server) allocatePort(ctx context.Context, preferred int, taken map[int]bool) (int, error) {
+	free := func(port int) bool {
+		if taken[port] {
+			return false
 		}
-	}
-	// Find free port in range
-	for port := s.cfg.Ports.RangeMin; port <= s.cfg.Ports.RangeMax; port++ {
 		var count int
 		s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM port_allocations WHERE port=?", port).Scan(&count)
-		if count == 0 {
+		if count != 0 {
+			return false
+		}
+		return hostPortAvailable(port)
+	}
+	if preferred >= s.cfg.Ports.RangeMin && preferred <= s.cfg.Ports.RangeMax && free(preferred) {
+		return preferred, nil
+	}
+	for port := s.cfg.Ports.RangeMin; port <= s.cfg.Ports.RangeMax; port++ {
+		if free(port) {
 			return port, nil
 		}
 	}
 	return 0, fmt.Errorf("no free ports in range %d-%d", s.cfg.Ports.RangeMin, s.cfg.Ports.RangeMax)
+}
+
+// hostPortAvailable reports whether a TCP host port can be bound right now —
+// catching ports held by other containers/processes that aren't in our table.
+func hostPortAvailable(port int) bool {
+	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		return false
+	}
+	ln.Close()
+	return true
 }
 
 func (s *Server) ensureRealm(ctx context.Context, category string) string {

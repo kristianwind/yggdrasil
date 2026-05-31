@@ -236,6 +236,25 @@ func (c *Client) State(ctx context.Context, id string) (running bool, exitCode i
 	return info.State.Running, info.State.ExitCode, nil
 }
 
+// UsedHostPorts returns the set of host ports currently published by any
+// container (running or not). This is the authoritative view for avoiding port
+// conflicts, independent of Docker's userland-proxy mode.
+func (c *Client) UsedHostPorts(ctx context.Context) (map[int]bool, error) {
+	containers, err := c.dc.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+	used := map[int]bool{}
+	for _, ct := range containers {
+		for _, p := range ct.Ports {
+			if p.PublicPort != 0 {
+				used[int(p.PublicPort)] = true
+			}
+		}
+	}
+	return used, nil
+}
+
 func (c *Client) FindByLabel(ctx context.Context, key, value string) ([]types.Container, error) {
 	return c.dc.ContainerList(ctx, container.ListOptions{
 		All:     true,

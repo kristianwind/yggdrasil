@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  @apply bg-bg text-text;
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+  .btn-primary {
+    @apply btn bg-accent2 text-white hover:bg-accent;
+  }
+  .btn-ghost {
+    @apply btn bg-panel2 text-text hover:bg-border;
+  }
+  .btn-danger {
+    @apply btn bg-danger/90 text-white hover:bg-danger;
+  }
+  .card {
+    @apply bg-panel border border-border rounded-lg;
+  }
+  .input {
+    @apply w-full bg-panel2 border border-border rounded-md px-3 py-2 text-sm
+           outline-none focus:border-accent placeholder:text-muted;
+  }
+  .label {
+    @apply block text-xs font-medium text-muted mb-1;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+}
+
+/* Console / log viewer */
+.term {
+  @apply font-mono text-xs leading-relaxed bg-black/40 rounded-md p-3 overflow-auto whitespace-pre-wrap break-words;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded;
+}

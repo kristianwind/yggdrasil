@@ -5,6 +5,8 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -109,10 +111,36 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
 	})
 
-	// SPA fallback — serve index.html for all non-API routes
-	r.Handle("/*", http.FileServer(http.FS(s.webFS)))
+	// Static assets + SPA fallback (serve index.html for client-side routes).
+	r.Handle("/*", s.spaHandler())
 
 	return r
+}
+
+// spaHandler serves embedded static files, falling back to index.html for any
+// path that isn't an existing asset or an /api route — so deep links like
+// /servers/abc work with client-side routing.
+func (s *Server) spaHandler() http.HandlerFunc {
+	fileServer := http.FileServer(http.FS(s.webFS))
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		// Does the requested file exist in the embedded FS?
+		p := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+		if p == "" {
+			p = "index.html"
+		}
+		if f, err := s.webFS.Open(p); err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// Fallback: serve index.html for SPA routes.
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	}
 }
 
 func secureHeaders(next http.Handler) http.Handler {

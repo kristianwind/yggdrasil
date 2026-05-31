@@ -22,3 +22,6 @@ config.yaml
 *.swp
 .idea/
 .vscode/
+
+# Local dev launch config (machine-specific paths)
+.claude/launch.json

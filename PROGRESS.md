@@ -9,14 +9,19 @@ Last updated: 2026-05-31
 schema → builtin gameskill load → JWT login → authed API call → 401 on bad/missing
 auth → graceful Docker-absent degradation.
 
-Because the backend layers are cheap to write together, **substantial backend for
-Phases 1, 2, 5 and 6 already exists** (auth, server lifecycle, log/console
-WebSockets, stats, file manager, realms, users, audit log). The **big remaining
-gap is the entire frontend** — only a placeholder `web/dist/index.html` is
-embedded. The next milestone is the Phase 1 Svelte web shell, which turns this
-into an actually usable panel.
+**Phase 1 (Svelte web shell) is complete and visually verified.** The frontend
+is a Svelte 5 + Vite + Tailwind SPA (72 KB JS / 26 KB gzipped) embedded in the
+binary. Verified in a real browser: login → JWT session → dashboard with live
+stats → sidebar nav → Runes list. Backend for Phases 2/5/6 also has matching UI
+(server list+create form, console/logs, file manager, users, audit log).
 
-Run locally: `go run ./cmd/yggdrasil --config dev-config.yaml` (see README).
+The next milestone is **Phase 3/4: the real gameskill install flow** (wiring
+`docker.RunEphemeral` into server creation with progress streaming) and the
+remaining three gameskills (Bedrock, Rust, DayZ) with query/RCON.
+
+Run backend: `go run ./cmd/yggdrasil --config dev-config.yaml`.
+Dev frontend (proxy to :8080): `cd web && npm run dev`.
+Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdrasil`.
 
 ## Phase Checklist
 
@@ -35,14 +40,18 @@ Run locally: `go run ./cmd/yggdrasil --config dev-config.yaml` (see README).
 - [x] Verified: builds, vets, tests, live boot smoke test
 - [ ] Initial git commit + push (pending user confirmation for push)
 
-### Phase 1 — Auth + web shell + login 🟡 BACKEND DONE, FRONTEND PENDING
+### Phase 1 — Auth + web shell + login ✅ DONE
 - [x] internal/auth: argon2id, session JWT
 - [x] API: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
 - [x] First-run admin creation (from config; generated password if none)
 - [x] Rate limiting middleware (5/min/IP on login)
-- [x] Secure headers + HttpOnly/SameSite=Strict cookie
-- [ ] **Svelte frontend: login page, session store, app shell** ← NEXT
-- [ ] CSRF double-submit token on state-changing calls (cookie path)
+- [x] Secure headers + HttpOnly/SameSite=Strict cookie + token query-param for WS
+- [x] Svelte 5 + Vite + Tailwind SPA: login, session store, hash router, app shell
+- [x] Responsive sidebar (mobile drawer), dark theme, toast notifications
+- [x] PWA: manifest, SVG icon, service worker (app-shell cache, /api never cached)
+- [x] SPA fallback in Go static handler (deep links work)
+- [x] Verified in real browser (login → dashboard → nav → runes)
+- [ ] CSRF double-submit token (cookie path; Bearer path is CSRF-immune)
 
 ### Phase 2 — Docker integration 🟡 BACKEND DONE, FRONTEND PENDING
 - [x] internal/docker: Create/Start/Stop/Restart/Delete (Docker SDK v28)
@@ -51,9 +60,10 @@ Run locally: `go run ./cmd/yggdrasil --config dev-config.yaml` (see README).
 - [x] Resource stats (CPU/RAM) via /api/servers/:id/stats
 - [x] API: CRUD for servers (gameskill-driven, with port allocation)
 - [x] Restart-on-crash (container RestartPolicy unless-stopped)
+- [x] Frontend: server list (grouped by realm), create form, console + live stats
 - [ ] Crash detection → status reconciliation loop (poll container state)
-- [ ] Frontend: server list, console panel, resource mini-graph
 - [ ] Disk usage stat (currently CPU/RAM only)
+- [ ] Resource mini-graph (currently numeric stats only)
 
 ### Phase 3 — Gameskill parser + variable form + install flow 🟡 PARSER DONE
 - [x] internal/gameskill: YAML parser, schema validation, clear errors
@@ -80,18 +90,19 @@ Run locally: `go run ./cmd/yggdrasil --config dev-config.yaml` (see README).
 - [x] Realms: CRUD API
 - [x] Default realm = gameskill category (auto-created on server create)
 - [x] File browser API (list/read/write/upload/download/delete) with ../ guard
-- [ ] Move servers between realms (endpoint)
+- [x] Frontend: file manager panel (browse/edit/upload, realm-grouped servers)
+- [ ] Move servers between realms (endpoint + UI)
 - [ ] Config editor surfacing gameskill-declared config_files specifically
-- [ ] Frontend: realm sidebar, file manager panel
 
 ### Phase 6 — Multi-admin RBAC + audit log 🟡 ROLES + AUDIT DONE, SCOPES PENDING
 - [x] Basic roles: global admin vs user; admin-only routes enforced
 - [x] User CRUD API (last-admin / self-delete guards)
 - [x] Audit log: written on state-changing actions; admin-only read API
+- [x] Frontend: user management (create/disable/delete), audit log viewer
 - [ ] **Scoped permissions**: permission bits (start/stop, console, config,
       backup, create, schedule) over scope types (realm/gameskill/server).
       `permissions` table exists but is not yet enforced.
-- [ ] Frontend: user management, permission editor
+- [ ] Frontend: permission editor (after scopes are enforced)
 
 ### Phase 7 — Backup + restore + schedules
 - [ ] Backup targets: NFS mount, CIFS/SMB mount, SFTP

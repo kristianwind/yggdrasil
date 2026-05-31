@@ -28,9 +28,13 @@ func extractToken(r *http.Request) string {
 	if strings.HasPrefix(header, "Bearer ") {
 		return strings.TrimPrefix(header, "Bearer ")
 	}
-	// Cookie fallback
+	// Cookie fallback (set on login; used by WebSocket handshakes too)
 	if cookie, err := r.Cookie("ygg_token"); err == nil {
 		return cookie.Value
+	}
+	// Query-param fallback (WebSockets can't set headers)
+	if t := r.URL.Query().Get("token"); t != "" {
+		return t
 	}
 	return ""
 }

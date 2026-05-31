@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#0b0f14"/>
+  <g fill="none" stroke="#3fb950" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <!-- trunk -->
+    <path d="M256 430 V250"/>
+    <!-- branches -->
+    <path d="M256 300 L180 230 M256 300 L332 230"/>
+    <path d="M256 250 L150 170 M256 250 L362 170"/>
+    <path d="M256 210 L200 150 M256 210 L312 150"/>
+    <!-- roots -->
+    <path d="M256 430 L190 470 M256 430 L322 470"/>
+  </g>
+  <circle cx="256" cy="150" r="70" fill="#3fb950" opacity="0.18"/>
+</svg>

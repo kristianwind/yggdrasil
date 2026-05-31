@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yggdrasil-panel/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/auth"
 )
 
 type contextKey string

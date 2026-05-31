@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/yggdrasil-panel/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/auth"
 )
 
 type userInfo struct {

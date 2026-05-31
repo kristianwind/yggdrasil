@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/yggdrasil-panel/yggdrasil/internal/gameskill"
+	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
 func (s *Server) handleListGameskills(w http.ResponseWriter, r *http.Request) {

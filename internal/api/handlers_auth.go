@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yggdrasil-panel/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/auth"
 )
 
 // simple in-memory rate limiter: max 5 attempts per IP per minute

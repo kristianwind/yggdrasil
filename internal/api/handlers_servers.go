@@ -13,8 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/yggdrasil-panel/yggdrasil/internal/docker"
-	"github.com/yggdrasil-panel/yggdrasil/internal/gameskill"
+	"github.com/kristianwind/yggdrasil/internal/docker"
+	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
 var wsUpgrader = websocket.Upgrader{

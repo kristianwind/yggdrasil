@@ -12,9 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/yggdrasil-panel/yggdrasil/internal/auth"
-	"github.com/yggdrasil-panel/yggdrasil/internal/config"
-	"github.com/yggdrasil-panel/yggdrasil/internal/docker"
+	"github.com/kristianwind/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/config"
+	"github.com/kristianwind/yggdrasil/internal/docker"
 )
 
 type Server struct {

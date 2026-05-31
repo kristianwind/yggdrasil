@@ -1,4 +1,4 @@
-module github.com/yggdrasil-panel/yggdrasil
+module github.com/kristianwind/yggdrasil
 
 go 1.26.3
 

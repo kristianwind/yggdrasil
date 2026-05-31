@@ -2,12 +2,12 @@
 #
 # Yggdrasil installer — single-command install / upgrade / repair.
 #
-#   curl -fsSL https://raw.githubusercontent.com/yggdrasil-panel/yggdrasil/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash
 #
 # Idempotent: safe to re-run to upgrade the binary or repair the install.
 set -euo pipefail
 
-REPO="${YGG_REPO:-yggdrasil-panel/yggdrasil}"
+REPO="${YGG_REPO:-kristianwind/yggdrasil}"
 VERSION="${YGG_VERSION:-latest}"
 BIN_PATH="/usr/local/bin/yggdrasil"
 CONFIG_DIR="/etc/yggdrasil"

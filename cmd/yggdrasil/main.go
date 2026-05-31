@@ -18,13 +18,13 @@ import (
 	"syscall"
 	"time"
 
-	yggdrasil "github.com/yggdrasil-panel/yggdrasil"
-	"github.com/yggdrasil-panel/yggdrasil/internal/api"
-	"github.com/yggdrasil-panel/yggdrasil/internal/auth"
-	"github.com/yggdrasil-panel/yggdrasil/internal/config"
-	"github.com/yggdrasil-panel/yggdrasil/internal/db"
-	"github.com/yggdrasil-panel/yggdrasil/internal/docker"
-	"github.com/yggdrasil-panel/yggdrasil/internal/gameskill"
+	yggdrasil "github.com/kristianwind/yggdrasil"
+	"github.com/kristianwind/yggdrasil/internal/api"
+	"github.com/kristianwind/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/config"
+	"github.com/kristianwind/yggdrasil/internal/db"
+	"github.com/kristianwind/yggdrasil/internal/docker"
+	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".

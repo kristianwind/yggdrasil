@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/yggdrasil-panel/yggdrasil/internal/gameskill"
-	"github.com/yggdrasil-panel/yggdrasil/internal/query"
-	"github.com/yggdrasil-panel/yggdrasil/internal/rcon"
+	"github.com/kristianwind/yggdrasil/internal/gameskill"
+	"github.com/kristianwind/yggdrasil/internal/query"
+	"github.com/kristianwind/yggdrasil/internal/rcon"
 )
 
 // serverRuntime bundles the parsed gameskill plus a server's env and host ports.

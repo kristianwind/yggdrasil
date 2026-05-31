@@ -15,7 +15,7 @@ Pterodactyl, but radically easier to install, update and maintain*.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yggdrasil-panel/yggdrasil/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash
 ```
 
 The installer detects your distro, installs Docker if missing, creates a

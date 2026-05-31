@@ -109,6 +109,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/users", s.requireAdmin(s.handleCreateUser))
 		r.Put("/api/users/{id}", s.requireAdmin(s.handleUpdateUser))
 		r.Delete("/api/users/{id}", s.requireAdmin(s.handleDeleteUser))
+		r.Get("/api/users/{id}/permissions", s.requireAdmin(s.handleGetUserPermissions))
+		r.Put("/api/users/{id}/permissions", s.requireAdmin(s.handleSetUserPermissions))
+		r.Get("/api/permissions/catalog", s.requireAdmin(s.handlePermissionsCatalog))
 
 		// Audit log
 		r.Get("/api/audit", s.requireAdmin(s.handleAuditLog))

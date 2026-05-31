@@ -2,10 +2,12 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import PermissionEditor from "../components/PermissionEditor.svelte";
 
   let users = $state([]);
   let showCreate = $state(false);
   let form = $state({ username: "", password: "", role: "user" });
+  let permUser = $state(null); // user whose permissions are being edited
 
   async function load() {
     try {
@@ -62,6 +64,9 @@
         <div class="font-medium">{u.username}</div>
         <div class="text-xs text-muted">{u.role}{u.disabled ? " · disabled" : ""}</div>
       </div>
+      {#if u.role !== "admin"}
+        <button class="btn-ghost" onclick={() => (permUser = u)}>Permissions</button>
+      {/if}
       <button class="btn-ghost" onclick={() => toggleDisabled(u)}>
         {u.disabled ? "Enable" : "Disable"}
       </button>
@@ -70,9 +75,13 @@
   {/each}
 </div>
 
+{#if permUser}
+  <PermissionEditor user={permUser} onclose={() => (permUser = null)} />
+{/if}
+
 <p class="text-muted text-xs mt-4">
-  Scoped per-realm / per-game permissions arrive in a later phase. For now users are either
-  global admins or basic users.
+  Global admins have full access. For other users, click <b>Permissions</b> to grant scoped
+  access — per realm, per game type, or per server.
 </p>
 
 {#if showCreate}

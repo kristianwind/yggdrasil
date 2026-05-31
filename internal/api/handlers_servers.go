@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/kristianwind/yggdrasil/internal/docker"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
+	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
 
 var wsUpgrader = websocket.Upgrader{
@@ -47,6 +48,10 @@ func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	return srv, err
 }
 
+func (srv serverRow) target() rbac.Target {
+	return rbac.Target{ServerID: srv.ID, RealmID: srv.RealmID, GameskillID: srv.GameskillID}
+}
+
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(),
 		"SELECT "+serverCols+" FROM servers ORDER BY name")
@@ -62,6 +67,10 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
+		// Non-admins only see servers they have view access to.
+		if !s.allowed(r, rbac.ServerView, srv.target()) {
+			continue
+		}
 		list = append(list, srv)
 	}
 	if list == nil {
@@ -75,6 +84,9 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	srv, err := s.getServer(r.Context(), id)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerView, srv.target()) {
 		return
 	}
 	jsonOK(w, srv)
@@ -101,6 +113,9 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" || req.GameskillID == "" {
 		jsonError(w, "name and gameskill_id required", http.StatusBadRequest)
+		return
+	}
+	if !s.can(w, r, rbac.ServerCreate, rbac.Target{RealmID: req.RealmID, GameskillID: req.GameskillID}) {
 		return
 	}
 
@@ -190,6 +205,9 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	if !s.can(w, r, rbac.ServerDelete, srv.target()) {
+		return
+	}
 	if srv.ContainerID != "" {
 		_ = s.docker.Remove(r.Context(), srv.ContainerID)
 	}
@@ -203,6 +221,10 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	srv, err := s.getServer(r.Context(), id)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	if !s.can(w, r, rbac.ServerControl, srv.target()) {
 		return
 	}
 
@@ -311,6 +333,9 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	if !s.can(w, r, rbac.ServerControl, srv.target()) {
+		return
+	}
 	if srv.ContainerID != "" {
 		s.docker.Stop(r.Context(), srv.ContainerID, 30)
 	}
@@ -326,6 +351,9 @@ func (s *Server) handleRestartServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	if !s.can(w, r, rbac.ServerControl, srv.target()) {
+		return
+	}
 	if srv.ContainerID != "" {
 		s.docker.Restart(r.Context(), srv.ContainerID)
 	}
@@ -338,6 +366,9 @@ func (s *Server) handleServerStats(w http.ResponseWriter, r *http.Request) {
 	srv, err := s.getServer(r.Context(), id)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerView, srv.target()) {
 		return
 	}
 	if srv.ContainerID == "" {
@@ -357,6 +388,9 @@ func (s *Server) handleServerLogs(w http.ResponseWriter, r *http.Request) {
 	srv, err := s.getServer(r.Context(), id)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerView, srv.target()) {
 		return
 	}
 
@@ -406,6 +440,9 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 	srv, err := s.getServer(r.Context(), id)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerConsole, srv.target()) {
 		return
 	}
 

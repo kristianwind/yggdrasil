@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 	"github.com/kristianwind/yggdrasil/internal/query"
+	"github.com/kristianwind/yggdrasil/internal/rbac"
 	"github.com/kristianwind/yggdrasil/internal/rcon"
 )
 
@@ -53,6 +54,9 @@ func (rt *serverRuntime) queryPort() int {
 
 func (s *Server) handleServerQuery(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerView, s.serverTarget(r.Context(), id)) {
+		return
+	}
 	rt, err := s.loadRuntime(r.Context(), id)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
@@ -78,6 +82,9 @@ func (s *Server) handleServerRcon(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := decodeJSON(r, &req); err != nil || req.Command == "" {
 		jsonError(w, "command required", http.StatusBadRequest)
+		return
+	}
+	if !s.can(w, r, rbac.ServerConsole, s.serverTarget(r.Context(), id)) {
 		return
 	}
 	rt, err := s.loadRuntime(r.Context(), id)

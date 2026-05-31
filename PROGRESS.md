@@ -108,15 +108,20 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [ ] Move servers between realms (endpoint + UI)
 - [ ] Config editor surfacing gameskill-declared config_files specifically
 
-### Phase 6 — Multi-admin RBAC + audit log 🟡 ROLES + AUDIT DONE, SCOPES PENDING
+### Phase 6 — Multi-admin RBAC + audit log ✅ DONE
 - [x] Basic roles: global admin vs user; admin-only routes enforced
 - [x] User CRUD API (last-admin / self-delete guards)
 - [x] Audit log: written on state-changing actions; admin-only read API
 - [x] Frontend: user management (create/disable/delete), audit log viewer
-- [ ] **Scoped permissions**: permission bits (start/stop, console, config,
-      backup, create, schedule) over scope types (realm/gameskill/server).
-      `permissions` table exists but is not yet enforced.
-- [ ] Frontend: permission editor (after scopes are enforced)
+- [x] internal/rbac: permission bits (view/control/console/files/create/delete/
+      backup/schedule) × scopes (global/realm/gameskill/server), unit-tested
+- [x] Enforcement across server handlers (list filtered to visible; get/stats/
+      query=view; start/stop/restart/install=control; console/logs/rcon=console;
+      files=files; create=create; delete=delete). Global admins bypass.
+- [x] Permission management API: GET/PUT /users/:id/permissions + catalog
+- [x] Frontend: scoped permission editor (grants per realm/gameskill/server)
+- [x] Verified: rbac unit tests, API enforcement test (403/filter/persist),
+      browser-verified editor + end-to-end scoped-user access checks
 
 ### Phase 7 — Backup + restore + schedules
 - [ ] Backup targets: NFS mount, CIFS/SMB mount, SFTP

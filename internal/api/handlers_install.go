@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
+	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
 
 // handleInstallServer kicks off (or re-runs) a server's install in the
@@ -14,6 +15,9 @@ func (s *Server) handleInstallServer(w http.ResponseWriter, r *http.Request) {
 	var exists int
 	if err := s.db.QueryRowContext(r.Context(), "SELECT 1 FROM servers WHERE id=?", id).Scan(&exists); err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerControl, s.serverTarget(r.Context(), id)) {
 		return
 	}
 	if s.install.isActive(id) {

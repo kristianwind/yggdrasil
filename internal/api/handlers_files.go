@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
 
 // safeJoin resolves rel against the server's data dir and guarantees the result
@@ -29,11 +30,17 @@ func safeJoin(dataDir, rel string) (string, bool) {
 	return rp, true
 }
 
-func (s *Server) serverDataDir(r *http.Request) (string, bool) {
+// serverDataDir resolves the server's data directory and enforces the
+// ServerFiles permission, writing the appropriate error response on failure.
+func (s *Server) serverDataDir(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := chi.URLParam(r, "id")
 	var dataDir string
 	if err := s.db.QueryRowContext(r.Context(),
 		"SELECT data_dir FROM servers WHERE id=?", id).Scan(&dataDir); err != nil {
+		jsonError(w, "server not found", http.StatusNotFound)
+		return "", false
+	}
+	if !s.can(w, r, rbac.ServerFiles, s.serverTarget(r.Context(), id)) {
 		return "", false
 	}
 	return dataDir, true
@@ -47,9 +54,8 @@ type fileEntry struct {
 }
 
 func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
-	dataDir, ok := s.serverDataDir(r)
+	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
-		jsonError(w, "server not found", http.StatusNotFound)
 		return
 	}
 	rel := r.URL.Query().Get("path")
@@ -80,9 +86,8 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
-	dataDir, ok := s.serverDataDir(r)
+	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
-		jsonError(w, "server not found", http.StatusNotFound)
 		return
 	}
 	full, ok := safeJoin(dataDir, r.URL.Query().Get("path"))
@@ -103,9 +108,8 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
-	dataDir, ok := s.serverDataDir(r)
+	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
-		jsonError(w, "server not found", http.StatusNotFound)
 		return
 	}
 	var req struct {
@@ -134,9 +138,8 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
-	dataDir, ok := s.serverDataDir(r)
+	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
-		jsonError(w, "server not found", http.StatusNotFound)
 		return
 	}
 	full, ok := safeJoin(dataDir, r.URL.Query().Get("path"))
@@ -153,9 +156,8 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
-	dataDir, ok := s.serverDataDir(r)
+	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
-		jsonError(w, "server not found", http.StatusNotFound)
 		return
 	}
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
@@ -194,9 +196,8 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
-	dataDir, ok := s.serverDataDir(r)
+	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
-		jsonError(w, "server not found", http.StatusNotFound)
 		return
 	}
 	full, ok := safeJoin(dataDir, r.URL.Query().Get("path"))

@@ -4,6 +4,15 @@ Last updated: 2026-05-31
 
 ## Current state (read me first)
 
+**END-TO-END VERIFIED AGAINST REAL DOCKER (2026-05-31):** installed + ran an
+actual Minecraft Paper server — install flow pulled the JRE image and downloaded
+Paper (54 MB), the container started ("Done (28s)!"), the live Minecraft **query**
+returned player count/version, and **RCON** executed `list` successfully. This
+closes the long-standing "coded but not Docker-verified" caveat for Phases 3/4.
+The test surfaced one real bug (RCON wasn't enabled in server.properties) — fixed
+in the Minecraft gameskill install script.
+
+
 **Phase 0 is complete and verified** — the binary builds (`CGO_ENABLED=0`),
 `go vet` and `go test` pass, and a live smoke test confirms: boot → SQLite
 schema → builtin gameskill load → JWT login → authed API call → 401 on bad/missing

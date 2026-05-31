@@ -108,6 +108,17 @@ gameskill:
       esac
 
       echo "eula={{EULA}}" > eula.txt
+
+      # Pre-seed RCON settings so the panel (and schedules/bans) can connect.
+      # Minecraft fills in any remaining server.properties defaults on first run.
+      if ! grep -q '^enable-rcon=' server.properties 2>/dev/null; then
+        {
+          echo "enable-rcon=true"
+          echo "rcon.port={{RCON_PORT}}"
+          echo "rcon.password={{RCON_PASSWORD}}"
+        } >> server.properties
+      fi
+
       echo "Installed $TYPE $VER -> server.jar"
       ls -la server.jar
 

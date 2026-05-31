@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS servers (
 	cpu_limit    REAL,
 	mem_limit_mb INTEGER,
 	data_dir     TEXT NOT NULL,
+	installed    INTEGER NOT NULL DEFAULT 0,
+	install_status TEXT NOT NULL DEFAULT 'pending',
 	created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -169,5 +171,25 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schema); err != nil {
 		return fmt.Errorf("schema: %w", err)
 	}
+	// Idempotent column additions for databases created by older versions.
+	addColumnIfMissing(db, "servers", "installed", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing(db, "servers", "install_status", "TEXT NOT NULL DEFAULT 'pending'")
 	return nil
+}
+
+// addColumnIfMissing adds a column to a table when it does not already exist.
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so we inspect the schema first.
+func addColumnIfMissing(db *sql.DB, table, column, definition string) {
+	rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if rows.Scan(&name) == nil && name == column {
+			return // already present
+		}
+	}
+	db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
 }

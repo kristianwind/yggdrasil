@@ -65,16 +65,23 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [ ] Disk usage stat (currently CPU/RAM only)
 - [ ] Resource mini-graph (currently numeric stats only)
 
-### Phase 3 — Gameskill parser + variable form + install flow 🟡 PARSER DONE
+### Phase 3 — Gameskill parser + variable form + install flow ✅ DONE (Docker-untested)
 - [x] internal/gameskill: YAML parser, schema validation, clear errors
 - [x] Variable types: string, int, bool, select (validated)
 - [x] Docker image templating ({{VAR}})
 - [x] API: upload/validate gameskill, list, get, delete (builtins protected)
-- [x] minecraft-java.yaml (schema-complete; install script is a stub)
-- [ ] Install flow: ephemeral container exists (docker.RunEphemeral); not yet
-      wired to server creation with progress streaming
-- [ ] Real Minecraft install logic (Paper/Purpur/Mojang/Fabric/Forge + latest resolve)
-- [ ] Frontend: "Carve a Rune" upload UI, auto-generated server creation form
+- [x] minecraft-java.yaml with REAL install logic (Paper/Purpur/Mojang/Fabric
+      APIs + "latest" resolution; Forge flagged as manual)
+- [x] Install flow wired: create → background install (docker.RunEphemeral) with
+      live progress over a WebSocket hub; install_status tracked in DB
+- [x] Start gated on install completion (409 until installed)
+- [x] Startup command from gameskill passed as the container command (was missing)
+- [x] Per-server CPU/RAM caps applied at container create
+- [x] Frontend: auto-generated creation form (select/int/bool/string), "Carve a
+      Rune" upload UI, install-log streaming panel, install/reinstall buttons
+- [x] Verified wiring end-to-end (create→install→error-without-docker→start 409)
+- NOTE: actual container download/run needs a Docker daemon to verify; the path
+  is coded + the control flow proven, but not run against real images here.
 
 ### Phase 4 — Remaining gameskills + query/RCON 🟡 GAMESKILLS + PROTOCOLS DONE
 - [x] minecraft-bedrock.yaml (Mojang links API, no RCON, x86_64 caveat)

@@ -47,11 +47,69 @@ gameskill:
   install:
     image: "eclipse-temurin:21-jre"
     script: |
-      set -e
-      # Phase 3 fills in real download logic (Paper/Purpur APIs, Mojang manifest,
-      # Fabric/Forge installers) and resolves MC_VERSION="latest".
+      set -eu
+      # eclipse-temurin is Ubuntu-based but ships without curl; add it.
+      if ! command -v curl >/dev/null 2>&1; then
+        apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null
+      fi
+
+      TYPE="{{SERVER_TYPE}}"
+      VER="{{MC_VERSION}}"
+
+      latest_vanilla() {
+        curl -fsSL https://launchermeta.mojang.com/mc/game/version_manifest_v2.json \
+          | grep -o '"release":"[^"]*"' | head -1 | cut -d'"' -f4
+      }
+
+      echo "Installing $TYPE (requested version: $VER)"
+      case "$TYPE" in
+        vanilla)
+          [ "$VER" = "latest" ] && VER="$(latest_vanilla)"
+          MANIFEST=https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
+          VER_URL=$(curl -fsSL "$MANIFEST" \
+            | grep -o "{[^{}]*\"id\":\"$VER\"[^{}]*}" \
+            | grep -o '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
+          [ -n "$VER_URL" ] || { echo "version $VER not found"; exit 1; }
+          SRV_URL=$(curl -fsSL "$VER_URL" | grep -o '"server":{[^}]*}' \
+            | grep -o '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
+          curl -fsSL -o server.jar "$SRV_URL"
+          ;;
+        paper|purpur)
+          if [ "$TYPE" = "paper" ]; then
+            [ "$VER" = "latest" ] && VER=$(curl -fsSL https://api.papermc.io/v2/projects/paper \
+              | grep -o '"[0-9][0-9.]*"' | tr -d '"' | tail -1)
+            BUILD=$(curl -fsSL "https://api.papermc.io/v2/projects/paper/versions/$VER/builds" \
+              | grep -o '"build":[0-9]*' | grep -o '[0-9]*' | tail -1)
+            JAR="paper-$VER-$BUILD.jar"
+            curl -fsSL -o server.jar \
+              "https://api.papermc.io/v2/projects/paper/versions/$VER/builds/$BUILD/downloads/$JAR"
+          else
+            [ "$VER" = "latest" ] && VER=$(curl -fsSL https://api.purpurmc.org/v2/purpur \
+              | grep -o '"[0-9][0-9.]*"' | tr -d '"' | tail -1)
+            curl -fsSL -o server.jar "https://api.purpurmc.org/v2/purpur/$VER/latest/download"
+          fi
+          ;;
+        fabric)
+          [ "$VER" = "latest" ] && VER="$(latest_vanilla)"
+          LOADER=$(curl -fsSL "https://meta.fabricmc.net/v2/versions/loader/$VER" \
+            | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)
+          INSTALLER=$(curl -fsSL https://meta.fabricmc.net/v2/versions/installer \
+            | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)
+          curl -fsSL -o server.jar \
+            "https://meta.fabricmc.net/v2/versions/loader/$VER/$LOADER/$INSTALLER/server/jar"
+          ;;
+        forge)
+          echo "Forge requires running its installer; install the Forge universal jar"
+          echo "and adjust the startup command. Not yet automated."
+          exit 1
+          ;;
+        *)
+          echo "unknown SERVER_TYPE: $TYPE"; exit 1 ;;
+      esac
+
       echo "eula={{EULA}}" > eula.txt
-      echo "Server type: {{SERVER_TYPE}}  MC version: {{MC_VERSION}}"
+      echo "Installed $TYPE $VER -> server.jar"
+      ls -la server.jar
 
   startup:
     command: "java -Xmx{{MEMORY_MB}}M -jar server.jar nogui"

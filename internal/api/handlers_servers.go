@@ -22,21 +22,34 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 type serverRow struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	GameskillID string `json:"gameskill_id"`
-	RealmID     string `json:"realm_id,omitempty"`
-	Status      string `json:"status"`
-	ContainerID string `json:"container_id,omitempty"`
-	EnvJSON     string `json:"-"`
-	PortsJSON   string `json:"-"`
-	DataDir     string `json:"data_dir"`
-	CreatedAt   string `json:"created_at"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	GameskillID   string `json:"gameskill_id"`
+	RealmID       string `json:"realm_id,omitempty"`
+	Status        string `json:"status"`
+	ContainerID   string `json:"container_id,omitempty"`
+	EnvJSON       string `json:"-"`
+	PortsJSON     string `json:"-"`
+	DataDir       string `json:"data_dir"`
+	Installed     bool   `json:"installed"`
+	InstallStatus string `json:"install_status"`
+	CreatedAt     string `json:"created_at"`
+}
+
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, created_at"
+
+func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
+	var srv serverRow
+	var installed int
+	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.CreatedAt)
+	srv.Installed = installed == 1
+	return srv, err
 }
 
 func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(),
-		"SELECT id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, created_at FROM servers ORDER BY name")
+		"SELECT "+serverCols+" FROM servers ORDER BY name")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -45,9 +58,8 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 
 	var list []serverRow
 	for rows.Next() {
-		var srv serverRow
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-			&srv.Status, &srv.ContainerID, &srv.DataDir, &srv.CreatedAt); err != nil {
+		srv, err := scanServer(rows)
+		if err != nil {
 			continue
 		}
 		list = append(list, srv)
@@ -69,11 +81,8 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getServer(ctx context.Context, id string) (*serverRow, error) {
-	var srv serverRow
-	err := s.db.QueryRowContext(ctx,
-		"SELECT id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, created_at FROM servers WHERE id=?",
-		id).Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &srv.CreatedAt)
+	row := s.db.QueryRowContext(ctx, "SELECT "+serverCols+" FROM servers WHERE id=?", id)
+	srv, err := scanServer(row)
 	return &srv, err
 }
 
@@ -166,8 +175,12 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 
 	s.auditLog(r, "server.create", "server:"+serverID, map[string]string{"name": req.Name})
 
+	// Kick off the install (download/build) immediately; progress streams over
+	// the install/log WebSocket. The server can't start until this finishes.
+	go s.runInstall(serverID) //nolint:errcheck
+
 	w.WriteHeader(http.StatusCreated)
-	jsonOK(w, map[string]string{"id": serverID, "status": "stopped"})
+	jsonOK(w, map[string]string{"id": serverID, "status": "installing"})
 }
 
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
@@ -193,28 +206,36 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load gameskill
-	var yamlBlob string
-	s.db.QueryRowContext(r.Context(), "SELECT yaml_blob FROM gameskills WHERE id=?", srv.GameskillID).Scan(&yamlBlob)
-	gs, _ := gameskill.Parse([]byte(yamlBlob))
+	// Gate on install completion.
+	if s.install.isActive(id) {
+		jsonError(w, "install in progress; please wait", http.StatusConflict)
+		return
+	}
+	var installed int
+	s.db.QueryRowContext(r.Context(), "SELECT installed FROM servers WHERE id=?", id).Scan(&installed)
+	if installed == 0 {
+		jsonError(w, "server is not installed yet; run install first", http.StatusConflict)
+		return
+	}
 
-	// Parse env and ports
-	var env map[string]string
-	json.Unmarshal([]byte(srv.EnvJSON), &env)
-	var ports map[string]int
-	json.Unmarshal([]byte(srv.PortsJSON), &ports)
+	// Load gameskill + the server's env and allocated host ports.
+	rt, err := s.loadRuntime(r.Context(), id)
+	if err != nil {
+		jsonError(w, "load runtime: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	gs, env, ports := rt.gs, rt.env, rt.ports
 
-	// Build docker env slice
+	// Build docker env slice (server vars + PORT_<name> helpers).
 	envSlice := []string{}
 	for k, v := range env {
 		envSlice = append(envSlice, fmt.Sprintf("%s=%s", k, v))
 	}
-	// Inject port env vars
 	for name, port := range ports {
 		envSlice = append(envSlice, fmt.Sprintf("PORT_%s=%d", name, port))
 	}
 
-	// Build port mappings
+	// Build port mappings.
 	portMappings := []docker.PortMapping{}
 	for _, p := range gs.Ports {
 		if hostPort, ok := ports[p.Name]; ok {
@@ -227,7 +248,18 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	image := gameskill.ApplyTemplate(gs.Docker.Image, env)
+	// The startup command from the gameskill becomes the container command,
+	// run via a shell so templated flags and env expansion work.
+	startupCmd := gameskill.ApplyTemplate(gs.Startup.Command, env)
+	cmd := []string{"/bin/sh", "-lc", startupCmd}
 	containerName := fmt.Sprintf("ygg-%s", id[:8])
+
+	// Per-server resource caps.
+	var cpuLimit float64
+	var memLimit int64
+	s.db.QueryRowContext(r.Context(),
+		"SELECT COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0) FROM servers WHERE id=?", id).
+		Scan(&cpuLimit, &memLimit)
 
 	// If container already exists, start it
 	if srv.ContainerID != "" {
@@ -244,12 +276,15 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	s.docker.PullImage(r.Context(), image, io.Discard)
 
 	containerID, err := s.docker.Create(r.Context(), docker.CreateOptions{
-		Name:    containerName,
-		Image:   image,
-		Env:     envSlice,
-		Ports:   portMappings,
-		DataDir: srv.DataDir,
-		Labels:  map[string]string{"yggdrasil.server_id": id},
+		Name:       containerName,
+		Image:      image,
+		Env:        envSlice,
+		Cmd:        cmd,
+		Ports:      portMappings,
+		DataDir:    srv.DataDir,
+		CPUPercent: cpuLimit,
+		MemoryMB:   memLimit,
+		Labels:     map[string]string{"yggdrasil.server_id": id},
 	})
 	if err != nil {
 		jsonError(w, "create container: "+err.Error(), http.StatusInternalServerError)

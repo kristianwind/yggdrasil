@@ -18,21 +18,23 @@ import (
 )
 
 type Server struct {
-	cfg    *config.Config
-	db     *sql.DB
-	docker *docker.Client
-	router *chi.Mux
-	webFS  fs.FS
+	cfg     *config.Config
+	db      *sql.DB
+	docker  *docker.Client
+	router  *chi.Mux
+	webFS   fs.FS
+	install *progressHub // live install/build output, keyed by server id
 }
 
 func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
 	subFS, _ := fs.Sub(webFS, "web/dist")
 
 	s := &Server{
-		cfg:    cfg,
-		db:     db,
-		docker: dc,
-		webFS:  subFS,
+		cfg:     cfg,
+		db:      db,
+		docker:  dc,
+		webFS:   subFS,
+		install: newProgressHub(),
 	}
 	s.router = s.buildRouter()
 	return s
@@ -77,6 +79,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers", s.handleCreateServer)
 		r.Get("/api/servers/{id}", s.handleGetServer)
 		r.Delete("/api/servers/{id}", s.handleDeleteServer)
+		r.Post("/api/servers/{id}/install", s.handleInstallServer)
+		r.Get("/api/servers/{id}/install/log", s.handleInstallLog) // WebSocket
 		r.Post("/api/servers/{id}/start", s.handleStartServer)
 		r.Post("/api/servers/{id}/stop", s.handleStopServer)
 		r.Post("/api/servers/{id}/restart", s.handleRestartServer)

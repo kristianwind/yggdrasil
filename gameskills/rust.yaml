@@ -50,8 +50,9 @@ gameskill:
     script: |
       set -e
       # Long download (several GB). Yggdrasil streams progress to the UI.
-      steamcmd +force_install_dir /data +login anonymous \
-               +app_update 258550 validate +quit
+      "${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh" \
+        +force_install_dir /data +login anonymous \
+        +app_update 258550 validate +quit
 
   startup:
     # Rust takes many +server.* / +rcon.* flags; RCON is WebSocket-based.

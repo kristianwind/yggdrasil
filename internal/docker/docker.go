@@ -243,22 +243,42 @@ func (c *Client) FindByLabel(ctx context.Context, key, value string) ([]types.Co
 	})
 }
 
+// EphemeralOptions configures a one-shot container run.
+type EphemeralOptions struct {
+	Image       string
+	DataDir     string            // bind-mounted to /data (optional)
+	Env         []string
+	Script      string            // run via /bin/sh -c
+	ExtraMounts map[string]string // host path -> container path (e.g. Steam cache)
+}
+
 // RunEphemeral runs a one-shot container (e.g. a gameskill install script),
 // streams its combined output to out, and blocks until it exits. A non-zero
 // exit code is returned as an error. The container is always removed.
 func (c *Client) RunEphemeral(ctx context.Context, img, dataDir string, env []string, script string, out io.Writer) error {
+	return c.RunEphemeralOpts(ctx, EphemeralOptions{Image: img, DataDir: dataDir, Env: env, Script: script}, out)
+}
+
+// RunEphemeralOpts is the full-options form of RunEphemeral.
+func (c *Client) RunEphemeralOpts(ctx context.Context, opts EphemeralOptions, out io.Writer) error {
 	if out == nil {
 		out = io.Discard
 	}
 	var mounts []mount.Mount
-	if dataDir != "" {
-		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: dataDir, Target: "/data"})
+	if opts.DataDir != "" {
+		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: opts.DataDir, Target: "/data"})
+	}
+	for host, target := range opts.ExtraMounts {
+		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: host, Target: target})
 	}
 
 	resp, err := c.dc.ContainerCreate(ctx, &container.Config{
-		Image:      img,
-		Env:        env,
-		Cmd:        []string{"/bin/sh", "-c", script},
+		Image: opts.Image,
+		Env:   opts.Env,
+		// Force the shell entrypoint so the script runs regardless of the image's
+		// own ENTRYPOINT (e.g. steamcmd images that exec steamcmd directly).
+		Entrypoint: []string{"/bin/sh", "-c"},
+		Cmd:        []string{opts.Script},
 		WorkingDir: "/data",
 	}, &container.HostConfig{Mounts: mounts}, nil, nil, "")
 	if err != nil {

@@ -129,6 +129,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/schedules/{id}", s.handleDeleteSchedule)
 		r.Post("/api/schedules/{id}/run", s.handleRunSchedule)
 
+		// Steam authorization (admin-only)
+		r.Get("/api/steam/account", s.requireAdmin(s.handleGetSteamAccount))
+		r.Post("/api/steam/authorize", s.requireAdmin(s.handleAuthorizeSteam))
+		r.Delete("/api/steam/account", s.requireAdmin(s.handleDeleteSteamAccount))
+
 		// Notification channels (admin-only)
 		r.Get("/api/notifications", s.requireAdmin(s.handleListNotifications))
 		r.Post("/api/notifications", s.requireAdmin(s.handleCreateNotification))

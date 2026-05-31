@@ -169,6 +169,16 @@ CREATE TABLE IF NOT EXISTS message_templates (
 	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- The host's authorized Steam account for games that require ownership (e.g.
+-- DayZ). The password is never stored; only the username + the fact that the
+-- SteamCMD sentry cache (on disk) has been primed. Single row.
+CREATE TABLE IF NOT EXISTS steam_account (
+	id            INTEGER PRIMARY KEY CHECK (id = 1),
+	username      TEXT NOT NULL,
+	authorized    INTEGER NOT NULL DEFAULT 0,
+	authorized_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS migrations (
 	version INTEGER PRIMARY KEY,
 	applied_at TEXT NOT NULL DEFAULT (datetime('now'))

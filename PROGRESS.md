@@ -101,7 +101,11 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [x] RCON: Source/Minecraft, Rust WebSocket, BattlEye (internal/rcon, tested)
 - [x] API: GET /servers/:id/query, POST /servers/:id/rcon
 - [x] Frontend: live player-count on server detail
-- [ ] Steam authorization flow (one-time UI, persisted SteamCMD sentry cache)
+- [x] Steam authorization flow: one-time UI (username/password/Guard), interactive
+      SteamCMD login in a container, persisted sentry cache (/steamcache) reused by
+      all installs; password/code never stored or logged; non-anonymous installs
+      gated on an authorized account + inject STEAM_USER + mount the cache.
+      (Login itself not e2e-tested — needs real DayZ-owning Steam credentials.)
 - [ ] Resource graphs (time-series in SQLite, frontend charts)
 - [ ] startup done_regex → running-state detection at runtime
 - [ ] Wire real install flow (docker.RunEphemeral) into server creation with

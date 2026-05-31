@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kristianwind/yggdrasil/internal/docker"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
@@ -133,13 +134,22 @@ func (s *Server) runInstall(serverID string) error {
 	}
 	script := gameskill.ApplyTemplate(rt.gs.Install.Script, rt.env)
 
-	// Steam non-anonymous gameskills need an authorized account (see Steam auth).
-	if rt.gs.Steam != nil && !rt.gs.Steam.Anonymous {
-		if env["STEAM_USER"] == "" {
-			s.db.ExecContext(ctx, "UPDATE servers SET install_status='error' WHERE id=?", serverID)
-			msg := "This game requires an authorized Steam account. Configure one under Settings → Steam first."
-			s.install.publish(serverID, "ERROR: "+msg)
-			return fmt.Errorf("%s", msg)
+	// Steam games: anonymous ones just run; account-required ones (DayZ) reuse the
+	// host's authorized account + persistent SteamCMD cache so Steam Guard isn't
+	// re-triggered. The cache is mounted into the install container too.
+	extraMounts := map[string]string{}
+	if rt.gs.Steam != nil {
+		extraMounts[s.steamCacheDir()] = "/steamcache"
+		env["HOME"] = "/steamcache"
+		if !rt.gs.Steam.Anonymous {
+			user := s.authorizedSteamUser(ctx)
+			if user == "" {
+				s.db.ExecContext(ctx, "UPDATE servers SET install_status='error' WHERE id=?", serverID)
+				msg := "This game requires an authorized Steam account. Authorize one under Settings → Steam first."
+				s.install.publish(serverID, "ERROR: "+msg)
+				return fmt.Errorf("%s", msg)
+			}
+			env["STEAM_USER"] = user
 		}
 	}
 
@@ -148,7 +158,13 @@ func (s *Server) runInstall(serverID string) error {
 		s.install.publish(serverID, "WARN: image pull: "+err.Error())
 	}
 
-	err = s.docker.RunEphemeral(ctx, image, dataDir, envSlice(env), script, w)
+	err = s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
+		Image:       image,
+		DataDir:     dataDir,
+		Env:         envSlice(env),
+		Script:      script,
+		ExtraMounts: extraMounts,
+	}, w)
 	if err != nil {
 		s.db.ExecContext(ctx, "UPDATE servers SET install_status='error' WHERE id=?", serverID)
 		s.install.publish(serverID, "=== Install FAILED: "+err.Error()+" ===")

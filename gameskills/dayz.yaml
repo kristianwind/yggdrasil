@@ -43,9 +43,11 @@ gameskill:
     script: |
       set -e
       # Uses the persisted authorized-account cache (see Steam authorization).
-      # STEAM_USER is injected by Yggdrasil for non-anonymous gameskills.
-      steamcmd +force_install_dir /data +login "$STEAM_USER" \
-               +app_update 223350 validate +quit
+      # STEAM_USER is injected by Yggdrasil for non-anonymous gameskills; the
+      # sentry cache at $HOME (/steamcache) avoids re-triggering Steam Guard.
+      "${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh" \
+        +force_install_dir /data +login "$STEAM_USER" \
+        +app_update 223350 validate +quit
 
   startup:
     command: >

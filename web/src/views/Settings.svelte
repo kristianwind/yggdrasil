@@ -11,6 +11,42 @@
   let templates = $state([]);
   let editing = $state(null); // { id?, name, body }
 
+  // Steam authorization
+  let steam = $state(null);
+  let steamForm = $state({ username: "", password: "", guard_code: "" });
+  let steamBusy = $state(false);
+
+  async function loadSteam() {
+    try {
+      steam = await api.get("/steam/account");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function authorizeSteam() {
+    if (!steamForm.username || !steamForm.password) return toast("Username and password required", "warn");
+    steamBusy = true;
+    try {
+      await api.post("/steam/authorize", steamForm);
+      toast("Steam account authorized", "success");
+      steamForm = { username: "", password: "", guard_code: "" };
+      await loadSteam();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      steamBusy = false;
+    }
+  }
+  async function forgetSteam() {
+    if (!confirm("Forget the Steam account? (The cached login is kept on disk so re-adding won't re-trigger Steam Guard.)")) return;
+    try {
+      await api.del("/steam/account");
+      await loadSteam();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   // API tokens
   let tokens = $state([]);
   let newTokenName = $state("");
@@ -140,6 +176,7 @@
     loadTemplates();
     loadTokens();
     loadChannels();
+    loadSteam();
   });
 
   async function create() {
@@ -175,8 +212,53 @@
   }
 </script>
 
+<h1 class="text-2xl font-semibold mb-6">Settings</h1>
+
+<!-- Steam authorization -->
+<h2 class="text-xl font-semibold mb-2">Steam account</h2>
+<p class="text-muted mb-4 text-sm">
+  Most dedicated servers download anonymously. A few (e.g. <b>DayZ</b>) need a Steam account that
+  owns the game. Authorize one <b>once</b> here — the login is cached so Steam Guard isn't asked
+  again. Tip: use a dedicated account for the host and <b>email-based</b> Steam Guard (the mobile
+  authenticator asks for a new code every login and breaks unattended updates). Your password and
+  code are never stored or logged.
+</p>
+<div class="card p-4 mb-10">
+  {#if steam?.configured}
+    <div class="flex items-center gap-3">
+      <div class="flex-1">
+        <div class="font-medium">{steam.username}
+          <span class="badge {steam.authorized ? 'bg-accent2/20 text-accent' : 'bg-warn/20 text-warn'} ml-1">
+            {steam.authorized ? "authorized" : "not authorized"}
+          </span>
+        </div>
+        {#if steam.authorized_at}<div class="text-xs text-muted">since {steam.authorized_at}</div>{/if}
+      </div>
+      <button class="btn-danger" onclick={forgetSteam}>Forget</button>
+    </div>
+  {:else}
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div>
+        <label class="label" for="st-user">Username</label>
+        <input id="st-user" class="input" bind:value={steamForm.username} autocomplete="off" />
+      </div>
+      <div>
+        <label class="label" for="st-pass">Password</label>
+        <input id="st-pass" class="input" type="password" bind:value={steamForm.password} autocomplete="off" />
+      </div>
+      <div>
+        <label class="label" for="st-guard">Steam Guard code</label>
+        <input id="st-guard" class="input" bind:value={steamForm.guard_code} autocomplete="off" />
+      </div>
+    </div>
+    <button class="btn-primary mt-3" onclick={authorizeSteam} disabled={steamBusy}>
+      {steamBusy ? "Authorizing… (this can take a minute)" : "Authorize"}
+    </button>
+  {/if}
+</div>
+
 <div class="flex items-center justify-between mb-2">
-  <h1 class="text-2xl font-semibold">Settings — Backup targets</h1>
+  <h2 class="text-xl font-semibold">Backup targets</h2>
   <button class="btn-primary" onclick={() => (showCreate = true)}>+ New target</button>
 </div>
 <p class="text-muted mb-6">

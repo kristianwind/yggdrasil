@@ -17,13 +17,27 @@
   });
 
   const stat = (label, value, sub) => ({ label, value, sub });
+  function fmtBytes(n) {
+    if (!n) return "—";
+    const u = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    while (n >= 1024 && i < u.length - 1) {
+      n /= 1024;
+      i++;
+    }
+    return `${n.toFixed(1)} ${u[i]}`;
+  }
   let cards = $derived(
     info
       ? [
           stat("Servers", info.servers, `${info.servers_running} running`),
           stat("Runes", info.gameskills, "game definitions"),
-          stat("Users", info.users, ""),
           stat("Docker", info.docker_ok ? "OK" : "Down", info.arch),
+          stat(
+            "Disk free",
+            fmtBytes(info.disk_free_bytes),
+            info.disk_total_bytes ? `of ${fmtBytes(info.disk_total_bytes)}` : "",
+          ),
         ]
       : [stat("Servers", servers.length, `${servers.filter((s) => s.status === "running").length} running`)],
   );

@@ -209,7 +209,9 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [x] 2FA on login (TOTP, RFC 6238, dependency-free): enroll (setup→confirm),
       required at login, disable with a code; secret encrypted at rest. Verified
       end-to-end against an independent TOTP implementation.
-- [ ] Disk dashboard with alerts (low-disk notify candidate)
+- [x] Disk dashboard with alerts: host disk free/total in system info + on the
+      Dashboard; a background monitor notifies once when free drops below 10%
+      (re-arms above 15%).
 
 ## Notes & Decisions
 

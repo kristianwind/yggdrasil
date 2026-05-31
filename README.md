@@ -29,6 +29,63 @@ generated admin password. Re-running it upgrades or repairs an existing install.
 Updating later is just: swap the binary + restart the service (or re-run the
 one-liner — it's idempotent).
 
+## Key features
+
+**Servers & runtime**
+- Create / start / stop / restart / delete servers, each in its own Docker
+  container with **per-server CPU & RAM limits** and clean isolation
+- **Real-time console** (WebSocket) with command input, plus live **log streaming**
+- One-time **install flow** that runs the gameskill's setup in an ephemeral
+  container with live progress (e.g. downloads the right Paper/Vanilla/Fabric jar)
+- **Restart-on-crash** + crash detection; conflict-free **port allocation**
+- **Resource monitoring** (CPU / RAM) and **player count / status** via query
+  protocols (A2S for Steam games, Minecraft Java SLP, Bedrock ping)
+- **RCON** where the game has it — Source/Minecraft (TCP), Rust (WebSocket),
+  DayZ (BattlEye)
+
+**Games (gameskills / "Runes")**
+- Ships with **Minecraft Java, Minecraft Bedrock, Rust, DayZ**
+- Author your own in declarative YAML; auto-generated settings form
+  (string/int/bool/**dropdown**) per game
+- **Import** existing definitions: Pterodactyl **eggs** (JSON) and **XML**
+- **Steam authorization**: anonymous by default; a one-time login flow for games
+  that require an account (DayZ), with the SteamCMD cache persisted so Steam Guard
+  isn't re-triggered
+
+**Organize & control access**
+- **Realms** to group servers; default grouping by game type, custom realms supported
+- **Multiple admins with scoped permissions** — grant `view / control / console /
+  files / create / delete / backup / schedule` at **global / realm / game-type /
+  single-server** scope
+- Built-in **file manager** + config editor (browse, edit, upload, download)
+- Full **audit log** of admin actions; **API tokens** to drive everything from
+  automation (a documented REST API)
+- Optional **2FA (TOTP)** on login
+
+**Automation & operations**
+- **Backups** to local / mounted NFS-CIFS, **SFTP**, or **SMB** — on-demand or
+  scheduled, with **restore** and **retention** (keep N / X days)
+- **Scheduler** (cron) for backups, restarts, updates, start/stop, console
+  commands, and **in-game messages** with editable templates (`{{minutes}}`,
+  `{{server_name}}`) and a "skip if players online" guard
+- **Notifications** via Telegram, Discord, generic webhook, or email (SMTP) —
+  server up/down, backup done/failed, **low disk**
+- **Disk dashboard** with a low-space alert
+
+**Anti-cheat & moderation**
+- Per-game **anti-cheat surface** (Paper anti-xray hints, BattlEye/EAC status,
+  recommended plugins)
+- **Centralized cross-server ban list** — ban a player on one server or everywhere
+  at once, pushed via RCON/console
+- **Violation auto-actions** — watch logs for a pattern and auto-kick/ban when it
+  recurs past a threshold
+
+**Security**
+- Passwords hashed with **argon2id**; RCON / backup / Steam credentials
+  **encrypted at rest** (AES-256-GCM) and never logged
+- Login **rate-limiting**, secure headers, CSRF-safe token auth, path-traversal
+  guards on file access
+
 ## Concepts
 
 | Term | Meaning |

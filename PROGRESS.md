@@ -200,11 +200,14 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
       is complete but not yet run on a fresh box from the published release)
 
 ### Optional / Later
-- [ ] Import running servers from Pterodactyl / AMP
-- [ ] Violation-driven auto-ban rules
-- [ ] Multi-node support
-- [ ] 2FA on login
-- [ ] Disk dashboard with alerts
+- [x] Violation-driven auto-ban rules: per-server log-tailing watcher applies
+      admin regex rules (group 1 = player); N hits in a window → auto-kick/ban
+      (optionally cross-server) + notify. CRUD UI on the Bans page.
+- [ ] Import running servers from Pterodactyl / AMP (out of scope — risks the
+      gameskill model; skipped per the spec's own caution)
+- [ ] Multi-node / wings-style (large; future)
+- [ ] 2FA on login (TOTP; candidate next)
+- [ ] Disk dashboard with alerts (low-disk notify candidate)
 
 ## Notes & Decisions
 

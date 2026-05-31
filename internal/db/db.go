@@ -179,6 +179,20 @@ CREATE TABLE IF NOT EXISTS steam_account (
 	authorized_at TEXT
 );
 
+-- Violation-driven auto-actions: watch server logs for a pattern and auto
+-- kick/ban a player when it recurs past a threshold within a time window.
+CREATE TABLE IF NOT EXISTS violation_rules (
+	id             TEXT PRIMARY KEY,
+	name           TEXT NOT NULL,
+	pattern        TEXT NOT NULL,   -- regex; capture group 1 = player name
+	threshold      INTEGER NOT NULL DEFAULT 1,
+	window_minutes INTEGER NOT NULL DEFAULT 5,
+	action         TEXT NOT NULL DEFAULT 'ban',  -- ban | kick
+	scope_global   INTEGER NOT NULL DEFAULT 1,   -- ban everywhere vs only the offending server
+	enabled        INTEGER NOT NULL DEFAULT 1,
+	created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS migrations (
 	version INTEGER PRIMARY KEY,
 	applied_at TEXT NOT NULL DEFAULT (datetime('now'))

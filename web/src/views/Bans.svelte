@@ -8,14 +8,60 @@
   let showCreate = $state(false);
   let form = $state({ player_name: "", player_id: "", server_id: "", reason: "" });
 
+  // Violation auto-action rules
+  let rules = $state([]);
+  let showRule = $state(false);
+  let ruleForm = $state(blankRule());
+  function blankRule() {
+    return { name: "", pattern: "", threshold: 3, window_minutes: 5, action: "ban", scope_global: true };
+  }
+
   async function load() {
     try {
-      [bans, servers] = await Promise.all([api.get("/bans"), api.get("/servers")]);
+      [bans, servers, rules] = await Promise.all([
+        api.get("/bans"),
+        api.get("/servers"),
+        api.get("/violations").catch(() => []),
+      ]);
     } catch (e) {
       toast(e.message, "error");
     }
   }
   onMount(load);
+
+  async function createRule() {
+    if (!ruleForm.name || !ruleForm.pattern) return toast("Name and pattern required", "warn");
+    try {
+      await api.post("/violations", {
+        ...ruleForm,
+        threshold: Number(ruleForm.threshold),
+        window_minutes: Number(ruleForm.window_minutes),
+      });
+      toast("Rule created", "success");
+      showRule = false;
+      ruleForm = blankRule();
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function toggleRule(rl) {
+    try {
+      await api.put(`/violations/${rl.id}`, { enabled: !rl.enabled });
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function deleteRule(rl) {
+    if (!confirm(`Delete rule "${rl.name}"?`)) return;
+    try {
+      await api.del(`/violations/${rl.id}`);
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
 
   async function create() {
     if (!form.player_name) return toast("Player name required", "warn");
@@ -70,6 +116,81 @@
     </div>
   {/each}
 </div>
+
+<!-- Violation auto-action rules -->
+<div class="flex items-center justify-between mt-10 mb-2">
+  <h2 class="text-xl font-semibold">Auto-action rules</h2>
+  <button class="btn-primary" onclick={() => (showRule = true)}>+ New rule</button>
+</div>
+<p class="text-muted mb-4 text-sm">
+  Watch running servers' logs for a regex pattern (capture group 1 = player). When it recurs past
+  the threshold within the window, auto-kick or auto-ban — optionally across every server.
+</p>
+<div class="card divide-y divide-border">
+  {#if rules.length === 0}
+    <div class="p-4 text-muted text-sm">No rules.</div>
+  {/if}
+  {#each rules as rl}
+    <div class="flex items-center gap-3 px-4 py-3">
+      <div class="flex-1 min-w-0">
+        <div class="font-medium">
+          {rl.name}
+          <span class="badge bg-border text-muted ml-1">{rl.action}{rl.scope_global ? " · global" : ""}</span>
+          {#if !rl.enabled}<span class="badge bg-danger/20 text-danger ml-1">disabled</span>{/if}
+        </div>
+        <div class="text-xs text-muted font-mono truncate">
+          /{rl.pattern}/ ≥{rl.threshold} in {rl.window_minutes}m
+        </div>
+      </div>
+      <button class="btn-ghost" onclick={() => toggleRule(rl)}>{rl.enabled ? "Disable" : "Enable"}</button>
+      <button class="btn-danger" onclick={() => deleteRule(rl)}>Delete</button>
+    </div>
+  {/each}
+</div>
+
+{#if showRule}
+  <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+    <div class="card w-full max-w-md p-5 space-y-3">
+      <h2 class="text-lg font-semibold">New auto-action rule</h2>
+      <div>
+        <label class="label" for="r-name">Name</label>
+        <input id="r-name" class="input" bind:value={ruleForm.name} placeholder="NoCheatPlus flags" />
+      </div>
+      <div>
+        <label class="label" for="r-pattern">Log regex (group 1 = player)</label>
+        <input id="r-pattern" class="input font-mono" bind:value={ruleForm.pattern}
+          placeholder="Player (\\w+) failed .*check" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label" for="r-thr">Threshold</label>
+          <input id="r-thr" class="input" type="number" bind:value={ruleForm.threshold} />
+        </div>
+        <div>
+          <label class="label" for="r-win">Window (minutes)</label>
+          <input id="r-win" class="input" type="number" bind:value={ruleForm.window_minutes} />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label" for="r-action">Action</label>
+          <select id="r-action" class="input" bind:value={ruleForm.action}>
+            <option value="ban">Ban</option>
+            <option value="kick">Kick</option>
+          </select>
+        </div>
+        <label class="flex items-center gap-2 text-sm mt-6">
+          <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={ruleForm.scope_global} />
+          Ban on all servers
+        </label>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button class="btn-ghost flex-1" onclick={() => (showRule = false)}>Cancel</button>
+        <button class="btn-primary flex-1" onclick={createRule}>Create rule</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if showCreate}
   <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">

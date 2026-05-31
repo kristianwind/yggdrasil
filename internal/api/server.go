@@ -27,6 +27,7 @@ type Server struct {
 	install *progressHub // live install/build output, keyed by server id
 	cipher  *crypto.Cipher
 	sched   *schedulerState
+	viol    *violationWatcher
 }
 
 func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
@@ -43,6 +44,8 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()
+	s.viol = newViolationWatcher(s)
+	s.viol.Start()
 	return s
 }
 
@@ -145,6 +148,12 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/bans", s.requireAdmin(s.handleListBans))
 		r.Post("/api/bans", s.requireAdmin(s.handleCreateBan))
 		r.Delete("/api/bans/{id}", s.requireAdmin(s.handleDeleteBan))
+
+		// Violation auto-action rules (admin-only)
+		r.Get("/api/violations", s.requireAdmin(s.handleListViolations))
+		r.Post("/api/violations", s.requireAdmin(s.handleCreateViolation))
+		r.Put("/api/violations/{id}", s.requireAdmin(s.handleUpdateViolation))
+		r.Delete("/api/violations/{id}", s.requireAdmin(s.handleDeleteViolation))
 
 		// Message templates (admin)
 		r.Get("/api/templates", s.handleListTemplates)

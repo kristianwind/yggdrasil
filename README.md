@@ -86,6 +86,20 @@ one-liner — it's idempotent).
 - Login **rate-limiting**, secure headers, CSRF-safe token auth, path-traversal
   guards on file access
 
+## Screenshots
+
+| Dashboard | Server console & live stats |
+|---|---|
+| [![Dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png) | [![Server detail](docs/screenshots/server-console.png)](docs/screenshots/server-console.png) |
+| **Servers** | **Anti-cheat** |
+| [![Servers](docs/screenshots/servers.png)](docs/screenshots/servers.png) | [![Anti-cheat](docs/screenshots/server-anticheat.png)](docs/screenshots/server-anticheat.png) |
+| **Schedules** | **Bans & auto-actions** |
+| [![Schedules](docs/screenshots/schedules.png)](docs/screenshots/schedules.png) | [![Bans](docs/screenshots/bans.png)](docs/screenshots/bans.png) |
+| **Runes (gameskills)** | **Settings** |
+| [![Runes](docs/screenshots/runes.png)](docs/screenshots/runes.png) | [![Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png) |
+
+<sub>Dark mode by default; the UI is fully responsive and installable as a PWA.</sub>
+
 ## Concepts
 
 | Term | Meaning |

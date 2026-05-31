@@ -183,13 +183,17 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [ ] XML gameskill import (deferred; egg + YAML cover the common cases)
 - [ ] docs/API.md (folds into Phase 10 docs)
 
-### Phase 10 — PWA polish + docs + end-to-end test
-- [ ] PWA manifest, service worker, installability
-- [ ] Dark mode default, responsive/touch-friendly
-- [ ] install.sh full implementation + idempotency test
-- [ ] README.md
-- [ ] docs/GAMESKILL_SCHEMA.md
-- [ ] End-to-end oneliner install test on clean Debian VM
+### Phase 10 — PWA polish + docs + end-to-end test 🟡 MOSTLY DONE
+- [x] PWA manifest (SVG + 192/512 PNG icons), service worker (v2), installable
+- [x] Manifest served as application/manifest+json; apple-touch-icon fixed (was 404)
+- [x] Dark mode default, responsive sidebar/drawer, touch-friendly (done since P1)
+- [x] install.sh full implementation (Docker install, user, binary, systemd, idempotent)
+- [x] README.md (+ Claude Code / no-liability disclaimer)
+- [x] docs/GAMESKILL_SCHEMA.md, docs/API.md
+- [x] **End-to-end test against real Docker** (install + run a Paper server,
+      query + RCON verified) — see top of file
+- [ ] End-to-end oneliner install test on a clean Debian VM (needs a VM; install.sh
+      is complete but not yet run on a fresh box from the published release)
 
 ### Optional / Later
 - [ ] Import running servers from Pterodactyl / AMP

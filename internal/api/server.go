@@ -190,6 +190,10 @@ func (s *Server) spaHandler() http.HandlerFunc {
 		}
 		if f, err := s.webFS.Open(p); err == nil {
 			f.Close()
+			// Go's FileServer doesn't know .webmanifest; set it for PWA install.
+			if strings.HasSuffix(p, ".webmanifest") {
+				w.Header().Set("Content-Type", "application/manifest+json")
+			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}

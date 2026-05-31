@@ -1,10 +1,21 @@
 // Minimal service worker: app-shell cache for offline launch + PWA installability.
 // API calls and WebSockets are always network (never cached).
-const CACHE = "ygg-shell-v1";
+const CACHE = "ygg-shell-v2";
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest", "./icon.svg"])));
+  e.waitUntil(
+    caches.open(CACHE).then((c) =>
+      c.addAll([
+        "./",
+        "./index.html",
+        "./manifest.webmanifest",
+        "./icon.svg",
+        "./icon-192.png",
+        "./icon-512.png",
+      ]),
+    ),
+  );
 });
 
 self.addEventListener("activate", (e) => {

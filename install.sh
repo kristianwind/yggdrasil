@@ -7,8 +7,14 @@
 # Idempotent: safe to re-run to upgrade the binary or repair the install.
 set -euo pipefail
 
+# Note: we deliberately avoid a variable named VERSION — sourcing /etc/os-release
+# below would clobber it (Debian sets VERSION="13 (trixie)").
 REPO="${YGG_REPO:-kristianwind/yggdrasil}"
-VERSION="${YGG_VERSION:-latest}"
+YGG_VER="${YGG_VERSION:-latest}"
+# For testing before a release is published: point this at a URL or local file
+# holding a prebuilt linux binary, e.g. YGG_BINARY_URL=http://10.0.0.5:8000/yggdrasil-linux-amd64
+YGG_BINARY_URL="${YGG_BINARY_URL:-}"
+YGG_BINARY_FILE="${YGG_BINARY_FILE:-}"
 BIN_PATH="/usr/local/bin/yggdrasil"
 CONFIG_DIR="/etc/yggdrasil"
 CONFIG_FILE="$CONFIG_DIR/config.yaml"
@@ -64,22 +70,31 @@ install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$DATA_DIR"
 install -d "$CONFIG_DIR"
 
 # --- Binary ---------------------------------------------------------------
-if [ "$VERSION" = "latest" ]; then
-  DL_URL="https://github.com/$REPO/releases/latest/download/yggdrasil-linux-$ARCH"
+if [ -n "$YGG_BINARY_FILE" ]; then
+  log "Installing Yggdrasil binary from local file $YGG_BINARY_FILE ..."
+  install -m 0755 "$YGG_BINARY_FILE" "$BIN_PATH" \
+    && log "Installed $($BIN_PATH version 2>/dev/null || echo yggdrasil)" \
+    || die "Could not install from $YGG_BINARY_FILE"
 else
-  DL_URL="https://github.com/$REPO/releases/download/$VERSION/yggdrasil-linux-$ARCH"
-fi
-log "Downloading Yggdrasil binary ($ARCH)..."
-if curl -fsSL -o "$BIN_PATH.new" "$DL_URL"; then
-  chmod +x "$BIN_PATH.new"
-  mv "$BIN_PATH.new" "$BIN_PATH"
-  log "Installed $($BIN_PATH version 2>/dev/null || echo yggdrasil)"
-else
-  rm -f "$BIN_PATH.new"
-  if [ -x "$BIN_PATH" ]; then
-    warn "Could not download release; keeping existing binary."
+  if [ -n "$YGG_BINARY_URL" ]; then
+    DL_URL="$YGG_BINARY_URL"
+  elif [ "$YGG_VER" = "latest" ]; then
+    DL_URL="https://github.com/$REPO/releases/latest/download/yggdrasil-linux-$ARCH"
   else
-    die "Could not download binary from $DL_URL (no release published yet?)."
+    DL_URL="https://github.com/$REPO/releases/download/$YGG_VER/yggdrasil-linux-$ARCH"
+  fi
+  log "Downloading Yggdrasil binary ($ARCH) from $DL_URL ..."
+  if curl -fsSL -o "$BIN_PATH.new" "$DL_URL"; then
+    chmod +x "$BIN_PATH.new"
+    mv "$BIN_PATH.new" "$BIN_PATH"
+    log "Installed $($BIN_PATH version 2>/dev/null || echo yggdrasil)"
+  else
+    rm -f "$BIN_PATH.new"
+    if [ -x "$BIN_PATH" ]; then
+      warn "Could not download release; keeping existing binary."
+    else
+      die "Could not download binary from $DL_URL (no release published yet? Set YGG_BINARY_URL/YGG_BINARY_FILE to test a local build)."
+    fi
   fi
 fi
 

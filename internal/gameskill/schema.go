@@ -26,7 +26,16 @@ type Gameskill struct {
 	ConfigFiles []string   `yaml:"config_files" json:"config_files,omitempty"`
 	Ports       []Port     `yaml:"ports"       json:"ports"`
 	Anticheat   *Anticheat `yaml:"anticheat"   json:"anticheat,omitempty"`
+	Bans        *Bans      `yaml:"bans"        json:"bans,omitempty"`
 	Backup      *Backup    `yaml:"backup"      json:"backup,omitempty"`
+}
+
+// Bans declares how to ban/unban a player via the game's console/RCON. Commands
+// are templated with {{player}} and {{reason}}. Omitted when the game has no
+// console ban (e.g. vanilla Bedrock uses an allowlist instead).
+type Bans struct {
+	BanCommand   string `yaml:"ban_command"   json:"ban_command,omitempty"`
+	UnbanCommand string `yaml:"unban_command" json:"unban_command,omitempty"`
 }
 
 type Docker struct {

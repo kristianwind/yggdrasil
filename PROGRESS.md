@@ -147,12 +147,17 @@ Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdr
 - [x] Frontend: Schedules page (action-conditional form) + templates editor
 - [x] Verified: unit tests, API (seed/validate/CRUD/run/toggle), browser UI
 
-### Phase 8 — Anti-cheat + ban management
-- [ ] Paper anti-xray config surface (Minecraft Java)
-- [ ] BattlEye/EAC/VAC config surface (DayZ/Rust)
-- [ ] Centralized ban list (cross-server)
-- [ ] Ban via RCON / console
-- [ ] Kick/ban events surfaced in UI
+### Phase 8 — Anti-cheat + ban management ✅ DONE
+- [x] Per-rune anti-cheat surface in ServerDetail (anti-xray / BattlEye hints +
+      recommended plugins, from the gameskill's anticheat block)
+- [x] Paper anti-xray hint + link to the config file editor (Minecraft Java)
+- [x] BattlEye config surface (DayZ); Rust EAC/VAC noted
+- [x] gameskill `bans` block: ban/unban console commands ({{player}}/{{reason}})
+      added to Minecraft Java, Rust, DayZ (Bedrock has none — allowlist-based)
+- [x] Centralized cross-server ban list (admin): ban one server or all at once,
+      reason + audit; pushes the ban command to running servers via RCON/console
+- [x] Bans UI (list/ban/unban) + anti-cheat tab; API + browser verified
+- [ ] (deferred to later) violation-driven auto-ban rules; live kick/ban event feed
 
 ### Phase 9 — Notifications + API tokens + importer
 - [ ] Telegram notifications

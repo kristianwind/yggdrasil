@@ -12,6 +12,7 @@
   import Audit from "./views/Audit.svelte";
   import Settings from "./views/Settings.svelte";
   import Schedules from "./views/Schedules.svelte";
+  import Bans from "./views/Bans.svelte";
 
   let ready = $state(false);
 
@@ -32,6 +33,7 @@
     { path: "/servers", label: "Servers", icon: "🖥️" },
     { path: "/runes", label: "Runes", icon: "ᚱ" },
     { path: "/schedules", label: "Schedules", icon: "⏰" },
+    { path: "/bans", label: "Bans", icon: "🚫", admin: true },
     { path: "/users", label: "Users", icon: "👥", admin: true },
     { path: "/audit", label: "Audit log", icon: "📜", admin: true },
     { path: "/settings", label: "Settings", icon: "⚙️", admin: true },
@@ -103,6 +105,8 @@
           <Runes />
         {:else if $route.parts[0] === "schedules"}
           <Schedules />
+        {:else if $route.parts[0] === "bans"}
+          <Bans />
         {:else if $route.parts[0] === "users"}
           <Users />
         {:else if $route.parts[0] === "audit"}

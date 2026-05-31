@@ -93,5 +93,10 @@ gameskill:
     # beyond keeping it enabled (default). Kick/ban events appear in the console.
     plugins_recommended: ["EAC (built-in)", "VAC"]
 
+  bans:
+    # Rust accepts a steamid or name. Reason is quoted by the console parser.
+    ban_command: 'ban "{{player}}" "{{reason}}"'
+    unban_command: 'unban "{{player}}"'
+
   backup:
     include: ["server/yggdrasil"]

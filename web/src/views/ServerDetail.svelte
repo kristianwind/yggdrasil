@@ -88,6 +88,8 @@
     return `${n.toFixed(1)} ${u[i]}`;
   }
 
+  let skill = $state(null); // parsed gameskill (for anti-cheat surface)
+
   async function loadServer() {
     try {
       const prev = server;
@@ -95,6 +97,9 @@
       // When an install finishes, refresh the console.
       if (prev && !prev.installed && server.installed) {
         toast("Install complete", "success");
+      }
+      if (!skill && server) {
+        skill = await api.get(`/gameskills/${server.gameskill_id}`).catch(() => null);
       }
     } catch (e) {
       toast(e.message, "error");
@@ -276,7 +281,7 @@
 
   <!-- Tabs -->
   <div class="flex gap-1 border-b border-border mb-4">
-    {#each [["console", "Console"], ["files", "Files"], ["backups", "Backups"], ["install", "Install log"]] as [key, label]}
+    {#each [["console", "Console"], ["files", "Files"], ["backups", "Backups"], ["anticheat", "Anti-cheat"], ["install", "Install log"]] as [key, label]}
       <button
         class="px-4 py-2 text-sm border-b-2 -mb-px {tab === key
           ? 'border-accent text-text'
@@ -315,6 +320,55 @@
     {/if}
   {:else if tab === "files"}
     <FileManager serverId={id} />
+  {:else if tab === "anticheat"}
+    {#if skill?.anticheat}
+      <div class="space-y-3">
+        {#if skill.anticheat.antixray}
+          <div class="card p-4">
+            <div class="font-medium flex items-center gap-2">
+              🛡️ Anti-xray
+              <span class="badge {skill.anticheat.antixray.supported ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}">
+                {skill.anticheat.antixray.supported ? "supported" : "n/a"}
+              </span>
+            </div>
+            <p class="text-sm text-muted mt-1">{skill.anticheat.antixray.config_hint}</p>
+            <p class="text-xs text-muted mt-2">
+              Server-side anti-xray hides ore data, so xray clients see nothing — no detection or
+              bans needed. Configure it in the file editor.
+            </p>
+            <button class="btn-ghost mt-2" onclick={() => (tab = "files")}>Open file editor →</button>
+          </div>
+        {/if}
+        {#if skill.anticheat.battleye}
+          <div class="card p-4">
+            <div class="font-medium flex items-center gap-2">
+              🛡️ BattlEye
+              <span class="badge bg-accent2/20 text-accent">supported</span>
+            </div>
+            <p class="text-sm text-muted mt-1">{skill.anticheat.battleye.config_hint}</p>
+          </div>
+        {/if}
+        {#if skill.anticheat.plugins_recommended?.length}
+          <div class="card p-4">
+            <div class="font-medium">Recommended anti-cheat</div>
+            <div class="flex flex-wrap gap-2 mt-2">
+              {#each skill.anticheat.plugins_recommended as p}
+                <span class="badge bg-panel2 text-text border border-border">{p}</span>
+              {/each}
+            </div>
+          </div>
+        {/if}
+        <div class="card p-4 text-sm text-muted">
+          Caught a cheater? Use centralized <a href="#/bans" class="text-accent hover:underline">Bans</a>
+          to ban them here or across every server at once.
+        </div>
+      </div>
+    {:else}
+      <div class="card p-6 text-center text-muted">
+        This game defines no server-side anti-cheat hooks. Client-side anti-cheat (EAC/VAC/BattlEye)
+        is shipped by the game itself.
+      </div>
+    {/if}
   {:else if tab === "backups"}
     <div class="flex flex-wrap items-end gap-2 mb-4">
       <div>

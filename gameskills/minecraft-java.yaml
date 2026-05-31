@@ -139,5 +139,9 @@ gameskill:
       config_hint: "Paper anti-xray (engine-mode 1/2) in config/paper-world-defaults.yml"
     plugins_recommended: ["Grim", "Vulcan", "NoCheatPlus"]
 
+  bans:
+    ban_command: "ban {{player}} {{reason}}"
+    unban_command: "pardon {{player}}"
+
   backup:
     include: ["world", "world_nether", "world_the_end", "server.properties", "plugins"]

@@ -123,6 +123,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/schedules/{id}", s.handleDeleteSchedule)
 		r.Post("/api/schedules/{id}/run", s.handleRunSchedule)
 
+		// Centralized ban management (admin-only)
+		r.Get("/api/bans", s.requireAdmin(s.handleListBans))
+		r.Post("/api/bans", s.requireAdmin(s.handleCreateBan))
+		r.Delete("/api/bans/{id}", s.requireAdmin(s.handleDeleteBan))
+
 		// Message templates (admin)
 		r.Get("/api/templates", s.handleListTemplates)
 		r.Post("/api/templates", s.requireAdmin(s.handleSaveTemplate))

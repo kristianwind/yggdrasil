@@ -79,5 +79,11 @@ gameskill:
       supported: true
       config_hint: "BattlEye enabled via -BEpath=battleye; kick/ban events surface in the console"
 
+  bans:
+    # BattlEye RCon: addBan <GUID> <minutes,0=perm> <reason>. {{player}} should be
+    # the BattlEye GUID for a permanent cross-restart ban.
+    ban_command: "addBan {{player}} 0 {{reason}}"
+    unban_command: "removeBan {{player}}"
+
   backup:
     include: ["mpmissions", "serverDZ.cfg", "battleye", "profiles"]

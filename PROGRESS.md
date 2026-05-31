@@ -32,6 +32,30 @@ Run backend: `go run ./cmd/yggdrasil --config dev-config.yaml`.
 Dev frontend (proxy to :8080): `cd web && npm run dev`.
 Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdrasil`.
 
+## Requested features / backlog (from VM testing)
+
+User-requested items to implement next (not yet done):
+- [ ] **Steam Authorize fails** with "Steam login failed: check the username,
+      password, and Steam Guard code" on the VM. Investigate the cm2network
+      steamcmd invocation / output parsing (handlers_steam.go); the success check
+      (`Logged in OK`) or the steamcmd.sh/HOME path may be wrong. Capture more of
+      the (masked) output to diagnose. Can't fully test without DayZ-owning creds.
+- [ ] **List ⇄ Table view toggle** for the Servers page (compact table vs cards).
+- [ ] **Download Runes from a GitHub folder** — a built-in rune library/registry
+      (e.g. fetch gameskill YAML from a GitHub repo/dir and import with one click).
+- [ ] **User delegation to specific server(s)** — simpler flow to give a non-admin
+      user access to one or more individual servers (builds on the RBAC server
+      scope + permission editor; make it a one-click "share server with user").
+- [ ] **Mobile navigation** — the responsive sidebar drawer needs fixing/finishing
+      on mobile (hamburger menu reportedly missing on some pages).
+- [x] **Favicon: transparent tree** — done (favicon.svg, no background rect).
+
+Also fixed during VM testing (done):
+- [x] Console "attach error 409": don't attach to a non-running container; show a
+      friendly message + reconcile status to stopped.
+- [x] Crash/exit detection: background reconciler flips "running"→"stopped" when a
+      container is no longer running (every 20s).
+
 ## Phase Checklist
 
 ### Phase 0 — Repo skeleton ✅ DONE

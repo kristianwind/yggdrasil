@@ -47,6 +47,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.viol = newViolationWatcher(s)
 	s.viol.Start()
 	s.startDiskMonitor()
+	s.startStatusReconciler()
 	return s
 }
 

@@ -495,12 +495,20 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	if srv.ContainerID == "" {
-		conn.WriteMessage(websocket.TextMessage, []byte("[server not running]"))
+		conn.WriteMessage(websocket.TextMessage, []byte("[server is not running — press Start to launch it]"))
 		return
 	}
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+
+	// Don't attach to a container that isn't running (Docker returns 409). If the
+	// DB still says "running", reconcile it to "stopped".
+	if running, _, _ := s.docker.State(ctx, srv.ContainerID); !running {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
+		conn.WriteMessage(websocket.TextMessage, []byte("[server is not running — press Start to launch it]"))
+		return
+	}
 
 	hijack, err := s.docker.Attach(ctx, srv.ContainerID)
 	if err != nil {

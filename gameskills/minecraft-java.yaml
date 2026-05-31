@@ -38,6 +38,10 @@ gameskill:
       name: "RCON password"
       type: string
       default: "change-me"
+    - key: ENABLE_WHITELIST
+      name: "Enable whitelist (only listed players can join)"
+      type: bool
+      default: false
     - key: EULA
       name: "Accept the Minecraft EULA"
       type: bool
@@ -109,15 +113,20 @@ gameskill:
 
       echo "eula={{EULA}}" > eula.txt
 
-      # Pre-seed RCON settings so the panel (and schedules/bans) can connect.
-      # Minecraft fills in any remaining server.properties defaults on first run.
+      # Pre-seed RCON + whitelist settings so the panel (and schedules/bans) can
+      # connect. Minecraft fills in any remaining server.properties on first run.
       if ! grep -q '^enable-rcon=' server.properties 2>/dev/null; then
         {
           echo "enable-rcon=true"
           echo "rcon.port={{RCON_PORT}}"
           echo "rcon.password={{RCON_PASSWORD}}"
+          echo "white-list={{ENABLE_WHITELIST}}"
+          echo "enforce-whitelist={{ENABLE_WHITELIST}}"
         } >> server.properties
       fi
+      # Ensure the whitelist/ops files exist so they're editable in the file manager.
+      [ -f whitelist.json ] || echo "[]" > whitelist.json
+      [ -f ops.json ] || echo "[]" > ops.json
 
       echo "Installed $TYPE $VER -> server.jar"
       ls -la server.jar
@@ -138,6 +147,8 @@ gameskill:
 
   config_files:
     - "server.properties"
+    - "whitelist.json"
+    - "ops.json"
     - "config/paper-world-defaults.yml"
 
   ports:
@@ -155,4 +166,4 @@ gameskill:
     unban_command: "pardon {{player}}"
 
   backup:
-    include: ["world", "world_nether", "world_the_end", "server.properties", "plugins"]
+    include: ["world", "world_nether", "world_the_end", "server.properties", "whitelist.json", "ops.json", "plugins"]

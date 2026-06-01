@@ -47,6 +47,10 @@ gameskill:
       name: "BattlEye RCON password"
       type: string
       default: "change-me"
+    - key: MISSION
+      name: "Mission / map (chernarusplus = Chernarus, enoch = Livonia, or a custom modded mission)"
+      type: string
+      default: "dayzOffline.chernarusplus"
     - key: MODS
       name: "Workshop mods (semicolon-separated IDs, in load order)"
       type: string
@@ -117,7 +121,7 @@ gameskill:
       {
           class DayZ
           {
-              template = "dayzOffline.chernarusplus";
+              template = "{{MISSION}}";
           };
       };
       CFG

@@ -67,9 +67,16 @@ gameskill:
       BETA=""
       [ "{{BETA_BRANCH}}" = "experimental" ] && BETA="-beta experimental"
       STEAMCMD="${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh"
-      "$STEAMCMD" \
-        +force_install_dir /data +login "$STEAM_USER" \
-        +app_update 223350 $BETA validate +quit
+      # SteamCMD content downloads are flaky — transient "Timed out waiting for
+      # update to start, bailing" / app state 0x204 failures are common. Retry a
+      # few times; app_update is resumable and idempotent so retries continue.
+      i=1; ok=0
+      while [ $i -le 4 ]; do
+        if "$STEAMCMD" +force_install_dir /data +login "$STEAM_USER" +app_update 223350 $BETA validate +quit; then ok=1; break; fi
+        echo "=== SteamCMD download attempt $i/4 failed (Steam content servers can be flaky) — retrying in 15s ==="
+        i=$((i+1)); sleep 15
+      done
+      [ $ok -eq 1 ] || { echo "ERROR: DayZ failed to download after 4 attempts. Steam may be busy — press Update/Reinstall to try again."; exit 8; }
       # Ensure the server executables are runnable, then report the library
       # situation so any "CrashReporter: not found" (a missing-.so error) is
       # diagnosable from the install log.

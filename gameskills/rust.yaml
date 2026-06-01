@@ -48,9 +48,16 @@ gameskill:
     script: |
       set -e
       # Long download (several GB). Yggdrasil streams progress to the UI.
-      "${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh" \
-        +force_install_dir /data +login anonymous \
-        +app_update 258550 validate +quit
+      # SteamCMD content downloads are flaky (transient "Timed out waiting for
+      # update to start" / state 0x204); retry — app_update is resumable.
+      STEAMCMD="${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh"
+      i=1; ok=0
+      while [ $i -le 4 ]; do
+        if "$STEAMCMD" +force_install_dir /data +login anonymous +app_update 258550 validate +quit; then ok=1; break; fi
+        echo "=== SteamCMD download attempt $i/4 failed — retrying in 15s ==="
+        i=$((i+1)); sleep 15
+      done
+      [ $ok -eq 1 ] || { echo "ERROR: Rust failed to download after 4 attempts. Steam may be busy — press Update/Reinstall to try again."; exit 8; }
 
   startup:
     # Rust takes many +server.* / +rcon.* flags; RCON is WebSocket-based.

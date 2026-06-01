@@ -92,8 +92,8 @@
 
     <!-- Main -->
     <div class="flex-1 min-w-0 flex flex-col">
-      <header class="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border bg-panel">
-        <button class="btn-ghost px-2 py-1" onclick={() => (mobileOpen = true)}>☰</button>
+      <header class="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-border bg-panel">
+        <button class="btn-ghost px-2 py-1" aria-label="Open menu" onclick={() => (mobileOpen = true)}>☰</button>
         <span class="font-semibold">🌳 Yggdrasil</span>
       </header>
       <main class="flex-1 p-4 md:p-6 overflow-auto">

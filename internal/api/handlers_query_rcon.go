@@ -21,10 +21,10 @@ type serverRuntime struct {
 }
 
 func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRuntime, error) {
-	var gameskillID, envJSON, portsJSON string
+	var gameskillID, envJSON, portsJSON, name string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT gameskill_id, env_json, ports_json FROM servers WHERE id=?", serverID).
-		Scan(&gameskillID, &envJSON, &portsJSON)
+		"SELECT gameskill_id, env_json, ports_json, name FROM servers WHERE id=?", serverID).
+		Scan(&gameskillID, &envJSON, &portsJSON, &name)
 	if err != nil {
 		return nil, err
 	}
@@ -40,6 +40,9 @@ func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRunti
 	rt := &serverRuntime{gs: gs, env: map[string]string{}, ports: map[string]int{}}
 	json.Unmarshal([]byte(envJSON), &rt.env)
 	json.Unmarshal([]byte(portsJSON), &rt.ports)
+	// Inject the panel's server name so gameskills can use {{SERVER_NAME}} as the
+	// in-game/browser name without a duplicate form field.
+	rt.env["SERVER_NAME"] = name
 	return rt, nil
 }
 

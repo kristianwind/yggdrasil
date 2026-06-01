@@ -24,19 +24,22 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 type serverRow struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	GameskillID   string `json:"gameskill_id"`
-	RealmID       string `json:"realm_id,omitempty"`
-	Status        string `json:"status"`
-	ContainerID   string `json:"container_id,omitempty"`
-	EnvJSON       string         `json:"-"`
-	PortsJSON     string         `json:"-"`
-	Ports         map[string]int `json:"ports"`
-	DataDir       string         `json:"data_dir"`
-	Installed     bool           `json:"installed"`
-	InstallStatus string         `json:"install_status"`
-	CreatedAt     string         `json:"created_at"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	GameskillID   string            `json:"gameskill_id"`
+	RealmID       string            `json:"realm_id,omitempty"`
+	Status        string            `json:"status"`
+	ContainerID   string            `json:"container_id,omitempty"`
+	EnvJSON       string            `json:"-"`
+	PortsJSON     string            `json:"-"`
+	Ports         map[string]int    `json:"ports"`
+	Env           map[string]string `json:"env,omitempty"` // populated only on single GET
+	CPUPercent    float64           `json:"cpu_percent"`
+	MemoryMB      int64             `json:"memory_mb"`
+	DataDir       string            `json:"data_dir"`
+	Installed     bool              `json:"installed"`
+	InstallStatus string            `json:"install_status"`
+	CreatedAt     string            `json:"created_at"`
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at"
@@ -93,6 +96,14 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	if !s.can(w, r, rbac.ServerView, srv.target()) {
 		return
 	}
+	// Single GET also returns the current variable values + resource caps so the
+	// edit form can be pre-filled.
+	var envJSON string
+	s.db.QueryRowContext(r.Context(),
+		"SELECT env_json, COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0) FROM servers WHERE id=?", id).
+		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB)
+	srv.Env = map[string]string{}
+	json.Unmarshal([]byte(envJSON), &srv.Env)
 	jsonOK(w, srv)
 }
 
@@ -207,6 +218,59 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, map[string]string{"id": serverID, "status": "installing"})
+}
+
+// handleUpdateServer edits an existing server's name, realm, variable values and
+// resource caps. Variable changes (RAM, RCON password, seed, …) take effect on
+// the next start; ones written into config files at install time (RCON password,
+// seed) require a reinstall to fully apply — the UI says so.
+func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	srv, err := s.getServer(r.Context(), id)
+	if err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerControl, srv.target()) {
+		return
+	}
+	var req struct {
+		Name       *string           `json:"name"`
+		RealmID    *string           `json:"realm_id"`
+		Env        map[string]string `json:"env"`
+		CPUPercent *float64          `json:"cpu_percent"`
+		MemoryMB   *int64            `json:"memory_mb"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.Name != nil && *req.Name != "" {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)
+	}
+	if req.RealmID != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET realm_id=? WHERE id=?", nullableStr(*req.RealmID), id)
+	}
+	if req.Env != nil {
+		// Merge onto the existing env so unspecified vars are preserved.
+		current := map[string]string{}
+		var envJSON string
+		s.db.QueryRowContext(r.Context(), "SELECT env_json FROM servers WHERE id=?", id).Scan(&envJSON)
+		json.Unmarshal([]byte(envJSON), &current)
+		for k, v := range req.Env {
+			current[k] = v
+		}
+		b, _ := json.Marshal(current)
+		s.db.ExecContext(r.Context(), "UPDATE servers SET env_json=? WHERE id=?", string(b), id)
+	}
+	if req.CPUPercent != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET cpu_limit=? WHERE id=?", *req.CPUPercent, id)
+	}
+	if req.MemoryMB != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET mem_limit_mb=? WHERE id=?", *req.MemoryMB, id)
+	}
+	s.auditLog(r, "server.update", "server:"+id, nil)
+	jsonOK(w, map[string]string{"status": "updated"})
 }
 
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {

@@ -30,6 +30,10 @@ gameskill:
       name: "Max RAM (MB)"
       type: int
       default: 4096
+    - key: LEVEL_SEED
+      name: "World seed (blank = random)"
+      type: string
+      default: ""
     - key: RCON_PORT
       name: "RCON port (container-internal)"
       type: int
@@ -127,6 +131,10 @@ gameskill:
           echo "white-list={{ENABLE_WHITELIST}}"
           echo "enforce-whitelist={{ENABLE_WHITELIST}}"
         } >> server.properties
+      fi
+      # World seed (only on first install, before the world is generated).
+      if [ -n "{{LEVEL_SEED}}" ] && ! grep -q '^level-seed=' server.properties 2>/dev/null; then
+        echo "level-seed={{LEVEL_SEED}}" >> server.properties
       fi
       # Ensure the whitelist/ops files exist so they're editable in the file manager.
       [ -f whitelist.json ] || echo "[]" > whitelist.json

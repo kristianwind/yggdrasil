@@ -4,6 +4,7 @@
   import { toast } from "../lib/toast.js";
   import { navigate } from "../lib/router.js";
   import FileManager from "../components/FileManager.svelte";
+  import VarForm from "../components/VarForm.svelte";
 
   let { id } = $props();
 
@@ -88,7 +89,38 @@
     return `${n.toFixed(1)} ${u[i]}`;
   }
 
-  let skill = $state(null); // parsed gameskill (for anti-cheat surface)
+  let skill = $state(null); // parsed gameskill (for anti-cheat surface + edit form)
+
+  // Edit settings
+  let edit = $state(null); // { name, env, cpu_percent, memory_mb }
+  let savingEdit = $state(false);
+  function openEdit() {
+    edit = {
+      name: server.name,
+      env: { ...(server.env || {}) },
+      cpu_percent: server.cpu_percent || 0,
+      memory_mb: server.memory_mb || 0,
+    };
+  }
+  async function saveEdit() {
+    savingEdit = true;
+    try {
+      const env = {};
+      for (const [k, v] of Object.entries(edit.env)) env[k] = String(v);
+      await api.put(`/servers/${id}`, {
+        name: edit.name,
+        env,
+        cpu_percent: Number(edit.cpu_percent) || 0,
+        memory_mb: Number(edit.memory_mb) || 0,
+      });
+      toast("Saved — restart to apply (reinstall for file-baked values)", "success");
+      await loadServer();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingEdit = false;
+    }
+  }
 
   async function loadServer() {
     try {
@@ -281,7 +313,7 @@
 
   <!-- Tabs -->
   <div class="flex gap-1 border-b border-border mb-4">
-    {#each [["console", "Console"], ["files", "Files"], ["backups", "Backups"], ["anticheat", "Anti-cheat"], ["install", "Install log"]] as [key, label]}
+    {#each [["console", "Console"], ["files", "Files"], ["backups", "Backups"], ["settings", "Settings"], ["anticheat", "Anti-cheat"], ["install", "Install log"]] as [key, label]}
       <button
         class="px-4 py-2 text-sm border-b-2 -mb-px {tab === key
           ? 'border-accent text-text'
@@ -290,6 +322,7 @@
           tab = key;
           if (key === "install" && !installWs) connectInstallLog();
           if (key === "backups") loadBackups();
+          if (key === "settings") openEdit();
         }}>{label}</button
       >
     {/each}
@@ -320,6 +353,39 @@
     {/if}
   {:else if tab === "files"}
     <FileManager serverId={id} />
+  {:else if tab === "settings"}
+    {#if edit}
+      <div class="max-w-lg space-y-4">
+        <div>
+          <label class="label" for="e-name">Server name</label>
+          <input id="e-name" class="input" bind:value={edit.name} />
+        </div>
+        {#if skill?.variables}
+          <VarForm variables={skill.variables} bind:values={edit.env} />
+        {/if}
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="e-cpu">CPU limit (%, 0 = unlimited)</label>
+            <input id="e-cpu" class="input" type="number" bind:value={edit.cpu_percent} />
+          </div>
+          <div>
+            <label class="label" for="e-mem">RAM limit (MB, 0 = unlimited)</label>
+            <input id="e-mem" class="input" type="number" bind:value={edit.memory_mb} />
+          </div>
+        </div>
+        <div class="card bg-warn/10 border-warn/40 text-warn text-xs px-3 py-2">
+          Changes apply on the next <b>restart</b>. Values written into config files at install time
+          (e.g. RCON password, world seed) need a <b>Reinstall</b> to fully apply — back up your
+          world first, as reinstall can regenerate config.
+        </div>
+        <div class="flex gap-2">
+          <button class="btn-primary" onclick={saveEdit} disabled={savingEdit}>
+            {savingEdit ? "Saving…" : "Save changes"}
+          </button>
+          <button class="btn-ghost" onclick={runInstall}>Reinstall / update game</button>
+        </div>
+      </div>
+    {/if}
   {:else if tab === "anticheat"}
     {#if skill?.anticheat}
       <div class="space-y-3">

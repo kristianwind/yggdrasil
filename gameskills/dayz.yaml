@@ -21,10 +21,7 @@ gameskill:
     anonymous: false      # requires an account that owns DayZ → one-time auth flow
 
   variables:
-    - key: SERVER_NAME
-      name: "Server name"
-      type: string
-      default: "A Yggdrasil DayZ Server"
+    # In-game name uses the panel's server name (injected as {{SERVER_NAME}}).
     - key: MAX_PLAYERS
       name: "Max players"
       type: int

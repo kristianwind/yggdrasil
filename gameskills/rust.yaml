@@ -16,10 +16,8 @@ gameskill:
     anonymous: true
 
   variables:
-    - key: SERVER_NAME
-      name: "Server name (browser)"
-      type: string
-      default: "A Yggdrasil Rust Server"
+    # The in-game/browser name uses the panel's server name (injected as
+    # {{SERVER_NAME}}) — no separate field needed.
     - key: SERVER_DESCRIPTION
       name: "Description"
       type: string

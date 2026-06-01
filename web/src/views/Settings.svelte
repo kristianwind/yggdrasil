@@ -346,7 +346,7 @@
   <h2 class="text-xl font-semibold">Backup targets</h2>
   <button class="btn-primary" onclick={() => (showCreate = true)}>+ New target</button>
 </div>
-<p class="text-muted mb-6">
+<p class="text-muted mb-4 text-sm">
   Where backups are stored. <b>Local</b> also covers an NFS or CIFS share already mounted on the
   host — just point the path at the mountpoint. <b>SFTP</b> and <b>SMB</b> connect directly.
   Credentials are encrypted at rest.

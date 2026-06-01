@@ -35,6 +35,14 @@ gameskill:
       name: "Game port"
       type: int
       default: 2302
+    - key: PASSWORD
+      name: "Server password (blank = public)"
+      type: string
+      default: ""
+    - key: ADMIN_PASSWORD
+      name: "In-game admin password"
+      type: string
+      default: ""
     - key: RCON_PASSWORD
       name: "BattlEye RCON password"
       type: string
@@ -53,6 +61,38 @@ gameskill:
       "${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh" \
         +force_install_dir /data +login "$STEAM_USER" \
         +app_update 223350 $BETA validate +quit
+      # Seed serverDZ.cfg with the panel's name + (optional) join/admin password
+      # so the server is reachable and can be made private. Regenerated on each
+      # (re)install — edit the file directly via the Files tab for deeper tuning
+      # and avoid reinstalling, the same as other games' config files.
+      cat > /data/serverDZ.cfg <<CFG
+      hostname = "{{SERVER_NAME}}";
+      password = "{{PASSWORD}}";
+      passwordAdmin = "{{ADMIN_PASSWORD}}";
+      maxPlayers = {{MAX_PLAYERS}};
+      verifySignatures = 2;
+      forceSameBuild = 1;
+      disableVoN = 0;
+      vonCodecQuality = 20;
+      disable3rdPerson = 0;
+      disableCrosshair = 0;
+      serverTime = "SystemTime";
+      serverTimeAcceleration = 1;
+      serverTimePersistent = 0;
+      guaranteedUpdates = 1;
+      loginQueueConcurrentPlayers = 5;
+      loginQueueMaxPlayers = 500;
+      instanceId = 1;
+      lootHistory = 1;
+      storageAutoFix = 1;
+      class Missions
+      {
+          class DayZ
+          {
+              template = "dayzOffline.chernarusplus";
+          };
+      };
+      CFG
 
   startup:
     command: >

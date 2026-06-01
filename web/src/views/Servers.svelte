@@ -120,6 +120,15 @@
             >
           </div>
           <div class="text-xs text-muted mt-1">{s.gameskill_id}</div>
+          {#if s.ports && Object.keys(s.ports).length}
+            <div class="flex flex-wrap gap-1 mt-2">
+              {#each Object.entries(s.ports) as [name, port]}
+                <span class="badge bg-panel2 border border-border text-muted font-mono text-[11px]">
+                  {name}:{port}
+                </span>
+              {/each}
+            </div>
+          {/if}
           <div class="flex gap-2 mt-3">
             {#if s.status === "running"}
               <button class="btn-ghost flex-1" onclick={() => action(s, "restart")}>Restart</button>

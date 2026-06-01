@@ -30,22 +30,25 @@ type serverRow struct {
 	RealmID       string `json:"realm_id,omitempty"`
 	Status        string `json:"status"`
 	ContainerID   string `json:"container_id,omitempty"`
-	EnvJSON       string `json:"-"`
-	PortsJSON     string `json:"-"`
-	DataDir       string `json:"data_dir"`
-	Installed     bool   `json:"installed"`
-	InstallStatus string `json:"install_status"`
-	CreatedAt     string `json:"created_at"`
+	EnvJSON       string         `json:"-"`
+	PortsJSON     string         `json:"-"`
+	Ports         map[string]int `json:"ports"`
+	DataDir       string         `json:"data_dir"`
+	Installed     bool           `json:"installed"`
+	InstallStatus string         `json:"install_status"`
+	CreatedAt     string         `json:"created_at"`
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, created_at"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
 	var installed int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.CreatedAt)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt)
 	srv.Installed = installed == 1
+	srv.Ports = map[string]int{}
+	json.Unmarshal([]byte(srv.PortsJSON), &srv.Ports)
 	return srv, err
 }
 
@@ -319,7 +322,9 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	// The startup command from the gameskill becomes the container command,
 	// run via a shell so templated flags and env expansion work.
 	startupCmd := gameskill.ApplyTemplate(gs.Startup.Command, env)
-	cmd := []string{"/bin/sh", "-lc", startupCmd}
+	// Use -c (not -lc) so a single-command startup is exec'd as PID 1 — that way
+	// `docker stop`/SIGTERM reaches the game directly and it shuts down cleanly.
+	cmd := []string{"/bin/sh", "-c", startupCmd}
 	containerName := fmt.Sprintf("ygg-%s", id[:8])
 
 	// Per-server resource caps.
@@ -378,7 +383,15 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if srv.ContainerID != "" {
-		s.docker.Stop(r.Context(), srv.ContainerID, 30)
+		// Graceful shutdown: send the gameskill's stop console command first
+		// (e.g. Minecraft "stop"), so the world saves before the container stops.
+		if rt, err := s.loadRuntime(r.Context(), id); err == nil && rt.gs.Startup.Stop != "" {
+			s.docker.SendStdin(r.Context(), srv.ContainerID, rt.gs.Startup.Stop)
+		}
+		if err := s.docker.Stop(r.Context(), srv.ContainerID, 30); err != nil {
+			jsonError(w, "stop failed: "+err.Error(), http.StatusBadGateway)
+			return
+		}
 	}
 	s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
 	s.auditLog(r, "server.stop", "server:"+id, nil)
@@ -396,9 +409,15 @@ func (s *Server) handleRestartServer(w http.ResponseWriter, r *http.Request) {
 	if !s.can(w, r, rbac.ServerControl, srv.target()) {
 		return
 	}
-	if srv.ContainerID != "" {
-		s.docker.Restart(r.Context(), srv.ContainerID)
+	if srv.ContainerID == "" {
+		jsonError(w, "server is not running", http.StatusConflict)
+		return
 	}
+	if err := s.docker.Restart(r.Context(), srv.ContainerID); err != nil {
+		jsonError(w, "restart failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	s.db.ExecContext(r.Context(), "UPDATE servers SET status='running' WHERE id=?", id)
 	s.auditLog(r, "server.restart", "server:"+id, nil)
 	jsonOK(w, map[string]string{"status": "restarting"})
 }

@@ -24,8 +24,8 @@ gameskill:
     - key: JAVA_VERSION
       name: "Java runtime"
       type: select
-      options: ["21", "17"]
-      default: "21"
+      options: ["25", "21", "17"]
+      default: "25"
     - key: MEMORY_MB
       name: "Max RAM (MB)"
       type: int
@@ -76,12 +76,17 @@ gameskill:
           curl -fsSL -o server.jar "$SRV_URL"
           ;;
         paper)
-          [ "$VER" = "latest" ] && VER=$(curl -fsSL https://api.papermc.io/v2/projects/paper | jq -r '.versions[-1]')
+          # Paper v3 (fill) API — v2 is frozen at 1.21.x. Newest version is the
+          # first patch of the first version group.
+          UA="yggdrasil-installer"
+          if [ "$VER" = "latest" ]; then
+            VER=$(curl -fsSL -A "$UA" https://fill.papermc.io/v3/projects/paper | jq -r '.versions | to_entries[0].value[0]')
+          fi
           need "$VER" "could not resolve Paper version"
-          BUILD=$(curl -fsSL "https://api.papermc.io/v2/projects/paper/versions/$VER/builds" | jq -r '.builds[-1].build')
-          need "$BUILD" "no Paper build for $VER"
-          curl -fsSL -o server.jar \
-            "https://api.papermc.io/v2/projects/paper/versions/$VER/builds/$BUILD/downloads/paper-$VER-$BUILD.jar"
+          URL=$(curl -fsSL -A "$UA" "https://fill.papermc.io/v3/projects/paper/versions/$VER/builds/latest" \
+            | jq -r '.downloads["server:default"].url')
+          need "$URL" "no Paper build for $VER"
+          curl -fsSL -A "$UA" -o server.jar "$URL"
           ;;
         purpur)
           [ "$VER" = "latest" ] && VER=$(curl -fsSL https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')

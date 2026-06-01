@@ -136,6 +136,17 @@ func (s *Server) runInstall(serverID string) error {
 	}
 	script := gameskill.ApplyTemplate(rt.gs.Install.Script, rt.env)
 
+	// SteamCMD writes content as its own non-root uid (it drops privileges even
+	// when the container is root). On a REINSTALL the data dir is owned by the
+	// panel uid (the post-install chown), so SteamCMD can't rewrite steamapps/ and
+	// bails with "Timed out waiting for update to start" / "Staging folder not
+	// writable". The install container runs as root (User "0:0" below), so make
+	// everything writable up-front — this runs before SteamCMD and succeeds
+	// regardless of current ownership. The post-install chown restores ownership.
+	if rt.gs.Steam != nil {
+		script = "chmod -R a+rwX /data 2>/dev/null || true\n" + script
+	}
+
 	// Steam games: anonymous ones just run; account-required ones (DayZ) reuse the
 	// host's authorized account + persistent SteamCMD cache so Steam Guard isn't
 	// re-triggered. The cache is mounted into the install container too.

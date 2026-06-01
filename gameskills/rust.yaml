@@ -47,6 +47,13 @@ gameskill:
     image: "cm2network/steamcmd:latest"
     script: |
       set -e
+      # Fail early + clearly if the disk is too full for the multi-GB download.
+      FREE_MB=$(df -Pm /data 2>/dev/null | awk 'NR==2{print $4}')
+      if [ -n "$FREE_MB" ] && [ "$FREE_MB" -lt 12000 ]; then
+        echo "ERROR: only ${FREE_MB} MB free on the data disk — Rust needs ~10GB."
+        echo "Free up space (delete unused servers) or expand the disk, then retry."
+        exit 9
+      fi
       # Long download (several GB). Yggdrasil streams progress to the UI.
       # SteamCMD content downloads are flaky (transient "Timed out waiting for
       # update to start" / state 0x204); retry — app_update is resumable.

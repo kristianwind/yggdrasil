@@ -60,6 +60,14 @@ gameskill:
     image: "cm2network/steamcmd:latest"
     script: |
       set -e
+      # Fail early + clearly if the disk is too full for the ~4GB download (else
+      # SteamCMD just reports a cryptic "Not enough disk quota" / state 0x202).
+      FREE_MB=$(df -Pm /data 2>/dev/null | awk 'NR==2{print $4}')
+      if [ -n "$FREE_MB" ] && [ "$FREE_MB" -lt 5000 ]; then
+        echo "ERROR: only ${FREE_MB} MB free on the data disk — DayZ needs ~4GB."
+        echo "Free up space (delete unused servers) or expand the disk, then retry."
+        exit 9
+      fi
       # Uses the persisted authorized-account cache (see Steam authorization).
       # STEAM_USER is injected by Yggdrasil for non-anonymous gameskills; the
       # sentry cache at $HOME (/steamcache) avoids re-triggering Steam Guard.

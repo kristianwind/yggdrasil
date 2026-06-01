@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -303,7 +304,16 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	if srv.ContainerID != "" {
 		_ = s.docker.Remove(r.Context(), srv.ContainerID)
 	}
+	s.db.ExecContext(r.Context(), "DELETE FROM port_allocations WHERE server_id=?", id)
 	s.db.ExecContext(r.Context(), "DELETE FROM servers WHERE id=?", id)
+	// Reclaim the disk: remove the server's data directory (game files, world,
+	// configs). Without this, deleted servers leave multi-GB dirs behind and the
+	// disk fills up. Guard against an empty/relative path so we never rm /data.
+	if srv.DataDir != "" && filepath.IsAbs(srv.DataDir) && strings.Contains(srv.DataDir, "servers") {
+		if err := os.RemoveAll(srv.DataDir); err != nil {
+			s.install.publish(id, "WARN: could not remove data dir: "+err.Error())
+		}
+	}
 	s.auditLog(r, "server.delete", "server:"+id, nil)
 	jsonOK(w, map[string]string{"status": "deleted"})
 }

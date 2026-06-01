@@ -55,13 +55,20 @@
   <div class="min-h-screen flex">
     <!-- Sidebar -->
     <aside
-      class="fixed md:static z-40 inset-y-0 left-0 w-60 bg-panel border-r border-border
+      class="fixed md:static z-40 inset-y-0 left-0 w-52 bg-panel border-r border-border
              flex flex-col transition-transform {mobileOpen ? '' : '-translate-x-full md:translate-x-0'}"
       style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
     >
-      <div class="px-5 py-4 text-lg font-semibold flex items-center gap-2">
+      <button
+        class="px-5 py-4 text-lg font-semibold flex items-center gap-2 hover:bg-panel2/50 text-left"
+        title="Go to dashboard"
+        onclick={() => {
+          navigate("/");
+          mobileOpen = false;
+        }}
+      >
         <span>🌳</span> Yggdrasil
-      </div>
+      </button>
       <nav class="flex-1 px-2 space-y-1">
         {#each nav as item}
           {#if !item.admin || $user.role === "admin"}

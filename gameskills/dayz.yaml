@@ -52,7 +52,7 @@ gameskill:
       type: string
       default: "dayzOffline.chernarusplus"
     - key: MODS
-      name: "Workshop mods (semicolon-separated IDs, in load order)"
+      name: "Workshop mods — semicolon-separated IDs, in load order (press Update/Reinstall after changing to download them)"
       type: string
       default: ""
 

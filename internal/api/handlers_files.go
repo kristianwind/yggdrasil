@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -8,8 +11,33 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/docker"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
+
+// repairDataPerms fixes ownership/permissions on a server's data dir using a
+// root container, then makes the given path writable. SteamCMD (and other
+// root-running installs) can leave files owned by root that the panel service
+// user can't overwrite from the host; this hands them back to the panel uid.
+func (s *Server) repairDataPerms(ctx context.Context, serverID, relPath string) error {
+	var dataDir string
+	if err := s.db.QueryRowContext(ctx, "SELECT data_dir FROM servers WHERE id=?", serverID).Scan(&dataDir); err != nil {
+		return err
+	}
+	image := "busybox:latest"
+	if rt, err := s.loadRuntime(ctx, serverID); err == nil && rt.gs.Docker.Image != "" {
+		image = rt.gs.Docker.Image // already pulled for this server
+	}
+	// Hand the whole tree back to the panel user, and ensure the specific target
+	// is writable. Best-effort: ignore errors inside the container.
+	script := fmt.Sprintf(
+		"chown -R %d:%d /data 2>/dev/null || true; chmod -f u+rw %q 2>/dev/null || true; chmod -f u+rwx %q 2>/dev/null || true",
+		os.Getuid(), os.Getgid(),
+		"/data/"+relPath, "/data/"+filepath.Dir(relPath))
+	return s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
+		Image: image, DataDir: dataDir, Script: script, User: "0:0", // root so chown works
+	}, io.Discard)
+}
 
 // safeJoin resolves rel against the server's data dir and guarantees the result
 // stays inside it (defends against ../ traversal and absolute paths).
@@ -129,7 +157,15 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := os.WriteFile(full, []byte(req.Content), 0644); err != nil {
+	err := os.WriteFile(full, []byte(req.Content), 0644)
+	if err != nil && errors.Is(err, os.ErrPermission) {
+		// Likely a root-owned file left by a SteamCMD install. Repair ownership
+		// via a root container and retry once.
+		if rerr := s.repairDataPerms(r.Context(), chi.URLParam(r, "id"), req.Path); rerr == nil {
+			err = os.WriteFile(full, []byte(req.Content), 0644)
+		}
+	}
+	if err != nil {
 		jsonError(w, "write: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

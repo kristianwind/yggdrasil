@@ -1,6 +1,9 @@
 // Minimal service worker: app-shell cache for offline launch + PWA installability.
 // API calls and WebSockets are always network (never cached).
-const CACHE = "ygg-shell-v2";
+// Bump this on every icon/shell change so old caches (and the stale icons they
+// hold) are purged on the next visit — otherwise installed PWAs keep serving the
+// previously cached icon forever.
+const CACHE = "ygg-shell-v3";
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
@@ -10,9 +13,8 @@ self.addEventListener("install", (e) => {
         "./",
         "./index.html",
         "./manifest.webmanifest",
-        "./icon.svg",
-        "./icon-192.png",
-        "./icon-512.png",
+        "./icon-192.png?v=3",
+        "./icon-512.png?v=3",
       ]),
     ),
   );

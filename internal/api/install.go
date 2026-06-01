@@ -176,11 +176,14 @@ func (s *Server) runInstall(serverID string) error {
 		return err
 	}
 
-	// Install runs as root; hand /data ownership to the panel user so the server
-	// (which runs as that user) and the file manager can both edit the files.
+	// Hand /data ownership to the panel user so the server (which runs as that
+	// user) and the file manager can both edit the files. Force root for this
+	// one-shot: some install images (e.g. cm2network/steamcmd) default to a
+	// non-root user that can't chown, which would leave files root-owned and
+	// uneditable.
 	chownScript := fmt.Sprintf("chown -R %d:%d /data 2>/dev/null || true", os.Getuid(), os.Getgid())
 	if cerr := s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
-		Image: image, DataDir: dataDir, Script: chownScript,
+		Image: image, DataDir: dataDir, Script: chownScript, User: "0:0",
 	}, io.Discard); cerr != nil {
 		s.install.publish(serverID, "WARN: could not set file ownership: "+cerr.Error())
 	}

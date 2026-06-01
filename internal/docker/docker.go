@@ -275,6 +275,7 @@ type EphemeralOptions struct {
 	Env         []string
 	Script      string            // run via /bin/sh -c
 	ExtraMounts map[string]string // host path -> container path (e.g. Steam cache)
+	User        string            // optional "uid:gid"; e.g. "0:0" to force root for chown
 }
 
 // RunEphemeral runs a one-shot container (e.g. a gameskill install script),
@@ -300,6 +301,7 @@ func (c *Client) RunEphemeralOpts(ctx context.Context, opts EphemeralOptions, ou
 	resp, err := c.dc.ContainerCreate(ctx, &container.Config{
 		Image: opts.Image,
 		Env:   opts.Env,
+		User:  opts.User, // empty = image default; "0:0" forces root (for chown)
 		// Force the shell entrypoint so the script runs regardless of the image's
 		// own ENTRYPOINT (e.g. steamcmd images that exec steamcmd directly).
 		Entrypoint: []string{"/bin/sh", "-c"},

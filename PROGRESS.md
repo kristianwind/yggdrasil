@@ -7,6 +7,8 @@ Last updated: 2026-06-01
 Worked through the WISHLIST against a real x86 Ubuntu VM (Docker) + SSH debugging.
 Each item is built, verified, GitHub-released, and auto-deployed to the VM.
 
+- **v0.2.31** — UPnP automatic port forwarding (off by default; huin/goupnp; add on start / remove on stop+delete; "Check gateway" status). UPnP confirmed off on the UniFi network → UniFi integration is the relevant one.
+- **v0.2.30** — Yggdrasil update notification: sidebar shows "↑ Update available: vX.Y.Z" by comparing the running build to the latest GitHub release.
 - **v0.2.29** — Global public hostname (Settings → Network) + per-server "Connect address" (host:port), external-IP fallback.
 - **v0.2.28** — "starting" server status (amber) that promotes to "running" on the gameskill done_regex; crash-during-start → stopped.
 - **v0.2.27** — UI polish: clickable sidebar logo → dashboard, narrower desktop menu (w-60→w-52), DayZ MODS field reminds to Update/Reinstall after changing mods.

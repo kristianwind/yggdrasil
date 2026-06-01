@@ -59,9 +59,14 @@ gameskill:
       chmod +x /data/bedrock_server || true
 
   startup:
-    # Bedrock reads stdin for console commands (no RCON). LD_LIBRARY_PATH so it
-    # finds its bundled libs.
-    command: "LD_LIBRARY_PATH=. ./bedrock_server"
+    # Bedrock reads stdin for console commands (no RCON). The Mojang binary needs
+    # the system libcurl, which the base ubuntu image lacks — install it on start
+    # (fast + cached layers; each container is fresh). LD_LIBRARY_PATH so it also
+    # finds its own bundled libs.
+    command: >
+      sh -c 'if ! ldconfig -p 2>/dev/null | grep -q libcurl.so.4; then
+        apt-get update -qq && apt-get install -y -qq libcurl4 ca-certificates >/dev/null 2>&1;
+      fi; LD_LIBRARY_PATH=. ./bedrock_server'
     done_regex: 'Server started'
     stop: "stop"
 

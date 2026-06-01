@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -141,6 +142,9 @@ func (s *Server) runInstall(serverID string) error {
 	if rt.gs.Steam != nil {
 		extraMounts[s.steamCacheDir()] = "/steamcache"
 		env["HOME"] = "/steamcache"
+		// The SteamCMD image runs as a non-root user; make the bind-mounted data
+		// dir writable so it can install the game into /data.
+		os.Chmod(dataDir, 0777) //nolint:errcheck
 		if !rt.gs.Steam.Anonymous {
 			user := s.authorizedSteamUser(ctx)
 			if user == "" {

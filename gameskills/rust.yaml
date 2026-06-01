@@ -56,7 +56,12 @@ gameskill:
 
   startup:
     # Rust takes many +server.* / +rcon.* flags; RCON is WebSocket-based.
+    # RustDedicated needs steamclient.so on its library path; expose it from the
+    # SteamCMD install. If the binary is missing, print /data so it's diagnosable.
     command: >
+      sh -c 'chmod +x ./RustDedicated 2>/dev/null;
+      if [ ! -x ./RustDedicated ]; then echo "RustDedicated not found in /data — contents:"; ls -la; exit 1; fi;
+      export LD_LIBRARY_PATH="$PWD:$PWD/RustDedicated_Data/Plugins/x86_64:$HOME/.steam/sdk64:$LD_LIBRARY_PATH";
       ./RustDedicated -batchmode -nographics
       +server.identity "yggdrasil"
       +server.hostname "{{SERVER_NAME}}"
@@ -67,7 +72,7 @@ gameskill:
       +server.port 28015
       +rcon.web 1
       +rcon.port {{RCON_PORT}}
-      +rcon.password "{{RCON_PASSWORD}}"
+      +rcon.password "{{RCON_PASSWORD}}"'
     done_regex: 'SteamServer Initialized'
     # No console stop command; Rust stops cleanly on SIGTERM.
 

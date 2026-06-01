@@ -112,8 +112,12 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 	}
 
 	resp, err := c.dc.ContainerCreate(ctx, &container.Config{
-		Image:        opts.Image,
-		Env:          opts.Env,
+		Image: opts.Image,
+		Env:   opts.Env,
+		// Clear any image ENTRYPOINT so our Cmd is the actual command — otherwise
+		// images like cm2network/steamcmd would pass our startup command as args
+		// to their own entrypoint (manifesting as "./RustDedicated: not found").
+		Entrypoint:   []string{},
 		Cmd:          opts.Cmd,
 		ExposedPorts: exposedPorts,
 		Labels:       opts.Labels,

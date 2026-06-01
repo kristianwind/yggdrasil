@@ -305,7 +305,7 @@
     if (server && !server.installed) {
       tab = "install";
       connectInstallLog();
-    } else if (server?.status === "running") {
+    } else if ((server?.status === "running" || server?.status === "starting")) {
       connectConsole();
     }
     pollStats();
@@ -327,7 +327,7 @@
   <div class="flex items-center gap-3 mb-1">
     <button class="btn-ghost px-2 py-1" onclick={() => navigate("/servers")}>←</button>
     <h1 class="text-2xl font-semibold">{server.name}</h1>
-    <span class="badge {server.status === 'running' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
+    <span class="badge {server.status === 'running' ? 'bg-accent2/20 text-accent' : server.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
       >{server.status}</span
     >
   </div>
@@ -339,7 +339,7 @@
       <button class="btn-primary" onclick={runInstall} disabled={server.install_status === "installing"}>
         {server.install_status === "installing" ? "Installing…" : server.install_status === "error" ? "Retry install" : "Install"}
       </button>
-    {:else if server.status === "running"}
+    {:else if (server.status === "running" || server.status === "starting")}
       <button class="btn-ghost" onclick={() => action("restart")}>Restart</button>
       <button class="btn-ghost" onclick={() => action("stop")}>Stop</button>
     {:else}
@@ -355,7 +355,7 @@
     </div>
   {/if}
 
-  {#if stats && server.status === "running"}
+  {#if stats && (server.status === "running" || server.status === "starting")}
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
       <div class="card p-3">
         <div class="text-xs text-muted">CPU</div>
@@ -413,12 +413,12 @@
       <input
         class="input font-mono"
         bind:value={cmd}
-        placeholder={server.status === "running" ? "Type a console command…" : "Server is stopped"}
+        placeholder={(server.status === "running" || server.status === "starting") ? "Type a console command…" : "Server is stopped"}
         disabled={server.status !== "running"}
       />
       <button class="btn-primary" disabled={server.status !== "running"}>Send</button>
     </form>
-    {#if server.status === "running" && (!ws || ws.readyState !== 1)}
+    {#if (server.status === "running" || server.status === "starting") && (!ws || ws.readyState !== 1)}
       <button class="btn-ghost mt-2" onclick={connectConsole}>Reconnect console</button>
     {/if}
   {:else if tab === "files"}

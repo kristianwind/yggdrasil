@@ -86,7 +86,7 @@
     <a href={`#/servers/${s.id}`} class="flex items-center justify-between px-4 py-3 hover:bg-panel2/50">
       <span class="font-medium">{s.name}</span>
       <span
-        class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
+        class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
         >{s.status}</span
       >
     </a>

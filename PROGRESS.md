@@ -1,6 +1,18 @@
 # Yggdrasil — Progress
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
+
+## Live releases changelog (v0.2.x — post-launch, from real-VM testing)
+
+Worked through the WISHLIST against a real x86 Ubuntu VM (Docker) + SSH debugging.
+Each item is built, verified, GitHub-released, and auto-deployed to the VM.
+
+- **v0.2.27** — UI polish: clickable sidebar logo → dashboard, narrower desktop menu (w-60→w-52), DayZ MODS field reminds to Update/Reinstall after changing mods.
+- **v0.2.26** — DayZ/Rust **reinstall** finally fixed: SteamCMD drops to uid 1000 even in a root container, so it couldn't rewrite the panel-owned steamapps; prepend `chmod -R a+rwX /data` (runs as root) before SteamCMD. Verified live (download → 99.6%).
+- **v0.2.22–25** — DayZ now boots end-to-end (debugged live over SSH): `LD_LIBRARY_PATH=/data`, an `/etc/passwd` entry for the runtime uid (Steam `getpwuid` segfault), dropped `-BEpath`, SteamCMD retry loop, install-as-root.
+- **v0.2.21** — console shows crash logs instead of "attach 409"; restart policy on-failure:3 (no crash-loop); DayZ skips missing mods.
+- **v0.2.18–20** — file-edit permission self-heal; 🌳 PWA icon cache-bust; version in sidebar; Genshin (Grasscutter) community rune; DayZ mission selection.
+- **v0.2.10–17** — NPM reverse-proxy (WS keepalive + docs), list/table toggles, host CPU/RAM dashboard, per-server delegation (+ deadlock fix), DayZ password + mods, config web-forms editor.
 
 ## Current state (read me first)
 

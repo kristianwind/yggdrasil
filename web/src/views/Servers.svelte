@@ -155,7 +155,7 @@
                 <td class="px-4 py-2 text-muted">{s.gameskill_id}</td>
                 <td class="px-4 py-2">
                   <span
-                    class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
+                    class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
                     >{s.status}</span
                   >
                 </td>
@@ -174,7 +174,7 @@
                 </td>
                 <td class="px-4 py-2">
                   <div class="flex gap-2 justify-end">
-                    {#if s.status === "running"}
+                    {#if s.status === "running" || s.status === "starting"}
                       <button class="btn-ghost px-2 py-1" onclick={() => action(s, "restart")}>Restart</button>
                       <button class="btn-ghost px-2 py-1" onclick={() => action(s, "stop")}>Stop</button>
                     {:else}
@@ -194,7 +194,7 @@
             <div class="flex items-start justify-between">
               <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
               <span
-                class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
+                class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
                 >{s.status}</span
               >
             </div>
@@ -209,7 +209,7 @@
               </div>
             {/if}
             <div class="flex gap-2 mt-3">
-              {#if s.status === "running"}
+              {#if s.status === "running" || s.status === "starting"}
                 <button class="btn-ghost flex-1" onclick={() => action(s, "restart")}>Restart</button>
                 <button class="btn-ghost flex-1" onclick={() => action(s, "stop")}>Stop</button>
               {:else}

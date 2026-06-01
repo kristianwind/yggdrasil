@@ -217,6 +217,20 @@ func (c *Client) Logs(ctx context.Context, id, tail string) (io.ReadCloser, erro
 	})
 }
 
+// LogsSnapshot returns the current container logs without following, so the
+// reader reaches EOF — for one-shot reads like startup-readiness checks.
+func (c *Client) LogsSnapshot(ctx context.Context, id, tail string) (io.ReadCloser, error) {
+	if tail == "" {
+		tail = "200"
+	}
+	return c.dc.ContainerLogs(ctx, id, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     false,
+		Tail:       tail,
+	})
+}
+
 func (c *Client) Attach(ctx context.Context, id string) (types.HijackedResponse, error) {
 	return c.dc.ContainerAttach(ctx, id, container.AttachOptions{
 		Stream: true,

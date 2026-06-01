@@ -444,13 +444,20 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Mark "starting" while the game boots; a watcher promotes it to "running"
+	// once the gameskill's done_regex appears (or the container stays up).
 	s.db.ExecContext(r.Context(),
-		"UPDATE servers SET status='running', container_id=? WHERE id=?",
+		"UPDATE servers SET status='starting', container_id=? WHERE id=?",
 		containerID, id)
+	var doneRegex string
+	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+		doneRegex = rt.gs.Startup.DoneRegex
+	}
+	go s.watchStartupReady(id, containerID, doneRegex)
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
 	s.notifyAll("▶️ " + srv.Name + " started")
-	jsonOK(w, map[string]string{"status": "running"})
+	jsonOK(w, map[string]string{"status": "starting"})
 }
 
 func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
@@ -498,9 +505,14 @@ func (s *Server) handleRestartServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "restart failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	s.db.ExecContext(r.Context(), "UPDATE servers SET status='running' WHERE id=?", id)
+	s.db.ExecContext(r.Context(), "UPDATE servers SET status='starting' WHERE id=?", id)
+	var doneRegex string
+	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+		doneRegex = rt.gs.Startup.DoneRegex
+	}
+	go s.watchStartupReady(id, srv.ContainerID, doneRegex)
 	s.auditLog(r, "server.restart", "server:"+id, nil)
-	jsonOK(w, map[string]string{"status": "restarting"})
+	jsonOK(w, map[string]string{"status": "starting"})
 }
 
 func (s *Server) handleServerStats(w http.ResponseWriter, r *http.Request) {

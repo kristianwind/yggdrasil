@@ -1,9 +1,53 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"regexp"
 	"time"
+
+	"github.com/kristianwind/yggdrasil/internal/docker"
 )
+
+// watchStartupReady promotes a server from "starting" to "running" once it's
+// actually up: when the gameskill's done_regex appears in the container logs (or,
+// if there's no done_regex, once the container has stayed up briefly). If the
+// container exits during startup it's set back to "stopped". Bounded so it can't
+// run forever.
+func (s *Server) watchStartupReady(serverID, containerID, doneRegex string) {
+	defer recoverLog("watchStartupReady")
+	var re *regexp.Regexp
+	if doneRegex != "" {
+		re, _ = regexp.Compile(doneRegex)
+	}
+	deadline := time.Now().Add(10 * time.Minute)
+	for time.Now().Before(deadline) {
+		time.Sleep(3 * time.Second)
+		running, _, err := s.docker.State(context.Background(), containerID)
+		if err != nil || !running {
+			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=? AND status='starting'", serverID)
+			return
+		}
+		if re == nil {
+			// No readiness signal — the container is up, call it running.
+			s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+			return
+		}
+		if rc, err := s.docker.LogsSnapshot(context.Background(), containerID, "500"); err == nil {
+			var buf bytes.Buffer
+			_ = docker.DemuxCopy(&buf, rc)
+			rc.Close()
+			if re.Match(buf.Bytes()) {
+				s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+				return
+			}
+		}
+	}
+	// Took too long to signal readiness but it's still up — show it as running.
+	if running, _, _ := s.docker.State(context.Background(), containerID); running {
+		s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+	}
+}
 
 // startStatusReconciler periodically checks servers marked "running" and flips
 // them to "stopped" if their container is no longer running — so the UI reflects
@@ -19,7 +63,7 @@ func (s *Server) startStatusReconciler() {
 }
 
 func (s *Server) reconcileStatuses() {
-	rows, err := s.db.Query("SELECT id, COALESCE(container_id,'') FROM servers WHERE status='running' AND container_id<>''")
+	rows, err := s.db.Query("SELECT id, COALESCE(container_id,'') FROM servers WHERE status IN ('running','starting') AND container_id<>''")
 	if err != nil {
 		return
 	}

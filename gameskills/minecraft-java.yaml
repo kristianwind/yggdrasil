@@ -152,7 +152,9 @@ gameskill:
       ls -la server.jar
 
   startup:
-    command: "java -Xmx{{MEMORY_MB}}M -jar server.jar nogui"
+    # --enable-native-access=ALL-UNNAMED silences the Java 24+ "restricted
+    # method ... java.lang.System::load (JNA)" warnings; harmless either way.
+    command: "java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui"
     done_regex: 'Done \(.*\)! For help'
     stop: "stop"
 

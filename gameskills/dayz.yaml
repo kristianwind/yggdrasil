@@ -70,6 +70,16 @@ gameskill:
       "$STEAMCMD" \
         +force_install_dir /data +login "$STEAM_USER" \
         +app_update 223350 $BETA validate +quit
+      # Ensure the server executables are runnable, then report the library
+      # situation so any "CrashReporter: not found" (a missing-.so error) is
+      # diagnosable from the install log.
+      chmod +x /data/DayZServer 2>/dev/null || true
+      [ -f /data/CrashReporter ] && chmod +x /data/CrashReporter 2>/dev/null || true
+      echo "=== DayZ server files (top level) ==="; ls -la /data | head -40
+      if command -v ldd >/dev/null 2>&1 && [ -f /data/CrashReporter ]; then
+        echo "=== ldd CrashReporter (missing libs show as 'not found') ==="
+        LD_LIBRARY_PATH="/data:${LD_LIBRARY_PATH:-}" ldd /data/CrashReporter 2>&1 | grep -i "not found" || echo "(all CrashReporter libs resolve with /data on the path)"
+      fi
       # Steam Workshop mods. MODS is a semicolon-separated list of Workshop item
       # IDs (DayZ client app 221100). For each: download via SteamCMD, copy the
       # mod into /data/@<id>, and stage its .bikey signatures into /data/keys so
@@ -142,10 +152,18 @@ gameskill:
         MODARG="${MODARG:+$MODARG;}@$MOD_ID"
       done
       [ -n "$MODARG" ] && MODARG="-mod=$MODARG"
-      if [ ! -x ./DayZServer ] && [ ! -f ./DayZServer ]; then
-        echo "DayZServer binary not found in /data — the install may not have completed. Re-run Install."
+      if [ ! -f ./DayZServer ]; then
+        echo "DayZServer not found in /data — the install may not have completed. Re-run Install."
+        echo "Contents of /data:"; ls -la /data | head -40
         exit 1
       fi
+      # DayZ ships its shared libraries (and the CrashReporter helper) in the
+      # server dir. Without /data on the library path the dynamic loader can't
+      # resolve them and reports "CrashReporter: not found" (a missing-.so error,
+      # not a missing file). Put /data first so both resolve.
+      export LD_LIBRARY_PATH="/data:${LD_LIBRARY_PATH:-}"
+      chmod +x ./DayZServer 2>/dev/null || true
+      [ -f ./CrashReporter ] && chmod +x ./CrashReporter 2>/dev/null || true
       exec ./DayZServer -config=serverDZ.cfg -port={{GAME_PORT}} $MODARG -BEpath=battleye -dologs -adminlog -netlog -freezecheck
     done_regex: 'Mission read'
     # DayZ stops on SIGTERM.

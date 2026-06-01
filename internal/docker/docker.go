@@ -107,7 +107,11 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		})
 	}
 
-	restart := container.RestartPolicy{Name: container.RestartPolicyUnlessStopped}
+	// Auto-recover from genuine crashes, but cap retries so a server that fails
+	// immediately (missing jar, bad mod, bad config) stops cleanly instead of
+	// crash-looping forever — the status reconciler then marks it stopped and the
+	// console can show the failure logs.
+	restart := container.RestartPolicy{Name: container.RestartPolicyOnFailure, MaximumRetryCount: 3}
 	if opts.AutoRemove {
 		restart = container.RestartPolicy{} // no restart policy for ephemeral
 	}

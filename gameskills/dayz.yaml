@@ -133,9 +133,19 @@ gameskill:
       MODARG=""
       for MOD_ID in $(echo "{{MODS}}" | tr ';,' '  '); do
         [ -n "$MOD_ID" ] || continue
+        # Only include mods that actually installed — a -mod pointing at a missing
+        # @id makes DayZServer exit on start (e.g. if the Workshop download failed).
+        if [ ! -d "@$MOD_ID" ]; then
+          echo "WARNING: mod @$MOD_ID is not installed (download may have failed) — skipping it"
+          continue
+        fi
         MODARG="${MODARG:+$MODARG;}@$MOD_ID"
       done
       [ -n "$MODARG" ] && MODARG="-mod=$MODARG"
+      if [ ! -x ./DayZServer ] && [ ! -f ./DayZServer ]; then
+        echo "DayZServer binary not found in /data — the install may not have completed. Re-run Install."
+        exit 1
+      fi
       exec ./DayZServer -config=serverDZ.cfg -port={{GAME_PORT}} $MODARG -BEpath=battleye -dologs -adminlog -netlog -freezecheck
     done_regex: 'Mission read'
     # DayZ stops on SIGTERM.

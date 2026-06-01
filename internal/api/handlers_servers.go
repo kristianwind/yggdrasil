@@ -609,16 +609,26 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Don't attach to a container that isn't running (Docker returns 409). If the
-	// DB still says "running", reconcile it to "stopped".
+	// DB still says "running", reconcile it to "stopped". Show the container's
+	// last output so a crash-on-start (e.g. a bad mod, a missing jar) is visible
+	// instead of a blank "press Start".
 	if running, _, _ := s.docker.State(ctx, srv.ContainerID); !running {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
-		conn.WriteMessage(websocket.TextMessage, []byte("[server is not running — press Start to launch it]"))
+		conn.WriteMessage(websocket.TextMessage, []byte("[server is not running — showing its last output below]"))
+		s.showRecentLogs(ctx, conn, srv.ContainerID)
+		conn.WriteMessage(websocket.TextMessage, []byte("[end of output — press Start to launch it again]"))
 		return
 	}
 
 	hijack, err := s.docker.Attach(ctx, srv.ContainerID)
 	if err != nil {
-		conn.WriteMessage(websocket.TextMessage, []byte("attach error: "+err.Error()))
+		// Most often a 409: the container exited between the running-check and the
+		// attach (it crashed right after start). Surface its logs so the user can
+		// see why, rather than a cryptic "received 409".
+		s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
+		conn.WriteMessage(websocket.TextMessage, []byte("[could not attach — the server exited right after starting. Last output:]"))
+		s.showRecentLogs(ctx, conn, srv.ContainerID)
+		conn.WriteMessage(websocket.TextMessage, []byte("[end of output — fix the cause above, then press Start]"))
 		return
 	}
 	defer hijack.Close()
@@ -649,6 +659,30 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 		}
 		msg = append(msg, '\n')
 		if _, err := hijack.Conn.Write(msg); err != nil {
+			return
+		}
+	}
+}
+
+// showRecentLogs streams a container's recent output to the console WebSocket.
+// Used when we can't attach to a live container (it never started or crashed
+// on start) so the user sees the actual failure instead of a 409.
+func (s *Server) showRecentLogs(ctx context.Context, conn *websocket.Conn, containerID string) {
+	rc, err := s.docker.Logs(ctx, containerID, "300")
+	if err != nil {
+		conn.WriteMessage(websocket.TextMessage, []byte("(no logs available: "+err.Error()+")"))
+		return
+	}
+	defer rc.Close()
+	pr, pw := io.Pipe()
+	go func() {
+		_ = docker.DemuxCopy(pw, rc)
+		pw.Close()
+	}()
+	sc := bufio.NewScanner(pr)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		if conn.WriteMessage(websocket.TextMessage, sc.Bytes()) != nil {
 			return
 		}
 	}

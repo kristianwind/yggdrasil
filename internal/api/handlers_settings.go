@@ -26,10 +26,11 @@ func (s *Server) setSetting(ctx context.Context, key, value string) {
 // fallback address so the UI can show what players would currently connect to).
 func (s *Server) handleGetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 	host := s.getSetting(r.Context(), "public_hostname")
-	jsonOK(w, map[string]string{
+	jsonOK(w, map[string]any{
 		"public_hostname": host,
 		"detected":        s.detectPublicAddr(),
 		"effective":       firstNonEmpty(host, s.detectPublicAddr()),
+		"upnp_enabled":    s.getSetting(r.Context(), "upnp_enabled") == "1",
 	})
 }
 
@@ -37,6 +38,7 @@ func (s *Server) handleGetNetworkSettings(w http.ResponseWriter, r *http.Request
 func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PublicHostname string `json:"public_hostname"`
+		UPnPEnabled    bool   `json:"upnp_enabled"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -47,8 +49,13 @@ func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request
 	host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
 	host = strings.TrimSuffix(host, "/")
 	s.setSetting(r.Context(), "public_hostname", host)
+	s.setSetting(r.Context(), "upnp_enabled", boolStr(req.UPnPEnabled))
 	s.auditLog(r, "settings.network", "public_hostname", map[string]string{"host": host})
-	jsonOK(w, map[string]string{"public_hostname": host, "effective": firstNonEmpty(host, s.detectPublicAddr())})
+	jsonOK(w, map[string]any{
+		"public_hostname": host,
+		"effective":       firstNonEmpty(host, s.detectPublicAddr()),
+		"upnp_enabled":    req.UPnPEnabled,
+	})
 }
 
 // detectPublicAddr returns a best-effort connect address when no public hostname
@@ -75,6 +82,13 @@ func (s *Server) detectPublicAddr() string {
 		s.extIPAt = time.Now()
 	}
 	return s.extIP
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
 }
 
 func firstNonEmpty(vals ...string) string {

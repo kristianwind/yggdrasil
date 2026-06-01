@@ -202,9 +202,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/users/{id}/permissions", s.requireAdmin(s.handleSetUserPermissions))
 		r.Get("/api/permissions/catalog", s.requireAdmin(s.handlePermissionsCatalog))
 
-		// Network settings (public hostname / connect address)
+		// Network settings (public hostname / connect address) + UPnP
 		r.Get("/api/settings/network", s.handleGetNetworkSettings)
 		r.Put("/api/settings/network", s.requireAdmin(s.handleSetNetworkSettings))
+		r.Get("/api/upnp/status", s.requireAdmin(s.handleUPnPStatus))
 
 		// Per-server user delegation (server-centric view of server-scoped grants)
 		r.Get("/api/servers/{id}/delegates", s.requireAdmin(s.handleListDelegates))

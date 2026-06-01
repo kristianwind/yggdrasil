@@ -260,13 +260,28 @@
   async function saveNetwork() {
     savingNetwork = true;
     try {
-      const res = await api.put("/settings/network", { public_hostname: network.public_hostname });
+      const res = await api.put("/settings/network", {
+        public_hostname: network.public_hostname,
+        upnp_enabled: !!network.upnp_enabled,
+      });
       network = { ...network, ...res };
       toast("Network settings saved", "success");
     } catch (e) {
       toast(e.message, "error");
     } finally {
       savingNetwork = false;
+    }
+  }
+  let upnpStatus = $state(null);
+  let checkingUpnp = $state(false);
+  async function checkUpnp() {
+    checkingUpnp = true;
+    try {
+      upnpStatus = await api.get("/upnp/status");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      checkingUpnp = false;
     }
   }
 
@@ -327,6 +342,28 @@
         (currently <span class="font-mono">{network.detected}</span>){/if}. Servers show
       <span class="font-mono">{network.effective || "your-host"}:&lt;port&gt;</span> as the connect address.
     </p>
+  </div>
+  <div class="border-t border-border pt-3">
+    <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+      <input type="checkbox" bind:checked={network.upnp_enabled} />
+      Automatic UPnP port forwarding
+    </label>
+    <p class="text-muted text-xs mt-1">
+      When a server starts, ask the router (via UPnP-IGD) to forward its ports, and release them on stop.
+      Off by default — many routers (incl. UniFi) ship with UPnP disabled. If unavailable, forward ports manually.
+    </p>
+    <div class="flex items-center gap-2 mt-2">
+      <button class="btn-ghost px-2 py-1 text-xs" onclick={checkUpnp} disabled={checkingUpnp}>
+        {checkingUpnp ? "Checking…" : "Check gateway"}
+      </button>
+      {#if upnpStatus}
+        {#if upnpStatus.gateway}
+          <span class="text-xs text-accent">✓ Gateway found{#if upnpStatus.external_ip} · WAN {upnpStatus.external_ip}{/if}</span>
+        {:else}
+          <span class="text-xs text-muted">No UPnP gateway ({upnpStatus.message || "router UPnP off"})</span>
+        {/if}
+      {/if}
+    </div>
   </div>
   <button class="btn-primary" onclick={saveNetwork} disabled={savingNetwork}>
     {savingNetwork ? "Saving…" : "Save"}

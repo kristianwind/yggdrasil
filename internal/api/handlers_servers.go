@@ -295,6 +295,10 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	if !s.can(w, r, rbac.ServerDelete, srv.target()) {
 		return
 	}
+	// Remove any UPnP mappings while the server row (and its ports) still exist.
+	if s.upnpEnabled(r.Context()) {
+		s.upnpRemoveServer(id)
+	}
 	if srv.ContainerID != "" {
 		_ = s.docker.Remove(r.Context(), srv.ContainerID)
 	}
@@ -454,6 +458,7 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		doneRegex = rt.gs.Startup.DoneRegex
 	}
 	go s.watchStartupReady(id, containerID, doneRegex)
+	go s.upnpAddServer(id, srv.Name)
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
 	s.notifyAll("▶️ " + srv.Name + " started")
@@ -482,6 +487,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
+	go s.upnpRemoveServer(id)
 	s.auditLog(r, "server.stop", "server:"+id, nil)
 	s.notifyAll("⏹️ " + srv.Name + " stopped")
 	jsonOK(w, map[string]string{"status": "stopped"})

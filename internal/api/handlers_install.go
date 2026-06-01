@@ -38,6 +38,9 @@ func (s *Server) handleInstallLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	kaStop := make(chan struct{})
+	defer close(kaStop)
+	go wsKeepalive(conn, kaStop)
 
 	ch, history := s.install.subscribe(id)
 	defer s.install.unsubscribe(id, ch)

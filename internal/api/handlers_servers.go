@@ -529,6 +529,9 @@ func (s *Server) handleServerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	kaStop := make(chan struct{})
+	defer close(kaStop)
+	go wsKeepalive(conn, kaStop)
 
 	if srv.ContainerID == "" {
 		conn.WriteMessage(websocket.TextMessage, []byte("[no container running]"))
@@ -581,6 +584,9 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	kaStop := make(chan struct{})
+	defer close(kaStop)
+	go wsKeepalive(conn, kaStop)
 
 	if srv.ContainerID == "" {
 		conn.WriteMessage(websocket.TextMessage, []byte("[server is not running — press Start to launch it]"))

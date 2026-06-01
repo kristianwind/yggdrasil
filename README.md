@@ -114,6 +114,59 @@ Each game server runs as its own Docker container — giving per-server CPU/RAM
 limits, clean isolation, and portable per-game runtimes (JRE, SteamCMD) without
 polluting the host.
 
+## Run behind a reverse proxy (TLS)
+
+Yggdrasil is a plain HTTP app on `:8080` (configurable). Put any reverse proxy in
+front for HTTPS. The console, live logs, and install output are **WebSockets**, so
+your proxy **must forward WebSocket upgrades** — this is the #1 cause of "it loads
+but the console is blank".
+
+### NGINX Proxy Manager (NPM)
+
+In **Proxy Hosts → Add/Edit**:
+
+| Field | Value |
+|-------|-------|
+| Domain Names | `yggdrasil.example.com` |
+| Scheme | **`http`** (Yggdrasil terminates no TLS itself) |
+| Forward Hostname / IP | the host running Yggdrasil, e.g. `192.168.1.158` |
+| Forward Port | `8080` |
+| **Websockets Support** | ✅ **ON** ← required for console / logs / install |
+| Block Common Exploits | ON (fine) |
+| SSL tab | request a Let's Encrypt cert, **Force SSL** + **HTTP/2** ON (fine) |
+
+Long-running consoles can sit idle longer than a proxy's default read timeout.
+Yggdrasil now sends WebSocket keepalive pings every 30 s, but if you still see the
+console drop after a while, paste this into the host's **Advanced** tab:
+
+```nginx
+location / {
+    proxy_pass       http://192.168.1.158:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For   $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout  86400s;   # don't time out idle consoles
+    proxy_buffering     off;      # stream install/log output immediately
+}
+```
+
+### Troubleshooting
+
+- **Page won't load at all through the proxy** → the proxy can't reach Yggdrasil.
+  Make sure `server.host` in the config is `0.0.0.0` (not `127.0.0.1`), and from the
+  proxy host run `curl http://192.168.1.158:8080` to confirm it answers.
+- **Page loads, login works, but console/logs are blank** → Websockets Support is
+  OFF. Turn it ON (or add the Advanced snippet above).
+- **Console drops after ~1 minute** → proxy read timeout; add `proxy_read_timeout`
+  as above.
+
+> Verified: page load, login, and the WebSocket `101 Switching Protocols` upgrade
+> all pass through an NGINX reverse proxy — no app-side changes are needed beyond
+> enabling WebSocket forwarding on the proxy.
+
 ## Development
 
 Requirements: Go 1.23+, and (optionally) Node 20+ for the frontend.

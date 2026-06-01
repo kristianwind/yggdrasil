@@ -123,7 +123,10 @@ gameskill:
 
       # Append a trailing newline first if the file lacks one, so we never merge
       # onto the last existing line (e.g. a hand-edited server.properties).
-      ensure_nl() { [ -s server.properties ] && [ -n "$(tail -c1 server.properties)" ] && echo >> server.properties; }
+      # Append a trailing newline only if the file exists and lacks one. Must
+      # return 0 even when the file is absent (fresh install) — otherwise `set -e`
+      # would abort the whole install.
+      ensure_nl() { if [ -s server.properties ] && [ -n "$(tail -c1 server.properties)" ]; then echo >> server.properties; fi; }
       # Pre-seed RCON + whitelist settings so the panel (and schedules/bans) can
       # connect. Minecraft fills in any remaining server.properties on first run.
       if ! grep -q '^enable-rcon=' server.properties 2>/dev/null; then

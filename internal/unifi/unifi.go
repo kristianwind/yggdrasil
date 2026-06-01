@@ -45,9 +45,14 @@ func New(baseURL, user, pass, site string) *Client {
 	if site == "" {
 		site = "default"
 	}
+	// Default to HTTPS if the user omitted the scheme (UniFi OS is HTTPS-only).
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL != "" && !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		baseURL = "https://" + baseURL
+	}
 	jar, _ := cookiejar.New(nil)
 	return &Client{
-		base: strings.TrimRight(baseURL, "/"),
+		base: baseURL,
 		user: user, pass: pass, site: site,
 		hc: &http.Client{
 			Timeout: 12 * time.Second,

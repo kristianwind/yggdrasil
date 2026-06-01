@@ -141,6 +141,9 @@ func (s *Server) handleSetUnifiSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	url := strings.TrimRight(strings.TrimSpace(req.URL), "/")
+	if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		url = "https://" + url
+	}
 	s.setSetting(r.Context(), "unifi_url", url)
 	s.setSetting(r.Context(), "unifi_user", strings.TrimSpace(req.Username))
 	s.setSetting(r.Context(), "unifi_site", firstNonEmpty(strings.TrimSpace(req.Site), "default"))

@@ -27,7 +27,11 @@ type Server struct {
 	cipher  *crypto.Cipher
 	sched   *schedulerState
 	viol    *violationWatcher
+	version string // build version (set via SetVersion)
 }
+
+// SetVersion records the build version so it can be surfaced in the UI.
+func (s *Server) SetVersion(v string) { s.version = v }
 
 func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
 	subFS, _ := fs.Sub(webFS, "web/dist")
@@ -74,6 +78,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// Public routes
 	r.Post("/api/auth/login", s.handleLogin)
+	r.Get("/api/version", s.handleVersion)
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {

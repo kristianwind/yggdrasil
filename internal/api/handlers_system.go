@@ -88,6 +88,19 @@ func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, list)
 }
 
+// handleVersion reports the build version + repo URL. Public (not sensitive) so
+// the UI can show it in the sidebar without an extra authenticated round-trip.
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	v := s.version
+	if v == "" {
+		v = "dev"
+	}
+	jsonOK(w, map[string]string{
+		"version": v,
+		"repo":    "https://github.com/kristianwind/yggdrasil",
+	})
+}
+
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	dockerOK := s.docker.Ping(r.Context()) == nil
 

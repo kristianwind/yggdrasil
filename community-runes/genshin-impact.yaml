@@ -1,0 +1,111 @@
+gameskill:
+  id: genshin-impact
+  name: "Genshin Impact (Grasscutter)"
+  category: "Genshin Impact"
+  description: >
+    EXPERIMENTAL / COMMUNITY rune. Genshin Impact has no official dedicated
+    server, so this runs Grasscutter — an open-source private-server emulator.
+    It is NOT bundled with Yggdrasil (import it from community-runes/ on GitHub).
+
+    Requirements you must provide yourself:
+      • A MongoDB reachable from the container (set MONGO_URI). Grasscutter stores
+        accounts/players in MongoDB — run one as another server or on the host.
+      • grasscutter.jar in the server's data dir (upload it via the Files tab).
+      • A Resources/ folder with the game data (upload via Files). These are NOT
+        downloaded automatically for legal reasons.
+    After uploading those, press Start. See the Grasscutter wiki for client
+    redirection (Fiddler/UA patch). Use responsibly and only with content you are
+    legally allowed to run.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "genshin"
+
+  docker:
+    # JDK (not just JRE) so keystore tooling for the dispatch HTTPS cert is present.
+    image: "eclipse-temurin:17-jdk"
+
+  variables:
+    # In-game/dispatch display address uses the panel's server name ({{SERVER_NAME}}).
+    - key: MONGO_URI
+      name: "MongoDB connection URI"
+      type: string
+      default: "mongodb://host.docker.internal:27017"
+    - key: DB_NAME
+      name: "MongoDB database name"
+      type: string
+      default: "grasscutter"
+    - key: DISPATCH_PORT
+      name: "Dispatch (HTTP/S) port"
+      type: int
+      default: 443
+    - key: GAME_PORT
+      name: "Game (KCP/UDP) port"
+      type: int
+      default: 22102
+    - key: JAVA_XMX
+      name: "Max heap (e.g. 2g)"
+      type: string
+      default: "2g"
+
+  install:
+    image: "eclipse-temurin:17-jdk"
+    script: |
+      set -eu
+      # Grasscutter reads config.json from the working dir. Seed a minimal one
+      # that points at your MongoDB + the chosen ports. Regenerated each
+      # (re)install — edit config.json via the Files tab for anything deeper.
+      cat > /data/config.json <<JSON
+      {
+        "server": {
+          "http": {
+            "bindAddress": "0.0.0.0",
+            "bindPort": {{DISPATCH_PORT}},
+            "accessAddress": "{{SERVER_NAME}}",
+            "accessPort": {{DISPATCH_PORT}},
+            "encryption": { "useEncryption": true, "useInRouting": true }
+          },
+          "game": {
+            "bindAddress": "0.0.0.0",
+            "bindPort": {{GAME_PORT}},
+            "accessAddress": "{{SERVER_NAME}}",
+            "accessPort": {{GAME_PORT}}
+          },
+          "database": {
+            "server": {
+              "connectionUri": "{{MONGO_URI}}",
+              "collectionPrefix": "",
+              "database": "{{DB_NAME}}"
+            }
+          }
+        }
+      }
+      JSON
+      mkdir -p /data/Resources /data/data /data/keys
+      if [ ! -f /data/grasscutter.jar ]; then
+        echo "NOTE: upload grasscutter.jar into this server's files before starting."
+      fi
+      if [ -z "$(ls -A /data/Resources 2>/dev/null)" ]; then
+        echo "NOTE: upload the Resources/ game data before starting (Files tab)."
+      fi
+      echo "Grasscutter config.json written. Provide grasscutter.jar + Resources/, then Start."
+
+  startup:
+    # Fail fast with a clear message if the user hasn't supplied the jar yet.
+    command: |
+      if [ ! -f grasscutter.jar ]; then
+        echo "grasscutter.jar not found in the server files — upload it via the Files tab, then Start."
+        exit 1
+      fi
+      exec java -Xmx{{JAVA_XMX}} -jar grasscutter.jar
+    done_regex: 'Done|Grasscutter starting|started'
+    # Grasscutter stops cleanly on SIGTERM.
+
+  config_files:
+    - "config.json"
+
+  ports:
+    - { name: dispatch, default: 443,   protocol: tcp }
+    - { name: game,     default: 22102, protocol: udp }
+
+  backup:
+    include: ["config.json", "data", "plugins"]

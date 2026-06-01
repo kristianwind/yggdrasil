@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { route, navigate } from "./lib/router.js";
   import { user, loadUser, logout } from "./lib/auth.js";
+  import { api } from "./lib/api.js";
   import Toasts from "./components/Toasts.svelte";
   import Login from "./views/Login.svelte";
   import Dashboard from "./views/Dashboard.svelte";
@@ -15,11 +16,13 @@
   import Bans from "./views/Bans.svelte";
 
   let ready = $state(false);
+  let build = $state(null); // { version, repo }
 
   onMount(async () => {
     await loadUser();
     if (!location.hash) navigate("/");
     ready = true;
+    api.get("/version").then((v) => (build = v)).catch(() => {});
   });
 
   // Redirect to login when unauthenticated (except on the login route).
@@ -78,6 +81,18 @@
         {/each}
       </nav>
       <div class="p-3 border-t border-border text-sm">
+        {#if build}
+          <a
+            href={build.repo}
+            target="_blank"
+            rel="noopener"
+            class="flex items-center gap-1 px-2 pb-1 text-xs text-muted hover:text-text"
+            title="View Yggdrasil on GitHub"
+          >
+            🌳 Yggdrasil {build.version}
+            <span class="opacity-60">↗</span>
+          </a>
+        {/if}
         <div class="px-2 py-1 text-muted truncate">{$user.username} · {$user.role}</div>
         <button class="btn-ghost w-full mt-1" onclick={logout}>Sign out</button>
       </div>

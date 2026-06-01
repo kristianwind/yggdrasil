@@ -143,8 +143,6 @@ func (s *Server) runInstall(serverID string) error {
 	if rt.gs.Steam != nil {
 		extraMounts[s.steamCacheDir()] = "/steamcache"
 		env["HOME"] = "/steamcache"
-		// The SteamCMD image runs as a non-root user; make the bind-mounted data
-		// dir writable so it can install the game into /data.
 		os.Chmod(dataDir, 0777) //nolint:errcheck
 		if !rt.gs.Steam.Anonymous {
 			user := s.authorizedSteamUser(ctx)
@@ -163,12 +161,19 @@ func (s *Server) runInstall(serverID string) error {
 		s.install.publish(serverID, "WARN: image pull: "+err.Error())
 	}
 
+	// Run the install as root. The SteamCMD image defaults to a non-root user
+	// (uid 1000); on a REINSTALL the server dir is already owned by the panel uid
+	// (the post-install chown below), so a non-root SteamCMD can't rewrite
+	// steamapps/ and fails with "Timed out waiting for update to start". Root can
+	// write any-owned files; the chown after normalises ownership back to the
+	// panel user. (Other install images already default to root.)
 	err = s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
 		Image:       image,
 		DataDir:     dataDir,
 		Env:         envSlice(env),
 		Script:      script,
 		ExtraMounts: extraMounts,
+		User:        "0:0",
 	}, w)
 	if err != nil {
 		s.db.ExecContext(ctx, "UPDATE servers SET install_status='error' WHERE id=?", serverID)

@@ -301,6 +301,12 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		s.upnpRemoveServer(id)
 	}
 	s.unifiRemoveServer(id)
+	// Capture the gameskill image now (DB row still present) in case we need a
+	// root container to delete root-owned files left by a failed install.
+	var rmImage string
+	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+		rmImage = rt.gs.Docker.Image
+	}
 	if srv.ContainerID != "" {
 		_ = s.docker.Remove(r.Context(), srv.ContainerID)
 	}
@@ -311,7 +317,19 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	// disk fills up. Guard against an empty/relative path so we never rm /data.
 	if srv.DataDir != "" && filepath.IsAbs(srv.DataDir) && strings.Contains(srv.DataDir, "servers") {
 		if err := os.RemoveAll(srv.DataDir); err != nil {
-			s.install.publish(id, "WARN: could not remove data dir: "+err.Error())
+			// A failed Steam install can leave root/steam-owned files the panel
+			// user can't delete. Empty the dir via a root container, then remove it.
+			if rmImage != "" {
+				s.docker.RunEphemeralOpts(r.Context(), docker.EphemeralOptions{
+					Image:   rmImage,
+					DataDir: srv.DataDir,
+					Script:  "rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null || true",
+					User:    "0:0",
+				}, io.Discard) //nolint:errcheck
+			}
+			if err2 := os.RemoveAll(srv.DataDir); err2 != nil {
+				s.install.publish(id, "WARN: could not remove data dir: "+err2.Error())
+			}
 		}
 	}
 	s.auditLog(r, "server.delete", "server:"+id, nil)

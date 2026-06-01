@@ -39,14 +39,23 @@ one-liner — it's idempotent).
 - **Real-time console** (WebSocket) with command input, plus live **log streaming**
 - One-time **install flow** that runs the gameskill's setup in an ephemeral
   container with live progress (e.g. downloads the right Paper/Vanilla/Fabric jar)
-- **Restart-on-crash** + crash detection; conflict-free **port allocation**
+- **Live status** — `installing → starting → running → stopped` with a clear
+  *starting* state until the server logs it's actually ready to accept players
+- **Restart-on-crash** + crash detection; conflict-free **port allocation** with
+  per-server ports published 1:1 for Steam games (so they advertise correctly)
 - **Resource monitoring** (CPU / RAM) and **player count / status** via query
   protocols (A2S for Steam games, Minecraft Java SLP, Bedrock ping)
 - **RCON** where the game has it — Source/Minecraft (TCP), Rust (WebSocket),
   DayZ (BattlEye)
+- **Reclaims disk on delete** — removing a server frees its full data directory
+  (game files, world, configs), and Steam installs **pre-check free space** with a
+  clear error instead of a cryptic Steam failure
 
 **Games (gameskills / "Runes")**
-- Ships with **Minecraft Java, Minecraft Bedrock, Rust, DayZ**
+- Ships with **Minecraft Java, Minecraft Bedrock, Rust, DayZ** — DayZ with
+  **Workshop mods** (auto-downloaded + signed) and BattlEye RCON
+- **Community runes** for games that can't be bundled (e.g. *Genshin Impact* via
+  Grasscutter) live in [`community-runes/`](community-runes/) — import them by hand
 - Author your own in declarative YAML; auto-generated settings form
   (string/int/bool/**dropdown**) per game
 - **Import** existing definitions: Pterodactyl **eggs** (JSON) and **XML**
@@ -63,6 +72,18 @@ one-liner — it's idempotent).
 - Full **audit log** of admin actions; **API tokens** to drive everything from
   automation (a documented REST API)
 - Optional **2FA (TOTP)** on login
+
+**Networking & connectivity**
+- **Automatic port forwarding** — when a server starts, Yggdrasil opens its ports
+  on your router and closes them again when the last server using them stops:
+  - **UPnP/IGD** for consumer routers (toggle in Settings → Network)
+  - **UniFi OS** (UDM / UDR / Cloud Key G2+) via the local Network API — enter the
+    gateway URL + a local admin, **Test connection**, and rules are managed for you
+    (tagged `[ygg:…]` so it only ever touches its own forwards)
+- **Connect address** shown per server — the panel detects your public IP (or uses
+  a hostname you set) and shows the exact `host:port` players join on
+- **Update notifications** — the panel checks GitHub releases and shows an
+  in-app banner when a newer Yggdrasil is available
 
 **Automation & operations**
 - **Backups** to local / mounted NFS-CIFS, **SFTP**, or **SMB** — on-demand or

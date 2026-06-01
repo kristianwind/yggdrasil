@@ -7,6 +7,10 @@ Last updated: 2026-06-01
 Worked through the WISHLIST against a real x86 Ubuntu VM (Docker) + SSH debugging.
 Each item is built, verified, GitHub-released, and auto-deployed to the VM.
 
+- **v0.2.40** — Delete now reliably reclaims disk: a failed Steam install can leave root-owned files the panel user can't `rm`, so deleting "all servers" still left ~44 GB of multi-GB data dirs behind (disk hit 100%). `handleDeleteServer` now falls back to a **root container that empties the data dir** before removing it. README features brought up to date (auto port-forwarding/UPnP+UniFi, connect-address, update banner, live status, disk reclaim, community runes).
+- **v0.2.39** — Reclaim disk on delete (`os.RemoveAll` the data dir + clear port_allocations) — root cause of the VM filling up; DayZ/Rust installs **pre-check free space** (df) and fail with a clear "only N MB free — needs ~XGB" instead of SteamCMD's cryptic state 0x202 "Not enough disk quota".
+- **v0.2.36–38** — Per-server ports for Steam games: `loadRuntime` injects `<NAME>_PORT` env (GAME_PORT/QUERY_PORT) and steam containers publish 1:1 so each DayZ advertises its real external port; ports come from the configured range. Regression test added.
+- **v0.2.35** — Minecraft: silence Java 24 JNA native-access warnings (`--enable-native-access=ALL-UNNAMED`).
 - **v0.2.34** — Port-forward refinements: status reconciler now releases UPnP/UniFi forwards when a server crashes (not just on graceful stop); DayZ rune sets `steamQueryPort` (new QUERY_PORT var, 27016) so the server is visible in the browser. (Each server already gets a unique port, so forwards are per-server — opened on its start, removed on its stop/crash; no shared-port refcounting needed.)
 - **v0.2.33** — UniFi: default to https:// when the controller URL omits the scheme.
 - **v0.2.32** — UniFi automatic WAN port forwarding (UniFi OS): Settings → Network → UniFi (URL/user/encrypted-password/site/enable + Test). Creates a port-forward per port on server start, removes on stop/delete. **Verified live against a real UDM** (login/create/list/delete; encrypted at rest). **WISHLIST fully cleared.**

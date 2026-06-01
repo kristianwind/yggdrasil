@@ -79,13 +79,18 @@ func (s *Server) reconcileStatuses() {
 
 	for _, x := range list {
 		running, _, err := s.docker.State(context.Background(), x.cid)
-		if err != nil {
-			// Container is gone entirely — treat as stopped.
+		if err != nil || !running {
+			// Container exited (crash or external stop) — mark stopped and release
+			// any port-forward rules so they don't linger pointing at a dead port.
 			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
-			continue
-		}
-		if !running {
-			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
+			s.stoppedCleanup(x.id)
 		}
 	}
+}
+
+// stoppedCleanup releases UPnP/UniFi port forwards for a server that has
+// stopped/crashed (best-effort, async).
+func (s *Server) stoppedCleanup(serverID string) {
+	go s.upnpRemoveServer(serverID)
+	go s.unifiRemoveServer(serverID)
 }

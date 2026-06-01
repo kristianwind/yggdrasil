@@ -35,6 +35,10 @@ gameskill:
       name: "Game port"
       type: int
       default: 2302
+    - key: QUERY_PORT
+      name: "Steam query port (server-browser visibility)"
+      type: int
+      default: 27016
     - key: PASSWORD
       name: "Server password (blank = public)"
       type: string
@@ -119,6 +123,7 @@ gameskill:
       password = "{{PASSWORD}}";
       passwordAdmin = "{{ADMIN_PASSWORD}}";
       maxPlayers = {{MAX_PLAYERS}};
+      steamQueryPort = {{QUERY_PORT}};
       verifySignatures = 2;
       forceSameBuild = 1;
       disableVoN = 0;

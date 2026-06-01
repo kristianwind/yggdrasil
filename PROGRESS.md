@@ -7,6 +7,8 @@ Last updated: 2026-06-01
 Worked through the WISHLIST against a real x86 Ubuntu VM (Docker) + SSH debugging.
 Each item is built, verified, GitHub-released, and auto-deployed to the VM.
 
+- **v0.2.34** — Port-forward refinements: status reconciler now releases UPnP/UniFi forwards when a server crashes (not just on graceful stop); DayZ rune sets `steamQueryPort` (new QUERY_PORT var, 27016) so the server is visible in the browser. (Each server already gets a unique port, so forwards are per-server — opened on its start, removed on its stop/crash; no shared-port refcounting needed.)
+- **v0.2.33** — UniFi: default to https:// when the controller URL omits the scheme.
 - **v0.2.32** — UniFi automatic WAN port forwarding (UniFi OS): Settings → Network → UniFi (URL/user/encrypted-password/site/enable + Test). Creates a port-forward per port on server start, removes on stop/delete. **Verified live against a real UDM** (login/create/list/delete; encrypted at rest). **WISHLIST fully cleared.**
 - **v0.2.31** — UPnP automatic port forwarding (off by default; huin/goupnp; add on start / remove on stop+delete; "Check gateway" status). UPnP confirmed off on the UniFi network → UniFi integration is the relevant one.
 - **v0.2.30** — Yggdrasil update notification: sidebar shows "↑ Update available: vX.Y.Z" by comparing the running build to the latest GitHub release.

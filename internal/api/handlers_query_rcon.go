@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -43,6 +45,13 @@ func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRunti
 	// Inject the panel's server name so gameskills can use {{SERVER_NAME}} as the
 	// in-game/browser name without a duplicate form field.
 	rt.env["SERVER_NAME"] = name
+	// Expose each allocated host port as <NAME>_PORT (e.g. GAME_PORT, QUERY_PORT)
+	// so gameskills bind/advertise the actual external port. For Steam games this
+	// is essential: the server registers its bind port with the Steam master, so
+	// it must equal the forwarded port (the container also publishes these 1:1).
+	for portName, hostPort := range rt.ports {
+		rt.env[strings.ToUpper(portName)+"_PORT"] = strconv.Itoa(hostPort)
+	}
 	return rt, nil
 }
 

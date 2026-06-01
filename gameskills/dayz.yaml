@@ -31,14 +31,10 @@ gameskill:
       name: "Max players"
       type: int
       default: 60
-    - key: GAME_PORT
-      name: "Game port"
-      type: int
-      default: 2302
-    - key: QUERY_PORT
-      name: "Steam query port (server-browser visibility)"
-      type: int
-      default: 27016
+    # GAME_PORT and QUERY_PORT are injected automatically from the ports Yggdrasil
+    # allocates for this server (each server gets its own), and published 1:1 so
+    # DayZ advertises the same port to Steam that's forwarded. Don't add them as
+    # variables here.
     - key: PASSWORD
       name: "Server password (blank = public)"
       type: string

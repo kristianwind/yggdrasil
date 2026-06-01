@@ -388,13 +388,21 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		envSlice = append(envSlice, fmt.Sprintf("PORT_%s=%d", name, port))
 	}
 
-	// Build port mappings.
+	// Build port mappings. Steam games (DayZ, Rust) bind <NAME>_PORT — which
+	// loadRuntime set to the allocated host port — and advertise that port to the
+	// Steam master server, so the container must publish it 1:1 (container port =
+	// host port). Other games bind the gameskill's fixed default container port.
+	steamGame := gs.Steam != nil
 	portMappings := []docker.PortMapping{}
 	for _, p := range gs.Ports {
 		if hostPort, ok := ports[p.Name]; ok {
+			containerPort := p.Default
+			if steamGame {
+				containerPort = hostPort
+			}
 			portMappings = append(portMappings, docker.PortMapping{
 				HostPort:      hostPort,
-				ContainerPort: p.Default,
+				ContainerPort: containerPort,
 				Protocol:      p.Protocol,
 			})
 		}

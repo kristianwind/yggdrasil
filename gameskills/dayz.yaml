@@ -47,6 +47,10 @@ gameskill:
       name: "BattlEye RCON password"
       type: string
       default: "change-me"
+    - key: MODS
+      name: "Workshop mods (semicolon-separated IDs, in load order)"
+      type: string
+      default: ""
 
   install:
     image: "cm2network/steamcmd:latest"
@@ -58,9 +62,33 @@ gameskill:
       # Experimental uses the SteamCMD beta branch.
       BETA=""
       [ "{{BETA_BRANCH}}" = "experimental" ] && BETA="-beta experimental"
-      "${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh" \
+      STEAMCMD="${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh"
+      "$STEAMCMD" \
         +force_install_dir /data +login "$STEAM_USER" \
         +app_update 223350 $BETA validate +quit
+      # Steam Workshop mods. MODS is a semicolon-separated list of Workshop item
+      # IDs (DayZ client app 221100). For each: download via SteamCMD, copy the
+      # mod into /data/@<id>, and stage its .bikey signatures into /data/keys so
+      # the server (verifySignatures=2) accepts them. Re-run on every (re)install
+      # to pick up mod updates. Requires the same DayZ-owning Steam account.
+      mkdir -p /data/keys
+      for MOD_ID in $(echo "{{MODS}}" | tr ';,' '  '); do
+        [ -n "$MOD_ID" ] || continue
+        echo "=== Workshop mod $MOD_ID ==="
+        "$STEAMCMD" +force_install_dir /data +login "$STEAM_USER" \
+          +workshop_download_item 221100 "$MOD_ID" validate +quit
+        SRC="$HOME/Steam/steamapps/workshop/content/221100/$MOD_ID"
+        [ -d "$SRC" ] || SRC="/data/steamapps/workshop/content/221100/$MOD_ID"
+        if [ -d "$SRC" ]; then
+          rm -rf "/data/@$MOD_ID"
+          cp -r "$SRC" "/data/@$MOD_ID"
+          # Mod keys live in keys/ or Keys/ inside the mod; stage them all.
+          find "/data/@$MOD_ID" -iname '*.bikey' -exec cp -f {} /data/keys/ \; 2>/dev/null || true
+          echo "installed mod @$MOD_ID"
+        else
+          echo "WARNING: mod $MOD_ID did not download (check Steam ownership/login)"
+        fi
+      done
       # Seed serverDZ.cfg with the panel's name + (optional) join/admin password
       # so the server is reachable and can be made private. Regenerated on each
       # (re)install — edit the file directly via the Files tab for deeper tuning
@@ -95,12 +123,16 @@ gameskill:
       CFG
 
   startup:
-    command: >
-      ./DayZServer
-      -config=serverDZ.cfg
-      -port={{GAME_PORT}}
-      -BEpath=battleye
-      -dologs -adminlog -netlog -freezecheck
+    # Build the -mod load order from MODS (in the given order), then exec the
+    # server so it becomes PID 1 and receives SIGTERM on stop.
+    command: |
+      MODARG=""
+      for MOD_ID in $(echo "{{MODS}}" | tr ';,' '  '); do
+        [ -n "$MOD_ID" ] || continue
+        MODARG="${MODARG:+$MODARG;}@$MOD_ID"
+      done
+      [ -n "$MODARG" ] && MODARG="-mod=$MODARG"
+      exec ./DayZServer -config=serverDZ.cfg -port={{GAME_PORT}} $MODARG -BEpath=battleye -dologs -adminlog -netlog -freezecheck
     done_regex: 'Mission read'
     # DayZ stops on SIGTERM.
 

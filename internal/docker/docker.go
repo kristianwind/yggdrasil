@@ -48,6 +48,7 @@ type CreateOptions struct {
 	Image      string
 	Env        []string
 	Cmd        []string // optional explicit command; empty uses image default
+	User       string   // "uid:gid" — run as the panel user so files stay editable
 	Ports      []PortMapping
 	DataDir    string // host path bind-mounted to /data
 	CPUPercent float64
@@ -114,6 +115,7 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 	resp, err := c.dc.ContainerCreate(ctx, &container.Config{
 		Image: opts.Image,
 		Env:   opts.Env,
+		User:  opts.User,
 		// Clear any image ENTRYPOINT so our Cmd is the actual command — otherwise
 		// images like cm2network/steamcmd would pass our startup command as args
 		// to their own entrypoint (manifesting as "./RustDedicated: not found").

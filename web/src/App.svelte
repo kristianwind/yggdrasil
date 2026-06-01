@@ -54,6 +54,7 @@
     <aside
       class="fixed md:static z-40 inset-y-0 left-0 w-60 bg-panel border-r border-border
              flex flex-col transition-transform {mobileOpen ? '' : '-translate-x-full md:translate-x-0'}"
+      style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
     >
       <div class="px-5 py-4 text-lg font-semibold flex items-center gap-2">
         <span>🌳</span> Yggdrasil
@@ -92,7 +93,10 @@
 
     <!-- Main -->
     <div class="flex-1 min-w-0 flex flex-col">
-      <header class="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-border bg-panel">
+      <header
+        class="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-border bg-panel"
+        style="padding-top: calc(0.75rem + env(safe-area-inset-top));"
+      >
         <button class="btn-ghost px-2 py-1" aria-label="Open menu" onclick={() => (mobileOpen = true)}>☰</button>
         <span class="font-semibold">🌳 Yggdrasil</span>
       </header>

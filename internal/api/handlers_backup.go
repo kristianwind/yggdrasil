@@ -251,6 +251,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 // runBackup archives a server and uploads it to the target, then applies the
 // target's retention policy. Status is recorded on the backups row.
 func (s *Server) runBackup(serverID, targetID, backupID string) {
+	defer recoverLog("runBackup")
 	ctx := context.Background()
 	fail := func(msg string) {
 		s.db.Exec("UPDATE backups SET status='error', error_msg=?, completed_at=? WHERE id=?",

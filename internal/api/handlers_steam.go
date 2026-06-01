@@ -58,6 +58,45 @@ func (s *Server) handleGetSteamAccount(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleSteamSendCode attempts a login WITHOUT a Guard code. For accounts with
+// email Steam Guard this prompts Steam to email a code (and fails asking for
+// it) — which is exactly what we want for step 1 of the two-step flow. If the
+// account has no Guard (or it's cached) the login may already succeed.
+func (s *Server) handleSteamSendCode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := decodeJSON(r, &req); err != nil || req.Username == "" || req.Password == "" {
+		jsonError(w, "username and password required", http.StatusBadRequest)
+		return
+	}
+	cacheDir := s.steamCacheDir()
+	env := []string{
+		"HOME=/steamcache",
+		"STEAM_USER=" + req.Username,
+		"STEAM_PASS=" + req.Password,
+	}
+	script := `"${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh" +login "$STEAM_USER" "$STEAM_PASS" +quit`
+
+	var buf bytes.Buffer
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	s.docker.RunEphemeralOpts(ctx, dockerEphemeral(steamImage, env, script, cacheDir), &buf) //nolint:errcheck
+	out := buf.String()
+
+	switch {
+	case strings.Contains(out, "Invalid Password"):
+		jsonError(w, "invalid username or password", http.StatusBadGateway)
+	case strings.Contains(out, "Logged in OK"):
+		// No Guard needed — caller can authorize directly with an empty code.
+		jsonOK(w, map[string]any{"status": "no_guard_needed"})
+	default:
+		// Steam Guard challenge issued → the code was emailed.
+		jsonOK(w, map[string]any{"status": "code_sent"})
+	}
+}
+
 func (s *Server) handleAuthorizeSteam(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username  string `json:"username"`

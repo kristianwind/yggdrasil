@@ -56,6 +56,7 @@
   // Steam authorization
   let steam = $state(null);
   let steamForm = $state({ username: "", password: "", guard_code: "" });
+  let steamStep = $state(1); // 1 = credentials, 2 = guard code
   let steamBusy = $state(false);
 
   async function loadSteam() {
@@ -65,13 +66,35 @@
       toast(e.message, "error");
     }
   }
-  async function authorizeSteam() {
+  // Step 1: trigger Steam to email a Guard code (login without a code).
+  async function sendSteamCode() {
     if (!steamForm.username || !steamForm.password) return toast("Username and password required", "warn");
+    steamBusy = true;
+    try {
+      const res = await api.post("/steam/send-code", {
+        username: steamForm.username,
+        password: steamForm.password,
+      });
+      if (res.status === "no_guard_needed") {
+        await authorizeSteam(); // no Guard — finish immediately
+      } else {
+        steamStep = 2;
+        toast("Steam Guard code sent to your account's email", "info");
+      }
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      steamBusy = false;
+    }
+  }
+  // Step 2: complete authorization with the emailed code.
+  async function authorizeSteam() {
     steamBusy = true;
     try {
       await api.post("/steam/authorize", steamForm);
       toast("Steam account authorized", "success");
       steamForm = { username: "", password: "", guard_code: "" };
+      steamStep = 1;
       await loadSteam();
     } catch (e) {
       toast(e.message, "error");
@@ -321,8 +344,11 @@
       </div>
       <button class="btn-danger" onclick={forgetSteam}>Forget</button>
     </div>
-  {:else}
-    <div class="grid sm:grid-cols-3 gap-3">
+  {:else if steamStep === 1}
+    <div class="text-xs text-muted mb-2">
+      Step 1 of 2 — enter your credentials. Steam will email a Guard code to the account.
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3">
       <div>
         <label class="label" for="st-user">Username</label>
         <input id="st-user" class="input" bind:value={steamForm.username} autocomplete="off" />
@@ -331,14 +357,25 @@
         <label class="label" for="st-pass">Password</label>
         <input id="st-pass" class="input" type="password" bind:value={steamForm.password} autocomplete="off" />
       </div>
-      <div>
-        <label class="label" for="st-guard">Steam Guard code</label>
-        <input id="st-guard" class="input" bind:value={steamForm.guard_code} autocomplete="off" />
-      </div>
     </div>
-    <button class="btn-primary mt-3" onclick={authorizeSteam} disabled={steamBusy}>
-      {steamBusy ? "Authorizing… (this can take a minute)" : "Authorize"}
+    <button class="btn-primary mt-3" onclick={sendSteamCode} disabled={steamBusy}>
+      {steamBusy ? "Contacting Steam… (can take a minute)" : "Send Steam Guard code"}
     </button>
+  {:else}
+    <div class="text-xs text-muted mb-2">
+      Step 2 of 2 — enter the Steam Guard code from <b>{steamForm.username}</b>'s email.
+    </div>
+    <div class="max-w-xs">
+      <label class="label" for="st-guard">Steam Guard code</label>
+      <input id="st-guard" class="input font-mono tracking-widest" bind:value={steamForm.guard_code}
+        autocomplete="off" placeholder="XXXXX" />
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button class="btn-primary" onclick={authorizeSteam} disabled={steamBusy}>
+        {steamBusy ? "Authorizing…" : "Authorize"}
+      </button>
+      <button class="btn-ghost" onclick={() => { steamStep = 1; steamForm.guard_code = ''; }}>Back</button>
+    </div>
   {/if}
 </div>
 

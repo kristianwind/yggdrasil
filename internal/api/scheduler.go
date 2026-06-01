@@ -78,6 +78,7 @@ func (s *Server) reloadSchedules() {
 
 // runScheduleByID loads a schedule and executes its action over its scope.
 func (s *Server) runScheduleByID(id string) {
+	defer recoverLog("runScheduleByID")
 	var action, argsJSON, serverID, realmID string
 	err := s.db.QueryRow(
 		"SELECT action, COALESCE(args_json,'{}'), COALESCE(server_id,''), COALESCE(realm_id,'') FROM schedules WHERE id=?",

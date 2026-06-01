@@ -57,16 +57,19 @@ gameskill:
       unzip -o /tmp/bedrock.zip -x "server.properties" "allowlist.json" "permissions.json" -d /data
       [ -f /data/server.properties ] || unzip -o /tmp/bedrock.zip "server.properties" -d /data
       chmod +x /data/bedrock_server || true
+      # bedrock_server needs system libcurl (absent from the ubuntu base). Install
+      # it here (we run as root during install) and bundle the binary's full shared
+      # library closure into .libs so the runtime works without root/apt.
+      apt-get install -y libcurl4 >/dev/null 2>&1 || true
+      mkdir -p /data/.libs
+      ldd /data/bedrock_server 2>/dev/null | awk '/=> \//{print $3}' | while read -r lib; do
+        [ -f "$lib" ] && cp -Ln "$lib" /data/.libs/ 2>/dev/null || true
+      done
 
   startup:
-    # Bedrock reads stdin for console commands (no RCON). The Mojang binary needs
-    # the system libcurl, which the base ubuntu image lacks — install it on start
-    # (fast + cached layers; each container is fresh). LD_LIBRARY_PATH so it also
-    # finds its own bundled libs.
-    command: >
-      sh -c 'if ! ldconfig -p 2>/dev/null | grep -q libcurl.so.4; then
-        apt-get update -qq && apt-get install -y -qq libcurl4 ca-certificates >/dev/null 2>&1;
-      fi; LD_LIBRARY_PATH=. ./bedrock_server'
+    # Bedrock reads stdin for console commands (no RCON). Runs as the panel user;
+    # the bundled .libs (incl. libcurl) on LD_LIBRARY_PATH avoid needing root/apt.
+    command: "LD_LIBRARY_PATH=/data/.libs:/data ./bedrock_server"
     done_regex: 'Server started'
     stop: "stop"
 

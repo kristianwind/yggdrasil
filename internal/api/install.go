@@ -102,6 +102,7 @@ func (w hubWriter) Write(p []byte) (int, error) {
 // container, streaming output to the hub and recording the final status. It is
 // safe to call in a goroutine; it serializes per server via the active flag.
 func (s *Server) runInstall(serverID string) error {
+	defer recoverLog("runInstall")
 	if s.install.isActive(serverID) {
 		return fmt.Errorf("install already running")
 	}
@@ -173,6 +174,15 @@ func (s *Server) runInstall(serverID string) error {
 		s.db.ExecContext(ctx, "UPDATE servers SET install_status='error' WHERE id=?", serverID)
 		s.install.publish(serverID, "=== Install FAILED: "+err.Error()+" ===")
 		return err
+	}
+
+	// Install runs as root; hand /data ownership to the panel user so the server
+	// (which runs as that user) and the file manager can both edit the files.
+	chownScript := fmt.Sprintf("chown -R %d:%d /data 2>/dev/null || true", os.Getuid(), os.Getgid())
+	if cerr := s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
+		Image: image, DataDir: dataDir, Script: chownScript,
+	}, io.Discard); cerr != nil {
+		s.install.publish(serverID, "WARN: could not set file ownership: "+cerr.Error())
 	}
 
 	s.db.ExecContext(ctx, "UPDATE servers SET installed=1, install_status='done' WHERE id=?", serverID)

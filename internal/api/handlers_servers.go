@@ -361,8 +361,9 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET ports_json=? WHERE id=?", string(portsJSON), id)
 	}
 
-	// Build docker env slice (server vars + PORT_<name> helpers).
-	envSlice := []string{}
+	// Build docker env slice (server vars + PORT_<name> helpers). HOME=/data gives
+	// the (non-root) runtime user a writable home for caches.
+	envSlice := []string{"HOME=/data"}
 	for k, v := range env {
 		envSlice = append(envSlice, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -407,10 +408,14 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	s.docker.PullImage(r.Context(), image, io.Discard)
 
 	containerID, err := s.docker.Create(r.Context(), docker.CreateOptions{
-		Name:       containerName,
-		Image:      image,
-		Env:        envSlice,
-		Cmd:        cmd,
+		Name:  containerName,
+		Image: image,
+		Env:   envSlice,
+		Cmd:   cmd,
+		// Run as the panel's user so files the game writes (server.properties,
+		// world, …) stay editable from the file manager. Install runs as root and
+		// chowns /data to this uid afterwards.
+		User:       fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		Ports:      portMappings,
 		DataDir:    srv.DataDir,
 		CPUPercent: cpuLimit,

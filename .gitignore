@@ -26,3 +26,4 @@ config.yaml
 # Local dev launch config (machine-specific paths)
 .claude/launch.json
 .dev/
+WISHLIST.md

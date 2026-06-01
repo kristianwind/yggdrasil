@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -61,7 +60,10 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
+	// NOTE: no global request timeout — WebSocket streams (console/logs/install)
+	// are long-lived, and container operations (image pulls, server start) can
+	// exceed a minute. A blanket timeout dropped those connections ("Failed to
+	// fetch" on the client). Individual operations use their own contexts.
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -144,6 +146,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// Steam authorization (admin-only)
 		r.Get("/api/steam/account", s.requireAdmin(s.handleGetSteamAccount))
+		r.Post("/api/steam/send-code", s.requireAdmin(s.handleSteamSendCode))
 		r.Post("/api/steam/authorize", s.requireAdmin(s.handleAuthorizeSteam))
 		r.Delete("/api/steam/account", s.requireAdmin(s.handleDeleteSteamAccount))
 

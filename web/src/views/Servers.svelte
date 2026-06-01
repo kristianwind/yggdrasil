@@ -10,6 +10,13 @@
   let gameskills = $state([]);
   let loading = $state(true);
 
+  // View mode (grid cards vs. compact table), remembered per browser.
+  let view = $state(localStorage.getItem("ygg_servers_view") || "grid");
+  function setView(v) {
+    view = v;
+    localStorage.setItem("ygg_servers_view", v);
+  }
+
   // Create modal state
   let showCreate = $state(false);
   let selectedSkill = $state(null);
@@ -95,9 +102,27 @@
 
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-semibold">Servers</h1>
-  <button class="btn-primary" onclick={openCreate} disabled={gameskills.length === 0}>
-    + New server
-  </button>
+  <div class="flex items-center gap-2">
+    {#if servers.length > 0}
+      <div class="inline-flex rounded-md border border-border overflow-hidden">
+        <button
+          class="px-2.5 py-1.5 text-sm {view === 'grid' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
+          title="Grid view"
+          aria-label="Grid view"
+          onclick={() => setView("grid")}>▦</button
+        >
+        <button
+          class="px-2.5 py-1.5 text-sm border-l border-border {view === 'table' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
+          title="Table view"
+          aria-label="Table view"
+          onclick={() => setView("table")}>☰</button
+        >
+      </div>
+    {/if}
+    <button class="btn-primary" onclick={openCreate} disabled={gameskills.length === 0}>
+      + New server
+    </button>
+  </div>
 </div>
 
 {#if loading}
@@ -109,37 +134,92 @@
 {:else}
   {#each Object.entries(grouped) as [realm, list]}
     <h2 class="text-sm uppercase tracking-wide text-muted mt-6 mb-2">{realm}</h2>
-    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {#each list as s}
-        <div class="card p-4">
-          <div class="flex items-start justify-between">
-            <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
-            <span
-              class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
-              >{s.status}</span
-            >
-          </div>
-          <div class="text-xs text-muted mt-1">{s.gameskill_id}</div>
-          {#if s.ports && Object.keys(s.ports).length}
-            <div class="flex flex-wrap gap-1 mt-2">
-              {#each Object.entries(s.ports) as [name, port]}
-                <span class="badge bg-panel2 border border-border text-muted font-mono text-[11px]">
-                  {name}:{port}
-                </span>
-              {/each}
+    {#if view === "table"}
+      <div class="card overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-muted text-xs uppercase tracking-wide border-b border-border">
+            <tr>
+              <th class="text-left font-medium px-4 py-2">Name</th>
+              <th class="text-left font-medium px-4 py-2">Rune</th>
+              <th class="text-left font-medium px-4 py-2">Status</th>
+              <th class="text-left font-medium px-4 py-2 hidden sm:table-cell">Ports</th>
+              <th class="text-right font-medium px-4 py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            {#each list as s}
+              <tr class="hover:bg-panel2/40">
+                <td class="px-4 py-2">
+                  <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
+                </td>
+                <td class="px-4 py-2 text-muted">{s.gameskill_id}</td>
+                <td class="px-4 py-2">
+                  <span
+                    class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
+                    >{s.status}</span
+                  >
+                </td>
+                <td class="px-4 py-2 hidden sm:table-cell">
+                  {#if s.ports && Object.keys(s.ports).length}
+                    <div class="flex flex-wrap gap-1">
+                      {#each Object.entries(s.ports) as [name, port]}
+                        <span class="badge bg-panel2 border border-border text-muted font-mono text-[11px]">
+                          {name}:{port}
+                        </span>
+                      {/each}
+                    </div>
+                  {:else}
+                    <span class="text-muted">—</span>
+                  {/if}
+                </td>
+                <td class="px-4 py-2">
+                  <div class="flex gap-2 justify-end">
+                    {#if s.status === "running"}
+                      <button class="btn-ghost px-2 py-1" onclick={() => action(s, "restart")}>Restart</button>
+                      <button class="btn-ghost px-2 py-1" onclick={() => action(s, "stop")}>Stop</button>
+                    {:else}
+                      <button class="btn-primary px-2 py-1" onclick={() => action(s, "start")}>Start</button>
+                    {/if}
+                  </div>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {#each list as s}
+          <div class="card p-4">
+            <div class="flex items-start justify-between">
+              <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
+              <span
+                class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
+                >{s.status}</span
+              >
             </div>
-          {/if}
-          <div class="flex gap-2 mt-3">
-            {#if s.status === "running"}
-              <button class="btn-ghost flex-1" onclick={() => action(s, "restart")}>Restart</button>
-              <button class="btn-ghost flex-1" onclick={() => action(s, "stop")}>Stop</button>
-            {:else}
-              <button class="btn-primary flex-1" onclick={() => action(s, "start")}>Start</button>
+            <div class="text-xs text-muted mt-1">{s.gameskill_id}</div>
+            {#if s.ports && Object.keys(s.ports).length}
+              <div class="flex flex-wrap gap-1 mt-2">
+                {#each Object.entries(s.ports) as [name, port]}
+                  <span class="badge bg-panel2 border border-border text-muted font-mono text-[11px]">
+                    {name}:{port}
+                  </span>
+                {/each}
+              </div>
             {/if}
+            <div class="flex gap-2 mt-3">
+              {#if s.status === "running"}
+                <button class="btn-ghost flex-1" onclick={() => action(s, "restart")}>Restart</button>
+                <button class="btn-ghost flex-1" onclick={() => action(s, "stop")}>Stop</button>
+              {:else}
+                <button class="btn-primary flex-1" onclick={() => action(s, "start")}>Start</button>
+              {/if}
+            </div>
           </div>
-        </div>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {/if}
   {/each}
 {/if}
 

@@ -206,6 +206,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/settings/network", s.handleGetNetworkSettings)
 		r.Put("/api/settings/network", s.requireAdmin(s.handleSetNetworkSettings))
 		r.Get("/api/upnp/status", s.requireAdmin(s.handleUPnPStatus))
+		r.Get("/api/settings/unifi", s.requireAdmin(s.handleGetUnifiSettings))
+		r.Put("/api/settings/unifi", s.requireAdmin(s.handleSetUnifiSettings))
+		r.Post("/api/settings/unifi/test", s.requireAdmin(s.handleTestUnifi))
 
 		// Per-server user delegation (server-centric view of server-scoped grants)
 		r.Get("/api/servers/{id}/delegates", s.requireAdmin(s.handleListDelegates))

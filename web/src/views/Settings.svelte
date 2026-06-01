@@ -285,6 +285,41 @@
     }
   }
 
+  // UniFi port forwarding
+  let unifi = $state({ url: "", username: "", password: "", site: "default", enabled: false, configured: false });
+  let savingUnifi = $state(false);
+  let testingUnifi = $state(false);
+  async function loadUnifi() {
+    try {
+      unifi = { ...unifi, ...(await api.get("/settings/unifi")), password: "" };
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function saveUnifi() {
+    savingUnifi = true;
+    try {
+      const res = await api.put("/settings/unifi", unifi);
+      unifi = { ...unifi, ...res, password: "" };
+      toast("UniFi settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingUnifi = false;
+    }
+  }
+  async function testUnifi() {
+    testingUnifi = true;
+    try {
+      const res = await api.post("/settings/unifi/test", unifi);
+      toast(`UniFi connected — ${res.rules} port-forward rules found`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      testingUnifi = false;
+    }
+  }
+
   onMount(() => {
     load();
     loadTemplates();
@@ -293,6 +328,7 @@
     loadSteam();
     load2fa();
     loadNetwork();
+    loadUnifi();
   });
 
   async function create() {
@@ -368,6 +404,42 @@
   <button class="btn-primary" onclick={saveNetwork} disabled={savingNetwork}>
     {savingNetwork ? "Saving…" : "Save"}
   </button>
+</div>
+
+<!-- UniFi port forwarding -->
+<h2 class="text-xl font-semibold mb-2">UniFi port forwarding</h2>
+<p class="text-muted mb-4 text-sm">
+  Automatically create/remove WAN port-forward rules on your UniFi gateway when servers start/stop.
+  Use a dedicated local admin account. Credentials are encrypted at rest.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div class="grid sm:grid-cols-2 gap-3">
+    <div>
+      <label class="label" for="uurl">Controller URL</label>
+      <input id="uurl" class="input" bind:value={unifi.url} placeholder="https://192.168.1.1" />
+    </div>
+    <div>
+      <label class="label" for="usite">Site</label>
+      <input id="usite" class="input" bind:value={unifi.site} placeholder="default" />
+    </div>
+    <div>
+      <label class="label" for="uuser">Username</label>
+      <input id="uuser" class="input" bind:value={unifi.username} placeholder="admin" autocomplete="off" />
+    </div>
+    <div>
+      <label class="label" for="upass">Password</label>
+      <input id="upass" class="input" type="password" bind:value={unifi.password}
+        placeholder={unifi.configured ? "•••••••• (unchanged)" : "password"} autocomplete="new-password" />
+    </div>
+  </div>
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={unifi.enabled} />
+    Enable automatic UniFi port forwarding
+  </label>
+  <div class="flex gap-2">
+    <button class="btn-primary" onclick={saveUnifi} disabled={savingUnifi}>{savingUnifi ? "Saving…" : "Save"}</button>
+    <button class="btn-ghost" onclick={testUnifi} disabled={testingUnifi}>{testingUnifi ? "Testing…" : "Test connection"}</button>
+  </div>
 </div>
 
 <!-- Two-factor auth -->

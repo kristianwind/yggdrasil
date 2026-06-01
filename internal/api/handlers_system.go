@@ -98,16 +98,22 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM gameskills").Scan(&gameskillCount)
 
 	free, total := diskUsage(filepath.Dir(s.cfg.Database.Path))
+	memTotal, memUsed := hostMem()
+	cpuPct := hostCPUPercent()
 
 	jsonOK(w, map[string]interface{}{
-		"docker_ok":       dockerOK,
-		"servers":         serverCount,
-		"servers_running": runningCount,
-		"users":           userCount,
-		"gameskills":      gameskillCount,
-		"go_version":      runtime.Version(),
-		"arch":            runtime.GOARCH,
-		"disk_free_bytes": free,
+		"docker_ok":        dockerOK,
+		"servers":          serverCount,
+		"servers_running":  runningCount,
+		"users":            userCount,
+		"gameskills":       gameskillCount,
+		"go_version":       runtime.Version(),
+		"arch":             runtime.GOARCH,
+		"cpu_count":        runtime.NumCPU(),
+		"cpu_percent":      cpuPct, // -1 when unavailable (e.g. non-Linux)
+		"mem_total_bytes":  memTotal,
+		"mem_used_bytes":   memUsed,
+		"disk_free_bytes":  free,
 		"disk_total_bytes": total,
 	})
 }

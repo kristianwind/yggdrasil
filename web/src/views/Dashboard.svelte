@@ -27,20 +27,33 @@
     }
     return `${n.toFixed(1)} ${u[i]}`;
   }
-  let cards = $derived(
-    info
-      ? [
-          stat("Servers", info.servers, `${info.servers_running} running`, "#/servers"),
-          stat("Runes", info.gameskills, "game definitions", "#/runes"),
-          stat("Docker", info.docker_ok ? "OK" : "Down", info.arch),
-          stat(
-            "Disk free",
-            fmtBytes(info.disk_free_bytes),
-            info.disk_total_bytes ? `of ${fmtBytes(info.disk_total_bytes)}` : "",
-          ),
-        ]
-      : [stat("Servers", servers.length, `${servers.filter((s) => s.status === "running").length} running`)],
-  );
+  let cards = $derived.by(() => {
+    if (!info) {
+      return [stat("Servers", servers.length, `${servers.filter((s) => s.status === "running").length} running`)];
+    }
+    const c = [
+      stat("Servers", info.servers, `${info.servers_running} running`, "#/servers"),
+      stat("Runes", info.gameskills, "game definitions", "#/runes"),
+      stat("Docker", info.docker_ok ? "OK" : "Down", info.arch),
+    ];
+    // Host CPU/RAM are Linux-only; the API sends cpu_percent = -1 and
+    // mem_total_bytes = 0 where unavailable (e.g. the dev Mac).
+    if (typeof info.cpu_percent === "number" && info.cpu_percent >= 0) {
+      c.push(stat("CPU usage", `${info.cpu_percent.toFixed(0)}%`, `${info.cpu_count} cores`));
+    }
+    if (info.mem_total_bytes) {
+      const pct = Math.round((info.mem_used_bytes / info.mem_total_bytes) * 100);
+      c.push(stat("RAM usage", `${pct}%`, `${fmtBytes(info.mem_used_bytes)} of ${fmtBytes(info.mem_total_bytes)}`));
+    }
+    c.push(
+      stat(
+        "Disk free",
+        fmtBytes(info.disk_free_bytes),
+        info.disk_total_bytes ? `of ${fmtBytes(info.disk_total_bytes)}` : "",
+      ),
+    );
+    return c;
+  });
 </script>
 
 <h1 class="text-2xl font-semibold mb-1">Dashboard</h1>

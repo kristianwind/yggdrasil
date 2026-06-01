@@ -7,6 +7,8 @@ Last updated: 2026-06-01
 Worked through the WISHLIST against a real x86 Ubuntu VM (Docker) + SSH debugging.
 Each item is built, verified, GitHub-released, and auto-deployed to the VM.
 
+- **v0.2.29** — Global public hostname (Settings → Network) + per-server "Connect address" (host:port), external-IP fallback.
+- **v0.2.28** — "starting" server status (amber) that promotes to "running" on the gameskill done_regex; crash-during-start → stopped.
 - **v0.2.27** — UI polish: clickable sidebar logo → dashboard, narrower desktop menu (w-60→w-52), DayZ MODS field reminds to Update/Reinstall after changing mods.
 - **v0.2.26** — DayZ/Rust **reinstall** finally fixed: SteamCMD drops to uid 1000 even in a root container, so it couldn't rewrite the panel-owned steamapps; prepend `chmod -R a+rwX /data` (runs as root) before SteamCMD. Verified live (download → 99.6%).
 - **v0.2.22–25** — DayZ now boots end-to-end (debugged live over SSH): `LD_LIBRARY_PATH=/data`, an `/etc/passwd` entry for the runtime uid (Steam `getpwuid` segfault), dropped `-BEpath`, SteamCMD retry loop, install-as-root.

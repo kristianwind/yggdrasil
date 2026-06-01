@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -88,17 +91,81 @@ func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, list)
 }
 
-// handleVersion reports the build version + repo URL. Public (not sensitive) so
-// the UI can show it in the sidebar without an extra authenticated round-trip.
+// handleVersion reports the build version + repo URL, and whether a newer
+// GitHub release exists. Public (not sensitive) so the UI can show it in the
+// sidebar without an extra authenticated round-trip.
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	v := s.version
 	if v == "" {
 		v = "dev"
 	}
-	jsonOK(w, map[string]string{
-		"version": v,
-		"repo":    "https://github.com/kristianwind/yggdrasil",
+	latest := s.latestRelease()
+	jsonOK(w, map[string]any{
+		"version":          v,
+		"repo":             "https://github.com/kristianwind/yggdrasil",
+		"latest":           latest,
+		"update_available": v != "dev" && latest != "" && semverLess(v, latest),
 	})
+}
+
+// latestRelease returns the latest GitHub release tag, cached for 6h so the
+// version endpoint (hit on every page load) doesn't hammer the GitHub API.
+func (s *Server) latestRelease() string {
+	s.latestMu.Lock()
+	defer s.latestMu.Unlock()
+	if s.latestVer != "" && time.Since(s.latestAt) < 6*time.Hour {
+		return s.latestVer
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET",
+		"https://api.github.com/repos/kristianwind/yggdrasil/releases/latest", nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return s.latestVer
+	}
+	defer resp.Body.Close()
+	var body struct {
+		TagName string `json:"tag_name"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if body.TagName != "" {
+		s.latestVer = body.TagName
+		s.latestAt = time.Now()
+	}
+	return s.latestVer
+}
+
+// semverLess reports whether version a is older than b. Tags look like vMAJOR.
+// MINOR.PATCH; unparsable parts compare as 0.
+func semverLess(a, b string) bool {
+	pa, pb := parseSemver(a), parseSemver(b)
+	for i := 0; i < 3; i++ {
+		if pa[i] != pb[i] {
+			return pa[i] < pb[i]
+		}
+	}
+	return false
+}
+
+func parseSemver(v string) [3]int {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	var out [3]int
+	for i, part := range strings.SplitN(v, ".", 3) {
+		if i > 2 {
+			break
+		}
+		n := 0
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				break
+			}
+			n = n*10 + int(c-'0')
+		}
+		out[i] = n
+	}
+	return out
 }
 
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {

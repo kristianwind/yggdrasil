@@ -99,6 +99,17 @@
             🌳 Yggdrasil {build.version}
             <span class="opacity-60">↗</span>
           </a>
+          {#if build.update_available}
+            <a
+              href={`${build.repo}/releases/latest`}
+              target="_blank"
+              rel="noopener"
+              class="flex items-center gap-1 mx-2 mb-1 px-2 py-1 rounded bg-warn/15 text-warn text-xs hover:bg-warn/25"
+              title="A newer release is available"
+            >
+              ↑ Update available: {build.latest}
+            </a>
+          {/if}
         {/if}
         <div class="px-2 py-1 text-muted truncate">{$user.username} · {$user.role}</div>
         <button class="btn-ghost w-full mt-1" onclick={logout}>Sign out</button>

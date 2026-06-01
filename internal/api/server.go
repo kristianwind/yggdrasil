@@ -34,6 +34,10 @@ type Server struct {
 	extIP   string // cached external IP (detectPublicAddr)
 	extIPAt time.Time
 	extIPMu sync.Mutex
+
+	latestVer string // cached latest GitHub release tag
+	latestAt  time.Time
+	latestMu  sync.Mutex
 }
 
 // SetVersion records the build version so it can be surfaced in the UI.

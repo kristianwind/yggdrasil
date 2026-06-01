@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -28,6 +30,10 @@ type Server struct {
 	sched   *schedulerState
 	viol    *violationWatcher
 	version string // build version (set via SetVersion)
+
+	extIP   string // cached external IP (detectPublicAddr)
+	extIPAt time.Time
+	extIPMu sync.Mutex
 }
 
 // SetVersion records the build version so it can be surfaced in the UI.
@@ -191,6 +197,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/users/{id}/permissions", s.requireAdmin(s.handleGetUserPermissions))
 		r.Put("/api/users/{id}/permissions", s.requireAdmin(s.handleSetUserPermissions))
 		r.Get("/api/permissions/catalog", s.requireAdmin(s.handlePermissionsCatalog))
+
+		// Network settings (public hostname / connect address)
+		r.Get("/api/settings/network", s.handleGetNetworkSettings)
+		r.Put("/api/settings/network", s.requireAdmin(s.handleSetNetworkSettings))
 
 		// Per-server user delegation (server-centric view of server-scoped grants)
 		r.Get("/api/servers/{id}/delegates", s.requireAdmin(s.handleListDelegates))

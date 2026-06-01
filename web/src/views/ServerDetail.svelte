@@ -186,6 +186,17 @@
   }
   let undelegatedUsers = $derived(allUsers.filter((u) => !delegates.some((d) => d.user_id === u.id)));
 
+  // Public connect address (from network settings).
+  let network = $state(null);
+  async function loadNetwork() {
+    try {
+      network = await api.get("/settings/network");
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  let connectHost = $derived(network?.effective || "");
+
   async function loadServer() {
     try {
       const prev = server;
@@ -301,6 +312,7 @@
   }
 
   onMount(async () => {
+    loadNetwork();
     await loadServer();
     if (server && !server.installed) {
       tab = "install";
@@ -352,6 +364,22 @@
   {#if !server.installed}
     <div class="card border-warn/40 bg-warn/10 text-warn text-sm px-4 py-2 mb-4">
       This server isn't installed yet. Click <b>Install</b> to download/build it; progress shows below.
+    </div>
+  {/if}
+
+  {#if server.ports && Object.keys(server.ports).length}
+    <div class="card p-3 mb-4">
+      <div class="text-xs text-muted uppercase tracking-wide mb-1">Connect address</div>
+      <div class="flex flex-wrap gap-2">
+        {#each Object.entries(server.ports) as [name, port]}
+          <span class="badge bg-panel2 border border-border font-mono text-xs">
+            {name}: {connectHost || "your-host"}:{port}
+          </span>
+        {/each}
+      </div>
+      {#if !connectHost}
+        <div class="text-muted text-xs mt-1">Set a public hostname in <a href="#/settings" class="underline">Settings → Network</a> to replace “your-host”.</div>
+      {/if}
     </div>
   {/if}
 

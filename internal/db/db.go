@@ -193,6 +193,12 @@ CREATE TABLE IF NOT EXISTS violation_rules (
 	created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Generic key/value app settings (e.g. public hostname for connect addresses).
+CREATE TABLE IF NOT EXISTS app_settings (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS migrations (
 	version INTEGER PRIMARY KEY,
 	applied_at TEXT NOT NULL DEFAULT (datetime('now'))

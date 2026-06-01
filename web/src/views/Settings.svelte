@@ -247,6 +247,29 @@
       toast(e.message, "error");
     }
   }
+  // Network (public hostname / connect address)
+  let network = $state({ public_hostname: "", detected: "", effective: "" });
+  let savingNetwork = $state(false);
+  async function loadNetwork() {
+    try {
+      network = await api.get("/settings/network");
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function saveNetwork() {
+    savingNetwork = true;
+    try {
+      const res = await api.put("/settings/network", { public_hostname: network.public_hostname });
+      network = { ...network, ...res };
+      toast("Network settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingNetwork = false;
+    }
+  }
+
   onMount(() => {
     load();
     loadTemplates();
@@ -254,6 +277,7 @@
     loadChannels();
     loadSteam();
     load2fa();
+    loadNetwork();
   });
 
   async function create() {
@@ -290,6 +314,24 @@
 </script>
 
 <h1 class="text-2xl font-semibold mb-6">Settings</h1>
+
+<!-- Network -->
+<h2 class="text-xl font-semibold mb-2">Network</h2>
+<p class="text-muted mb-4 text-sm">The public hostname players use to connect. It's shown as the connect address on each server's page.</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div>
+    <label class="label" for="pubhost">Public hostname</label>
+    <input id="pubhost" class="input" bind:value={network.public_hostname} placeholder="games.example.com" />
+    <p class="text-muted text-xs mt-1">
+      Leave empty to auto-detect your external IP{#if network.detected}
+        (currently <span class="font-mono">{network.detected}</span>){/if}. Servers show
+      <span class="font-mono">{network.effective || "your-host"}:&lt;port&gt;</span> as the connect address.
+    </p>
+  </div>
+  <button class="btn-primary" onclick={saveNetwork} disabled={savingNetwork}>
+    {savingNetwork ? "Saving…" : "Save"}
+  </button>
+</div>
 
 <!-- Two-factor auth -->
 <h2 class="text-xl font-semibold mb-2">Two-factor authentication</h2>

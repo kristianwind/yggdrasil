@@ -29,8 +29,10 @@ func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-	list := []scheduleView{}
+	// Scan all rows and close the cursor before any further queries: modernc
+	// SQLite runs with MaxOpenConns(1), so loadGrants/serverTarget while the
+	// result set is open would deadlock.
+	var all []scheduleView
 	for rows.Next() {
 		var v scheduleView
 		var argsJSON string
@@ -40,14 +42,30 @@ func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 		}
 		json.Unmarshal([]byte(argsJSON), &v.Args)
 		v.Enabled = enabled == 1
-		// Non-admins only see schedules for servers they can manage schedules on.
-		if v.ServerID != "" && !s.allowed(r, rbac.ServerSchedule, s.serverTarget(r.Context(), v.ServerID)) {
+		all = append(all, v)
+	}
+	rows.Close()
+
+	admin := isAdmin(r)
+	var grants []rbac.Grant
+	if !admin {
+		if c := claimsFromContext(r.Context()); c != nil {
+			grants = s.loadGrants(r.Context(), c.UserID)
+		}
+	}
+
+	list := []scheduleView{}
+	for _, v := range all {
+		if v.ServerID == "" {
+			if admin { // realm/global schedules are admin-managed
+				list = append(list, v)
+			}
 			continue
 		}
-		if v.ServerID == "" && !isAdmin(r) {
-			continue // realm/global schedules are admin-managed
+		// Non-admins only see schedules for servers they can manage schedules on.
+		if admin || rbac.Allowed(grants, rbac.ServerSchedule, s.serverTarget(r.Context(), v.ServerID)) {
+			list = append(list, v)
 		}
-		list = append(list, v)
 	}
 	jsonOK(w, list)
 }

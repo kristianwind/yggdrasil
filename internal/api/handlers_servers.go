@@ -66,22 +66,34 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-
-	var list []serverRow
+	// Scan every row and CLOSE the cursor before running any further queries.
+	// modernc SQLite serves database/sql from a single connection, so issuing a
+	// query (e.g. loadGrants) while this result set is still open deadlocks. This
+	// only bit non-admins, because admins skip the grant lookup.
+	var all []serverRow
 	for rows.Next() {
 		srv, err := scanServer(rows)
 		if err != nil {
 			continue
 		}
-		// Non-admins only see servers they have view access to.
-		if !s.allowed(r, rbac.ServerView, srv.target()) {
-			continue
-		}
-		list = append(list, srv)
+		all = append(all, srv)
 	}
-	if list == nil {
-		list = []serverRow{}
+	rows.Close()
+
+	// Load the caller's grants once, then filter in memory.
+	admin := isAdmin(r)
+	var grants []rbac.Grant
+	if !admin {
+		if c := claimsFromContext(r.Context()); c != nil {
+			grants = s.loadGrants(r.Context(), c.UserID)
+		}
+	}
+
+	list := []serverRow{}
+	for _, srv := range all {
+		if admin || rbac.VisibleServer(grants, srv.target()) {
+			list = append(list, srv)
+		}
 	}
 	jsonOK(w, list)
 }

@@ -3,6 +3,7 @@
   import { api, wsURL } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
   import { navigate } from "../lib/router.js";
+  import { user } from "../lib/auth.js";
   import FileManager from "../components/FileManager.svelte";
   import VarForm from "../components/VarForm.svelte";
 
@@ -121,6 +122,69 @@
       savingEdit = false;
     }
   }
+
+  // --- Per-server user delegation (admin only) ---
+  // The permissions that make sense to grant on a single server.
+  const DELEGATE_PERMS = [
+    ["server.view", "View"],
+    ["server.control", "Start / Stop"],
+    ["server.console", "Console / RCON"],
+    ["server.files", "Files"],
+    ["server.backup", "Backups"],
+    ["server.schedule", "Schedules"],
+    ["server.delete", "Delete"],
+  ];
+  let allUsers = $state([]);
+  let delegates = $state([]); // [{ user_id, username, role, perms: [] }]
+  let savingDelegates = $state(false);
+  async function loadDelegation() {
+    if ($user?.role !== "admin") return;
+    try {
+      const [users, dels] = await Promise.all([
+        api.get("/users"),
+        api.get(`/servers/${id}/delegates`),
+      ]);
+      // Only non-admin users are delegable (admins already have full access).
+      allUsers = users.filter((u) => u.role !== "admin");
+      delegates = dels;
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  function addDelegate(userId) {
+    if (!userId) return;
+    if (delegates.some((d) => d.user_id === userId)) return;
+    const u = allUsers.find((x) => x.id === userId);
+    if (!u) return;
+    delegates = [...delegates, { user_id: u.id, username: u.username, role: u.role, perms: ["server.view"] }];
+  }
+  function toggleDelegatePerm(userId, perm) {
+    delegates = delegates.map((d) => {
+      if (d.user_id !== userId) return d;
+      const has = d.perms.includes(perm);
+      return { ...d, perms: has ? d.perms.filter((p) => p !== perm) : [...d.perms, perm] };
+    });
+  }
+  function removeDelegate(userId) {
+    delegates = delegates.filter((d) => d.user_id !== userId);
+  }
+  async function saveDelegates() {
+    savingDelegates = true;
+    try {
+      // Drop any delegate with no permissions (equivalent to removing access).
+      const payload = delegates
+        .filter((d) => d.perms.length > 0)
+        .map((d) => ({ user_id: d.user_id, perms: d.perms }));
+      await api.put(`/servers/${id}/delegates`, payload);
+      toast("Delegated access saved", "success");
+      await loadDelegation();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingDelegates = false;
+    }
+  }
+  let undelegatedUsers = $derived(allUsers.filter((u) => !delegates.some((d) => d.user_id === u.id)));
 
   async function loadServer() {
     try {
@@ -325,7 +389,10 @@
           tab = key;
           if (key === "install" && !installWs) connectInstallLog();
           if (key === "backups") loadBackups();
-          if (key === "settings") openEdit();
+          if (key === "settings") {
+            openEdit();
+            loadDelegation();
+          }
         }}>{label}</button
       >
     {/each}
@@ -387,6 +454,71 @@
           </button>
           <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
         </div>
+      </div>
+    {/if}
+
+    {#if $user?.role === "admin"}
+      <div class="max-w-2xl mt-10 pt-6 border-t border-border">
+        <h3 class="text-lg font-semibold mb-1">Delegated users</h3>
+        <p class="text-muted text-sm mb-4">
+          Give specific non-admin users access to <b>this server only</b>. Permissions here apply
+          just to {server?.name}; the user's access to other servers is unaffected.
+        </p>
+
+        {#if delegates.length === 0}
+          <div class="text-muted text-sm mb-3">No users are delegated to this server yet.</div>
+        {/if}
+
+        <div class="space-y-3">
+          {#each delegates as d (d.user_id)}
+            <div class="card p-3">
+              <div class="flex items-center justify-between mb-2">
+                <div class="font-medium">{d.username}</div>
+                <button class="btn-ghost px-2 py-1 text-danger" onclick={() => removeDelegate(d.user_id)}>
+                  Remove
+                </button>
+              </div>
+              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+                {#each DELEGATE_PERMS as [perm, label]}
+                  <label class="inline-flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={d.perms.includes(perm)}
+                      onchange={() => toggleDelegatePerm(d.user_id, perm)}
+                    />
+                    {label}
+                  </label>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <div class="flex items-center gap-2 mt-4">
+          <select
+            class="input max-w-xs"
+            disabled={undelegatedUsers.length === 0}
+            onchange={(e) => {
+              addDelegate(e.target.value);
+              e.target.value = "";
+            }}
+          >
+            <option value="">
+              {undelegatedUsers.length ? "+ Add user…" : "No more users to add"}
+            </option>
+            {#each undelegatedUsers as u}
+              <option value={u.id}>{u.username}</option>
+            {/each}
+          </select>
+          <button class="btn-primary" onclick={saveDelegates} disabled={savingDelegates}>
+            {savingDelegates ? "Saving…" : "Save delegated access"}
+          </button>
+        </div>
+        {#if allUsers.length === 0}
+          <p class="text-muted text-xs mt-2">
+            Create non-admin users on the <a href="#/users" class="underline">Users</a> page to delegate access.
+          </p>
+        {/if}
       </div>
     {/if}
   {:else if tab === "anticheat"}

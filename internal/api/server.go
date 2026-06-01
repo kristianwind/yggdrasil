@@ -187,6 +187,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/users/{id}/permissions", s.requireAdmin(s.handleSetUserPermissions))
 		r.Get("/api/permissions/catalog", s.requireAdmin(s.handlePermissionsCatalog))
 
+		// Per-server user delegation (server-centric view of server-scoped grants)
+		r.Get("/api/servers/{id}/delegates", s.requireAdmin(s.handleListDelegates))
+		r.Put("/api/servers/{id}/delegates", s.requireAdmin(s.handleSetDelegates))
+
 		// Audit log
 		r.Get("/api/audit", s.requireAdmin(s.handleAuditLog))
 

@@ -164,7 +164,10 @@ gameskill:
       export LD_LIBRARY_PATH="/data:${LD_LIBRARY_PATH:-}"
       chmod +x ./DayZServer 2>/dev/null || true
       [ -f ./CrashReporter ] && chmod +x ./CrashReporter 2>/dev/null || true
-      exec ./DayZServer -config=serverDZ.cfg -port={{GAME_PORT}} $MODARG -BEpath=battleye -dologs -adminlog -netlog -freezecheck
+      # NOTE: do NOT pass -BEpath here. An explicit -BEpath=battleye makes
+      # BattlEye init fail and the server abort with "Server creation failed";
+      # DayZ finds and initialises BattlEye on its own from the server dir.
+      exec ./DayZServer -config=serverDZ.cfg -port={{GAME_PORT}} $MODARG -dologs -adminlog -netlog -freezecheck
     done_regex: 'Mission read'
     # DayZ stops on SIGTERM.
 

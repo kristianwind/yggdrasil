@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types"
@@ -105,6 +107,18 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 			Source: opts.DataDir,
 			Target: "/data",
 		})
+		// When running as an explicit uid that may not exist in the image's
+		// /etc/passwd, provide a minimal passwd so getpwuid(uid) succeeds. Steam
+		// servers (DayZ, Rust) call getpwuid and segfault on a NULL result — which
+		// surfaced as DayZ dying with "CrashReporter: not found". Harmless for
+		// other images (Java etc. don't consult it).
+		if opts.User != "" {
+			if pw, err := writePasswdFile(opts.DataDir, opts.User); err == nil {
+				mounts = append(mounts, mount.Mount{
+					Type: mount.TypeBind, Source: pw, Target: "/etc/passwd", ReadOnly: true,
+				})
+			}
+		}
 	}
 
 	// Auto-recover from genuine crashes, but cap retries so a server that fails
@@ -147,6 +161,25 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		return "", fmt.Errorf("create container: %w", err)
 	}
 	return resp.ID, nil
+}
+
+// writePasswdFile writes a minimal /etc/passwd (root + the run-as user + nobody)
+// next to the servers directory and returns its path, for bind-mounting into a
+// runtime container. user is "uid:gid". The file only depends on the panel uid,
+// so it's shared across servers.
+func writePasswdFile(dataDir, user string) (string, error) {
+	uid, gid := user, user
+	if parts := strings.SplitN(user, ":", 2); len(parts) == 2 {
+		uid, gid = parts[0], parts[1]
+	}
+	content := "root:x:0:0:root:/root:/bin/sh\n" +
+		fmt.Sprintf("ygg:x:%s:%s:ygg:/data:/bin/sh\n", uid, gid) +
+		"nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n"
+	path := filepath.Join(filepath.Dir(dataDir), ".ygg-passwd")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func (c *Client) Start(ctx context.Context, id string) error {

@@ -22,6 +22,11 @@ gameskill:
 
   variables:
     # In-game name uses the panel's server name (injected as {{SERVER_NAME}}).
+    - key: BETA_BRANCH
+      name: "Branch"
+      type: select
+      options: [stable, experimental]
+      default: stable
     - key: MAX_PLAYERS
       name: "Max players"
       type: int
@@ -42,9 +47,12 @@ gameskill:
       # Uses the persisted authorized-account cache (see Steam authorization).
       # STEAM_USER is injected by Yggdrasil for non-anonymous gameskills; the
       # sentry cache at $HOME (/steamcache) avoids re-triggering Steam Guard.
+      # Experimental uses the SteamCMD beta branch.
+      BETA=""
+      [ "{{BETA_BRANCH}}" = "experimental" ] && BETA="-beta experimental"
       "${STEAMCMDDIR:-/home/steam/steamcmd}/steamcmd.sh" \
         +force_install_dir /data +login "$STEAM_USER" \
-        +app_update 223350 validate +quit
+        +app_update 223350 $BETA validate +quit
 
   startup:
     command: >

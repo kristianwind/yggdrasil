@@ -16,7 +16,7 @@
     }
   });
 
-  const stat = (label, value, sub) => ({ label, value, sub });
+  const stat = (label, value, sub, link) => ({ label, value, sub, link });
   function fmtBytes(n) {
     if (!n) return "—";
     const u = ["B", "KB", "MB", "GB", "TB"];
@@ -30,8 +30,8 @@
   let cards = $derived(
     info
       ? [
-          stat("Servers", info.servers, `${info.servers_running} running`),
-          stat("Runes", info.gameskills, "game definitions"),
+          stat("Servers", info.servers, `${info.servers_running} running`, "#/servers"),
+          stat("Runes", info.gameskills, "game definitions", "#/runes"),
           stat("Docker", info.docker_ok ? "OK" : "Down", info.arch),
           stat(
             "Disk free",
@@ -52,11 +52,15 @@
 
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
   {#each cards as c}
-    <div class="card p-4">
+    <svelte:element
+      this={c.link ? "a" : "div"}
+      href={c.link}
+      class="card p-4 block {c.link ? 'hover:bg-panel2/50 transition-colors' : ''}"
+    >
       <div class="text-muted text-xs uppercase tracking-wide">{c.label}</div>
       <div class="text-2xl font-semibold mt-1">{c.value}</div>
       {#if c.sub}<div class="text-muted text-xs mt-0.5">{c.sub}</div>{/if}
-    </div>
+    </svelte:element>
   {/each}
 </div>
 

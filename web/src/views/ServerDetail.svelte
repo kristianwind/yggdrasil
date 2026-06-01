@@ -157,12 +157,15 @@
     };
   }
 
-  async function runInstall() {
+  async function runInstall(confirmFirst = false) {
+    if (confirmFirst &&
+      !confirm("Update / reinstall this server? It re-runs the install script to fetch the latest version. Back up your world first — config files may be regenerated."))
+      return;
     try {
       await api.post(`/servers/${id}/install`);
       tab = "install";
       connectInstallLog();
-      toast("Install started", "info");
+      toast("Update / reinstall started", "info");
     } catch (e) {
       toast(e.message, "error");
     }
@@ -277,7 +280,7 @@
       <button class="btn-ghost" onclick={() => action("stop")}>Stop</button>
     {:else}
       <button class="btn-primary" onclick={() => action("start")}>Start</button>
-      <button class="btn-ghost" onclick={runInstall}>Reinstall</button>
+      <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
     {/if}
     <button class="btn-danger ml-auto" onclick={del}>Delete</button>
   </div>
@@ -382,7 +385,7 @@
           <button class="btn-primary" onclick={saveEdit} disabled={savingEdit}>
             {savingEdit ? "Saving…" : "Save changes"}
           </button>
-          <button class="btn-ghost" onclick={runInstall}>Reinstall / update game</button>
+          <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
         </div>
       </div>
     {/if}

@@ -733,8 +733,17 @@ func (s *Server) allocatePort(ctx context.Context, preferred int, taken map[int]
 		}
 		return hostPortAvailable(port)
 	}
-	if preferred >= s.cfg.Ports.RangeMin && preferred <= s.cfg.Ports.RangeMax && free(preferred) {
-		return preferred, nil
+	// Prefer the gameskill's own default port and a small window above it, even
+	// if that's outside the configured range — so games keep their conventional
+	// ports (DayZ 2302/2303…, query 27016/27017…, Minecraft 25565/25566…) and the
+	// Nth server of a kind lands on default+N. Auto-forwarding handles the WAN
+	// side, so these don't need to sit inside the manual-forwarding range.
+	if preferred > 0 {
+		for port := preferred; port < preferred+50 && port <= 65535; port++ {
+			if free(port) {
+				return port, nil
+			}
+		}
 	}
 	for port := s.cfg.Ports.RangeMin; port <= s.cfg.Ports.RangeMax; port++ {
 		if free(port) {

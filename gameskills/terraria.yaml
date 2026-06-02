@@ -1,0 +1,85 @@
+gameskill:
+  id: terraria
+  name: "Terraria"
+  category: "Terraria"
+  description: "Terraria dedicated server (official build from terraria.org)"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "terraria"
+
+  docker:
+    image: "ubuntu:22.04"
+
+  variables:
+    - key: WORLD_NAME
+      name: "World name"
+      type: string
+      default: "Yggdrasil"
+    - key: WORLD_SIZE
+      name: "World size (1 small, 2 medium, 3 large)"
+      type: select
+      options: ["1", "2", "3"]
+      default: "2"
+    - key: DIFFICULTY
+      name: "Difficulty (0 classic, 1 expert, 2 master, 3 journey)"
+      type: select
+      options: ["0", "1", "2", "3"]
+      default: "0"
+    - key: MAX_PLAYERS
+      name: "Max players"
+      type: int
+      default: 8
+    - key: PASSWORD
+      name: "Server password (blank = public)"
+      type: string
+      default: ""
+    - key: SERVER_VERSION
+      name: "Server build (e.g. 1449 = 1.4.4.9 — see terraria.org)"
+      type: string
+      default: "1449"
+
+  install:
+    image: "ubuntu:22.04"
+    script: |
+      set -e
+      apt-get update && apt-get install -y curl unzip ca-certificates
+      VER="{{SERVER_VERSION}}"
+      URL="https://terraria.org/api/download/pc-dedicated-server/terraria-server-${VER}.zip"
+      echo "Downloading $URL"
+      curl -fsSL -A "Mozilla/5.0 (Yggdrasil)" -o /tmp/terraria.zip "$URL"
+      rm -rf /tmp/tex; mkdir -p /tmp/tex
+      unzip -o -q /tmp/terraria.zip -d /tmp/tex
+      # The archive extracts to <build>/Linux with the dedicated-server binaries.
+      SRC=$(find /tmp/tex -type d -name Linux | head -1)
+      [ -n "$SRC" ] || { echo "ERROR: Linux server dir not found in the download"; exit 1; }
+      cp -rf "$SRC"/. /data/
+      chmod +x /data/TerrariaServer /data/TerrariaServer.bin.x86_64 2>/dev/null || true
+      mkdir -p /data/worlds
+      echo "=== /data after install ==="; ls -la /data | head -20
+      echo "Terraria $VER installed."
+
+  startup:
+    # The Linux build ships its own bundled Mono runtime, so the native
+    # TerrariaServer.bin.x86_64 runs directly. All settings come from flags so the
+    # server boots headless (no interactive world-creation prompt). -autocreate
+    # generates the world on first boot and is a no-op once it exists.
+    command: >
+      ./TerrariaServer.bin.x86_64
+      -autocreate {{WORLD_SIZE}}
+      -worldname "{{WORLD_NAME}}"
+      -world "/data/worlds/{{WORLD_NAME}}.wld"
+      -difficulty {{DIFFICULTY}}
+      -maxplayers {{MAX_PLAYERS}}
+      -port {{GAME_PORT}}
+      -password "{{PASSWORD}}"
+      -nosteam -secure
+    done_regex: 'Server started'
+
+  # Terraria has no Source/A2S query protocol; status comes from the running
+  # container + the connect address. (No query/rcon blocks.)
+
+  ports:
+    - { name: game, default: 7777, protocol: tcp }
+
+  backup:
+    include: ["worlds"]

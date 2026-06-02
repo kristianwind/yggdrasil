@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
-  import { navigate } from "../lib/router.js";
+  import { navigate, route } from "../lib/router.js";
+  import { get } from "svelte/store";
   import VarForm from "../components/VarForm.svelte";
 
   let servers = $state([]);
@@ -38,7 +39,15 @@
       loading = false;
     }
   }
-  onMount(load);
+  onMount(async () => {
+    await load();
+    // Opened from the Dashboard's "+ New Server" button (#/servers?new=1):
+    // launch the create modal, then drop the param so a refresh doesn't re-open it.
+    if (get(route).query.get("new") && gameskills.length > 0) {
+      await openCreate();
+      navigate("/servers");
+    }
+  });
 
   // Group servers by realm name for display.
   let grouped = $derived.by(() => {

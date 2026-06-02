@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { user } from "../lib/auth.js";
+  import { navigate } from "../lib/router.js";
 
   let info = $state(null);
   let servers = $state([]);
@@ -56,8 +57,15 @@
   });
 </script>
 
-<h1 class="text-2xl font-semibold mb-1">Dashboard</h1>
-<p class="text-muted mb-6">Welcome back, {$user.username}.</p>
+<div class="flex items-start justify-between gap-3 mb-6">
+  <div>
+    <h1 class="text-2xl font-semibold mb-1">Dashboard</h1>
+    <p class="text-muted">Welcome back, {$user.username}.</p>
+  </div>
+  {#if $user.role === "admin"}
+    <button class="btn-primary shrink-0" onclick={() => navigate("/servers?new=1")}>+ New Server</button>
+  {/if}
+</div>
 
 {#if error}
   <div class="card border-danger p-3 text-danger text-sm mb-4">{error}</div>

@@ -150,6 +150,7 @@ func loadBuiltinGameskills(database *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	shipped := map[string]bool{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
 			continue
@@ -173,6 +174,33 @@ func loadBuiltinGameskills(database *sql.DB) error {
 		`, gs.ID, gs.Name, gs.Category, gs.Version, string(data))
 		if err != nil {
 			log.Printf("upsert gameskill %s: %v", gs.ID, err)
+		}
+		shipped[gs.ID] = true
+	}
+
+	// Prune builtin runes that are no longer shipped (e.g. moved to community-runes/)
+	// AND aren't referenced by any server — so slimming the default set actually
+	// removes them, without orphaning existing servers (a rune in use is kept until
+	// its servers are deleted, then cleaned on a later boot).
+	rows, err := database.Query("SELECT id FROM gameskills WHERE builtin=1")
+	if err != nil {
+		return nil
+	}
+	var stale []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil && !shipped[id] {
+			stale = append(stale, id)
+		}
+	}
+	rows.Close()
+	for _, id := range stale {
+		var n int
+		database.QueryRow("SELECT COUNT(*) FROM servers WHERE gameskill_id=?", id).Scan(&n) //nolint:errcheck
+		if n == 0 {
+			if _, err := database.Exec("DELETE FROM gameskills WHERE id=? AND builtin=1", id); err == nil {
+				log.Printf("removed unshipped builtin rune %q (no servers use it)", id)
+			}
 		}
 	}
 	return nil

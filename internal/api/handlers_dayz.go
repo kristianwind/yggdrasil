@@ -82,12 +82,17 @@ func dayzTypesFiles(missionDir string) []string {
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-// isDayzTypesFile heuristically identifies a loot types.xml (root <types>, item
-// entries with a lifetime) — distinct from cfgspawnabletypes.xml / events.xml.
-func isDayzTypesFile(head string) bool {
-	return strings.Contains(head, "<types>") &&
-		strings.Contains(head, "<type name=") &&
-		strings.Contains(head, "<lifetime>")
+// isDayzTypesSource identifies anything that defines loot items with lifetimes —
+// a full types.xml OR a "paste into types.xml" fragment (no <types> root). The
+// <lifetime> requirement excludes cfgspawnabletypes.xml / events.xml.
+func isDayzTypesSource(head string) bool {
+	return strings.Contains(head, "<type name=") && strings.Contains(head, "<lifetime>")
+}
+
+// isDayzTypesComplete is a source that also has the <types> root, so it can be
+// registered in cfgeconomycore.xml as-is (fragments must be wrapped first).
+func isDayzTypesComplete(head string) bool {
+	return strings.Contains(head, "<types>") && isDayzTypesSource(head)
 }
 
 // dayzRegisteredRel is the set of types files already in the economy (default +
@@ -132,7 +137,7 @@ func dayzScanUnregistered(missionDir string) []string {
 		buf := make([]byte, 16384)
 		n, _ := f.Read(buf)
 		f.Close()
-		if isDayzTypesFile(string(buf[:n])) {
+		if isDayzTypesComplete(string(buf[:n])) {
 			found = append(found, rel)
 		}
 		return nil
@@ -229,7 +234,7 @@ func (s *Server) handleDayzModLoot(w http.ResponseWriter, r *http.Request) {
 		Expansion bool      `json:"expansion"`
 		Files     []modFile `json:"files"`
 	}
-	var mods []modInfo
+	mods := []modInfo{}
 	for _, e := range entries {
 		if !e.IsDir() || !strings.HasPrefix(e.Name(), "@") {
 			continue
@@ -249,7 +254,7 @@ func (s *Server) handleDayzModLoot(w http.ResponseWriter, r *http.Request) {
 			n, _ := f.Read(buf)
 			f.Close()
 			head := string(buf[:n])
-			if !isDayzTypesFile(head) {
+			if !isDayzTypesSource(head) {
 				return nil
 			}
 			// item count over the whole file
@@ -308,11 +313,18 @@ func (s *Server) handleDayzImportModTypes(w http.ResponseWriter, r *http.Request
 		return
 	}
 	data, err := os.ReadFile(src)
-	if err != nil || !isDayzTypesFile(string(data)) {
+	if err != nil || !isDayzTypesSource(string(data)) {
 		jsonError(w, "not a types.xml file", http.StatusBadRequest)
 		return
 	}
-	slug := dayzSlug(strings.TrimPrefix(parts[0], "@"))
+	// Many mods ship a "paste into types.xml" fragment with no <types> root — wrap
+	// it so the copied file is a valid, registerable standalone types.xml.
+	if !strings.Contains(string(data), "<types>") {
+		data = []byte("<types>\n" + strings.TrimSpace(string(data)) + "\n</types>\n")
+	}
+	// Prefer a readable subfolder from the mod's name (e.g. "CodeLock") over its id.
+	modID := strings.TrimPrefix(parts[0], "@")
+	slug := dayzSlug(dayzModName(filepath.Join(dataDir, parts[0]), modID))
 	base := filepath.Base(src)
 	mdir := dayzMissionDir(dataDir, mission)
 	destDir := filepath.Join(mdir, slug)

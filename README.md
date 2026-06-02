@@ -55,13 +55,19 @@ one-liner — it's idempotent).
   (game files, world, configs), and Steam installs **pre-check free space** with a
   clear error instead of a cryptic Steam failure
 
-**Games (gameskills / "Runes")**
-- Ships with **Minecraft Java, Minecraft Bedrock, Rust, DayZ** — DayZ with
+**Games & apps (gameskills / "Runes")**
+- Bundled core: **Minecraft Java, Minecraft Bedrock, Rust, DayZ** — DayZ with
   **Workshop mods** (auto-downloaded + signed) and BattlEye RCON
-- **Community runes** for games that can't be bundled (e.g. *Genshin Impact* via
-  Grasscutter) live in [`community-runes/`](community-runes/) — import them by hand
+- **Community runes** in [`community-runes/`](community-runes/) (import in one
+  click): **databases** (MongoDB, MariaDB, PostgreSQL), **homelab apps**
+  (Vaultwarden, Gitea, Uptime Kuma, Grafana, Jellyfin, WordPress, Nextcloud, n8n,
+  Memos, Homepage), plus Terraria and Genshin/Grasscutter
+- **Not just games** — a rune is just a Docker image + ports + env, so most things
+  that run in Docker run here. Rune fields `data_path` (where the volume mounts),
+  `user` (run-as uid) and `keep_entrypoint` (use the image's own entrypoint) make
+  off-the-shelf app images first-class
 - Author your own in declarative YAML; auto-generated settings form
-  (string/int/bool/**dropdown**) per game
+  (string/int/bool/**dropdown**) per rune
 - **Import** existing definitions: Pterodactyl **eggs** (JSON) and **XML**
 - **Steam authorization**: anonymous by default; a one-time login flow for games
   that require an account (DayZ), with the SteamCMD cache persisted so Steam Guard
@@ -84,8 +90,15 @@ one-liner — it's idempotent).
   - **UniFi OS** (UDM / UDR / Cloud Key G2+) via the local Network API — enter the
     gateway URL + a local admin, **Test connection**, and rules are managed for you
     (tagged `[ygg:…]` so it only ever touches its own forwards)
+  - **Per-server toggle** — choose whether each server opens its firewall ports
+    (default on) or stays LAN-only
+- **"Online from outside" check** — the panel probes each server on its **public**
+  address (not just localhost) and shows a 🌐 reachable / 🚫 badge, so you can
+  confirm at a glance that the port-forward actually works from the internet
 - **Connect address** shown per server — the panel detects your public IP (or uses
   a hostname you set) and shows the exact `host:port` players join on
+- **BattleMetrics** (optional) — set a server's BattleMetrics ID for a live
+  online/players/rank badge on its page
 - **Update notifications** — the panel checks GitHub releases and shows an
   in-app banner when a newer Yggdrasil is available
 

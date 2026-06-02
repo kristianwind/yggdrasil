@@ -198,8 +198,16 @@ func loadBuiltinGameskills(database *sql.DB) error {
 		var n int
 		database.QueryRow("SELECT COUNT(*) FROM servers WHERE gameskill_id=?", id).Scan(&n) //nolint:errcheck
 		if n == 0 {
+			// Unused → remove entirely; it's importable from community-runes/.
 			if _, err := database.Exec("DELETE FROM gameskills WHERE id=? AND builtin=1", id); err == nil {
 				log.Printf("removed unshipped builtin rune %q (no servers use it)", id)
+			}
+		} else {
+			// Still in use → demote to a community rune (builtin=0) so it's no longer
+			// part of the bundled set but existing servers keep working and an admin
+			// can delete it once those servers are gone.
+			if _, err := database.Exec("UPDATE gameskills SET builtin=0 WHERE id=?", id); err == nil {
+				log.Printf("demoted in-use unshipped rune %q to community (builtin=0)", id)
 			}
 		}
 	}

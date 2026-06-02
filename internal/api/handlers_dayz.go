@@ -112,7 +112,9 @@ func (s *Server) handleDayzEconomy(w http.ResponseWriter, r *http.Request) {
 		minLife := -1
 		for _, m := range dzLifetimeRe.FindAllStringSubmatch(str, -1) {
 			n, _ := strconv.Atoi(m[1])
-			if minLife < 0 || n < minLife {
+			// 0 means "unmanaged" in DayZ (special/non-spawning entries) — ignore it
+			// so the reported minimum reflects real loot.
+			if n > 0 && (minLife < 0 || n < minLife) {
 				minLife = n
 			}
 		}
@@ -179,7 +181,8 @@ func (s *Server) handleDayzMinLifetime(w http.ResponseWriter, r *http.Request) {
 		c := 0
 		out := dzLifetimeRe.ReplaceAllStringFunc(string(data), func(m string) string {
 			n, _ := strconv.Atoi(dzLifetimeRe.FindStringSubmatch(m)[1])
-			if n < floor {
+			// Skip 0 (unmanaged/special entries); only raise real, too-short lifetimes.
+			if n > 0 && n < floor {
 				c++
 				return "<lifetime>" + strconv.Itoa(floor) + "</lifetime>"
 			}

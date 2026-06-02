@@ -81,7 +81,8 @@ gameskill:
       +server.maxplayers {{MAX_PLAYERS}}
       +server.worldsize {{WORLD_SIZE}}
       +server.seed {{SEED}}
-      +server.port 28015
+      +server.port {{GAME_PORT}}
+      +server.queryport {{QUERY_PORT}}
       +rcon.web 1
       +rcon.port {{RCON_PORT}}
       +rcon.password "{{RCON_PASSWORD}}"'

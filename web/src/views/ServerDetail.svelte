@@ -101,6 +101,60 @@
     return p[p.length - 1] || b.id;
   }
 
+  // Norn — DayZ loot economy / despawn helper (only shown for DayZ servers).
+  let tabs = $derived(
+    [
+      ["console", "Console"],
+      ["files", "Files"],
+      ["backups", "Backups"],
+      ["settings", "Settings"],
+      ["anticheat", "Anti-cheat"],
+      ...(server?.gameskill_id === "dayz" ? [["norn", "Norn (loot)"]] : []),
+      ["install", "Install log"],
+    ],
+  );
+  let economy = $state(null);
+  let nornBusy = $state(false);
+  let minHours = $state(4);
+  let globalsEdit = $state({});
+  function fmtDur(sec) {
+    if (sec == null || sec < 0) return "—";
+    if (sec < 3600) return `${Math.round(sec / 60)} min`;
+    if (sec < 86400) return `${(sec / 3600).toFixed(1)} h`;
+    return `${(sec / 86400).toFixed(1)} d`;
+  }
+  async function loadEconomy() {
+    economy = await api.get(`/servers/${id}/dayz/economy`).catch(() => null);
+    globalsEdit = { ...(economy?.globals || {}) };
+  }
+  async function applyMinLifetime() {
+    if (!(minHours > 0)) return toast("Enter hours > 0", "warn");
+    nornBusy = true;
+    try {
+      const r = await api.post(`/servers/${id}/dayz/min-lifetime`, { hours: Number(minHours) });
+      toast(`Raised ${r.changed} item lifetimes to ≥ ${minHours} h — restart to apply`, "success");
+      await loadEconomy();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      nornBusy = false;
+    }
+  }
+  async function saveGlobals() {
+    nornBusy = true;
+    try {
+      const payload = {};
+      for (const [k, v] of Object.entries(globalsEdit)) payload[k] = Number(v) || 0;
+      const r = await api.post(`/servers/${id}/dayz/globals`, payload);
+      toast(`Updated ${r.changed} cleanup timer(s) — restart to apply`, "success");
+      await loadEconomy();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      nornBusy = false;
+    }
+  }
+
   let skill = $state(null); // parsed gameskill (for anti-cheat surface + edit form)
 
   // Edit settings
@@ -466,7 +520,7 @@
 
   <!-- Tabs -->
   <div class="flex gap-1 border-b border-border mb-4">
-    {#each [["console", "Console"], ["files", "Files"], ["backups", "Backups"], ["settings", "Settings"], ["anticheat", "Anti-cheat"], ["install", "Install log"]] as [key, label]}
+    {#each tabs as [key, label]}
       <button
         class="px-4 py-2 text-sm border-b-2 -mb-px {tab === key
           ? 'border-accent text-text'
@@ -475,6 +529,7 @@
           tab = key;
           if (key === "install" && !installWs) connectInstallLog();
           if (key === "backups") loadBackups();
+          if (key === "norn") loadEconomy();
           if (key === "settings") {
             openEdit();
             loadDelegation();
@@ -721,5 +776,89 @@
         </div>
       {/each}
     </div>
+  {:else if tab === "norn"}
+    <div class="flex items-center gap-2 mb-1">
+      <h3 class="text-lg font-semibold">🧵 Norn — loot economy</h3>
+    </div>
+    <p class="text-muted text-sm mb-4">
+      Controls how long dropped items stay in the world before they despawn. Modded loot often
+      vanishes too fast — set a floor below and nothing will despawn quicker than that.
+      <b>Changes apply on the next restart.</b>
+    </p>
+
+    {#if !economy}
+      <div class="text-muted text-sm">Loading…</div>
+    {:else if !economy.found}
+      <div class="card border-warn/40 bg-warn/10 text-warn text-sm p-3">
+        No mission economy files found for <span class="font-mono">{economy.mission}</span>. Install
+        and start the server once so DayZ writes its <span class="font-mono">mpmissions</span> files.
+      </div>
+    {:else}
+      <!-- Overview -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+        <div class="card p-3">
+          <div class="text-muted text-xs uppercase tracking-wide">Mission</div>
+          <div class="text-sm font-mono mt-1 truncate">{economy.mission}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-muted text-xs uppercase tracking-wide">Item types</div>
+          <div class="text-2xl font-semibold mt-1">{economy.total_items}</div>
+        </div>
+        <div class="card p-3 {economy.min_lifetime >= 0 && economy.min_lifetime < 3600 ? 'border-warn/50' : ''}">
+          <div class="text-muted text-xs uppercase tracking-wide">Shortest lifetime</div>
+          <div class="text-2xl font-semibold mt-1">{fmtDur(economy.min_lifetime)}</div>
+          {#if economy.min_lifetime >= 0 && economy.min_lifetime < 3600}
+            <div class="text-warn text-xs mt-0.5">some items despawn fast</div>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Minimum lifetime floor -->
+      <div class="card p-4 mb-5">
+        <h4 class="font-semibold mb-1">Minimum lifetime floor</h4>
+        <p class="text-muted text-xs mb-3">
+          Raise every item whose lifetime is below this up to it — across vanilla <span class="font-mono">types.xml</span>
+          and any modded types files registered in the economy. The fastest, most reliable fix for
+          "modded items despawn too quickly".
+        </p>
+        <div class="flex flex-wrap items-end gap-2">
+          <div>
+            <label class="label" for="norn-h">No item despawns faster than (hours)</label>
+            <input id="norn-h" class="input w-40" type="number" min="0.1" step="0.5" bind:value={minHours} />
+          </div>
+          <button class="btn-primary" onclick={applyMinLifetime} disabled={nornBusy}>
+            {nornBusy ? "Working…" : "Apply floor"}
+          </button>
+        </div>
+      </div>
+
+      <!-- Globals cleanup timers -->
+      <div class="card p-4 mb-5">
+        <h4 class="font-semibold mb-1">Cleanup timers (globals.xml)</h4>
+        <p class="text-muted text-xs mb-3">
+          Fallback despawn timers in seconds. <span class="font-mono">CleanupLifetimeDefault</span> is
+          used for items with no explicit lifetime — bump it if loot still disappears.
+        </p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {#each Object.keys(globalsEdit) as k}
+            <div>
+              <label class="label text-xs" for={`g-${k}`}>{k.replace("CleanupLifetime", "")}</label>
+              <input id={`g-${k}`} class="input" type="number" min="0" bind:value={globalsEdit[k]} />
+            </div>
+          {/each}
+        </div>
+        <button class="btn-ghost mt-3" onclick={saveGlobals} disabled={nornBusy}>Save timers</button>
+      </div>
+
+      <!-- Per-file breakdown -->
+      <div class="card divide-y divide-border">
+        {#each economy.files as f}
+          <div class="flex items-center justify-between px-4 py-2 text-sm">
+            <span class="font-mono truncate">{f.path}{#if f.modded}<span class="badge bg-accent2/20 text-accent ml-2">modded</span>{/if}</span>
+            <span class="text-muted shrink-0">{f.items} items · min {fmtDur(f.min_lifetime)}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
   {/if}
 {/if}

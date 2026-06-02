@@ -113,6 +113,7 @@
       cpu_percent: server.cpu_percent || 0,
       memory_mb: server.memory_mb || 0,
       bm_server_id: server.bm_server_id || "",
+      auto_forward: server.auto_forward !== false,
     };
   }
   async function saveEdit() {
@@ -126,6 +127,7 @@
         cpu_percent: Number(edit.cpu_percent) || 0,
         memory_mb: Number(edit.memory_mb) || 0,
         bm_server_id: edit.bm_server_id || "",
+        auto_forward: !!edit.auto_forward,
       });
       toast("Saved — restart to apply (reinstall for file-baked values)", "success");
       await loadServer();
@@ -220,6 +222,16 @@
     bm = await api.get(`/servers/${id}/battlemetrics`).catch(() => null);
   }
 
+  // "Online from outside" — probes the server via its public address (see backend).
+  let reach = $state(null);
+  async function loadReach() {
+    if (!server || (server.status !== "running" && server.status !== "starting")) {
+      reach = null;
+      return;
+    }
+    reach = await api.get(`/servers/${id}/reachability`).catch(() => null);
+  }
+
   async function loadServer() {
     try {
       const prev = server;
@@ -232,6 +244,7 @@
         skill = await api.get(`/gameskills/${server.gameskill_id}`).catch(() => null);
       }
       loadBM();
+      loadReach();
     } catch (e) {
       toast(e.message, "error");
     }
@@ -366,6 +379,16 @@
     <span class="badge {server.status === 'running' ? 'bg-accent2/20 text-accent' : server.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
       >{server.status}</span
     >
+    {#if reach}
+      <span
+        class="badge {reach.reachable ? 'bg-accent2/20 text-accent' : 'bg-warn/20 text-warn'}"
+        title={reach.reachable
+          ? `Responds from the internet on ${reach.host}:${reach.port}`
+          : `No external reply on ${reach.host}:${reach.port} — check the port forward (or your router's NAT loopback)`}
+      >
+        {reach.reachable ? "🌐 reachable" : "🌐 not from outside"}
+      </span>
+    {/if}
     {#if bm && bm.configured}
       <a
         href={bm.url}
@@ -512,6 +535,16 @@
           <p class="text-xs text-muted mt-1">
             Find your server on battlemetrics.com — the number in its URL. Shows a live
             online/players badge at the top of this page.
+          </p>
+        </div>
+        <div>
+          <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={edit.auto_forward} />
+            Open firewall ports automatically (UPnP / UniFi)
+          </label>
+          <p class="text-xs text-muted mt-1">
+            On by default. Turn off to keep this server LAN-only — its ports won't be forwarded
+            on the router when it starts. Takes effect on the next start.
           </p>
         </div>
         <div class="card bg-warn/10 border-warn/40 text-warn text-xs px-3 py-2">

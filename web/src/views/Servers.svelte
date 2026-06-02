@@ -25,6 +25,19 @@
   let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0 });
   let creating = $state(false);
 
+  // External reachability per server (id -> {reachable,...}), for the at-a-glance
+  // "online from outside" indicator. Probed in parallel for running servers.
+  let reach = $state({});
+  async function loadReach() {
+    const running = servers.filter((s) => s.status === "running" || s.status === "starting");
+    await Promise.all(
+      running.map(async (s) => {
+        const r = await api.get(`/servers/${s.id}/reachability`).catch(() => null);
+        if (r) reach = { ...reach, [s.id]: r };
+      }),
+    );
+  }
+
   async function load() {
     loading = true;
     try {
@@ -33,6 +46,7 @@
         api.get("/realms"),
         api.get("/gameskills"),
       ]);
+      loadReach();
     } catch (e) {
       toast(e.message, "error");
     } finally {
@@ -162,11 +176,20 @@
                   <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
                 </td>
                 <td class="px-4 py-2 text-muted">{s.gameskill_id}</td>
-                <td class="px-4 py-2">
+                <td class="px-4 py-2 whitespace-nowrap">
                   <span
                     class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
                     >{s.status}</span
                   >
+                  {#if reach[s.id]}
+                    <span
+                      class="ml-1"
+                      title={reach[s.id].reachable
+                        ? "Reachable from the internet"
+                        : "Not responding from outside — check the port forward"}
+                      >{reach[s.id].reachable ? "🌐" : "🚫"}</span
+                    >
+                  {/if}
                 </td>
                 <td class="px-4 py-2 hidden sm:table-cell">
                   {#if s.ports && Object.keys(s.ports).length}
@@ -202,10 +225,20 @@
           <div class="card p-4">
             <div class="flex items-start justify-between">
               <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
-              <span
-                class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
-                >{s.status}</span
-              >
+              <div class="flex items-center gap-1 shrink-0">
+                <span
+                  class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
+                  >{s.status}</span
+                >
+                {#if reach[s.id]}
+                  <span
+                    title={reach[s.id].reachable
+                      ? "Reachable from the internet"
+                      : "Not responding from outside — check the port forward"}
+                    >{reach[s.id].reachable ? "🌐" : "🚫"}</span
+                  >
+                {/if}
+              </div>
             </div>
             <div class="text-xs text-muted mt-1">{s.gameskill_id}</div>
             {#if s.ports && Object.keys(s.ports).length}

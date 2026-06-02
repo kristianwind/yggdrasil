@@ -42,16 +42,18 @@ type serverRow struct {
 	InstallStatus string            `json:"install_status"`
 	CreatedAt     string            `json:"created_at"`
 	BMServerID    string            `json:"bm_server_id,omitempty"`
+	AutoForward   bool              `json:"auto_forward"`
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,'')"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1)"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
-	var installed int
+	var installed, autoFwd int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd)
 	srv.Installed = installed == 1
+	srv.AutoForward = autoFwd == 1
 	srv.Ports = map[string]int{}
 	json.Unmarshal([]byte(srv.PortsJSON), &srv.Ports)
 	return srv, err
@@ -253,8 +255,9 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		RealmID    *string           `json:"realm_id"`
 		Env        map[string]string `json:"env"`
 		CPUPercent *float64          `json:"cpu_percent"`
-		MemoryMB   *int64            `json:"memory_mb"`
-		BMServerID *string           `json:"bm_server_id"`
+		MemoryMB    *int64            `json:"memory_mb"`
+		BMServerID  *string           `json:"bm_server_id"`
+		AutoForward *bool             `json:"auto_forward"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -262,6 +265,9 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.BMServerID != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET bm_server_id=? WHERE id=?", strings.TrimSpace(*req.BMServerID), id)
+	}
+	if req.AutoForward != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET auto_forward=? WHERE id=?", boolInt(*req.AutoForward), id)
 	}
 	if req.Name != nil && *req.Name != "" {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)
@@ -500,8 +506,12 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		doneRegex = rt.gs.Startup.DoneRegex
 	}
 	go s.watchStartupReady(id, containerID, doneRegex)
-	go s.upnpAddServer(id, srv.Name)
-	go s.unifiAddServer(id, srv.Name)
+	// Only open firewall ports when this server opts in (default on). Lets you run
+	// a server that should stay LAN-only without auto-forwarding its ports.
+	if srv.AutoForward {
+		go s.upnpAddServer(id, srv.Name)
+		go s.unifiAddServer(id, srv.Name)
+	}
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
 	s.notifyAll("▶️ " + srv.Name + " started")

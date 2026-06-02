@@ -216,11 +216,7 @@ func (s *Server) handleDayzModLoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mdir := dayzMissionDir(dataDir, mission)
-	// Basenames already in the mission economy → mark mod files as "imported".
-	importedBase := map[string]bool{}
-	for rel := range dayzRegisteredRel(mdir) {
-		importedBase[strings.ToLower(filepath.Base(rel))] = true
-	}
+	reg := dayzRegisteredRel(mdir) // mission-relative paths already in the economy
 
 	entries, _ := os.ReadDir(dataDir)
 	type modFile struct {
@@ -241,6 +237,7 @@ func (s *Server) handleDayzModLoot(w http.ResponseWriter, r *http.Request) {
 		}
 		modDir := filepath.Join(dataDir, e.Name())
 		name := dayzModName(modDir, e.Name())
+		slug := dayzSlug(name) // the subfolder import would create in the mission
 		var files []modFile
 		filepath.WalkDir(modDir, func(path string, d fs.DirEntry, err error) error { //nolint:errcheck
 			if err != nil || d.IsDir() || !strings.HasSuffix(strings.ToLower(d.Name()), ".xml") {
@@ -260,9 +257,10 @@ func (s *Server) handleDayzModLoot(w http.ResponseWriter, r *http.Request) {
 			// item count over the whole file
 			full, _ := os.ReadFile(path)
 			files = append(files, modFile{
-				Path:     filepath.ToSlash(mustRel(dataDir, path)),
-				Items:    len(dzTypeNameRe.FindAllString(string(full), -1)),
-				Imported: importedBase[strings.ToLower(d.Name())],
+				Path:  filepath.ToSlash(mustRel(dataDir, path)),
+				Items: len(dzTypeNameRe.FindAllString(string(full), -1)),
+				// Imported iff the exact file this would create is already registered.
+				Imported: reg[slug+"/"+filepath.Base(path)],
 			})
 			return nil
 		})

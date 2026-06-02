@@ -294,14 +294,19 @@ func (c *Client) GetStats(ctx context.Context, id string) (*Stats, error) {
 func calcCPUPercent(s *container.StatsResponse) float64 {
 	cpuDelta := float64(s.CPUStats.CPUUsage.TotalUsage) - float64(s.PreCPUStats.CPUUsage.TotalUsage)
 	sysDelta := float64(s.CPUStats.SystemUsage) - float64(s.PreCPUStats.SystemUsage)
-	cores := float64(len(s.CPUStats.CPUUsage.PercpuUsage))
-	if cores == 0 {
-		cores = float64(s.CPUStats.OnlineCPUs)
-	}
-	if sysDelta <= 0 || cores == 0 {
+	if sysDelta <= 0 || cpuDelta < 0 {
 		return 0
 	}
-	return (cpuDelta / sysDelta) * cores * 100.0
+	// Report CPU as a share of the WHOLE host (0–100%), matching the dashboard's
+	// host-CPU card. Docker's usual per-core formula multiplies by the core count,
+	// so a container using >1 core reads >100% (e.g. 120% for 1.2 of 8 cores),
+	// which looks wrong on a per-server gauge. sysDelta already spans all cores,
+	// so cpuDelta/sysDelta is the fraction of total capacity.
+	pct := (cpuDelta / sysDelta) * 100.0
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
 }
 
 func (c *Client) Inspect(ctx context.Context, id string) (container.InspectResponse, error) {

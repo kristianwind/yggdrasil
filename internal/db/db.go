@@ -218,6 +218,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''")     // BattleMetrics server id (optional)
 	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")   // open firewall ports on start (UPnP/UniFi)
+	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")        // DayZ Norn loot settings (re-applied after reinstall)
 	return nil
 }
 

@@ -136,6 +136,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/dayz/register-types", s.handleDayzRegisterTypes)
 		r.Get("/api/servers/{id}/dayz/mod-loot", s.handleDayzModLoot)
 		r.Post("/api/servers/{id}/dayz/import-mod-types", s.handleDayzImportModTypes)
+		r.Post("/api/servers/{id}/dayz/reset", s.handleDayzResetNorn)
 		r.Post("/api/servers/{id}/rcon", s.handleServerRcon)
 		r.Get("/api/servers/{id}/logs", s.handleServerLogs)     // WebSocket
 		r.Get("/api/servers/{id}/console", s.handleConsole)     // WebSocket

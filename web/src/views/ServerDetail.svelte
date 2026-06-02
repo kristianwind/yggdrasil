@@ -170,6 +170,19 @@
       nornBusy = false;
     }
   }
+  async function resetNorn() {
+    if (!confirm("Forget all saved Norn settings? Loot files revert to vanilla on the next Update/Reinstall.")) return;
+    nornBusy = true;
+    try {
+      await api.post(`/servers/${id}/dayz/reset`, {});
+      toast("Norn settings cleared — Update/Reinstall to restore vanilla loot", "info");
+      await loadEconomy();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      nornBusy = false;
+    }
+  }
   async function registerTypes() {
     nornBusy = true;
     try {
@@ -822,6 +835,20 @@
         and start the server once so DayZ writes its <span class="font-mono">mpmissions</span> files.
       </div>
     {:else}
+      <!-- Saved / persistence -->
+      {#if economy.saved && (economy.saved.min_lifetime_hours || (economy.saved.registered && economy.saved.registered.length) || (economy.saved.globals && Object.keys(economy.saved.globals).length))}
+        <div class="card border-accent2/40 bg-accent2/5 p-3 mb-5 flex items-center justify-between gap-3">
+          <div class="text-sm">
+            <span class="text-accent font-medium">✓ Saved & auto-re-applied after updates.</span>
+            <span class="text-muted">
+              {#if economy.saved.min_lifetime_hours}floor {economy.saved.min_lifetime_hours}h{/if}{#if economy.saved.registered && economy.saved.registered.length} · {economy.saved.registered.length} registration(s){/if}{#if economy.saved.globals && Object.keys(economy.saved.globals).length} · {Object.keys(economy.saved.globals).length} globals{/if}.
+              A restart keeps your settings; Update/Reinstall regenerates vanilla files and Norn re-applies these automatically.
+            </span>
+          </div>
+          <button class="btn-ghost text-xs shrink-0" onclick={resetNorn} disabled={nornBusy}>Reset</button>
+        </div>
+      {/if}
+
       <!-- Overview -->
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
         <div class="card p-3">

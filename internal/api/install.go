@@ -205,6 +205,9 @@ func (s *Server) runInstall(serverID string) error {
 	}
 
 	s.db.ExecContext(ctx, "UPDATE servers SET installed=1, install_status='done' WHERE id=?", serverID)
+	// A (re)install regenerates the vanilla DayZ mission economy — re-apply any saved
+	// Norn loot settings so the admin's tuning survives updates. No-op otherwise.
+	s.dayzReapplyNorn(serverID)
 	s.install.publish(serverID, "=== Install complete ===")
 	return nil
 }

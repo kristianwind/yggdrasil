@@ -189,6 +189,144 @@ func dayzRegisterCe(missionDir string, entries [][2]string) (int, error) {
 	return added, os.WriteFile(cePath, []byte(content), 0o664)
 }
 
+// ---- Norn persistence: remember settings + re-apply after a reinstall ----
+
+type nornRegEntry struct {
+	Folder string `json:"folder"`
+	File   string `json:"file"`
+	Source string `json:"source,omitempty"` // data-dir-relative mod file, for re-copy
+}
+
+type nornConfig struct {
+	MinLifetimeHours float64        `json:"min_lifetime_hours,omitempty"`
+	Globals          map[string]int `json:"globals,omitempty"`
+	Registered       []nornRegEntry `json:"registered,omitempty"`
+}
+
+func (c *nornConfig) addReg(folder, file, source string) {
+	for _, e := range c.Registered {
+		if e.Folder == folder && e.File == file {
+			return
+		}
+	}
+	c.Registered = append(c.Registered, nornRegEntry{folder, file, source})
+}
+
+func (s *Server) dayzLoadNorn(ctx context.Context, id string) nornConfig {
+	var j string
+	s.db.QueryRowContext(ctx, "SELECT COALESCE(norn_json,'') FROM servers WHERE id=?", id).Scan(&j) //nolint:errcheck
+	var c nornConfig
+	if j != "" {
+		json.Unmarshal([]byte(j), &c)
+	}
+	if c.Globals == nil {
+		c.Globals = map[string]int{}
+	}
+	return c
+}
+
+func (s *Server) dayzSaveNorn(ctx context.Context, id string, c nornConfig) {
+	b, _ := json.Marshal(c)
+	s.db.ExecContext(ctx, "UPDATE servers SET norn_json=? WHERE id=?", string(b), id) //nolint:errcheck
+}
+
+var dzGlobalsAllowed = map[string]bool{
+	"CleanupLifetimeDefault": true, "CleanupLifetimeRuined": true,
+	"CleanupLifetimeDeployed": true, "CleanupLifetimeDeadPlayer": true,
+	"CleanupLifetimeLimit": true, "CleanupLifetimeDeadAnimal": true,
+	"CleanupLifetimeDeadInfected": true,
+}
+
+// dayzApplyFloor raises every <lifetime> (0<n<floor) up to floor across all
+// registered types files. Returns the number changed.
+func dayzApplyFloor(missionDir string, floor int) int {
+	changed := 0
+	for _, f := range dayzTypesFiles(missionDir) {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		c := 0
+		out := dzLifetimeRe.ReplaceAllStringFunc(string(data), func(m string) string {
+			n, _ := strconv.Atoi(dzLifetimeRe.FindStringSubmatch(m)[1])
+			if n > 0 && n < floor {
+				c++
+				return "<lifetime>" + strconv.Itoa(floor) + "</lifetime>"
+			}
+			return m
+		})
+		if c > 0 && os.WriteFile(f, []byte(out), 0o664) == nil {
+			changed += c
+		}
+	}
+	return changed
+}
+
+// dayzApplyGlobals sets allowlisted globals.xml cleanup timers. Returns count set.
+func dayzApplyGlobals(missionDir string, vals map[string]int) int {
+	path := filepath.Join(missionDir, "db", "globals.xml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	out, changed := string(data), 0
+	for name, val := range vals {
+		if !dzGlobalsAllowed[name] || val < 0 {
+			continue
+		}
+		re := regexp.MustCompile(`(<var\s+name="` + regexp.QuoteMeta(name) + `"[^>]*\bvalue=")\d+(")`)
+		if nv := re.ReplaceAllString(out, "${1}"+strconv.Itoa(val)+"${2}"); nv != out {
+			out, changed = nv, changed+1
+		}
+	}
+	if changed > 0 {
+		os.WriteFile(path, []byte(out), 0o664) //nolint:errcheck
+	}
+	return changed
+}
+
+// dayzReapplyNorn re-applies saved Norn settings after an install/reinstall
+// (which regenerates the vanilla mission economy files). No-op for non-DayZ or
+// when nothing is saved. Called from the install flow.
+func (s *Server) dayzReapplyNorn(id string) {
+	ctx := context.Background()
+	dataDir, mission, ok := s.dayzMission(ctx, id)
+	if !ok {
+		return
+	}
+	c := s.dayzLoadNorn(ctx, id)
+	if c.MinLifetimeHours == 0 && len(c.Globals) == 0 && len(c.Registered) == 0 {
+		return
+	}
+	mdir := dayzMissionDir(dataDir, mission)
+	// 1) recreate (if wiped) + register the modded/extra types files.
+	var entries [][2]string
+	for _, e := range c.Registered {
+		dest := filepath.Join(mdir, e.Folder, e.File)
+		if !fileExists(dest) && e.Source != "" {
+			if data, err := os.ReadFile(filepath.Join(dataDir, e.Source)); err == nil {
+				if !strings.Contains(string(data), "<types>") {
+					data = []byte("<types>\n" + strings.TrimSpace(string(data)) + "\n</types>\n")
+				}
+				os.MkdirAll(filepath.Dir(dest), 0o775) //nolint:errcheck
+				os.WriteFile(dest, data, 0o664)        //nolint:errcheck
+			}
+		}
+		entries = append(entries, [2]string{e.Folder, e.File})
+	}
+	if len(entries) > 0 {
+		dayzRegisterCe(mdir, entries) //nolint:errcheck
+	}
+	// 2) globals, then 3) the lifetime floor (after registering so it covers them).
+	if len(c.Globals) > 0 {
+		dayzApplyGlobals(mdir, c.Globals)
+	}
+	if c.MinLifetimeHours > 0 {
+		dayzApplyFloor(mdir, int(c.MinLifetimeHours*3600))
+	}
+	s.install.publish(id, "Norn: re-applied saved loot settings (floor + registrations)")
+}
+
 // dayzModName reads a workshop mod's display name from its meta.cpp (name="…"),
 // falling back to the folder name.
 var dzMetaNameRe = regexp.MustCompile(`(?i)\bname\s*=\s*"([^"]+)"`)
@@ -339,6 +477,10 @@ func (s *Server) handleDayzImportModTypes(w http.ResponseWriter, r *http.Request
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Remember it (with the mod source) so a reinstall re-copies + re-registers.
+	c := s.dayzLoadNorn(r.Context(), id)
+	c.addReg(slug, base, rel)
+	s.dayzSaveNorn(r.Context(), id, c)
 	s.auditLog(r, "dayz.import_mod_types", "server:"+id, map[string]string{"file": rel})
 	jsonOK(w, map[string]any{"imported": slug + "/" + base, "registered": added})
 }
@@ -391,6 +533,12 @@ func (s *Server) handleDayzRegisterTypes(w http.ResponseWriter, r *http.Request)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Remember registrations so a reinstall re-applies them.
+	c := s.dayzLoadNorn(r.Context(), id)
+	for _, e := range entries {
+		c.addReg(e[0], e[1], "")
+	}
+	s.dayzSaveNorn(r.Context(), id, c)
 	s.auditLog(r, "dayz.register_types", "server:"+id, map[string]string{"count": strconv.Itoa(added)})
 	jsonOK(w, map[string]any{"registered": added, "files": reg})
 }
@@ -451,6 +599,7 @@ func (s *Server) handleDayzEconomy(w http.ResponseWriter, r *http.Request) {
 		"min_lifetime": overallMin,
 		"globals":      dayzReadGlobals(filepath.Join(mdir, "db", "globals.xml")),
 		"unregistered": dayzScanUnregistered(mdir),
+		"saved":        s.dayzLoadNorn(r.Context(), id),
 	})
 }
 
@@ -489,33 +638,15 @@ func (s *Server) handleDayzMinLifetime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mdir := dayzMissionDir(dataDir, mission)
-	changed, filesChanged := 0, 0
-	for _, f := range dayzTypesFiles(mdir) {
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		c := 0
-		out := dzLifetimeRe.ReplaceAllStringFunc(string(data), func(m string) string {
-			n, _ := strconv.Atoi(dzLifetimeRe.FindStringSubmatch(m)[1])
-			// Skip 0 (unmanaged/special entries); only raise real, too-short lifetimes.
-			if n > 0 && n < floor {
-				c++
-				return "<lifetime>" + strconv.Itoa(floor) + "</lifetime>"
-			}
-			return m
-		})
-		if c > 0 {
-			if err := os.WriteFile(f, []byte(out), 0o664); err == nil {
-				changed += c
-				filesChanged++
-			}
-		}
-	}
+	changed := dayzApplyFloor(mdir, floor)
+	// Remember it so a reinstall (which regenerates vanilla files) re-applies it.
+	c := s.dayzLoadNorn(r.Context(), id)
+	c.MinLifetimeHours = req.Hours
+	s.dayzSaveNorn(r.Context(), id, c)
 	s.auditLog(r, "dayz.min_lifetime", "server:"+id, map[string]string{
 		"hours": strconv.FormatFloat(req.Hours, 'g', -1, 64), "changed": strconv.Itoa(changed),
 	})
-	jsonOK(w, map[string]any{"changed": changed, "files": filesChanged, "floor_seconds": floor})
+	jsonOK(w, map[string]any{"changed": changed, "floor_seconds": floor})
 }
 
 // handleDayzGlobals updates allowlisted globals.xml cleanup timers (seconds).
@@ -529,36 +660,33 @@ func (s *Server) handleDayzGlobals(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	allowed := map[string]bool{
-		"CleanupLifetimeDefault": true, "CleanupLifetimeRuined": true,
-		"CleanupLifetimeDeployed": true, "CleanupLifetimeDeadPlayer": true,
-		"CleanupLifetimeLimit": true, "CleanupLifetimeDeadAnimal": true,
-		"CleanupLifetimeDeadInfected": true,
-	}
 	dataDir, mission, ok := s.dayzMission(r.Context(), id)
 	if !ok {
 		jsonError(w, "not a DayZ server", http.StatusBadRequest)
 		return
 	}
-	path := filepath.Join(dayzMissionDir(dataDir, mission), "db", "globals.xml")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		jsonError(w, "globals.xml not found", http.StatusNotFound)
-		return
-	}
-	out, changed := string(data), 0
+	mdir := dayzMissionDir(dataDir, mission)
+	changed := dayzApplyGlobals(mdir, req)
+	// Persist the allowlisted values so a reinstall re-applies them.
+	c := s.dayzLoadNorn(r.Context(), id)
 	for name, val := range req {
-		if !allowed[name] || val < 0 {
-			continue
-		}
-		re := regexp.MustCompile(`(<var\s+name="` + regexp.QuoteMeta(name) + `"[^>]*\bvalue=")\d+(")`)
-		if nv := re.ReplaceAllString(out, "${1}"+strconv.Itoa(val)+"${2}"); nv != out {
-			out, changed = nv, changed+1
+		if dzGlobalsAllowed[name] && val >= 0 {
+			c.Globals[name] = val
 		}
 	}
-	if changed > 0 {
-		os.WriteFile(path, []byte(out), 0o664) //nolint:errcheck
-	}
+	s.dayzSaveNorn(r.Context(), id, c)
 	s.auditLog(r, "dayz.globals", "server:"+id, nil)
 	jsonOK(w, map[string]any{"changed": changed})
+}
+
+// handleDayzResetNorn clears the saved Norn settings so future reinstalls return
+// the loot economy to vanilla. (Run Update/Reinstall to wipe current edits now.)
+func (s *Server) handleDayzResetNorn(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerControl, s.serverTarget(r.Context(), id)) {
+		return
+	}
+	s.db.ExecContext(r.Context(), "UPDATE servers SET norn_json='' WHERE id=?", id) //nolint:errcheck
+	s.auditLog(r, "dayz.norn_reset", "server:"+id, nil)
+	jsonOK(w, map[string]any{"ok": true})
 }

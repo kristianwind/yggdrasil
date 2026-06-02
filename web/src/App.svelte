@@ -55,12 +55,12 @@
   <div class="min-h-screen flex">
     <!-- Sidebar -->
     <aside
-      class="fixed md:static z-40 inset-y-0 left-0 w-52 bg-panel border-r border-border
+      class="fixed md:sticky md:top-0 z-40 inset-y-0 md:inset-y-auto left-0 w-52 md:h-screen bg-panel border-r border-border
              flex flex-col transition-transform {mobileOpen ? '' : '-translate-x-full md:translate-x-0'}"
       style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
     >
       <button
-        class="px-5 py-4 text-lg font-semibold flex items-center gap-2 hover:bg-panel2/50 text-left"
+        class="shrink-0 px-5 py-4 text-lg font-semibold flex items-center gap-2 hover:bg-panel2/50 text-left"
         title="Go to dashboard"
         onclick={() => {
           navigate("/");
@@ -69,7 +69,7 @@
       >
         <span>🌳</span> Yggdrasil
       </button>
-      <nav class="flex-1 px-2 space-y-1">
+      <nav class="flex-1 min-h-0 overflow-y-auto px-2 space-y-1">
         {#each nav as item}
           {#if !item.admin || $user.role === "admin"}
             <button
@@ -87,7 +87,7 @@
           {/if}
         {/each}
       </nav>
-      <div class="p-3 border-t border-border text-sm">
+      <div class="shrink-0 p-3 border-t border-border text-sm">
         {#if build}
           <a
             href={build.repo}

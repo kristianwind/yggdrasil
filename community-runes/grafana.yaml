@@ -1,0 +1,39 @@
+gameskill:
+  id: grafana
+  name: "Grafana"
+  category: "Apps"
+  description: "Dashboards and visualization for metrics, logs and more"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "grafana/grafana:latest"
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: GF_PATHS_DATA
+      name: "Data path"
+      type: string
+      default: "/data"
+    - key: GF_SECURITY_ADMIN_PASSWORD
+      name: "Initial admin password"
+      type: string
+      default: "admin"
+
+  install:
+    image: "grafana/grafana:latest"
+    script: |
+      mkdir -p /data
+      echo "Grafana data directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'HTTP Server Listen'
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+
+  backup:
+    include: ["."]

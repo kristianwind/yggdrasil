@@ -1,0 +1,30 @@
+gameskill:
+  id: memos
+  name: "Memos"
+  category: "Apps"
+  description: "A lightweight, privacy-first note-taking / knowledge-base service"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "neosmemo/memos:stable"
+    data_path: /var/opt/memos
+    keep_entrypoint: true
+    user: "0:0"
+
+  install:
+    image: "neosmemo/memos:stable"
+    script: |
+      mkdir -p /data
+      echo "Memos data directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Server started'
+
+  ports:
+    - { name: web, default: 5230, protocol: tcp }
+
+  backup:
+    include: ["."]

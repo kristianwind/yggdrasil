@@ -51,9 +51,11 @@ type CreateOptions struct {
 	Env        []string
 	Cmd        []string // optional explicit command; empty uses image default
 	User       string   // "uid:gid" — run as the panel user so files stay editable
-	Ports      []PortMapping
-	DataDir    string // host path bind-mounted to /data
-	CPUPercent float64
+	Ports          []PortMapping
+	DataDir        string // host path bind-mounted into the container
+	DataMount      string // mount target for DataDir (default /data); apps may differ
+	KeepEntrypoint bool   // run the image's own ENTRYPOINT instead of clearing it
+	CPUPercent     float64
 	MemoryMB   int64
 	Labels     map[string]string
 	AutoRemove bool
@@ -100,12 +102,21 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		memBytes = opts.MemoryMB * 1024 * 1024
 	}
 
+	dataMount := opts.DataMount
+	// WorkingDir defaults to /data for games (so `./Binary` startup commands work);
+	// for app runes with a custom data_path we leave it to the image's own WORKDIR.
+	workDir := "/data"
+	if dataMount == "" {
+		dataMount = "/data"
+	} else {
+		workDir = ""
+	}
 	var mounts []mount.Mount
 	if opts.DataDir != "" {
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeBind,
 			Source: opts.DataDir,
-			Target: "/data",
+			Target: dataMount,
 		})
 		// When running as an explicit uid that may not exist in the image's
 		// /etc/passwd, provide a minimal passwd so getpwuid(uid) succeeds. Steam
@@ -141,15 +152,20 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		restart = container.RestartPolicy{} // no restart policy for ephemeral
 	}
 
+	// Clear any image ENTRYPOINT so our Cmd is the actual command — otherwise images
+	// like cm2network/steamcmd would pass our startup command as args to their own
+	// entrypoint (manifesting as "./RustDedicated: not found"). App runes that need
+	// the image's own entrypoint (e.g. linuxserver.io s6) set KeepEntrypoint.
+	entrypoint := []string{}
+	if opts.KeepEntrypoint {
+		entrypoint = nil // nil = use the image's ENTRYPOINT
+	}
 	resp, err := c.dc.ContainerCreate(ctx, &container.Config{
-		Image: opts.Image,
-		Env:   opts.Env,
-		User:  opts.User,
-		// Clear any image ENTRYPOINT so our Cmd is the actual command — otherwise
-		// images like cm2network/steamcmd would pass our startup command as args
-		// to their own entrypoint (manifesting as "./RustDedicated: not found").
-		Entrypoint:   []string{},
-		Cmd:          opts.Cmd,
+		Image:        opts.Image,
+		Env:          opts.Env,
+		User:         opts.User,
+		Entrypoint:   entrypoint,
+		Cmd:          opts.Cmd, // empty with KeepEntrypoint = image default CMD
 		ExposedPorts: exposedPorts,
 		Labels:       opts.Labels,
 		AttachStdin:  true,
@@ -157,7 +173,7 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		AttachStderr: true,
 		OpenStdin:    true,
 		Tty:          false,
-		WorkingDir:   "/data",
+		WorkingDir:   workDir,
 	}, &container.HostConfig{
 		PortBindings:  portBindings,
 		Mounts:        mounts,

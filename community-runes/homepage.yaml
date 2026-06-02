@@ -1,0 +1,37 @@
+gameskill:
+  id: homepage
+  name: "Homepage"
+  category: "Apps"
+  description: "A modern, fully static, fast homelab start page / dashboard"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "ghcr.io/gethomepage/homepage:latest"
+    data_path: /app/config
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # Homepage refuses external requests unless the host is allowed (or set to *).
+    - key: HOMEPAGE_ALLOWED_HOSTS
+      name: "Allowed hosts (comma-separated, or *)"
+      type: string
+      default: "*"
+
+  install:
+    image: "ghcr.io/gethomepage/homepage:latest"
+    script: |
+      mkdir -p /data
+      echo "Homepage config directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Listening on'
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+
+  backup:
+    include: ["."]

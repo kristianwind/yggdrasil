@@ -1,0 +1,44 @@
+gameskill:
+  id: vaultwarden
+  name: "Vaultwarden"
+  category: "Apps"
+  description: "Lightweight Bitwarden-compatible password manager server"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "vaultwarden/server:latest"
+    # DATA_FOLDER defaults to /data, so the default mount path is correct.
+
+  variables:
+    # Vaultwarden listens on ROCKET_PORT; keep it >1024 so it runs as a non-root uid.
+    - key: ROCKET_PORT
+      name: "Internal port"
+      type: int
+      default: 8080
+    - key: ADMIN_TOKEN
+      name: "Admin page token (blank disables /admin)"
+      type: string
+      default: ""
+    - key: SIGNUPS_ALLOWED
+      name: "Allow new signups"
+      type: bool
+      default: true
+
+  install:
+    image: "vaultwarden/server:latest"
+    script: |
+      mkdir -p /data
+      echo "Vaultwarden data directory ready"
+
+  startup:
+    # Run the binary directly (the image's start.sh only adds a healthcheck wrapper).
+    command: "/vaultwarden"
+    done_regex: 'Rocket has launched'
+
+  ports:
+    - { name: web, default: 8080, protocol: tcp }
+
+  backup:
+    include: ["."]

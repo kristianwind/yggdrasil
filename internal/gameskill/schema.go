@@ -40,6 +40,18 @@ type Bans struct {
 
 type Docker struct {
 	Image string `yaml:"image" json:"image"`
+	// DataPath is where the persistent volume mounts inside the container. Games
+	// use the default /data; many apps store elsewhere (WordPress /var/www/html,
+	// Pi-hole /etc/pihole, Uptime Kuma /app/data). Empty = /data.
+	DataPath string `yaml:"data_path,omitempty" json:"data_path,omitempty"`
+	// User overrides the runtime uid:gid. Empty = the panel's user (keeps files
+	// editable). Use "0:0" for images that must start as root to drop to PUID/PGID
+	// (e.g. linuxserver.io). Install always runs as root regardless.
+	User string `yaml:"user,omitempty" json:"user,omitempty"`
+	// KeepEntrypoint runs the image's own ENTRYPOINT (instead of clearing it) so an
+	// off-the-shelf app image behaves like a plain `docker run`. With it set, the
+	// startup command is optional (empty = the image's default CMD).
+	KeepEntrypoint bool `yaml:"keep_entrypoint,omitempty" json:"keep_entrypoint,omitempty"`
 }
 
 type Variable struct {
@@ -139,8 +151,8 @@ func validate(gs *Gameskill) error {
 	if gs.Docker.Image == "" {
 		return fmt.Errorf("gameskill.docker.image is required")
 	}
-	if gs.Startup.Command == "" {
-		return fmt.Errorf("gameskill.startup.command is required")
+	if gs.Startup.Command == "" && !gs.Docker.KeepEntrypoint {
+		return fmt.Errorf("gameskill.startup.command is required (unless docker.keep_entrypoint is set)")
 	}
 
 	validTypes := map[string]bool{"string": true, "int": true, "bool": true, "select": true}

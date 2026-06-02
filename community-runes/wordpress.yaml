@@ -1,0 +1,52 @@
+gameskill:
+  id: wordpress
+  name: "WordPress"
+  category: "Apps"
+  description: "The world's most popular website/CMS (needs a MariaDB or MySQL rune)"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
+  # root so Apache can bind its port and the entrypoint can populate the webroot.
+  docker:
+    image: "wordpress:latest"
+    data_path: /var/www/html
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # Point these at a MariaDB/PostgreSQL rune's connect address (host:port form
+    # for the host, e.g. "192.168.1.50:25080"). Create that DB server first.
+    - key: WORDPRESS_DB_HOST
+      name: "Database host (host:port)"
+      type: string
+      default: "mariadb:3306"
+    - key: WORDPRESS_DB_USER
+      name: "Database user"
+      type: string
+      default: "app"
+    - key: WORDPRESS_DB_PASSWORD
+      name: "Database password"
+      type: string
+      default: "change-me"
+    - key: WORDPRESS_DB_NAME
+      name: "Database name"
+      type: string
+      default: "appdb"
+
+  install:
+    image: "wordpress:latest"
+    script: |
+      mkdir -p /data
+      echo "WordPress webroot directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Command line:'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

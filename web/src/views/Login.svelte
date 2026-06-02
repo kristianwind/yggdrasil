@@ -32,7 +32,7 @@
     <div class="text-center">
       <div class="text-3xl">🌳</div>
       <h1 class="text-xl font-semibold mt-1">Yggdrasil</h1>
-      <p class="text-muted text-sm">Sign in to manage your game servers</p>
+      <p class="text-muted text-sm">Sign in to manage your game &amp; app servers</p>
     </div>
     <div>
       <label class="label" for="u">Username</label>

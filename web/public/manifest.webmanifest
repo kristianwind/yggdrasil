@@ -1,7 +1,7 @@
 {
   "name": "Yggdrasil",
   "short_name": "Yggdrasil",
-  "description": "Game server management panel",
+  "description": "Game & app server panel",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -1,0 +1,43 @@
+gameskill:
+  id: nextcloud
+  name: "Nextcloud"
+  category: "Apps"
+  description: "Self-hosted files, calendar, contacts and more (SQLite by default; can use a DB rune)"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Nextcloud (Apache image) serves from /var/www/html. With no DB env it uses
+  # SQLite stored on the volume, so it works standalone; for production point it at
+  # a MariaDB/PostgreSQL rune in the web installer.
+  docker:
+    image: "nextcloud:stable"
+    data_path: /var/www/html
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: NEXTCLOUD_ADMIN_USER
+      name: "Admin user"
+      type: string
+      default: "admin"
+    - key: NEXTCLOUD_ADMIN_PASSWORD
+      name: "Admin password"
+      type: string
+      default: "change-me"
+
+  install:
+    image: "nextcloud:stable"
+    script: |
+      mkdir -p /data
+      echo "Nextcloud webroot directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Command line:'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

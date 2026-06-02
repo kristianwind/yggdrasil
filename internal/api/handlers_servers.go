@@ -453,7 +453,11 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	startupCmd := gameskill.ApplyTemplate(gs.Startup.Command, env)
 	// Use -c (not -lc) so a single-command startup is exec'd as PID 1 — that way
 	// `docker stop`/SIGTERM reaches the game directly and it shuts down cleanly.
-	cmd := []string{"/bin/sh", "-c", startupCmd}
+	var cmd []string
+	if startupCmd != "" {
+		cmd = []string{"/bin/sh", "-c", startupCmd}
+	}
+	// else: leave Cmd empty so the image's own ENTRYPOINT/CMD runs (keep_entrypoint).
 	containerName := fmt.Sprintf("ygg-%s", id[:8])
 
 	// Per-server resource caps.
@@ -471,20 +475,27 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	// Pull image
 	s.docker.PullImage(r.Context(), image, io.Discard)
 
+	// Run as the panel's user so files the game writes (server.properties, world,
+	// …) stay editable from the file manager. Install runs as root and chowns the
+	// data dir to this uid afterwards. A rune may override this (docker.user) — e.g.
+	// "0:0" for linuxserver.io app images that start as root then drop to PUID/PGID.
+	runtimeUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
+	if gs.Docker.User != "" {
+		runtimeUser = gameskill.ApplyTemplate(gs.Docker.User, env)
+	}
 	containerID, err := s.docker.Create(r.Context(), docker.CreateOptions{
-		Name:  containerName,
-		Image: image,
-		Env:   envSlice,
-		Cmd:   cmd,
-		// Run as the panel's user so files the game writes (server.properties,
-		// world, …) stay editable from the file manager. Install runs as root and
-		// chowns /data to this uid afterwards.
-		User:       fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+		Name:       containerName,
+		Image:      image,
+		Env:        envSlice,
+		Cmd:        cmd,
+		User:       runtimeUser,
 		Ports:      portMappings,
-		DataDir:    srv.DataDir,
-		CPUPercent: cpuLimit,
-		MemoryMB:   memLimit,
-		Labels:     map[string]string{"yggdrasil.server_id": id},
+		DataDir:        srv.DataDir,
+		DataMount:      gs.Docker.DataPath, // empty = /data
+		KeepEntrypoint: gs.Docker.KeepEntrypoint,
+		CPUPercent:     cpuLimit,
+		MemoryMB:       memLimit,
+		Labels:         map[string]string{"yggdrasil.server_id": id},
 	})
 	if err != nil {
 		jsonError(w, "create container: "+err.Error(), http.StatusInternalServerError)

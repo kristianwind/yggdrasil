@@ -1,0 +1,32 @@
+gameskill:
+  id: jellyfin
+  name: "Jellyfin"
+  category: "Apps"
+  description: "Free software media server — stream your movies, TV and music"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "jellyfin/jellyfin:latest"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+
+  install:
+    image: "jellyfin/jellyfin:latest"
+    script: |
+      mkdir -p /data
+      echo "Jellyfin config directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Startup complete'
+
+  ports:
+    - { name: web, default: 8096, protocol: tcp }
+
+  # Tip: to serve media, add a bind mount of your library to /media via a custom
+  # rune edit, or point Jellyfin at a network share from its web UI.
+  backup:
+    include: ["."]

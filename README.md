@@ -1,15 +1,19 @@
 # 🌳 Yggdrasil
 
-A self-hosted **game server management panel** for Debian/Ubuntu — think *AMP +
-Pterodactyl, but radically easier to install, update and maintain*.
+A self-hosted **game & app server panel** for Debian/Ubuntu — think *AMP +
+Pterodactyl, but radically easier to install, update and maintain*, and not just
+for games: run databases and homelab apps (Vaultwarden, Gitea, Uptime Kuma,
+Grafana, WordPress, Nextcloud…) from the same one-click "Runes".
 
 [![Yggdrasil dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
 
 - **One binary.** A single static Go binary with the web UI embedded. No separate
   database, no Redis, no required reverse proxy.
 - **One command to install.** The installer handles Docker and everything else.
-- **Extensible.** A game = one declarative **gameskill** file (shown as a *Rune*
-  in the UI). Ships with Minecraft Java, Minecraft Bedrock, Rust and DayZ.
+- **Extensible.** A game *or app* = one declarative **gameskill** file (shown as a
+  *Rune* in the UI). Ships with Minecraft Java, Minecraft Bedrock, Rust and DayZ;
+  a growing library of **community runes** (databases + homelab apps) is in
+  [`community-runes/`](community-runes/) to import in one click.
 - **Installable PWA.** Mobile-friendly, dark mode, works as an app on iOS/Android.
 
 > ⚠️ Early development. See [PROGRESS.md](PROGRESS.md) for the phase-by-phase status.

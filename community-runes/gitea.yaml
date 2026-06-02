@@ -1,0 +1,44 @@
+gameskill:
+  id: gitea
+  name: "Gitea"
+  category: "Apps"
+  description: "Lightweight self-hosted Git service (repos, issues, PRs, CI)"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "gitea/gitea:1"
+    keep_entrypoint: true   # uses Gitea's s6 init, which drops to USER_UID/USER_GID
+    user: "0:0"
+
+  variables:
+    - key: USER_UID
+      name: "Run-as UID"
+      type: int
+      default: 999
+    - key: USER_GID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: GITEA__server__SSH_PORT
+      name: "SSH clone port (advertised)"
+      type: int
+      default: 2222
+
+  install:
+    image: "gitea/gitea:1"
+    script: |
+      mkdir -p /data
+      echo "Gitea data directory ready"
+
+  startup:
+    command: ""            # image default (s6 + gitea web)
+    done_regex: 'Listen: http'
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+    - { name: ssh, default: 2222, protocol: tcp }
+
+  backup:
+    include: ["."]

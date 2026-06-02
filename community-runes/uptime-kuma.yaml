@@ -1,0 +1,30 @@
+gameskill:
+  id: uptime-kuma
+  name: "Uptime Kuma"
+  category: "Apps"
+  description: "Self-hosted uptime monitoring with status pages and alerts"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Runs as the panel user (uid). We run node directly (the image entrypoint does a
+  # root-only chown that fails as non-root); data lives at /app/data.
+  docker:
+    image: "louislam/uptime-kuma:1"
+    data_path: /app/data
+
+  install:
+    image: "louislam/uptime-kuma:1"
+    script: |
+      mkdir -p /data
+      echo "Uptime Kuma data directory ready"
+
+  startup:
+    command: "node server/server.js"
+    done_regex: 'Listening on'
+
+  ports:
+    - { name: web, default: 3001, protocol: tcp }
+
+  backup:
+    include: ["."]

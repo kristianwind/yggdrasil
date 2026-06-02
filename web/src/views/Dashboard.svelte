@@ -6,11 +6,21 @@
 
   let info = $state(null);
   let servers = $state([]);
+  let gameskills = $state([]);
   let error = $state("");
+
+  // Map a server's gameskill_id to a friendly rune name (e.g. "Minecraft (Java)").
+  let skillName = $derived.by(() => {
+    const m = Object.fromEntries(gameskills.map((g) => [g.id, g.name]));
+    return (id) => m[id] || id;
+  });
 
   onMount(async () => {
     try {
-      servers = await api.get("/servers");
+      [servers, gameskills] = await Promise.all([
+        api.get("/servers"),
+        api.get("/gameskills").catch(() => []),
+      ]);
       if ($user.role === "admin") info = await api.get("/system/info");
     } catch (e) {
       error = e.message;
@@ -91,10 +101,13 @@
     <div class="p-4 text-muted text-sm">No servers yet. Create one from the Servers page.</div>
   {/if}
   {#each servers.slice(0, 8) as s}
-    <a href={`#/servers/${s.id}`} class="flex items-center justify-between px-4 py-3 hover:bg-panel2/50">
-      <span class="font-medium">{s.name}</span>
+    <a href={`#/servers/${s.id}`} class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-panel2/50">
+      <div class="min-w-0">
+        <div class="font-medium truncate">{s.name}</div>
+        <div class="text-xs text-muted truncate">{skillName(s.gameskill_id)}</div>
+      </div>
       <span
-        class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
+        class="badge shrink-0 {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
         >{s.status}</span
       >
     </a>

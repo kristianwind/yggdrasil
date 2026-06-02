@@ -1,0 +1,45 @@
+gameskill:
+  id: postgresql
+  name: "PostgreSQL"
+  category: "Databases"
+  description: "PostgreSQL database server (official image) — a backing store for other runes/apps"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "database"
+
+  docker:
+    image: "postgres:16"
+
+  variables:
+    # Keys match the env vars the official postgres image reads on first launch.
+    - key: POSTGRES_PASSWORD
+      name: "Superuser password"
+      type: string
+      default: "change-me"
+    - key: POSTGRES_USER
+      name: "Superuser name"
+      type: string
+      default: "postgres"
+    - key: POSTGRES_DB
+      name: "Initial database name"
+      type: string
+      default: "appdb"
+
+  install:
+    image: "postgres:16"
+    script: |
+      set -e
+      mkdir -p /data/pgdata
+      echo "PostgreSQL data directory ready at /data/pgdata"
+
+  startup:
+    # PGDATA must be a dedicated subdir of the volume (not the mount root, which
+    # may hold lost+found). Reuse the image entrypoint so first-run initdb runs.
+    command: "exec env PGDATA=/data/pgdata docker-entrypoint.sh postgres"
+    done_regex: 'database system is ready to accept connections'
+
+  ports:
+    - { name: db, default: 5432, protocol: tcp }
+
+  backup:
+    include: ["pgdata"]

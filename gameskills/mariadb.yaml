@@ -1,0 +1,49 @@
+gameskill:
+  id: mariadb
+  name: "MariaDB"
+  category: "Databases"
+  description: "MariaDB (MySQL-compatible) database server (official image) — a backing store for other runes/apps"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "database"
+
+  docker:
+    image: "mariadb:11"
+
+  variables:
+    # Keys match the env vars the official mariadb image reads on first launch.
+    - key: MARIADB_ROOT_PASSWORD
+      name: "Root password"
+      type: string
+      default: "change-me"
+    - key: MARIADB_DATABASE
+      name: "Initial database name"
+      type: string
+      default: "appdb"
+    - key: MARIADB_USER
+      name: "App username"
+      type: string
+      default: "app"
+    - key: MARIADB_PASSWORD
+      name: "App user password"
+      type: string
+      default: "change-me"
+
+  install:
+    image: "mariadb:11"
+    script: |
+      set -e
+      mkdir -p /data/mysql
+      echo "MariaDB data directory ready at /data/mysql"
+
+  startup:
+    # Reuse the image entrypoint (panel clears ENTRYPOINT) so first-run init from
+    # MARIADB_* env still runs; --datadir keeps data on the panel's volume.
+    command: "exec docker-entrypoint.sh mariadbd --datadir=/data/mysql"
+    done_regex: 'ready for connections'
+
+  ports:
+    - { name: db, default: 3306, protocol: tcp }
+
+  backup:
+    include: ["mysql"]

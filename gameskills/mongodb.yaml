@@ -1,0 +1,48 @@
+gameskill:
+  id: mongodb
+  name: "MongoDB"
+  category: "Databases"
+  description: "MongoDB database server (official image) — a backing store for other runes/apps (e.g. Grasscutter)"
+  author: "yggdrasil-core"
+  version: 1
+  icon: "database"
+
+  docker:
+    image: "mongo:7"
+
+  variables:
+    # These keys are the exact env vars the official mongo image reads to create
+    # the root user on first launch — Yggdrasil passes all variables as env.
+    - key: MONGO_INITDB_ROOT_USERNAME
+      name: "Root username"
+      type: string
+      default: "root"
+    - key: MONGO_INITDB_ROOT_PASSWORD
+      name: "Root password"
+      type: string
+      default: "change-me"
+
+  install:
+    image: "mongo:7"
+    script: |
+      set -e
+      # mongod stores its data under /data/db (the image default); /data is the
+      # panel's persistent volume, so this subdir survives restarts/updates.
+      mkdir -p /data/db
+      echo "MongoDB data directory ready at /data/db"
+
+  startup:
+    # Reuse the image's entrypoint (the panel clears ENTRYPOINT) so the first-run
+    # root-user creation from MONGO_INITDB_ROOT_* still happens. exec → PID 1 so
+    # mongod gets SIGTERM and shuts down cleanly on stop.
+    command: "exec docker-entrypoint.sh mongod --bind_ip_all"
+    done_regex: 'Waiting for connections'
+
+  # Databases have no game query/RCON; status comes from the running container
+  # and the connect address (host:27017).
+
+  ports:
+    - { name: db, default: 27017, protocol: tcp }
+
+  backup:
+    include: ["db"]

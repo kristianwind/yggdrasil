@@ -263,6 +263,7 @@
       const res = await api.put("/settings/network", {
         public_hostname: network.public_hostname,
         upnp_enabled: !!network.upnp_enabled,
+        battlemetrics_token: network.battlemetrics_token ?? "",
       });
       network = { ...network, ...res };
       toast("Network settings saved", "success");
@@ -400,6 +401,20 @@
         {/if}
       {/if}
     </div>
+  </div>
+  <div class="border-t border-border pt-3">
+    <label class="label" for="bmtoken">BattleMetrics API token (optional)</label>
+    <input
+      id="bmtoken"
+      class="input"
+      type="password"
+      bind:value={network.battlemetrics_token}
+      placeholder={network.battlemetrics_enabled ? "•••••••• (saved — type to replace)" : "paste a token to raise rate limits"}
+    />
+    <p class="text-muted text-xs mt-1">
+      Optional. Public server status works without a token; a token (battlemetrics.com → Account → API)
+      just raises the rate limit. Set a server's BattleMetrics ID on its Settings tab to show a live status badge.
+    </p>
   </div>
   <button class="btn-primary" onclick={saveNetwork} disabled={savingNetwork}>
     {savingNetwork ? "Saving…" : "Save"}

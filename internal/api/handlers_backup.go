@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -286,7 +287,15 @@ func (s *Server) runBackup(serverID, targetID, backupID string) {
 	}
 	defer tgt.Close()
 
-	name := fmt.Sprintf("%s/%s.tar.gz", serverID, time.Now().UTC().Format("20060102-150405"))
+	// Store under a human-readable folder ("<server-name>-<short-id>") instead of a
+	// bare UUID so backups are identifiable when browsing the target (NAS/SFTP/SMB).
+	// The short id keeps it unique if two servers share a name; retention works off
+	// the DB `path` column, not directory listing, so this layout is safe to change.
+	short := serverID
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	name := fmt.Sprintf("%s-%s/%s.tar.gz", slugName(s.serverName(serverID)), short, time.Now().UTC().Format("20060102-150405"))
 
 	// Stream the archive straight to the target.
 	pr, pw := io.Pipe()
@@ -305,6 +314,28 @@ func (s *Server) runBackup(serverID, targetID, backupID string) {
 	s.notifyAll("✅ Backup complete for " + s.serverName(serverID) + " (" + humanBytes(size) + ")")
 
 	s.applyRetention(ctx, serverID, targetID, tgt)
+}
+
+// slugName turns a server name into a filesystem-friendly token for backup paths
+// (lowercase, alphanumerics kept, runs of anything else collapsed to a single dash).
+func slugName(s string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevDash = false
+		case !prevDash:
+			b.WriteByte('-')
+			prevDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		out = "server"
+	}
+	return out
 }
 
 // applyRetention deletes backups beyond the target's keep-N / keep-days policy.

@@ -89,6 +89,17 @@
     }
     return `${n.toFixed(1)} ${u[i]}`;
   }
+  // Readable local date/time for a backup's created_at (falls back to the raw value).
+  function fmtDate(s) {
+    if (!s) return "—";
+    const d = new Date(s);
+    return isNaN(d) ? s : d.toLocaleString();
+  }
+  // The backup's storage name (the file's basename, e.g. 20260602-150405.tar.gz).
+  function backupName(b) {
+    const p = (b.path || "").split("/");
+    return p[p.length - 1] || b.id;
+  }
 
   let skill = $state(null); // parsed gameskill (for anti-cheat surface + edit form)
 
@@ -101,6 +112,7 @@
       env: { ...(server.env || {}) },
       cpu_percent: server.cpu_percent || 0,
       memory_mb: server.memory_mb || 0,
+      bm_server_id: server.bm_server_id || "",
     };
   }
   async function saveEdit() {
@@ -113,6 +125,7 @@
         env,
         cpu_percent: Number(edit.cpu_percent) || 0,
         memory_mb: Number(edit.memory_mb) || 0,
+        bm_server_id: edit.bm_server_id || "",
       });
       toast("Saved — restart to apply (reinstall for file-baked values)", "success");
       await loadServer();
@@ -197,6 +210,16 @@
   }
   let connectHost = $derived(network?.effective || "");
 
+  // BattleMetrics live status (only when a BM id is configured on the server).
+  let bm = $state(null);
+  async function loadBM() {
+    if (!server?.bm_server_id) {
+      bm = null;
+      return;
+    }
+    bm = await api.get(`/servers/${id}/battlemetrics`).catch(() => null);
+  }
+
   async function loadServer() {
     try {
       const prev = server;
@@ -208,6 +231,7 @@
       if (!skill && server) {
         skill = await api.get(`/gameskills/${server.gameskill_id}`).catch(() => null);
       }
+      loadBM();
     } catch (e) {
       toast(e.message, "error");
     }
@@ -342,6 +366,17 @@
     <span class="badge {server.status === 'running' ? 'bg-accent2/20 text-accent' : server.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
       >{server.status}</span
     >
+    {#if bm && bm.configured}
+      <a
+        href={bm.url}
+        target="_blank"
+        rel="noopener"
+        class="badge {bm.online ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}"
+        title="BattleMetrics{bm.rank ? ` · rank #${bm.rank}` : ''}"
+      >
+        BM: {bm.online ? `online ${bm.players}/${bm.max_players}` : bm.status || "offline"}
+      </a>
+    {/if}
   </div>
   <div class="text-muted text-sm mb-4">{server.gameskill_id}</div>
 
@@ -470,6 +505,14 @@
             <label class="label" for="e-mem">RAM limit (MB, 0 = unlimited)</label>
             <input id="e-mem" class="input" type="number" bind:value={edit.memory_mb} />
           </div>
+        </div>
+        <div>
+          <label class="label" for="e-bm">BattleMetrics server ID (optional)</label>
+          <input id="e-bm" class="input" placeholder="e.g. 12345678" bind:value={edit.bm_server_id} />
+          <p class="text-xs text-muted mt-1">
+            Find your server on battlemetrics.com — the number in its URL. Shows a live
+            online/players badge at the top of this page.
+          </p>
         </div>
         <div class="card bg-warn/10 border-warn/40 text-warn text-xs px-3 py-2">
           Changes apply on the next <b>restart</b>. Values written into config files at install time
@@ -624,8 +667,9 @@
       {#each backups as b}
         <div class="flex items-center gap-3 px-4 py-3">
           <div class="flex-1 min-w-0">
-            <div class="text-sm truncate">{b.created_at}</div>
-            <div class="text-xs text-muted">
+            <div class="text-sm truncate">{fmtDate(b.created_at)}</div>
+            <div class="text-xs text-muted truncate">
+              <span class="font-mono">{backupName(b)}</span> ·
               {fmtSize(b.size_bytes)} ·
               <span
                 class={b.status === "done"

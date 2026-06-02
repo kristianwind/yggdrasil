@@ -27,18 +27,20 @@ func (s *Server) setSetting(ctx context.Context, key, value string) {
 func (s *Server) handleGetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 	host := s.getSetting(r.Context(), "public_hostname")
 	jsonOK(w, map[string]any{
-		"public_hostname": host,
-		"detected":        s.detectPublicAddr(),
-		"effective":       firstNonEmpty(host, s.detectPublicAddr()),
-		"upnp_enabled":    s.getSetting(r.Context(), "upnp_enabled") == "1",
+		"public_hostname":       host,
+		"detected":              s.detectPublicAddr(),
+		"effective":             firstNonEmpty(host, s.detectPublicAddr()),
+		"upnp_enabled":          s.getSetting(r.Context(), "upnp_enabled") == "1",
+		"battlemetrics_enabled": s.getSetting(r.Context(), "battlemetrics_token") != "",
 	})
 }
 
 // handleSetNetworkSettings updates the public hostname.
 func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PublicHostname string `json:"public_hostname"`
-		UPnPEnabled    bool   `json:"upnp_enabled"`
+		PublicHostname     string  `json:"public_hostname"`
+		UPnPEnabled        bool    `json:"upnp_enabled"`
+		BattleMetricsToken *string `json:"battlemetrics_token"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -50,6 +52,11 @@ func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request
 	host = strings.TrimSuffix(host, "/")
 	s.setSetting(r.Context(), "public_hostname", host)
 	s.setSetting(r.Context(), "upnp_enabled", boolStr(req.UPnPEnabled))
+	// BattleMetrics token is optional; only overwrite when provided (so the UI can
+	// omit it to keep the existing one). Stored as-is in app_settings.
+	if req.BattleMetricsToken != nil {
+		s.setSetting(r.Context(), "battlemetrics_token", strings.TrimSpace(*req.BattleMetricsToken))
+	}
 	s.auditLog(r, "settings.network", "public_hostname", map[string]string{"host": host})
 	jsonOK(w, map[string]any{
 		"public_hostname": host,

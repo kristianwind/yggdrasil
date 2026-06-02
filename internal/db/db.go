@@ -216,6 +216,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "users", "totp_secret", "TEXT") // encrypted; pending until enabled
 	addColumnIfMissing(db, "users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''") // BattleMetrics server id (optional)
 	return nil
 }
 

@@ -3,12 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
@@ -79,6 +81,127 @@ func dayzTypesFiles(missionDir string) []string {
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
+// isDayzTypesFile heuristically identifies a loot types.xml (root <types>, item
+// entries with a lifetime) — distinct from cfgspawnabletypes.xml / events.xml.
+func isDayzTypesFile(head string) bool {
+	return strings.Contains(head, "<types>") &&
+		strings.Contains(head, "<type name=") &&
+		strings.Contains(head, "<lifetime>")
+}
+
+// dayzRegisteredRel is the set of types files already in the economy (default +
+// cfgeconomycore-registered), as mission-relative slash paths.
+func dayzRegisteredRel(missionDir string) map[string]bool {
+	set := map[string]bool{}
+	for _, f := range dayzTypesFiles(missionDir) {
+		if rel, err := filepath.Rel(missionDir, f); err == nil {
+			set[filepath.ToSlash(rel)] = true
+		}
+	}
+	return set
+}
+
+// dayzScanUnregistered walks the mission for types.xml files that aren't the
+// default and aren't registered in cfgeconomycore.xml — i.e. modded loot the
+// economy is currently ignoring.
+func dayzScanUnregistered(missionDir string) []string {
+	reg := dayzRegisteredRel(missionDir)
+	var found []string
+	filepath.WalkDir(missionDir, func(path string, d fs.DirEntry, err error) error { //nolint:errcheck
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if strings.HasPrefix(strings.ToLower(d.Name()), "storage") {
+				return filepath.SkipDir // persistence dirs, not config
+			}
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".xml") {
+			return nil
+		}
+		rel := filepath.ToSlash(mustRel(missionDir, path))
+		if rel == "db/types.xml" || reg[rel] {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		buf := make([]byte, 16384)
+		n, _ := f.Read(buf)
+		f.Close()
+		if isDayzTypesFile(string(buf[:n])) {
+			found = append(found, rel)
+		}
+		return nil
+	})
+	sort.Strings(found)
+	return found
+}
+
+func mustRel(base, p string) string {
+	r, err := filepath.Rel(base, p)
+	if err != nil {
+		return p
+	}
+	return r
+}
+
+// handleDayzRegisterTypes adds <ce> entries to cfgeconomycore.xml for every
+// detected-but-unregistered types file in a subfolder, so modded loot spawns and
+// is managed by the central economy (and covered by the lifetime floor).
+func (s *Server) handleDayzRegisterTypes(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerControl, s.serverTarget(r.Context(), id)) {
+		return
+	}
+	dataDir, mission, ok := s.dayzMission(r.Context(), id)
+	if !ok {
+		jsonError(w, "not a DayZ server", http.StatusBadRequest)
+		return
+	}
+	mdir := dayzMissionDir(dataDir, mission)
+	var reg []string
+	for _, rel := range dayzScanUnregistered(mdir) {
+		if filepath.Dir(rel) != "." { // need a subfolder for a valid <ce folder="...">
+			reg = append(reg, rel)
+		}
+	}
+	if len(reg) == 0 {
+		jsonOK(w, map[string]any{"registered": 0, "files": []string{}})
+		return
+	}
+	cePath := filepath.Join(mdir, "cfgeconomycore.xml")
+	if !fileExists(cePath) {
+		cePath = filepath.Join(mdir, "cfgEconomyCore.xml")
+	}
+	data, err := os.ReadFile(cePath)
+	if err != nil {
+		jsonError(w, "cfgeconomycore.xml not found", http.StatusNotFound)
+		return
+	}
+	content := string(data)
+	idx := strings.LastIndex(content, "</economycore>")
+	if idx < 0 {
+		jsonError(w, "cfgeconomycore.xml is malformed (no </economycore>)", http.StatusUnprocessableEntity)
+		return
+	}
+	var blocks strings.Builder
+	for _, rel := range reg {
+		folder := filepath.ToSlash(filepath.Dir(rel))
+		file := filepath.Base(rel)
+		blocks.WriteString("\t<ce folder=\"" + folder + "\">\n\t\t<file name=\"" + file + "\" type=\"types\" />\n\t</ce>\n")
+	}
+	content = content[:idx] + blocks.String() + content[idx:]
+	if err := os.WriteFile(cePath, []byte(content), 0o664); err != nil {
+		jsonError(w, "write: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.auditLog(r, "dayz.register_types", "server:"+id, map[string]string{"count": strconv.Itoa(len(reg))})
+	jsonOK(w, map[string]any{"registered": len(reg), "files": reg})
+}
+
 // handleDayzEconomy returns a summary of the loot economy: types files, item +
 // lifetime stats, and the globals cleanup timers.
 func (s *Server) handleDayzEconomy(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +257,7 @@ func (s *Server) handleDayzEconomy(w http.ResponseWriter, r *http.Request) {
 		"total_items":  totalItems,
 		"min_lifetime": overallMin,
 		"globals":      dayzReadGlobals(filepath.Join(mdir, "db", "globals.xml")),
+		"unregistered": dayzScanUnregistered(mdir),
 	})
 }
 

@@ -133,6 +133,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/dayz/economy", s.handleDayzEconomy)
 		r.Post("/api/servers/{id}/dayz/min-lifetime", s.handleDayzMinLifetime)
 		r.Post("/api/servers/{id}/dayz/globals", s.handleDayzGlobals)
+		r.Post("/api/servers/{id}/dayz/register-types", s.handleDayzRegisterTypes)
 		r.Post("/api/servers/{id}/rcon", s.handleServerRcon)
 		r.Get("/api/servers/{id}/logs", s.handleServerLogs)     // WebSocket
 		r.Get("/api/servers/{id}/console", s.handleConsole)     // WebSocket

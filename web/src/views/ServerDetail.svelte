@@ -154,6 +154,18 @@
       nornBusy = false;
     }
   }
+  async function registerTypes() {
+    nornBusy = true;
+    try {
+      const r = await api.post(`/servers/${id}/dayz/register-types`, {});
+      toast(`Registered ${r.registered} modded types file(s) — apply a lifetime floor + restart`, "success");
+      await loadEconomy();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      nornBusy = false;
+    }
+  }
 
   let skill = $state(null); // parsed gameskill (for anti-cheat surface + edit form)
 
@@ -812,6 +824,24 @@
           {/if}
         </div>
       </div>
+
+      <!-- Unregistered modded types -->
+      {#if economy.unregistered && economy.unregistered.length}
+        <div class="card border-warn/40 bg-warn/10 p-4 mb-5">
+          <h4 class="font-semibold mb-1 text-warn">⚠ {economy.unregistered.length} modded loot file(s) not in the economy</h4>
+          <p class="text-muted text-xs mb-2">
+            These <span class="font-mono">types.xml</span> files exist in the mission but aren't registered in
+            <span class="font-mono">cfgeconomycore.xml</span>, so their items don't spawn or get managed. Register
+            them so the loot works (and the lifetime floor applies to them too).
+          </p>
+          <ul class="text-xs font-mono text-muted mb-3 space-y-0.5">
+            {#each economy.unregistered as u}<li class="truncate">• {u}</li>{/each}
+          </ul>
+          <button class="btn-primary" onclick={registerTypes} disabled={nornBusy}>
+            {nornBusy ? "Working…" : "Register all in economy"}
+          </button>
+        </div>
+      {/if}
 
       <!-- Minimum lifetime floor -->
       <div class="card p-4 mb-5">

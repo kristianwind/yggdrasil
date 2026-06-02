@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -148,6 +149,205 @@ func mustRel(base, p string) string {
 	return r
 }
 
+// dayzRegisterCe adds <ce folder><file type="types"> entries to cfgeconomycore.xml,
+// skipping ones already registered. Returns the number added.
+func dayzRegisterCe(missionDir string, entries [][2]string) (int, error) {
+	cePath := filepath.Join(missionDir, "cfgeconomycore.xml")
+	if !fileExists(cePath) {
+		cePath = filepath.Join(missionDir, "cfgEconomyCore.xml")
+	}
+	data, err := os.ReadFile(cePath)
+	if err != nil {
+		return 0, fmt.Errorf("cfgeconomycore.xml not found")
+	}
+	content := string(data)
+	idx := strings.LastIndex(content, "</economycore>")
+	if idx < 0 {
+		return 0, fmt.Errorf("cfgeconomycore.xml malformed (no </economycore>)")
+	}
+	reg := dayzRegisteredRel(missionDir)
+	var b strings.Builder
+	added := 0
+	for _, e := range entries {
+		folder, file := e[0], e[1]
+		if folder == "" || folder == "." || reg[folder+"/"+file] {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("\t<ce folder=%q>\n\t\t<file name=%q type=\"types\" />\n\t</ce>\n", folder, file))
+		reg[folder+"/"+file] = true // dedupe within this batch too
+		added++
+	}
+	if added == 0 {
+		return 0, nil
+	}
+	content = content[:idx] + b.String() + content[idx:]
+	return added, os.WriteFile(cePath, []byte(content), 0o664)
+}
+
+// dayzModName reads a workshop mod's display name from its meta.cpp (name="…"),
+// falling back to the folder name.
+var dzMetaNameRe = regexp.MustCompile(`(?i)\bname\s*=\s*"([^"]+)"`)
+
+func dayzModName(modDir, fallback string) string {
+	data, err := os.ReadFile(filepath.Join(modDir, "meta.cpp"))
+	if err == nil {
+		if m := dzMetaNameRe.FindStringSubmatch(string(data)); m != nil {
+			return m[1]
+		}
+	}
+	return fallback
+}
+
+// handleDayzModLoot lists installed mods (the @<id> folders) and the loot
+// types.xml files each ships — so an admin can pull modded loot into the economy.
+func (s *Server) handleDayzModLoot(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerView, s.serverTarget(r.Context(), id)) {
+		return
+	}
+	dataDir, mission, ok := s.dayzMission(r.Context(), id)
+	if !ok {
+		jsonError(w, "not a DayZ server", http.StatusBadRequest)
+		return
+	}
+	mdir := dayzMissionDir(dataDir, mission)
+	// Basenames already in the mission economy → mark mod files as "imported".
+	importedBase := map[string]bool{}
+	for rel := range dayzRegisteredRel(mdir) {
+		importedBase[strings.ToLower(filepath.Base(rel))] = true
+	}
+
+	entries, _ := os.ReadDir(dataDir)
+	type modFile struct {
+		Path     string `json:"path"`
+		Items    int    `json:"items"`
+		Imported bool   `json:"imported"`
+	}
+	type modInfo struct {
+		ID        string    `json:"id"`
+		Name      string    `json:"name"`
+		Expansion bool      `json:"expansion"`
+		Files     []modFile `json:"files"`
+	}
+	var mods []modInfo
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "@") {
+			continue
+		}
+		modDir := filepath.Join(dataDir, e.Name())
+		name := dayzModName(modDir, e.Name())
+		var files []modFile
+		filepath.WalkDir(modDir, func(path string, d fs.DirEntry, err error) error { //nolint:errcheck
+			if err != nil || d.IsDir() || !strings.HasSuffix(strings.ToLower(d.Name()), ".xml") {
+				return nil
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				return nil
+			}
+			buf := make([]byte, 16384)
+			n, _ := f.Read(buf)
+			f.Close()
+			head := string(buf[:n])
+			if !isDayzTypesFile(head) {
+				return nil
+			}
+			// item count over the whole file
+			full, _ := os.ReadFile(path)
+			files = append(files, modFile{
+				Path:     filepath.ToSlash(mustRel(dataDir, path)),
+				Items:    len(dzTypeNameRe.FindAllString(string(full), -1)),
+				Imported: importedBase[strings.ToLower(d.Name())],
+			})
+			return nil
+		})
+		if len(files) == 0 {
+			continue
+		}
+		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+		mods = append(mods, modInfo{
+			ID:        strings.TrimPrefix(e.Name(), "@"),
+			Name:      name,
+			Expansion: strings.Contains(strings.ToLower(name+" "+e.Name()), "expansion"),
+			Files:     files,
+		})
+	}
+	sort.Slice(mods, func(i, j int) bool { return mods[i].Name < mods[j].Name })
+	jsonOK(w, map[string]any{"mods": mods})
+}
+
+// handleDayzImportModTypes copies a mod's types.xml into the mission and registers
+// it in the economy, so its loot spawns and is covered by the lifetime floor.
+func (s *Server) handleDayzImportModTypes(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerControl, s.serverTarget(r.Context(), id)) {
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := decodeJSON(r, &req); err != nil || req.Path == "" {
+		jsonError(w, "path required", http.StatusBadRequest)
+		return
+	}
+	dataDir, mission, ok := s.dayzMission(r.Context(), id)
+	if !ok {
+		jsonError(w, "not a DayZ server", http.StatusBadRequest)
+		return
+	}
+	// Resolve + contain within the data dir (no traversal), and require @<mod>/… .
+	src := filepath.Clean(filepath.Join(dataDir, req.Path))
+	if !strings.HasPrefix(src, filepath.Clean(dataDir)+string(os.PathSeparator)) || !fileExists(src) {
+		jsonError(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	rel := filepath.ToSlash(mustRel(dataDir, src))
+	parts := strings.SplitN(rel, "/", 2)
+	if len(parts) < 2 || !strings.HasPrefix(parts[0], "@") {
+		jsonError(w, "not a mod file", http.StatusBadRequest)
+		return
+	}
+	data, err := os.ReadFile(src)
+	if err != nil || !isDayzTypesFile(string(data)) {
+		jsonError(w, "not a types.xml file", http.StatusBadRequest)
+		return
+	}
+	slug := dayzSlug(strings.TrimPrefix(parts[0], "@"))
+	base := filepath.Base(src)
+	mdir := dayzMissionDir(dataDir, mission)
+	destDir := filepath.Join(mdir, slug)
+	if err := os.MkdirAll(destDir, 0o775); err != nil {
+		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := os.WriteFile(filepath.Join(destDir, base), data, 0o664); err != nil {
+		jsonError(w, "copy: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	added, err := dayzRegisterCe(mdir, [][2]string{{slug, base}})
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.auditLog(r, "dayz.import_mod_types", "server:"+id, map[string]string{"file": rel})
+	jsonOK(w, map[string]any{"imported": slug + "/" + base, "registered": added})
+}
+
+// dayzSlug makes a mod name safe for a mission subfolder.
+func dayzSlug(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	out := b.String()
+	if out == "" {
+		out = "mod"
+	}
+	return out
+}
+
 // handleDayzRegisterTypes adds <ce> entries to cfgeconomycore.xml for every
 // detected-but-unregistered types file in a subfolder, so modded loot spawns and
 // is managed by the central economy (and covered by the lifetime floor).
@@ -172,34 +372,17 @@ func (s *Server) handleDayzRegisterTypes(w http.ResponseWriter, r *http.Request)
 		jsonOK(w, map[string]any{"registered": 0, "files": []string{}})
 		return
 	}
-	cePath := filepath.Join(mdir, "cfgeconomycore.xml")
-	if !fileExists(cePath) {
-		cePath = filepath.Join(mdir, "cfgEconomyCore.xml")
-	}
-	data, err := os.ReadFile(cePath)
-	if err != nil {
-		jsonError(w, "cfgeconomycore.xml not found", http.StatusNotFound)
-		return
-	}
-	content := string(data)
-	idx := strings.LastIndex(content, "</economycore>")
-	if idx < 0 {
-		jsonError(w, "cfgeconomycore.xml is malformed (no </economycore>)", http.StatusUnprocessableEntity)
-		return
-	}
-	var blocks strings.Builder
+	entries := make([][2]string, 0, len(reg))
 	for _, rel := range reg {
-		folder := filepath.ToSlash(filepath.Dir(rel))
-		file := filepath.Base(rel)
-		blocks.WriteString("\t<ce folder=\"" + folder + "\">\n\t\t<file name=\"" + file + "\" type=\"types\" />\n\t</ce>\n")
+		entries = append(entries, [2]string{filepath.ToSlash(filepath.Dir(rel)), filepath.Base(rel)})
 	}
-	content = content[:idx] + blocks.String() + content[idx:]
-	if err := os.WriteFile(cePath, []byte(content), 0o664); err != nil {
-		jsonError(w, "write: "+err.Error(), http.StatusInternalServerError)
+	added, err := dayzRegisterCe(mdir, entries)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.auditLog(r, "dayz.register_types", "server:"+id, map[string]string{"count": strconv.Itoa(len(reg))})
-	jsonOK(w, map[string]any{"registered": len(reg), "files": reg})
+	s.auditLog(r, "dayz.register_types", "server:"+id, map[string]string{"count": strconv.Itoa(added)})
+	jsonOK(w, map[string]any{"registered": added, "files": reg})
 }
 
 // handleDayzEconomy returns a summary of the loot economy: types files, item +

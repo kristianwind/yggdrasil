@@ -114,6 +114,7 @@
     ],
   );
   let economy = $state(null);
+  let modLoot = $state(null);
   let nornBusy = $state(false);
   let minHours = $state(4);
   let globalsEdit = $state({});
@@ -124,8 +125,23 @@
     return `${(sec / 86400).toFixed(1)} d`;
   }
   async function loadEconomy() {
-    economy = await api.get(`/servers/${id}/dayz/economy`).catch(() => null);
+    [economy, modLoot] = await Promise.all([
+      api.get(`/servers/${id}/dayz/economy`).catch(() => null),
+      api.get(`/servers/${id}/dayz/mod-loot`).catch(() => null),
+    ]);
     globalsEdit = { ...(economy?.globals || {}) };
+  }
+  async function importModTypes(path) {
+    nornBusy = true;
+    try {
+      const r = await api.post(`/servers/${id}/dayz/import-mod-types`, { path });
+      toast(`Imported ${r.imported} into the economy — set a floor + restart`, "success");
+      await loadEconomy();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      nornBusy = false;
+    }
   }
   async function applyMinLifetime() {
     if (!(minHours > 0)) return toast("Enter hours > 0", "warn");
@@ -840,6 +856,40 @@
           <button class="btn-primary" onclick={registerTypes} disabled={nornBusy}>
             {nornBusy ? "Working…" : "Register all in economy"}
           </button>
+        </div>
+      {/if}
+
+      <!-- Loot from installed mods -->
+      {#if modLoot && modLoot.mods && modLoot.mods.length}
+        <div class="card p-4 mb-5">
+          <h4 class="font-semibold mb-1">Loot from installed mods</h4>
+          <p class="text-muted text-xs mb-3">
+            <span class="font-mono">types.xml</span> files shipped inside your mods. Import one to copy it
+            into the mission and register it, so its loot spawns and is covered by the lifetime floor.
+          </p>
+          <div class="space-y-3">
+            {#each modLoot.mods as m}
+              <div class="border border-border rounded-md p-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="font-medium">{m.name}</span>
+                  {#if m.expansion}<span class="badge bg-warn/20 text-warn">manages own economy</span>{/if}
+                </div>
+                {#if m.expansion}
+                  <p class="text-warn text-xs mb-2">DayZ Expansion injects its own loot — you usually don't need to import these.</p>
+                {/if}
+                {#each m.files as f}
+                  <div class="flex items-center justify-between gap-3 py-1">
+                    <span class="text-xs font-mono truncate">{f.path} <span class="text-muted">· {f.items} items</span></span>
+                    {#if f.imported}
+                      <span class="badge bg-accent2/20 text-accent shrink-0">imported</span>
+                    {:else}
+                      <button class="btn-ghost px-2 py-1 text-xs shrink-0" onclick={() => importModTypes(f.path)} disabled={nornBusy}>Import + register</button>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/each}
+          </div>
         </div>
       {/if}
 

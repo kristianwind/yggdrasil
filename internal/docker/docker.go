@@ -119,6 +119,17 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 				})
 			}
 		}
+		// Some game binaries (Minecraft Bedrock's libcurl) only trust the system CA
+		// bundle at its compiled-in default path and ignore SSL_CERT_FILE/CURL_CA_BUNDLE,
+		// so online-mode TLS to the vendor's auth services fails on a bare base image.
+		// If the install staged a CA bundle in the data dir, mount it at the default
+		// path. Harmless for games that don't need it.
+		caBundle := filepath.Join(opts.DataDir, ".certs", "ca-certificates.crt")
+		if _, err := os.Stat(caBundle); err == nil {
+			mounts = append(mounts, mount.Mount{
+				Type: mount.TypeBind, Source: caBundle, Target: "/etc/ssl/certs/ca-certificates.crt", ReadOnly: true,
+			})
+		}
 	}
 
 	// Auto-recover from genuine crashes, but cap retries so a server that fails

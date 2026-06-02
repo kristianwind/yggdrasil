@@ -58,13 +58,26 @@ gameskill:
       [ -f /data/server.properties ] || unzip -o /tmp/bedrock.zip "server.properties" -d /data
       chmod +x /data/bedrock_server || true
       # bedrock_server needs system libcurl (absent from the ubuntu base). Install
-      # it here (we run as root during install) and bundle the binary's full shared
-      # library closure into .libs so the runtime works without root/apt.
-      apt-get install -y libcurl4 >/dev/null 2>&1 || true
-      mkdir -p /data/.libs
-      ldd /data/bedrock_server 2>/dev/null | awk '/=> \//{print $3}' | while read -r lib; do
-        [ -f "$lib" ] && cp -Ln "$lib" /data/.libs/ 2>/dev/null || true
+      # it here (we run as root during install) and bundle the full shared-library
+      # closure into .libs so the runtime works without root/apt.
+      apt-get install -y libcurl4 ca-certificates >/dev/null 2>&1 || true
+      mkdir -p /data/.libs /data/.certs
+      # Online-mode needs HTTPS to Minecraft services. bedrock_server's libcurl reads
+      # the CA bundle from its compiled-in default path ONLY (it ignores
+      # SSL_CERT_FILE/CURL_CA_BUNDLE), so stage the bundle here; the panel mounts it
+      # at /etc/ssl/certs/ca-certificates.crt at runtime. Without this the server
+      # logs "Could not connect to Minecraft services" and stops in online mode.
+      cp -L /etc/ssl/certs/ca-certificates.crt /data/.certs/ca-certificates.crt 2>/dev/null || true
+      # Bundle bedrock_server's libs AND libcurl's own closure (libssl/libcrypto/…) —
+      # ldd of the binary alone can miss libcurl's TLS backend, breaking HTTPS.
+      LC=$(ldconfig -p 2>/dev/null | grep 'libcurl.so.4' | awk '{print $NF}' | head -1)
+      for b in /data/bedrock_server "$LC"; do
+        [ -n "$b" ] && [ -f "$b" ] || continue
+        ldd "$b" 2>/dev/null | awk '/=> \//{print $3}' | while read -r lib; do
+          [ -f "$lib" ] && cp -Ln "$lib" /data/.libs/ 2>/dev/null || true
+        done
       done
+      [ -n "$LC" ] && cp -Ln "$LC" /data/.libs/ 2>/dev/null || true
 
   startup:
     # Bedrock reads stdin for console commands (no RCON). Runs as the panel user;

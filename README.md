@@ -137,6 +137,10 @@ one-liner — it's idempotent).
 | [![Schedules](docs/screenshots/schedules.png)](docs/screenshots/schedules.png) | [![Bans](docs/screenshots/bans.png)](docs/screenshots/bans.png) |
 | **Runes (gameskills)** | **Settings** |
 | [![Runes](docs/screenshots/runes.png)](docs/screenshots/runes.png) | [![Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png) |
+| **Server settings** (connect address, BattleMetrics, delegation) | **Users & scoped access** |
+| [![Server settings](docs/screenshots/server-settings.png)](docs/screenshots/server-settings.png) | [![Users](docs/screenshots/users.png)](docs/screenshots/users.png) |
+| **File manager** | **Backups & restore** |
+| [![Files](docs/screenshots/server-files.png)](docs/screenshots/server-files.png) | [![Backups](docs/screenshots/server-backups.png)](docs/screenshots/server-backups.png) |
 
 <sub>Dark mode by default; the UI is fully responsive and installable as a PWA.</sub>
 

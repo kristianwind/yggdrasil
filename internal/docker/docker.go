@@ -123,7 +123,14 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		// servers (DayZ, Rust) call getpwuid and segfault on a NULL result — which
 		// surfaced as DayZ dying with "CrashReporter: not found". Harmless for
 		// other images (Java etc. don't consult it).
-		if opts.User != "" {
+		//
+		// BUT only for our own-command runes. KeepEntrypoint app images run their own
+		// init and rely on their image's named users (gitea's "git",
+		// nextcloud/wordpress's "www-data"); clobbering /etc/passwd with our minimal
+		// one deletes those users and the entrypoint dies ("unknown user git",
+		// "apache2: bad user name www-data"). Those images already ship the passwd they
+		// need, so they never required this shim.
+		if opts.User != "" && !opts.KeepEntrypoint {
 			if pw, err := writePasswdFile(opts.DataDir, opts.User); err == nil {
 				mounts = append(mounts, mount.Mount{
 					Type: mount.TypeBind, Source: pw, Target: "/etc/passwd", ReadOnly: true,

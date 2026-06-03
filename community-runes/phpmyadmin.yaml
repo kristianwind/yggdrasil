@@ -1,0 +1,59 @@
+gameskill:
+  id: phpmyadmin
+  name: "phpMyAdmin"
+  category: "Apps"
+  description: "Web UI to manage MySQL/MariaDB databases. Point it at a MariaDB rune (or type any DB host at login)."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Stateless web app (all config via env). Keep the image's own entrypoint (Apache
+  # starts as root then drops to www-data). No data_path on purpose: phpMyAdmin's
+  # code lives in the image and nothing needs persisting, so we don't mount the
+  # volume over the webroot (that would hide the app) — the unused /data mount is
+  # harmless and PHP uses its in-image session dir, so there's no www-data-vs-panel
+  # ownership clash.
+  docker:
+    image: "phpmyadmin:latest"
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # PMA_ARBITRARY=1 shows a "server" field on the login page, so you can connect
+    # to any database host — works standalone; point it at your MariaDB rune's
+    # connect address (host:port). Set 0 to lock it to PMA_HOST only.
+    - key: PMA_ARBITRARY
+      name: "Allow connecting to any server"
+      type: select
+      options: ["1", "0"]
+      default: "1"
+    - key: PMA_HOST
+      name: "Default database host (optional, e.g. 192.168.1.50)"
+      type: string
+      default: ""
+    - key: PMA_PORT
+      name: "Default database port"
+      type: int
+      default: 3306
+    - key: UPLOAD_LIMIT
+      name: "Max SQL import size"
+      type: string
+      default: "256M"
+
+  install:
+    image: "phpmyadmin:latest"
+    script: |
+      mkdir -p /data
+      echo "phpMyAdmin ready (stateless — set the DB host at login or via PMA_HOST)"
+
+  startup:
+    # Image's own entrypoint runs Apache; it logs the "AH00094: Command line:"
+    # startup line once it's serving (same php-apache base as wordpress).
+    command: ""
+    done_regex: 'Command line:'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

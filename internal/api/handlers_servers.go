@@ -135,6 +135,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		GameskillID string            `json:"gameskill_id"`
 		RealmID     string            `json:"realm_id"`
 		Env         map[string]string `json:"env"`
+		Mods        *string           `json:"mods"` // alias for env["MODS"]; see handleUpdateServer
 		CPUPercent  float64           `json:"cpu_percent"`
 		MemoryMB    int64             `json:"memory_mb"`
 	}
@@ -167,6 +168,9 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	env := gameskill.DefaultEnv(gs)
 	for k, v := range req.Env {
 		env[k] = v
+	}
+	if req.Mods != nil {
+		env["MODS"] = strings.TrimSpace(*req.Mods)
 	}
 
 	// Allocate ports. Seed "taken" with host ports Docker already publishes (incl.
@@ -251,13 +255,18 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name       *string           `json:"name"`
-		RealmID    *string           `json:"realm_id"`
-		Env        map[string]string `json:"env"`
-		CPUPercent *float64          `json:"cpu_percent"`
-		MemoryMB    *int64            `json:"memory_mb"`
-		BMServerID  *string           `json:"bm_server_id"`
-		AutoForward *bool             `json:"auto_forward"`
+		Name    *string           `json:"name"`
+		RealmID *string           `json:"realm_id"`
+		Env     map[string]string `json:"env"`
+		// Mods is a convenience alias for env["MODS"] (semicolon-separated Workshop
+		// IDs in load order). The web UI sends mods inside env, but API clients
+		// naturally reach for a top-level "mods" — accept both so it can't silently
+		// no-op.
+		Mods        *string  `json:"mods"`
+		CPUPercent  *float64 `json:"cpu_percent"`
+		MemoryMB    *int64   `json:"memory_mb"`
+		BMServerID  *string  `json:"bm_server_id"`
+		AutoForward *bool    `json:"auto_forward"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -275,7 +284,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	if req.RealmID != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET realm_id=? WHERE id=?", nullableStr(*req.RealmID), id)
 	}
-	if req.Env != nil {
+	if req.Env != nil || req.Mods != nil {
 		// Merge onto the existing env so unspecified vars are preserved.
 		current := map[string]string{}
 		var envJSON string
@@ -283,6 +292,10 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(envJSON), &current)
 		for k, v := range req.Env {
 			current[k] = v
+		}
+		// Top-level "mods" wins over env["MODS"] when both are sent.
+		if req.Mods != nil {
+			current["MODS"] = strings.TrimSpace(*req.Mods)
 		}
 		b, _ := json.Marshal(current)
 		s.db.ExecContext(r.Context(), "UPDATE servers SET env_json=? WHERE id=?", string(b), id)
@@ -484,12 +497,12 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		runtimeUser = gameskill.ApplyTemplate(gs.Docker.User, env)
 	}
 	containerID, err := s.docker.Create(r.Context(), docker.CreateOptions{
-		Name:       containerName,
-		Image:      image,
-		Env:        envSlice,
-		Cmd:        cmd,
-		User:       runtimeUser,
-		Ports:      portMappings,
+		Name:           containerName,
+		Image:          image,
+		Env:            envSlice,
+		Cmd:            cmd,
+		User:           runtimeUser,
+		Ports:          portMappings,
 		DataDir:        srv.DataDir,
 		DataMount:      gs.Docker.DataPath, // empty = /data
 		KeepEntrypoint: gs.Docker.KeepEntrypoint,

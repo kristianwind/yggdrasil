@@ -118,6 +118,12 @@ func (s *Server) runInstall(serverID string) error {
 	if err := s.db.QueryRowContext(ctx, "SELECT data_dir FROM servers WHERE id=?", serverID).Scan(&dataDir); err != nil {
 		return err
 	}
+	// If the server was running, recreate it after the (re)install so the freshly
+	// downloaded files + current rune/env/mod load order actually take effect (the
+	// command/env is baked in at container-create time, so the old container would
+	// otherwise keep running the old config).
+	var hadContainer string
+	s.db.QueryRowContext(ctx, "SELECT COALESCE(container_id,'') FROM servers WHERE id=?", serverID).Scan(&hadContainer) //nolint:errcheck
 
 	if rt.gs.Install == nil {
 		// Nothing to install; mark ready immediately.
@@ -208,6 +214,14 @@ func (s *Server) runInstall(serverID string) error {
 	// A (re)install regenerates the vanilla DayZ mission economy — re-apply any saved
 	// Norn loot settings so the admin's tuning survives updates. No-op otherwise.
 	s.dayzReapplyNorn(serverID)
+	// Recreate the container if the server was running, so the update is applied
+	// without the operator needing a manual stop→start.
+	if hadContainer != "" {
+		s.install.publish(serverID, "Recreating container to apply the update ...")
+		if rerr := s.recreateAndStart(ctx, serverID); rerr != nil {
+			s.install.publish(serverID, "WARN: could not restart after install: "+rerr.Error())
+		}
+	}
 	s.install.publish(serverID, "=== Install complete ===")
 	return nil
 }

@@ -152,8 +152,12 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		if args["skip_if_players"] == "true" && s.playersOnline(serverID) > 0 {
 			return
 		}
+		// Recreate the container (not a plain docker-restart) so a scheduled restart
+		// applies any rune/env/mod changes too, consistent with the manual restart.
 		if cid := s.containerID(serverID); cid != "" {
-			s.docker.Restart(ctx, cid)
+			if err := s.recreateAndStart(ctx, serverID); err != nil {
+				s.docker.Restart(ctx, cid) // fall back to a plain restart on error
+			}
 		}
 
 	case scheduler.ActionStart:

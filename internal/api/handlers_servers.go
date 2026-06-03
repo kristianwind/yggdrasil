@@ -360,6 +360,144 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"status": "deleted"})
 }
 
+// recreateAndStart (re)creates this server's container from its CURRENT rune, env,
+// and allocated ports, then starts it (a watcher promotes it to "running"). Any
+// existing container is removed first — so this is the single code path that
+// actually applies rune/env/mod changes. A plain `docker restart` keeps the old
+// baked-in command/env, which is why restart alone never picked up changes. Shared
+// by start, restart, and the post-(re)install refresh. The caller is responsible
+// for permission + install-state checks.
+func (s *Server) recreateAndStart(ctx context.Context, id string) error {
+	srv, err := s.getServer(ctx, id)
+	if err != nil {
+		return err
+	}
+	rt, err := s.loadRuntime(ctx, id)
+	if err != nil {
+		return fmt.Errorf("load runtime: %w", err)
+	}
+	gs, env, ports := rt.gs, rt.env, rt.ports
+
+	// Remove any existing container first (its ports free up for reconcile below).
+	if srv.ContainerID != "" {
+		s.docker.Stop(ctx, srv.ContainerID, 5)
+		s.docker.Remove(ctx, srv.ContainerID)
+		s.db.ExecContext(ctx, "UPDATE servers SET container_id='' WHERE id=?", id)
+		srv.ContainerID = ""
+	}
+	// Reconcile host ports: if a previously-allocated port is now held by another
+	// container/process, reallocate it so the container can bind.
+	reallocated := false
+	dockerUsed, _ := s.docker.UsedHostPorts(ctx)
+	taken := map[int]bool{}
+	for _, hp := range ports {
+		taken[hp] = true
+	}
+	for name, hp := range ports {
+		if !dockerUsed[hp] && hostPortAvailable(hp) {
+			continue
+		}
+		delete(taken, hp)
+		newPort, aerr := s.allocatePort(ctx, hp, taken)
+		if aerr != nil {
+			return fmt.Errorf("port reconcile: %w", aerr)
+		}
+		ports[name] = newPort
+		taken[newPort] = true
+		s.db.ExecContext(ctx, "DELETE FROM port_allocations WHERE server_id=? AND name=?", id, name)
+		s.db.ExecContext(ctx, "INSERT INTO port_allocations (port, server_id, name) VALUES (?,?,?)", newPort, id, name)
+		reallocated = true
+	}
+	if reallocated {
+		portsJSON, _ := json.Marshal(ports)
+		s.db.ExecContext(ctx, "UPDATE servers SET ports_json=? WHERE id=?", string(portsJSON), id)
+	}
+
+	// Build docker env slice (server vars + PORT_<name> helpers). HOME=/data gives
+	// the (non-root) runtime user a writable home for caches.
+	envSlice := []string{"HOME=/data"}
+	for k, v := range env {
+		envSlice = append(envSlice, fmt.Sprintf("%s=%s", k, v))
+	}
+	for name, port := range ports {
+		envSlice = append(envSlice, fmt.Sprintf("PORT_%s=%d", name, port))
+	}
+
+	// Steam games publish their port 1:1 (bind==advertised); others use the
+	// gameskill's fixed default container port.
+	steamGame := gs.Steam != nil
+	portMappings := []docker.PortMapping{}
+	for _, p := range gs.Ports {
+		if hostPort, ok := ports[p.Name]; ok {
+			containerPort := p.Default
+			if steamGame {
+				containerPort = hostPort
+			}
+			portMappings = append(portMappings, docker.PortMapping{
+				HostPort:      hostPort,
+				ContainerPort: containerPort,
+				Protocol:      p.Protocol,
+			})
+		}
+	}
+
+	image := gameskill.ApplyTemplate(gs.Docker.Image, env)
+	startupCmd := gameskill.ApplyTemplate(gs.Startup.Command, env)
+	var cmd []string
+	if startupCmd != "" {
+		cmd = []string{"/bin/sh", "-c", startupCmd}
+	}
+	containerName := fmt.Sprintf("ygg-%s", id[:8])
+
+	var cpuLimit float64
+	var memLimit int64
+	s.db.QueryRowContext(ctx,
+		"SELECT COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0) FROM servers WHERE id=?", id).
+		Scan(&cpuLimit, &memLimit)
+
+	// Clear any orphaned container with our deterministic name so Create can't fail
+	// on a name conflict (the container is always recreated fresh; state is in /data).
+	s.docker.Remove(ctx, containerName)
+	s.docker.PullImage(ctx, image, io.Discard)
+
+	runtimeUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
+	if gs.Docker.User != "" {
+		runtimeUser = gameskill.ApplyTemplate(gs.Docker.User, env)
+	}
+	containerID, err := s.docker.Create(ctx, docker.CreateOptions{
+		Name:           containerName,
+		Image:          image,
+		Env:            envSlice,
+		Cmd:            cmd,
+		User:           runtimeUser,
+		Ports:          portMappings,
+		DataDir:        srv.DataDir,
+		DataMount:      gs.Docker.DataPath, // empty = /data
+		KeepEntrypoint: gs.Docker.KeepEntrypoint,
+		CPUPercent:     cpuLimit,
+		MemoryMB:       memLimit,
+		Labels:         map[string]string{"yggdrasil.server_id": id},
+	})
+	if err != nil {
+		return fmt.Errorf("create container: %w", err)
+	}
+	if err := s.docker.Start(ctx, containerID); err != nil {
+		return fmt.Errorf("start container: %w", err)
+	}
+
+	// Mark "starting"; the watcher promotes to "running" on the done_regex.
+	s.db.ExecContext(ctx,
+		"UPDATE servers SET status='starting', container_id=? WHERE id=?",
+		containerID, id)
+	go s.watchStartupReady(id, containerID, gs.Startup.DoneRegex)
+	// Only open firewall ports when this server opts in (default on).
+	if srv.AutoForward {
+		go s.upnpAddServer(id, srv.Name)
+		go s.unifiAddServer(id, srv.Name)
+	}
+	return nil
+}
+
 func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	srv, err := s.getServer(r.Context(), id)
@@ -384,157 +522,9 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load gameskill + the server's env and allocated host ports.
-	rt, err := s.loadRuntime(r.Context(), id)
-	if err != nil {
-		jsonError(w, "load runtime: "+err.Error(), http.StatusInternalServerError)
+	if err := s.recreateAndStart(r.Context(), id); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-	gs, env, ports := rt.gs, rt.env, rt.ports
-
-	// Reconcile host ports: if a previously-allocated port is now held by another
-	// container/process (e.g. an orphan from an earlier attempt), reallocate it so
-	// the container can bind. This is what was running on the host that this
-	// server itself wants — so we ignore ports our own (to-be-recreated) container
-	// would hold; those are released when we remove it below.
-	if srv.ContainerID != "" {
-		s.docker.Stop(r.Context(), srv.ContainerID, 5)
-		s.docker.Remove(r.Context(), srv.ContainerID)
-		s.db.ExecContext(r.Context(), "UPDATE servers SET container_id='' WHERE id=?", id)
-		srv.ContainerID = ""
-	}
-	reallocated := false
-	dockerUsed, _ := s.docker.UsedHostPorts(r.Context()) // our container is already removed above
-	taken := map[int]bool{}
-	for _, hp := range ports {
-		taken[hp] = true
-	}
-	for name, hp := range ports {
-		if !dockerUsed[hp] && hostPortAvailable(hp) {
-			continue
-		}
-		delete(taken, hp)
-		newPort, aerr := s.allocatePort(r.Context(), hp, taken)
-		if aerr != nil {
-			jsonError(w, "port reconcile: "+aerr.Error(), http.StatusInternalServerError)
-			return
-		}
-		ports[name] = newPort
-		taken[newPort] = true
-		s.db.ExecContext(r.Context(), "DELETE FROM port_allocations WHERE server_id=? AND name=?", id, name)
-		s.db.ExecContext(r.Context(), "INSERT INTO port_allocations (port, server_id, name) VALUES (?,?,?)", newPort, id, name)
-		reallocated = true
-	}
-	if reallocated {
-		portsJSON, _ := json.Marshal(ports)
-		s.db.ExecContext(r.Context(), "UPDATE servers SET ports_json=? WHERE id=?", string(portsJSON), id)
-	}
-
-	// Build docker env slice (server vars + PORT_<name> helpers). HOME=/data gives
-	// the (non-root) runtime user a writable home for caches.
-	envSlice := []string{"HOME=/data"}
-	for k, v := range env {
-		envSlice = append(envSlice, fmt.Sprintf("%s=%s", k, v))
-	}
-	for name, port := range ports {
-		envSlice = append(envSlice, fmt.Sprintf("PORT_%s=%d", name, port))
-	}
-
-	// Build port mappings. Steam games (DayZ, Rust) bind <NAME>_PORT — which
-	// loadRuntime set to the allocated host port — and advertise that port to the
-	// Steam master server, so the container must publish it 1:1 (container port =
-	// host port). Other games bind the gameskill's fixed default container port.
-	steamGame := gs.Steam != nil
-	portMappings := []docker.PortMapping{}
-	for _, p := range gs.Ports {
-		if hostPort, ok := ports[p.Name]; ok {
-			containerPort := p.Default
-			if steamGame {
-				containerPort = hostPort
-			}
-			portMappings = append(portMappings, docker.PortMapping{
-				HostPort:      hostPort,
-				ContainerPort: containerPort,
-				Protocol:      p.Protocol,
-			})
-		}
-	}
-
-	image := gameskill.ApplyTemplate(gs.Docker.Image, env)
-	// The startup command from the gameskill becomes the container command,
-	// run via a shell so templated flags and env expansion work.
-	startupCmd := gameskill.ApplyTemplate(gs.Startup.Command, env)
-	// Use -c (not -lc) so a single-command startup is exec'd as PID 1 — that way
-	// `docker stop`/SIGTERM reaches the game directly and it shuts down cleanly.
-	var cmd []string
-	if startupCmd != "" {
-		cmd = []string{"/bin/sh", "-c", startupCmd}
-	}
-	// else: leave Cmd empty so the image's own ENTRYPOINT/CMD runs (keep_entrypoint).
-	containerName := fmt.Sprintf("ygg-%s", id[:8])
-
-	// Per-server resource caps.
-	var cpuLimit float64
-	var memLimit int64
-	s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0) FROM servers WHERE id=?", id).
-		Scan(&cpuLimit, &memLimit)
-
-	// Remove any orphaned container with our deterministic name so Create can't
-	// fail with a name conflict (the container is always (re)created fresh; game
-	// state lives in the /data volume).
-	s.docker.Remove(r.Context(), containerName)
-
-	// Pull image
-	s.docker.PullImage(r.Context(), image, io.Discard)
-
-	// Run as the panel's user so files the game writes (server.properties, world,
-	// …) stay editable from the file manager. Install runs as root and chowns the
-	// data dir to this uid afterwards. A rune may override this (docker.user) — e.g.
-	// "0:0" for linuxserver.io app images that start as root then drop to PUID/PGID.
-	runtimeUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
-	if gs.Docker.User != "" {
-		runtimeUser = gameskill.ApplyTemplate(gs.Docker.User, env)
-	}
-	containerID, err := s.docker.Create(r.Context(), docker.CreateOptions{
-		Name:           containerName,
-		Image:          image,
-		Env:            envSlice,
-		Cmd:            cmd,
-		User:           runtimeUser,
-		Ports:          portMappings,
-		DataDir:        srv.DataDir,
-		DataMount:      gs.Docker.DataPath, // empty = /data
-		KeepEntrypoint: gs.Docker.KeepEntrypoint,
-		CPUPercent:     cpuLimit,
-		MemoryMB:       memLimit,
-		Labels:         map[string]string{"yggdrasil.server_id": id},
-	})
-	if err != nil {
-		jsonError(w, "create container: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := s.docker.Start(r.Context(), containerID); err != nil {
-		jsonError(w, "start container: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Mark "starting" while the game boots; a watcher promotes it to "running"
-	// once the gameskill's done_regex appears (or the container stays up).
-	s.db.ExecContext(r.Context(),
-		"UPDATE servers SET status='starting', container_id=? WHERE id=?",
-		containerID, id)
-	var doneRegex string
-	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
-		doneRegex = rt.gs.Startup.DoneRegex
-	}
-	go s.watchStartupReady(id, containerID, doneRegex)
-	// Only open firewall ports when this server opts in (default on). Lets you run
-	// a server that should stay LAN-only without auto-forwarding its ports.
-	if srv.AutoForward {
-		go s.upnpAddServer(id, srv.Name)
-		go s.unifiAddServer(id, srv.Name)
 	}
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
@@ -581,21 +571,24 @@ func (s *Server) handleRestartServer(w http.ResponseWriter, r *http.Request) {
 	if !s.can(w, r, rbac.ServerControl, srv.target()) {
 		return
 	}
-	if srv.ContainerID == "" {
-		jsonError(w, "server is not running", http.StatusConflict)
+	if s.install.isActive(id) {
+		jsonError(w, "install in progress; please wait", http.StatusConflict)
 		return
 	}
-	if err := s.docker.Restart(r.Context(), srv.ContainerID); err != nil {
+	var installed int
+	s.db.QueryRowContext(r.Context(), "SELECT installed FROM servers WHERE id=?", id).Scan(&installed)
+	if installed == 0 {
+		jsonError(w, "server is not installed yet", http.StatusConflict)
+		return
+	}
+	// Recreate the container (not a plain docker-restart) so any rune/env/mod change
+	// since it was last created actually takes effect.
+	if err := s.recreateAndStart(r.Context(), id); err != nil {
 		jsonError(w, "restart failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	s.db.ExecContext(r.Context(), "UPDATE servers SET status='starting' WHERE id=?", id)
-	var doneRegex string
-	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
-		doneRegex = rt.gs.Startup.DoneRegex
-	}
-	go s.watchStartupReady(id, srv.ContainerID, doneRegex)
 	s.auditLog(r, "server.restart", "server:"+id, nil)
+	s.notifyAll("🔄 " + srv.Name + " restarted")
 	jsonOK(w, map[string]string{"status": "starting"})
 }
 

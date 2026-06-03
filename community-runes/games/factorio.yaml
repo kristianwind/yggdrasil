@@ -1,0 +1,48 @@
+gameskill:
+  id: factorio
+  name: "Factorio"
+  category: "Factorio"
+  description: "Factorio dedicated server (factoriotools image). Auto-creates a save on first boot; no Steam account needed. Connect in-game via the host + UDP port."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "factorio"
+
+  # The factoriotools image starts as root and drops to PUID:PGID — set them to the
+  # panel user so it can write the data dir. Saves/mods/config live in /factorio.
+  docker:
+    image: "factoriotools/factorio:stable"
+    data_path: /factorio
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (must own the data dir)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: SAVE_NAME
+      name: "Save name"
+      type: string
+      default: "yggdrasil"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Factorio data directory ready (a save is generated on first start)"
+
+  startup:
+    # The server logs "Hosting game" once the save is loaded and it's accepting joins.
+    command: ""
+    done_regex: 'Hosting game'
+
+  ports:
+    - { name: game, default: 34197, protocol: udp }
+    - { name: rcon, default: 27015, protocol: tcp }
+
+  backup:
+    include: ["."]

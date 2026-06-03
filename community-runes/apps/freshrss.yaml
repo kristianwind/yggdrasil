@@ -1,0 +1,46 @@
+gameskill:
+  id: freshrss
+  name: "FreshRSS"
+  category: "Apps"
+  description: "Self-hosted RSS/Atom feed aggregator — fast, light, multi-user. SQLite by default (no external DB needed)."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # LinuxServer image: starts as root, drops to PUID:PGID, so it can write the
+  # panel-owned data dir. Config + SQLite live in /config.
+  docker:
+    image: "lscr.io/linuxserver/freshrss:latest"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (must own the data dir)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "FreshRSS config directory ready"
+
+  startup:
+    command: ""
+    done_regex: '\[ls\.io-init\] done\.'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

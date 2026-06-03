@@ -1,0 +1,34 @@
+gameskill:
+  id: stirling-pdf
+  name: "Stirling-PDF"
+  category: "Apps"
+  description: "A full toolbox of local PDF operations — merge, split, convert, OCR, sign, compress, and more. Runs entirely on your server."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Spring Boot app on :8080. The full image bundles OCR + LibreOffice and is heavy
+  # (slow start, lots of RAM); the ultra-lite tag is the core PDF tools only — much
+  # lighter and quicker to boot. Configs/custom files persist in /configs.
+  docker:
+    image: "stirlingtools/stirling-pdf:latest-ultra-lite"
+    data_path: /configs
+    keep_entrypoint: true
+    user: "0:0"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Stirling-PDF config directory ready"
+
+  startup:
+    # Logs "Stirling-PDF Started." once the Spring Boot app is serving on :8080.
+    command: ""
+    done_regex: 'Stirling-PDF Started'
+
+  ports:
+    - { name: web, default: 8080, protocol: tcp }
+
+  backup:
+    include: ["."]

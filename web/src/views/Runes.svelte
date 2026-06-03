@@ -109,6 +109,16 @@
   let ghBusy = $state(""); // download_url currently installing
   let ghRepo = $state("kristianwind/yggdrasil");
   let ghPath = $state("community-runes");
+  let ghFilter = $state("");
+  let ghFiltered = $derived(
+    ((ghData && ghData.runes) || []).filter((r) => {
+      const q = ghFilter.trim().toLowerCase();
+      if (!q) return true;
+      return `${r.name || r.filename} ${r.category || ""} ${r.id || ""} ${r.description || ""}`
+        .toLowerCase()
+        .includes(q);
+    }),
+  );
 
   function openGithub() {
     ghOpen = true;
@@ -266,8 +276,12 @@
       {:else if !ghData.runes.length}
         <div class="text-muted text-sm">No <span class="font-mono">.yaml</span> runes found in that folder.</div>
       {:else}
+        <input class="input" placeholder="Filter {ghData.runes.length} runes…" bind:value={ghFilter} />
+        {#if !ghFiltered.length}
+          <div class="text-muted text-sm">No runes match “{ghFilter}”.</div>
+        {/if}
         <div class="card divide-y divide-border">
-          {#each ghData.runes as r}
+          {#each ghFiltered as r}
             <div class="flex items-center gap-3 p-3">
               <div class="min-w-0 flex-1">
                 <div class="font-medium truncate">

@@ -4,15 +4,19 @@ Extra Runes that are **not bundled** with Yggdrasil. The four core games (DayZ,
 Rust, Minecraft Java/Bedrock) ship built-in; everything else — databases and
 homelab apps — lives here so the default set stays lean.
 
+Runes are grouped into folders: [`databases/`](databases/), [`apps/`](apps/),
+[`games/`](games/).
+
 To use one: open **Runes → Browse GitHub** in the panel and one-click install any
-rune from this folder, or **Carve a rune (upload)** and upload the `.yaml` file
-directly. It's then available when creating a server.
+rune (the browser descends into these subfolders automatically), or **Carve a
+rune (upload)** and upload the `.yaml` file directly. It's then available when
+creating a server.
 
 > Provided as-is, community-maintained. Apps run in Docker exactly like a normal
 > `docker run`; you may need to tune ports/env for your setup. Put a reverse proxy
 > (see the main README) in front of web apps to serve them on a domain with TLS.
 
-## Databases
+## `databases/`
 Backing stores for other runes/apps (e.g. WordPress/Nextcloud → MariaDB). All
 verified live on a real VM (init + auth).
 
@@ -20,7 +24,7 @@ verified live on a real VM (init + auth).
 - **`mariadb.yaml`** — MariaDB 11 (MySQL-compatible; root + app user/db).
 - **`postgresql.yaml`** — PostgreSQL 16 (`POSTGRES_*`).
 
-## Homelab apps
+## `apps/`
 These use the rune `docker.data_path` / `docker.user` / `docker.keep_entrypoint`
 fields so off-the-shelf images run cleanly. Most expose a web UI on a high port —
 forward it / reverse-proxy it as you like.
@@ -41,17 +45,26 @@ forward it / reverse-proxy it as you like.
 | `pihole.yaml` | pihole/pihole | 80 + 53 | ad-blocker; admin UI at `/admin/`. DNS (:53) lands on a high panel-allocated port, so it's not usable as your real DNS without a fixed/host-network mapping |
 | `memos.yaml` | neosmemo/memos | 5230 | lightweight notes / knowledge base |
 | `homepage.yaml` | gethomepage/homepage | 3000 | homelab start page (set allowed hosts) |
+| `it-tools.yaml` | corentinth/it-tools | 80 | big collection of dev/sysadmin tools (static) |
+| `excalidraw.yaml` | excalidraw/excalidraw | 80 | hand-drawn-style whiteboard (static) |
+| `cyberchef.yaml` | ghcr.io/gchq/cyberchef | 80 | the "cyber swiss-army knife" data tool (static) |
+| `linkding.yaml` | sissbruecker/linkding | 9090 | minimal bookmark manager (SQLite) |
+| `stirling-pdf.yaml` | stirlingtools/stirling-pdf | 8080 | local PDF toolbox (merge/split/OCR/convert) |
+| `dozzle.yaml` | amir20/dozzle | 8080 | live Docker log viewer — **needs the Docker socket** (not auto-mounted) |
+| `freshrss.yaml` | lscr.io/linuxserver/freshrss | 80 | RSS/Atom aggregator (SQLite; PUID/PGID) |
+| `mealie.yaml` | ghcr.io/mealie-recipes/mealie | 9000 | recipe manager + meal planner (SQLite) |
 
 WordPress/Nextcloud: create a **MariaDB** rune first, then point the app's
 `*_DB_HOST` at that server's connect address (`host:port`).
 
-## Games
+## `games/`
 
-### `terraria.yaml` — Terraria
-Official terraria.org dedicated server (downloaded at install, bundled-Mono
-binary). TCP 7777; world size/difficulty/password as variables.
-
-## Available (legacy notes)
+| Rune | Image | Port | Notes |
+|------|-------|------|-------|
+| `terraria.yaml` | ubuntu (terraria.org build) | 7777/tcp | official server, bundled-Mono; size/difficulty/password as vars |
+| `factorio.yaml` | factoriotools/factorio | 34197/udp + 27015/tcp | auto-creates a save; no Steam account; PUID/PGID |
+| `luanti.yaml` | lscr.io/linuxserver/luanti | 30000/udp | Luanti (Minetest) voxel engine — free, tiny, mod-friendly; PUID/PGID |
+| `genshin-impact.yaml` | eclipse-temurin (Grasscutter) | 443 + 22102 | **experimental** — needs a manual `grasscutter.jar` + Resources + MongoDB (see below) |
 
 ### `genshin-impact.yaml` — Genshin Impact (Grasscutter)
 

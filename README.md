@@ -57,11 +57,18 @@ one-liner — it's idempotent).
 
 **Games & apps (gameskills / "Runes")**
 - Bundled core: **Minecraft Java, Minecraft Bedrock, Rust, DayZ** — DayZ with
-  **Workshop mods** (auto-downloaded + signed) and BattlEye RCON
-- **Community runes** in [`community-runes/`](community-runes/) (import in one
-  click): **databases** (MongoDB, MariaDB, PostgreSQL), **homelab apps**
-  (Vaultwarden, Gitea, Uptime Kuma, Grafana, Jellyfin, WordPress, Nextcloud, n8n,
-  Memos, Homepage), plus Terraria and Genshin/Grasscutter
+  **Workshop mods** (auto-downloaded + signed) and BattlEye RCON, plus a **Mods
+  tab** that shows each mod's on-disk + live Steam Workshop status (so a mod
+  removed upstream is flagged instead of silently breaking joins)
+- **Browse GitHub** — install community runes with one click straight from a repo's
+  YAML folder (defaults to this repo's [`community-runes/`](community-runes/),
+  grouped into `databases/` `apps/` `games/`); or upload a `.yaml` yourself
+- **Community runes** (grouped, ~25 and growing): **databases** (MongoDB, MariaDB,
+  PostgreSQL); **apps** (Vaultwarden, Gitea, Uptime Kuma, Grafana, Jellyfin,
+  WordPress, Nextcloud, n8n, Memos, Homepage, phpMyAdmin, Adminer, Portainer,
+  Pi-hole, IT-Tools, Excalidraw, CyberChef, linkding, Stirling-PDF, Dozzle,
+  FreshRSS, Mealie); **games** (Terraria, Factorio, Luanti/Minetest,
+  Genshin/Grasscutter)
 - **Not just games** — a rune is just a Docker image + ports + env, so most things
   that run in Docker run here. Rune fields `data_path` (where the volume mounts),
   `user` (run-as uid) and `keep_entrypoint` (use the image's own entrypoint) make

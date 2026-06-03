@@ -138,12 +138,19 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]any{"repo": repo, "path": path, "ref": ref, "runes": out})
 }
 
-// fetchGithubRunes lists a repo directory via the GitHub contents API, then
-// fetches + parses each .yaml concurrently for its metadata.
-func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, error) {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
+type ghDirEntry struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"` // "file" | "dir"
+	DownloadURL string `json:"download_url"`
+}
 
+func isYAMLName(n string) bool {
+	ln := strings.ToLower(n)
+	return strings.HasSuffix(ln, ".yaml") || strings.HasSuffix(ln, ".yml")
+}
+
+// ghListDir fetches one directory listing from the GitHub contents API.
+func ghListDir(ctx context.Context, repo, path, ref string) ([]ghDirEntry, error) {
 	listURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s?ref=%s",
 		repo, path, url.QueryEscape(ref))
 	resp, err := ghHTTP(ctx, "GET", listURL, "application/vnd.github+json")
@@ -151,29 +158,52 @@ func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, er
 		return nil, fmt.Errorf("github unreachable: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
+	switch resp.StatusCode {
+	case http.StatusNotFound:
 		return nil, fmt.Errorf("not found: %s/%s@%s", repo, path, ref)
-	}
-	if resp.StatusCode == http.StatusForbidden {
+	case http.StatusForbidden:
 		return nil, fmt.Errorf("github rate limit reached — try again in a few minutes")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github returned %d", resp.StatusCode)
 	}
-	var listing []struct {
-		Name        string `json:"name"`
-		Type        string `json:"type"`
-		DownloadURL string `json:"download_url"`
-	}
+	var listing []ghDirEntry
 	if err := json.NewDecoder(resp.Body).Decode(&listing); err != nil {
 		return nil, fmt.Errorf("parse github listing: %w", err)
 	}
+	return listing, nil
+}
 
+// fetchGithubRunes lists a repo directory AND its immediate subdirectories (so
+// runes can be grouped into folders like databases/ apps/ games/), then fetches +
+// parses each .yaml concurrently for its metadata.
+func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	entries, err := ghListDir(ctx, repo, path, ref)
+	if err != nil {
+		return nil, err
+	}
 	var candidates []ghRune
-	for _, e := range listing {
-		ln := strings.ToLower(e.Name)
-		if e.Type == "file" && (strings.HasSuffix(ln, ".yaml") || strings.HasSuffix(ln, ".yml")) && e.DownloadURL != "" {
+	var subdirs []string
+	for _, e := range entries {
+		if e.Type == "file" && isYAMLName(e.Name) && e.DownloadURL != "" {
 			candidates = append(candidates, ghRune{Filename: e.Name, DownloadURL: e.DownloadURL})
+		} else if e.Type == "dir" {
+			subdirs = append(subdirs, path+"/"+e.Name)
+		}
+	}
+	// Descend one level into subfolders (best-effort; a failed subdir is skipped).
+	for _, sd := range subdirs {
+		subEntries, serr := ghListDir(ctx, repo, sd, ref)
+		if serr != nil {
+			continue
+		}
+		for _, e := range subEntries {
+			if e.Type == "file" && isYAMLName(e.Name) && e.DownloadURL != "" {
+				candidates = append(candidates, ghRune{Filename: e.Name, DownloadURL: e.DownloadURL})
+			}
 		}
 	}
 

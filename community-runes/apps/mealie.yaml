@@ -1,0 +1,51 @@
+gameskill:
+  id: mealie
+  name: "Mealie"
+  category: "Apps"
+  description: "Self-hosted recipe manager and meal planner with a clean web UI. SQLite by default."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Python (uvicorn) app on :9000; data (SQLite + images) in /app/data. Logs
+  # "Application startup complete" once serving.
+  docker:
+    image: "ghcr.io/mealie-recipes/mealie:latest"
+    data_path: /app/data
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # Run as the user that owns the data dir so it can write /app/data.
+    - key: PUID
+      name: "Run-as UID (must own the data dir)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: BASE_URL
+      name: "Public base URL (e.g. http://host:port)"
+      type: string
+      default: ""
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Mealie data directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Application startup complete'
+
+  ports:
+    - { name: web, default: 9000, protocol: tcp }
+
+  backup:
+    include: ["."]

@@ -1,0 +1,44 @@
+gameskill:
+  id: linkding
+  name: "linkding"
+  category: "Apps"
+  description: "Minimal, fast self-hosted bookmark manager. SQLite by default — no external DB needed."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Data (SQLite + assets) lives in /etc/linkding/data. Gunicorn logs
+  # "Listening at: http://..." once it's serving.
+  docker:
+    image: "sissbruecker/linkding:latest"
+    data_path: /etc/linkding/data
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # On first start linkding creates this superuser if it doesn't exist.
+    - key: LD_SUPERUSER_NAME
+      name: "Admin username"
+      type: string
+      default: "admin"
+    - key: LD_SUPERUSER_PASSWORD
+      name: "Admin password"
+      type: string
+      default: "change-me"
+
+  install:
+    image: "sissbruecker/linkding:latest"
+    script: |
+      mkdir -p /data
+      echo "linkding data directory ready"
+
+  startup:
+    # linkding serves via uWSGI, which logs "spawned uWSGI worker …" once ready.
+    command: ""
+    done_regex: 'spawned uWSGI worker'
+
+  ports:
+    - { name: web, default: 9090, protocol: tcp }
+
+  backup:
+    include: ["."]

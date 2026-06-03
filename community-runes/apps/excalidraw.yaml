@@ -1,0 +1,29 @@
+gameskill:
+  id: excalidraw
+  name: "Excalidraw"
+  category: "Apps"
+  description: "Virtual hand-drawn-style whiteboard for diagrams and sketches. Static site; drawings live in the browser/local storage."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "excalidraw/excalidraw:latest"
+    keep_entrypoint: true
+    user: "0:0"
+
+  install:
+    image: "excalidraw/excalidraw:latest"
+    script: |
+      mkdir -p /data
+      echo "Excalidraw ready (static)"
+
+  startup:
+    command: ""
+    done_regex: 'ready for start up'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

@@ -1,0 +1,31 @@
+gameskill:
+  id: it-tools
+  name: "IT-Tools"
+  category: "Apps"
+  description: "A big collection of handy online dev/sysadmin tools (encoders, converters, generators, …). Static site, nothing to configure."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Static nginx site — stateless. Keep the image's entrypoint; the nginx base logs
+  # "Configuration complete; ready for start up" once it's serving.
+  docker:
+    image: "corentinth/it-tools:latest"
+    keep_entrypoint: true
+    user: "0:0"
+
+  install:
+    image: "corentinth/it-tools:latest"
+    script: |
+      mkdir -p /data
+      echo "IT-Tools ready (static, no config)"
+
+  startup:
+    command: ""
+    done_regex: 'ready for start up'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

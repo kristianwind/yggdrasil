@@ -1,0 +1,29 @@
+gameskill:
+  id: cyberchef
+  name: "CyberChef"
+  category: "Apps"
+  description: "The Cyber Swiss-Army Knife — encode/decode, encrypt, compress and analyse data in the browser (GCHQ). Static site."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "ghcr.io/gchq/cyberchef:latest"
+    keep_entrypoint: true
+    user: "0:0"
+
+  install:
+    image: "ghcr.io/gchq/cyberchef:latest"
+    script: |
+      mkdir -p /data
+      echo "CyberChef ready (static)"
+
+  startup:
+    command: ""
+    done_regex: 'ready for start up'
+
+  ports:
+    - { name: web, default: 8080, protocol: tcp }
+
+  backup:
+    include: ["."]

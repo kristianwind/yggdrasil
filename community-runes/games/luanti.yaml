@@ -1,0 +1,56 @@
+gameskill:
+  id: luanti
+  name: "Luanti (Minetest)"
+  category: "Luanti"
+  description: "Luanti (formerly Minetest) dedicated server — an open-source voxel game engine. Free, tiny, mod-friendly. Connect via the host + UDP port."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "minecraft"
+
+  # LinuxServer image: starts as root, drops to PUID:PGID. Worlds/config in /config.
+  docker:
+    image: "lscr.io/linuxserver/luanti:latest"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (must own the data dir)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+    # The panel injects HOME=/data, but this image's volume is /config — without
+    # this override luanti tries to create its data dir under the unmounted,
+    # root-owned /data and fails ("Cannot create user data directory").
+    - key: HOME
+      name: "Home directory"
+      type: string
+      default: "/config"
+    - key: CLI_ARGS
+      name: "Extra server args (optional)"
+      type: string
+      default: ""
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Luanti config directory ready"
+
+  startup:
+    command: ""
+    done_regex: '\[ls\.io-init\] done\.'
+
+  ports:
+    - { name: game, default: 30000, protocol: udp }
+
+  backup:
+    include: ["."]

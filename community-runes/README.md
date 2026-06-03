@@ -36,6 +36,9 @@ forward it / reverse-proxy it as you like.
 | `wordpress.yaml` | wordpress | 80 | website/CMS — **needs a MariaDB rune** |
 | `nextcloud.yaml` | lscr.io/linuxserver/nextcloud | 443 | files/cloud over HTTPS (self-signed); SQLite by default. Set PUID/PGID to the data-dir owner (default 999:982) |
 | `phpmyadmin.yaml` | phpmyadmin | 80 | web UI for MySQL/MariaDB — point it at a MariaDB rune (PMA_ARBITRARY=1 = type any host at login) |
+| `adminer.yaml` | adminer | 8080 | lightweight single-file DB manager (MySQL/Postgres/SQLite); enter the DB host at login |
+| `portainer.yaml` | portainer/portainer-ce | 9443 | Docker UI over HTTPS. Managing the LOCAL Docker needs `/var/run/docker.sock` mounted (not auto-mounted) — use remote endpoints/agents or add the socket manually |
+| `pihole.yaml` | pihole/pihole | 80 + 53 | ad-blocker; admin UI at `/admin/`. DNS (:53) lands on a high panel-allocated port, so it's not usable as your real DNS without a fixed/host-network mapping |
 | `memos.yaml` | neosmemo/memos | 5230 | lightweight notes / knowledge base |
 | `homepage.yaml` | gethomepage/homepage | 3000 | homelab start page (set allowed hosts) |
 

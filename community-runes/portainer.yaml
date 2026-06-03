@@ -1,0 +1,37 @@
+gameskill:
+  id: portainer
+  name: "Portainer"
+  category: "Apps"
+  description: "Docker/Kubernetes management UI. Serves HTTPS (self-signed). NOTE: managing the LOCAL Docker needs /var/run/docker.sock mounted, which the panel does not mount — use it for remote endpoints / Portainer agents, or add the socket mount manually."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Keep the image's entrypoint (/portainer). Runs as root. Data (its DB + settings)
+  # lives in /data, which is the panel volume → persists across restarts. Serves on
+  # 9443 (HTTPS, self-signed) by default; browse https://host:port and accept the
+  # cert warning, then set the admin password on first load.
+  docker:
+    image: "portainer/portainer-ce:latest"
+    data_path: /data
+    keep_entrypoint: true
+    user: "0:0"
+
+  # The portainer-ce image is a minimal static image with no shell, so the install
+  # step (which runs a /bin/sh script) uses busybox to prepare the data dir. The
+  # runtime still uses the portainer image above.
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Portainer data directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Starting HTTP'
+
+  ports:
+    - { name: web, default: 9443, protocol: tcp }
+
+  backup:
+    include: ["."]

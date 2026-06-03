@@ -1,0 +1,42 @@
+gameskill:
+  id: adminer
+  name: "Adminer"
+  category: "Apps"
+  description: "Lightweight single-file database manager (MySQL/MariaDB, PostgreSQL, SQLite, and more). A leaner alternative to phpMyAdmin."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Stateless (no persistence needed). Keep the image's entrypoint, which runs the
+  # PHP built-in webserver on 8080. No data_path so the volume isn't mounted over
+  # the app code; nothing is written to disk.
+  docker:
+    image: "adminer:latest"
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # Pre-fill the "Server" field on the login page (point at a DB rune's host).
+    # Leave blank to type it each time.
+    - key: ADMINER_DEFAULT_SERVER
+      name: "Default database host (optional, e.g. 192.168.1.50:3306)"
+      type: string
+      default: ""
+
+  install:
+    image: "adminer:latest"
+    script: |
+      mkdir -p /data
+      echo "Adminer ready (stateless — enter the DB host/user at login)"
+
+  startup:
+    # Image default CMD = `php -S … -t /var/www/html`, which logs
+    # "PHP x.y.z Development Server (...) started".
+    command: ""
+    done_regex: 'Development Server'
+
+  ports:
+    - { name: web, default: 8080, protocol: tcp }
+
+  backup:
+    include: ["."]

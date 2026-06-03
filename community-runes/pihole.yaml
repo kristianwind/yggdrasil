@@ -1,0 +1,49 @@
+gameskill:
+  id: pihole
+  name: "Pi-hole"
+  category: "Apps"
+  description: "Network-wide ad blocker + local DNS. The admin web UI works out of the box; NOTE the DNS service lands on the panel-allocated high port (not :53), so to use it as your real DNS you'd need a fixed/host-network port mapping (not supported by the panel's per-server port model)."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Pi-hole v6 runs its own FTL web server + DNS via the image's s6 init (keep the
+  # entrypoint, run as root). Config persists in /etc/pihole (the panel volume).
+  docker:
+    image: "pihole/pihole:latest"
+    data_path: /etc/pihole
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+    # Pi-hole v6 env var for the admin/API password.
+    - key: FTLCONF_webserver_api_password
+      name: "Admin password"
+      type: string
+      default: "change-me"
+    - key: FTLCONF_dns_upstreams
+      name: "Upstream DNS servers (semicolon-separated)"
+      type: string
+      default: "1.1.1.1;1.0.0.1"
+
+  install:
+    image: "pihole/pihole:latest"
+    script: |
+      mkdir -p /data
+      echo "Pi-hole config directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Pi-hole FTL'
+
+  ports:
+    - { name: web, default: 80,  protocol: tcp }
+    - { name: dns, default: 53,  protocol: udp }
+    - { name: dns-tcp, default: 53, protocol: tcp }
+
+  backup:
+    include: ["."]

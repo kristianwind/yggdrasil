@@ -4,8 +4,9 @@ Extra Runes that are **not bundled** with Yggdrasil. The four core games (DayZ,
 Rust, Minecraft Java/Bedrock) ship built-in; everything else — databases and
 homelab apps — lives here so the default set stays lean.
 
-To use one: open **Runes → Carve a rune (upload)** in the panel and upload the
-`.yaml` file from this folder. It's then available when creating a server.
+To use one: open **Runes → Browse GitHub** in the panel and one-click install any
+rune from this folder, or **Carve a rune (upload)** and upload the `.yaml` file
+directly. It's then available when creating a server.
 
 > Provided as-is, community-maintained. Apps run in Docker exactly like a normal
 > `docker run`; you may need to tune ports/env for your setup. Put a reverse proxy
@@ -33,7 +34,8 @@ forward it / reverse-proxy it as you like.
 | `grafana.yaml` | grafana/grafana | 3000 | dashboards (admin pw via env) |
 | `jellyfin.yaml` | jellyfin/jellyfin | 8096 | media server (add a `/media` mount via Files/edit) |
 | `wordpress.yaml` | wordpress | 80 | website/CMS — **needs a MariaDB rune** |
-| `nextcloud.yaml` | nextcloud | 80 | files/cloud (SQLite by default; DB rune for production) |
+| `nextcloud.yaml` | lscr.io/linuxserver/nextcloud | 443 | files/cloud over HTTPS (self-signed); SQLite by default. Set PUID/PGID to the data-dir owner (default 999:982) |
+| `phpmyadmin.yaml` | phpmyadmin | 80 | web UI for MySQL/MariaDB — point it at a MariaDB rune (PMA_ARBITRARY=1 = type any host at login) |
 | `memos.yaml` | neosmemo/memos | 5230 | lightweight notes / knowledge base |
 | `homepage.yaml` | gethomepage/homepage | 3000 | homelab start page (set allowed hosts) |
 

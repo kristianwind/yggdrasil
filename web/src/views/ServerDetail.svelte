@@ -109,7 +109,7 @@
       ["backups", "Backups"],
       ["settings", "Settings"],
       ["anticheat", "Anti-cheat"],
-      ...(server?.gameskill_id === "dayz" ? [["norn", "Norn (loot)"]] : []),
+      ...(server?.gameskill_id === "dayz" ? [["mods", "Mods"], ["norn", "Norn (loot)"]] : []),
       ["install", "Install log"],
     ],
   );
@@ -194,6 +194,40 @@
     } finally {
       nornBusy = false;
     }
+  }
+
+  // --- Mod control: which configured Workshop mods are installed / still exist ---
+  let modStatus = $state(null);
+  let modsBusy = $state(false);
+  async function loadMods() {
+    modStatus = await api.get(`/servers/${id}/dayz/mods`).catch(() => null);
+  }
+  async function setMods(ids) {
+    modsBusy = true;
+    try {
+      await api.put(`/servers/${id}`, { mods: ids.join(";") });
+      toast("Mod list updated — press Update/Reinstall to download + apply", "success");
+      await Promise.all([loadServer(), loadMods()]);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modsBusy = false;
+    }
+  }
+  function removeMod(modId) {
+    const keep = (modStatus?.mods || []).map((m) => m.id).filter((x) => x !== modId);
+    return setMods(keep);
+  }
+  function addOrphan(modId) {
+    const cur = (modStatus?.mods || []).map((m) => m.id);
+    return setMods([...cur, modId]);
+  }
+  function pruneBroken() {
+    const broken = (modStatus?.mods || []).filter((m) => !m.installed || m.workshop === "removed");
+    if (!broken.length) return;
+    if (!confirm(`Remove ${broken.length} missing/removed mod(s) from the load order? Press Update/Reinstall afterwards.`)) return;
+    const keep = (modStatus?.mods || []).filter((m) => m.installed && m.workshop !== "removed").map((m) => m.id);
+    return setMods(keep);
   }
 
   let skill = $state(null); // parsed gameskill (for anti-cheat surface + edit form)
@@ -571,6 +605,7 @@
           if (key === "install" && !installWs) connectInstallLog();
           if (key === "backups") loadBackups();
           if (key === "norn") loadEconomy();
+          if (key === "mods") loadMods();
           if (key === "settings") {
             openEdit();
             loadDelegation();
@@ -817,6 +852,93 @@
         </div>
       {/each}
     </div>
+  {:else if tab === "mods"}
+    <div class="flex items-center justify-between gap-2 mb-1">
+      <h3 class="text-lg font-semibold">🧩 Workshop mods</h3>
+      <button class="btn-ghost text-xs" onclick={loadMods} disabled={modsBusy}>Refresh</button>
+    </div>
+    <p class="text-muted text-sm mb-4">
+      The mods this server loads, in order. Yggdrasil checks each one against the Steam Workshop and
+      against what actually downloaded to disk — so a mod that was removed upstream (or failed to
+      download) shows up here instead of silently dropping out and blocking players from joining.
+      <b>Editing the list takes effect on the next Update/Reinstall.</b>
+    </p>
+
+    {#if !modStatus}
+      <div class="text-muted text-sm">Loading…</div>
+    {:else if !modStatus.mods.length && !modStatus.orphans.length}
+      <div class="card text-sm p-3 text-muted">
+        No Workshop mods configured. Add IDs (semicolon-separated, in load order) under
+        <button class="text-accent hover:underline" onclick={() => { tab = "settings"; openEdit(); loadDelegation(); }}>Settings → MODS</button>,
+        then Update/Reinstall.
+      </div>
+    {:else}
+      {#if modStatus.issues > 0}
+        <div class="card border-warn/40 bg-warn/10 p-3 mb-4 flex items-start justify-between gap-3">
+          <div class="text-sm text-warn">
+            <b>{modStatus.issues} of {modStatus.mods.length} mod(s) are missing or were removed from the Workshop.</b>
+            DayZ starts without them, which often stops players from joining (a missing dependency
+            breaks the mission). Remove the dead ones, then press <b>Update/Reinstall</b>.
+          </div>
+          <button class="btn-ghost text-xs shrink-0 text-warn" onclick={pruneBroken} disabled={modsBusy}>
+            Remove broken
+          </button>
+        </div>
+      {:else if modStatus.mods.length}
+        <div class="card border-accent2/40 bg-accent2/5 p-3 mb-4 text-sm text-accent">
+          ✓ All {modStatus.mods.length} mod(s) are installed and still present on the Workshop.
+        </div>
+      {/if}
+
+      {#if modStatus.mods.length}
+        <div class="card divide-y divide-border mb-5">
+          {#each modStatus.mods as m, i}
+            <div class="flex items-center gap-3 p-2.5">
+              <span class="text-muted text-xs w-5 text-right shrink-0">{i + 1}</span>
+              <div class="min-w-0 flex-1">
+                <a class="text-accent hover:underline font-medium truncate block" href={m.url} target="_blank" rel="noopener">{m.name}</a>
+                <span class="text-muted text-xs font-mono">{m.id}</span>
+              </div>
+              {#if m.installed}
+                <span class="text-xs px-2 py-0.5 rounded bg-accent2/15 text-accent shrink-0">on disk</span>
+              {:else}
+                <span class="text-xs px-2 py-0.5 rounded bg-warn/15 text-warn shrink-0">not downloaded</span>
+              {/if}
+              {#if m.workshop === "removed"}
+                <span class="text-xs px-2 py-0.5 rounded bg-danger/15 text-danger shrink-0">removed from Workshop</span>
+              {:else if m.workshop === "ok"}
+                <span class="text-xs px-2 py-0.5 rounded bg-panel2 text-muted shrink-0">Workshop ✓</span>
+              {:else}
+                <span class="text-xs px-2 py-0.5 rounded bg-panel2 text-muted shrink-0">Workshop ?</span>
+              {/if}
+              <button class="btn-ghost text-xs shrink-0" onclick={() => removeMod(m.id)} disabled={modsBusy}>Remove</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      {#if modStatus.orphans.length}
+        <h4 class="text-sm font-semibold mb-1">Downloaded but not in the load order</h4>
+        <p class="text-muted text-xs mb-2">
+          These <span class="font-mono">@mod</span> folders are on disk but not in MODS, so the server
+          doesn't load them. Add one to the list (and Update/Reinstall) or ignore it.
+        </p>
+        <div class="card divide-y divide-border">
+          {#each modStatus.orphans as m}
+            <div class="flex items-center gap-3 p-2.5">
+              <div class="min-w-0 flex-1">
+                <a class="text-accent hover:underline font-medium truncate block" href={m.url} target="_blank" rel="noopener">{m.name}</a>
+                <span class="text-muted text-xs font-mono">{m.id}</span>
+              </div>
+              {#if m.workshop === "removed"}
+                <span class="text-xs px-2 py-0.5 rounded bg-danger/15 text-danger shrink-0">removed from Workshop</span>
+              {/if}
+              <button class="btn-ghost text-xs shrink-0" onclick={() => addOrphan(m.id)} disabled={modsBusy}>Add to list</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {/if}
   {:else if tab === "norn"}
     <div class="flex items-center gap-2 mb-1">
       <h3 class="text-lg font-semibold">🧵 Norn — loot economy</h3>

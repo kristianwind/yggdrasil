@@ -9,7 +9,13 @@ gameskill:
 
   docker:
     image: "vaultwarden/server:latest"
-    # DATA_FOLDER defaults to /data, so the default mount path is correct.
+    # DATA_FOLDER defaults to /data, so the volume mount path is correct.
+    # Set data_path to /data (the same mount) so the container keeps the image's
+    # own WORKDIR (/) instead of /data. Vaultwarden resolves WEB_VAULT_FOLDER
+    # ("web-vault/") relative to the working dir, so with WORKDIR=/data it looked
+    # for /data/web-vault and failed ("Web vault is not found at 'web-vault/'");
+    # with WORKDIR=/ it correctly finds the baked-in /web-vault.
+    data_path: /data
 
   variables:
     # Vaultwarden listens on ROCKET_PORT; keep it >1024 so it runs as a non-root uid.

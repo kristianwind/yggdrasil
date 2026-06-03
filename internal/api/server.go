@@ -107,6 +107,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/gameskills", s.handleUploadGameskill)
 		r.Post("/api/gameskills/import-egg", s.handleImportEgg)
 		r.Post("/api/gameskills/import-xml", s.handleImportXML)
+		r.Get("/api/gameskills/github", s.handleGithubRunes)
+		r.Post("/api/gameskills/install-from-github", s.handleInstallGithubRune)
 		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
 		r.Delete("/api/gameskills/{id}", s.handleDeleteGameskill)
 
@@ -131,6 +133,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/battlemetrics", s.handleServerBattleMetrics)
 		r.Get("/api/servers/{id}/reachability", s.handleServerReachability)
 		r.Get("/api/servers/{id}/dayz/economy", s.handleDayzEconomy)
+		r.Get("/api/servers/{id}/dayz/mods", s.handleDayzMods)
 		r.Post("/api/servers/{id}/dayz/min-lifetime", s.handleDayzMinLifetime)
 		r.Post("/api/servers/{id}/dayz/globals", s.handleDayzGlobals)
 		r.Post("/api/servers/{id}/dayz/register-types", s.handleDayzRegisterTypes)

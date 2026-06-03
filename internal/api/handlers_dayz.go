@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
@@ -415,6 +417,187 @@ func (s *Server) handleDayzModLoot(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(mods, func(i, j int) bool { return mods[i].Name < mods[j].Name })
 	jsonOK(w, map[string]any{"mods": mods})
+}
+
+// ---- Mod control: which configured mods actually installed / still exist ----
+//
+// DayZ silently runs a *partial* mod list when a Workshop item fails to download
+// (removed/private/banned upstream, or a bad id) — the install just logs a
+// warning and startup skips the missing @id. That stranded Niflheim with 4 of 9
+// mods and players unable to join. These helpers surface, per server, which
+// configured mods are on disk and which still exist on the Steam Workshop, so the
+// problem is visible in the panel instead of buried in an install log.
+
+// dayzModIDs parses the MODS env (the install/startup scripts split on ';' ',' and
+// whitespace) into an ordered, de-duplicated list of Workshop item IDs.
+func dayzModIDs(env map[string]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range strings.FieldsFunc(env["MODS"], func(r rune) bool {
+		return r == ';' || r == ',' || r == ' ' || r == '\t' || r == '\n'
+	}) {
+		if f == "" || seen[f] {
+			continue
+		}
+		seen[f] = true
+		out = append(out, f)
+	}
+	return out
+}
+
+type workshopItem struct {
+	Title   string
+	Removed bool // Steam returned a definitive "not available" (result != 1)
+	Known   bool // we got a definitive answer from Steam (else: network/unknown)
+}
+
+// dayzWorkshopLookup batch-queries the public Steam Workshop API for item titles +
+// availability (no API key needed). Best-effort: on any network/parse error every
+// id comes back absent from the map (Known=false), so callers treat it as
+// "unknown" rather than "removed".
+func dayzWorkshopLookup(ctx context.Context, ids []string) map[string]workshopItem {
+	out := map[string]workshopItem{}
+	if len(ids) == 0 {
+		return out
+	}
+	form := url.Values{}
+	form.Set("itemcount", strconv.Itoa(len(ids)))
+	for i, id := range ids {
+		form.Set(fmt.Sprintf("publishedfileids[%d]", i), id)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		"https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return out
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return out
+	}
+	defer resp.Body.Close()
+	var parsed struct {
+		Response struct {
+			Details []struct {
+				ID     string `json:"publishedfileid"`
+				Result int    `json:"result"` // 1 = OK; 9 = not found; others = unavailable
+				Title  string `json:"title"`
+			} `json:"publishedfiledetails"`
+		} `json:"response"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&parsed) != nil {
+		return out
+	}
+	for _, d := range parsed.Response.Details {
+		out[d.ID] = workshopItem{Title: d.Title, Removed: d.Result != 1, Known: true}
+	}
+	return out
+}
+
+type dayzModStatus struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Installed bool   `json:"installed"`        // an @<id> folder exists in the data dir
+	Workshop  string `json:"workshop"`         // ok | removed | unknown
+	URL       string `json:"url"`              // Workshop page link
+}
+
+func dayzWorkshopURL(id string) string {
+	return "https://steamcommunity.com/sharedfiles/filedetails/?id=" + id
+}
+
+// handleDayzMods reports each configured Workshop mod's status — whether it
+// downloaded to disk (@<id>) and whether it still exists on the Steam Workshop —
+// plus any "orphan" @folders on disk that aren't in the list. Lets an admin see at
+// a glance when a mod was removed upstream so the server is quietly running a
+// partial mod list (a common "players can't join" cause).
+func (s *Server) handleDayzMods(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerView, s.serverTarget(r.Context(), id)) {
+		return
+	}
+	var gameskillID, envJSON, dataDir string
+	if err := s.db.QueryRowContext(r.Context(),
+		"SELECT gameskill_id, env_json, data_dir FROM servers WHERE id=?", id).
+		Scan(&gameskillID, &envJSON, &dataDir); err != nil || gameskillID != "dayz" {
+		jsonError(w, "not a DayZ server", http.StatusBadRequest)
+		return
+	}
+	env := map[string]string{}
+	json.Unmarshal([]byte(envJSON), &env) //nolint:errcheck
+	ids := dayzModIDs(env)
+	configured := map[string]bool{}
+	for _, m := range ids {
+		configured[m] = true
+	}
+
+	// On-disk @<id> folders (downloaded mods).
+	onDisk := map[string]bool{}
+	if entries, err := os.ReadDir(dataDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && strings.HasPrefix(e.Name(), "@") {
+				onDisk[strings.TrimPrefix(e.Name(), "@")] = true
+			}
+		}
+	}
+
+	// One Workshop batch call covers configured + orphan ids.
+	lookupIDs := append([]string{}, ids...)
+	for mid := range onDisk {
+		if !configured[mid] {
+			lookupIDs = append(lookupIDs, mid)
+		}
+	}
+	ws := dayzWorkshopLookup(r.Context(), lookupIDs)
+
+	resolve := func(mid string) (name, state string) {
+		name = dayzModName(filepath.Join(dataDir, "@"+mid), "")
+		state = "unknown"
+		if it, ok := ws[mid]; ok && it.Known {
+			if it.Removed {
+				state = "removed"
+			} else {
+				state = "ok"
+			}
+			if name == "" && it.Title != "" {
+				name = it.Title
+			}
+		}
+		if name == "" {
+			name = mid
+		}
+		return name, state
+	}
+
+	mods := make([]dayzModStatus, 0, len(ids))
+	issues := 0
+	for _, mid := range ids {
+		name, state := resolve(mid)
+		installed := onDisk[mid]
+		if !installed || state == "removed" {
+			issues++
+		}
+		mods = append(mods, dayzModStatus{ID: mid, Name: name, Installed: installed, Workshop: state, URL: dayzWorkshopURL(mid)})
+	}
+	orphans := []dayzModStatus{}
+	for mid := range onDisk {
+		if configured[mid] {
+			continue
+		}
+		name, state := resolve(mid)
+		orphans = append(orphans, dayzModStatus{ID: mid, Name: name, Installed: true, Workshop: state, URL: dayzWorkshopURL(mid)})
+	}
+	sort.Slice(orphans, func(i, j int) bool { return orphans[i].Name < orphans[j].Name })
+
+	jsonOK(w, map[string]any{
+		"mods":     mods,
+		"orphans":  orphans,
+		"issues":   issues,
+		"mods_raw": strings.TrimSpace(env["MODS"]),
+	})
 }
 
 // handleDayzImportModTypes copies a mod's types.xml into the mission and registers

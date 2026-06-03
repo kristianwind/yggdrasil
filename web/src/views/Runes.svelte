@@ -101,6 +101,46 @@
       toast(e.message, "error");
     }
   }
+
+  // --- Browse + install runes straight from a GitHub repo ---
+  let ghOpen = $state(false);
+  let ghLoading = $state(false);
+  let ghData = $state(null);
+  let ghBusy = $state(""); // download_url currently installing
+  let ghRepo = $state("kristianwind/yggdrasil");
+  let ghPath = $state("community-runes");
+
+  function openGithub() {
+    ghOpen = true;
+    if (!ghData) loadGithub(false);
+  }
+  async function loadGithub(refresh) {
+    ghLoading = true;
+    try {
+      const q = new URLSearchParams({ repo: ghRepo.trim(), path: ghPath.trim() });
+      if (refresh) q.set("refresh", "1");
+      ghData = await api.get(`/gameskills/github?${q}`);
+    } catch (e) {
+      toast(e.message, "error");
+      ghData = null;
+    } finally {
+      ghLoading = false;
+    }
+  }
+  async function installGh(rune) {
+    ghBusy = rune.download_url;
+    try {
+      const r = await api.post("/gameskills/install-from-github", { download_url: rune.download_url });
+      toast(`Installed rune: ${r.name}`, "success");
+      await load(); // refresh the main list
+      // mark it installed in the browser without a full GitHub re-fetch
+      if (ghData) ghData.runes = ghData.runes.map((x) => (x.id === r.id ? { ...x, installed: true } : x));
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      ghBusy = "";
+    }
+  }
 </script>
 
 <div class="flex items-center justify-between mb-2">
@@ -122,6 +162,7 @@
         >
       </div>
     {/if}
+    <button class="btn-ghost" onclick={openGithub}>Browse GitHub</button>
     <label class="btn-ghost cursor-pointer">
       Import egg
       <input type="file" accept=".json" class="hidden" onchange={importEgg} />
@@ -191,5 +232,74 @@
         {/if}
       </div>
     {/each}
+  </div>
+{/if}
+
+{#if ghOpen}
+  <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+    <div class="card w-full max-w-2xl max-h-[90vh] overflow-auto p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Browse runes on GitHub</h2>
+        <button class="btn-ghost px-2 py-1" onclick={() => (ghOpen = false)}>✕</button>
+      </div>
+      <p class="text-muted text-sm">
+        Install community runes directly from a repo's folder of YAML files — no manual download.
+      </p>
+      <div class="flex flex-wrap gap-2 items-end">
+        <div class="flex-1 min-w-[12rem]">
+          <label class="label" for="ghRepo">Repository (owner/name)</label>
+          <input id="ghRepo" class="input" bind:value={ghRepo} placeholder="kristianwind/yggdrasil" />
+        </div>
+        <div class="flex-1 min-w-[10rem]">
+          <label class="label" for="ghPath">Folder</label>
+          <input id="ghPath" class="input" bind:value={ghPath} placeholder="community-runes" />
+        </div>
+        <button class="btn-ghost" onclick={() => loadGithub(true)} disabled={ghLoading}>
+          {ghLoading ? "Loading…" : "Reload"}
+        </button>
+      </div>
+
+      {#if ghLoading}
+        <div class="text-muted text-sm">Fetching from GitHub…</div>
+      {:else if !ghData}
+        <div class="text-muted text-sm">Couldn't load the listing — check the repo/folder and try Reload.</div>
+      {:else if !ghData.runes.length}
+        <div class="text-muted text-sm">No <span class="font-mono">.yaml</span> runes found in that folder.</div>
+      {:else}
+        <div class="card divide-y divide-border">
+          {#each ghData.runes as r}
+            <div class="flex items-center gap-3 p-3">
+              <div class="min-w-0 flex-1">
+                <div class="font-medium truncate">
+                  {r.name || r.filename}
+                  {#if r.category}<span class="text-muted text-xs font-normal">· {r.category}</span>{/if}
+                </div>
+                {#if r.description}
+                  <div class="text-xs text-muted mt-0.5 line-clamp-2">{r.description}</div>
+                {/if}
+                {#if r.parse_error}
+                  <div class="text-xs text-warn mt-0.5">⚠ {r.parse_error}</div>
+                {:else if r.id}
+                  <div class="text-xs text-muted font-mono mt-0.5">{r.id}</div>
+                {/if}
+              </div>
+              {#if r.installed}
+                <span class="badge bg-accent2/15 text-accent shrink-0">installed</span>
+                <button class="btn-ghost text-xs shrink-0" onclick={() => installGh(r)} disabled={ghBusy === r.download_url}>
+                  Reinstall
+                </button>
+              {:else if !r.parse_error}
+                <button class="btn-primary shrink-0" onclick={() => installGh(r)} disabled={ghBusy === r.download_url}>
+                  {ghBusy === r.download_url ? "Installing…" : "Install"}
+                </button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+        <p class="text-muted text-xs">
+          {ghData.repo}/{ghData.path} @ {ghData.ref}
+        </p>
+      {/if}
+    </div>
   </div>
 {/if}

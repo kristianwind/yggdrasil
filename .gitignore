@@ -27,3 +27,10 @@ config.yaml
 .claude/launch.json
 .dev/
 WISHLIST.md
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example

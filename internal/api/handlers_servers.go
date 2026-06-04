@@ -442,9 +442,14 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	}
 
 	image := gameskill.ApplyTemplate(gs.Docker.Image, env)
-	startupCmd := gameskill.ApplyTemplate(gs.Startup.Command, env)
 	var cmd []string
-	if startupCmd != "" {
+	if len(gs.Startup.Exec) > 0 {
+		// Raw argv (no shell) — for distroless/ko images or passing args to the
+		// image's own ENTRYPOINT. Template each element.
+		for _, a := range gs.Startup.Exec {
+			cmd = append(cmd, gameskill.ApplyTemplate(a, env))
+		}
+	} else if startupCmd := gameskill.ApplyTemplate(gs.Startup.Command, env); startupCmd != "" {
 		cmd = []string{"/bin/sh", "-c", startupCmd}
 	}
 	containerName := fmt.Sprintf("ygg-%s", id[:8])

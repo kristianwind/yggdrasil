@@ -71,9 +71,14 @@ type Install struct {
 }
 
 type Startup struct {
-	Command   string `yaml:"command"    json:"command"`
-	DoneRegex string `yaml:"done_regex" json:"done_regex,omitempty"`
-	Stop      string `yaml:"stop"       json:"stop,omitempty"`
+	Command string `yaml:"command"    json:"command"`
+	// Exec is a raw argv (no shell). Use it for shell-less images (distroless /
+	// ko-built, e.g. headscale, portainer) or to pass arguments to the image's own
+	// ENTRYPOINT (with keep_entrypoint). When set it takes precedence over Command,
+	// and each element is {{TEMPLATED}}. Command (run via /bin/sh -c) is the default.
+	Exec      []string `yaml:"exec"       json:"exec,omitempty"`
+	DoneRegex string   `yaml:"done_regex" json:"done_regex,omitempty"`
+	Stop      string   `yaml:"stop"       json:"stop,omitempty"`
 }
 
 type Query struct {
@@ -151,8 +156,8 @@ func validate(gs *Gameskill) error {
 	if gs.Docker.Image == "" {
 		return fmt.Errorf("gameskill.docker.image is required")
 	}
-	if gs.Startup.Command == "" && !gs.Docker.KeepEntrypoint {
-		return fmt.Errorf("gameskill.startup.command is required (unless docker.keep_entrypoint is set)")
+	if gs.Startup.Command == "" && len(gs.Startup.Exec) == 0 && !gs.Docker.KeepEntrypoint {
+		return fmt.Errorf("gameskill.startup.command (or .exec) is required (unless docker.keep_entrypoint is set)")
 	}
 
 	validTypes := map[string]bool{"string": true, "int": true, "bool": true, "select": true}

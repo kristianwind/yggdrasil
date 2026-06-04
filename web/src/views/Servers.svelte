@@ -22,7 +22,7 @@
   let showCreate = $state(false);
   let selectedSkill = $state(null);
   let skillDetail = $state(null);
-  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0 });
+  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "" });
   let creating = $state(false);
 
   // External reachability per server (id -> {reachable,...}), for the at-a-glance
@@ -77,7 +77,7 @@
   async function openCreate() {
     selectedSkill = gameskills[0]?.id || null;
     await loadSkill();
-    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0 };
+    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "" };
     showCreate = true;
   }
   async function loadSkill() {
@@ -101,6 +101,7 @@
         env,
         cpu_percent: Number(form.cpu_percent) || 0,
         memory_mb: Number(form.memory_mb) || 0,
+        subdomain: form.subdomain || "",
       });
       toast("Server created", "success");
       showCreate = false;
@@ -306,6 +307,17 @@
           <input id="mem" class="input" type="number" bind:value={form.memory_mb} />
         </div>
       </div>
+
+      {#if skillDetail?.ports?.some((p) => p.name === "web")}
+        <div>
+          <label class="label" for="subdomain">Subdomain (optional)</label>
+          <input id="subdomain" class="input" placeholder="e.g. notes" bind:value={form.subdomain} />
+          <p class="text-xs text-muted mt-1">
+            Routes <code>{form.subdomain || "sub"}.&lt;your base domain&gt;</code> to this app via
+            Nginx Proxy Manager (set up under Settings → Network). Leave blank to disable.
+          </p>
+        </div>
+      {/if}
 
       <div class="flex gap-2 pt-2">
         <button class="btn-ghost flex-1" onclick={() => (showCreate = false)}>Cancel</button>

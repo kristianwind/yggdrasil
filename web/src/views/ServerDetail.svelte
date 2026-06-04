@@ -243,6 +243,7 @@
       memory_mb: server.memory_mb || 0,
       bm_server_id: server.bm_server_id || "",
       auto_forward: server.auto_forward !== false,
+      subdomain: server.subdomain || "",
     };
   }
   async function saveEdit() {
@@ -257,6 +258,7 @@
         memory_mb: Number(edit.memory_mb) || 0,
         bm_server_id: edit.bm_server_id || "",
         auto_forward: !!edit.auto_forward,
+        subdomain: edit.subdomain || "",
       });
       toast("Saved — restart to apply (reinstall for file-baked values)", "success");
       await loadServer();
@@ -678,6 +680,17 @@
             on the router when it starts. Takes effect on the next start.
           </p>
         </div>
+        {#if server.ports?.web}
+          <div>
+            <label class="label" for="e-sub">Subdomain (optional)</label>
+            <input id="e-sub" class="input" placeholder="e.g. notes" bind:value={edit.subdomain} />
+            <p class="text-xs text-muted mt-1">
+              Routes <code>{edit.subdomain || "sub"}.&lt;your base domain&gt;</code> to this app via
+              Nginx Proxy Manager (configure it under Settings → Network). A proxy host is created
+              on start and removed on stop. You can also enter a full custom domain. Leave blank to disable.
+            </p>
+          </div>
+        {/if}
         <div class="card bg-warn/10 border-warn/40 text-warn text-xs px-3 py-2">
           Changes apply on the next <b>restart</b>. Values written into config files at install time
           (e.g. RCON password, world seed) need a <b>Reinstall</b> to fully apply — back up your

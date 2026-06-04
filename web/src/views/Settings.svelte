@@ -321,6 +321,41 @@
     }
   }
 
+  // NPM (Nginx Proxy Manager) subdomain routing
+  let npm = $state({ url: "", email: "", password: "", base_domain: "", internal_host: "", le_email: "", enabled: false, configured: false });
+  let savingNpm = $state(false);
+  let testingNpm = $state(false);
+  async function loadNpm() {
+    try {
+      npm = { ...npm, ...(await api.get("/settings/npm")), password: "" };
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function saveNpm() {
+    savingNpm = true;
+    try {
+      const res = await api.put("/settings/npm", npm);
+      npm = { ...npm, ...res, password: "" };
+      toast("NPM settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingNpm = false;
+    }
+  }
+  async function testNpm() {
+    testingNpm = true;
+    try {
+      const res = await api.post("/settings/npm/test", npm);
+      toast(`NPM connected — ${res.hosts} proxy hosts found`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      testingNpm = false;
+    }
+  }
+
   onMount(() => {
     load();
     loadTemplates();
@@ -330,6 +365,7 @@
     load2fa();
     loadNetwork();
     loadUnifi();
+    loadNpm();
   });
 
   async function create() {
@@ -454,6 +490,52 @@
   <div class="flex gap-2">
     <button class="btn-primary" onclick={saveUnifi} disabled={savingUnifi}>{savingUnifi ? "Saving…" : "Save"}</button>
     <button class="btn-ghost" onclick={testUnifi} disabled={testingUnifi}>{testingUnifi ? "Testing…" : "Test connection"}</button>
+  </div>
+</div>
+
+<!-- NPM subdomain routing -->
+<h2 class="text-xl font-semibold mb-2">Nginx Proxy Manager (subdomains)</h2>
+<p class="text-muted mb-4 text-sm">
+  Give HTTP app servers their own subdomain. Yggdrasil creates/removes a proxy host in your
+  Nginx Proxy Manager when those servers start/stop, routing <code>sub.your-domain</code> →
+  the server's web port. Requires a wildcard DNS record (<code>*.domain → your public IP</code>)
+  and ports 80/443 forwarded to NPM. Games (raw UDP) are unaffected. Credentials encrypted at rest.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div class="grid sm:grid-cols-2 gap-3">
+    <div>
+      <label class="label" for="npmurl">NPM URL</label>
+      <input id="npmurl" class="input" bind:value={npm.url} placeholder="http://192.168.1.158:81" />
+    </div>
+    <div>
+      <label class="label" for="npmbase">Base domain</label>
+      <input id="npmbase" class="input" bind:value={npm.base_domain} placeholder="yggdrasilpanel.com" />
+    </div>
+    <div>
+      <label class="label" for="npmemail">Admin email</label>
+      <input id="npmemail" class="input" bind:value={npm.email} placeholder="admin@example.com" autocomplete="off" />
+    </div>
+    <div>
+      <label class="label" for="npmpass">Admin password</label>
+      <input id="npmpass" class="input" type="password" bind:value={npm.password}
+        placeholder={npm.configured ? "•••••••• (unchanged)" : "password"} autocomplete="new-password" />
+    </div>
+    <div>
+      <label class="label" for="npminternal">Internal host</label>
+      <input id="npminternal" class="input" bind:value={npm.internal_host} placeholder="(auto: this VM's LAN IP)" />
+    </div>
+    <div>
+      <label class="label" for="npmle">Let's Encrypt email</label>
+      <input id="npmle" class="input" bind:value={npm.le_email} placeholder="certs@example.com" autocomplete="off" />
+    </div>
+  </div>
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={npm.enabled} />
+    Enable subdomain routing via NPM
+  </label>
+  <div class="flex gap-2">
+    <button class="btn-primary" onclick={saveNpm} disabled={savingNpm}>{savingNpm ? "Saving…" : "Save"}</button>
+    <button class="btn-ghost" onclick={testNpm} disabled={testingNpm}>{testingNpm ? "Testing…" : "Test connection"}</button>
   </div>
 </div>
 

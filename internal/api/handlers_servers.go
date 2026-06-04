@@ -43,15 +43,16 @@ type serverRow struct {
 	CreatedAt     string            `json:"created_at"`
 	BMServerID    string            `json:"bm_server_id,omitempty"`
 	AutoForward   bool              `json:"auto_forward"`
+	Subdomain     string            `json:"subdomain,omitempty"`
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1)"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,'')"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
 	var installed, autoFwd int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
 	srv.Ports = map[string]int{}
@@ -138,6 +139,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		Mods        *string           `json:"mods"` // alias for env["MODS"]; see handleUpdateServer
 		CPUPercent  float64           `json:"cpu_percent"`
 		MemoryMB    int64             `json:"memory_mb"`
+		Subdomain   string            `json:"subdomain"` // NPM subdomain for HTTP apps (empty = off)
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -207,11 +209,11 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = s.db.ExecContext(r.Context(), `
-		INSERT INTO servers (id, name, gameskill_id, realm_id, status, env_json, ports_json, cpu_limit, mem_limit_mb, data_dir)
-		VALUES (?,?,?,?,?,?,?,?,?,?)
+		INSERT INTO servers (id, name, gameskill_id, realm_id, status, env_json, ports_json, cpu_limit, mem_limit_mb, data_dir, subdomain)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)
 	`, serverID, req.Name, req.GameskillID, nullableStr(realmID),
 		"stopped", string(envJSON), string(portsJSON),
-		req.CPUPercent, req.MemoryMB, dataDir)
+		req.CPUPercent, req.MemoryMB, dataDir, normalizeSubdomain(req.Subdomain))
 	if err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -267,10 +269,20 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		MemoryMB    *int64   `json:"memory_mb"`
 		BMServerID  *string  `json:"bm_server_id"`
 		AutoForward *bool    `json:"auto_forward"`
+		Subdomain   *string  `json:"subdomain"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
+	}
+	if req.Subdomain != nil {
+		sub := normalizeSubdomain(*req.Subdomain)
+		// If the subdomain changed and a proxy host exists, drop it; the next start
+		// re-creates one for the new domain (and clears npm_host_id when cleared).
+		if sub != srv.Subdomain {
+			go s.npmRemoveServer(id)
+		}
+		s.db.ExecContext(r.Context(), "UPDATE servers SET subdomain=? WHERE id=?", sub, id)
 	}
 	if req.BMServerID != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET bm_server_id=? WHERE id=?", strings.TrimSpace(*req.BMServerID), id)
@@ -325,6 +337,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		s.upnpRemoveServer(id)
 	}
 	s.unifiRemoveServer(id)
+	s.npmRemoveServer(id) // sync: reads npm_host_id before the row is deleted
 	// Capture the gameskill image now (DB row still present) in case we need a
 	// root container to delete root-owned files left by a failed install.
 	var rmImage string
@@ -501,6 +514,9 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 		go s.upnpAddServer(id, srv.Name)
 		go s.unifiAddServer(id, srv.Name)
 	}
+	// NPM subdomain routing is independent of firewall forwarding (NPM handles
+	// public exposure itself); self-gates on enabled + a configured subdomain.
+	go s.npmAddServer(id, srv.Name)
 	return nil
 }
 
@@ -562,6 +578,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 	s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
 	go s.upnpRemoveServer(id)
 	go s.unifiRemoveServer(id)
+	go s.npmRemoveServer(id)
 	s.auditLog(r, "server.stop", "server:"+id, nil)
 	s.notifyAll("⏹️ " + srv.Name + " stopped")
 	jsonOK(w, map[string]string{"status": "stopped"})

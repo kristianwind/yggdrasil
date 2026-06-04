@@ -88,9 +88,10 @@ func (s *Server) reconcileStatuses() {
 	}
 }
 
-// stoppedCleanup releases UPnP/UniFi port forwards for a server that has
-// stopped/crashed (best-effort, async).
+// stoppedCleanup releases UPnP/UniFi port forwards and the NPM proxy host for a
+// server that has stopped/crashed (best-effort, async).
 func (s *Server) stoppedCleanup(serverID string) {
 	go s.upnpRemoveServer(serverID)
 	go s.unifiRemoveServer(serverID)
+	go s.npmRemoveServer(serverID)
 }

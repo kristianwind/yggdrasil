@@ -153,39 +153,41 @@
   }
 </script>
 
-<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+<!-- Title row: primary action sits on the heading line (like the Servers page). -->
+<div class="flex items-center justify-between gap-2 mb-3">
   <h1 class="text-2xl font-semibold">Runes</h1>
-  <div class="flex flex-wrap items-center justify-end gap-2">
-    {#if runes.length > 0}
-      <div class="inline-flex rounded-md border border-border overflow-hidden mr-1">
-        <button
-          class="px-2.5 py-1.5 text-sm {view === 'grid' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
-          title="Grid view"
-          aria-label="Grid view"
-          onclick={() => setView("grid")}>▦</button
-        >
-        <button
-          class="px-2.5 py-1.5 text-sm border-l border-border {view === 'table' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
-          title="Table view"
-          aria-label="Table view"
-          onclick={() => setView("table")}>☰</button
-        >
-      </div>
-    {/if}
-    <button class="btn-ghost" onclick={openGithub}>Browse GitHub</button>
-    <label class="btn-ghost cursor-pointer">
-      Import egg
-      <input type="file" accept=".json" class="hidden" onchange={importEgg} />
-    </label>
-    <label class="btn-ghost cursor-pointer">
-      Import XML
-      <input type="file" accept=".xml" class="hidden" onchange={importXml} />
-    </label>
-    <label class="btn-primary cursor-pointer">
-      {uploading ? "Carving…" : "Carve a rune (upload)"}
-      <input type="file" accept=".yaml,.yml" class="hidden" onchange={upload} />
-    </label>
-  </div>
+  <label class="btn-primary cursor-pointer shrink-0">
+    {uploading ? "Carving…" : "Carve a rune (upload)"}
+    <input type="file" accept=".yaml,.yml" class="hidden" onchange={upload} />
+  </label>
+</div>
+<!-- Secondary actions: view toggle + imports, wrapping below the title. -->
+<div class="flex flex-wrap items-center gap-2 mb-2">
+  {#if runes.length > 0}
+    <div class="inline-flex rounded-md border border-border overflow-hidden">
+      <button
+        class="px-2.5 py-1.5 text-sm {view === 'grid' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
+        title="Grid view"
+        aria-label="Grid view"
+        onclick={() => setView("grid")}>▦</button
+      >
+      <button
+        class="px-2.5 py-1.5 text-sm border-l border-border {view === 'table' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
+        title="Table view"
+        aria-label="Table view"
+        onclick={() => setView("table")}>☰</button
+      >
+    </div>
+  {/if}
+  <button class="btn-ghost" onclick={openGithub}>Browse GitHub</button>
+  <label class="btn-ghost cursor-pointer">
+    Import egg
+    <input type="file" accept=".json" class="hidden" onchange={importEgg} />
+  </label>
+  <label class="btn-ghost cursor-pointer">
+    Import XML
+    <input type="file" accept=".xml" class="hidden" onchange={importXml} />
+  </label>
 </div>
 <p class="text-muted mb-6">A Rune is a declarative game definition. Upload your own YAML to add new games.</p>
 

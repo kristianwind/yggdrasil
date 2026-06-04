@@ -51,6 +51,10 @@ gameskill:
       metrics_listen_addr: 0.0.0.0:9090
       grpc_listen_addr: 0.0.0.0:50443
       grpc_allow_insecure: false
+      # Put the control socket in the writable volume (default /var/run/headscale
+      # isn't writable by the non-root panel uid).
+      unix_socket: /var/lib/headscale/headscale.sock
+      unix_socket_permission: "0770"
       noise:
         private_key_path: /var/lib/headscale/noise_private.key
       prefixes:

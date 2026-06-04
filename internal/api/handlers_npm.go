@@ -115,18 +115,10 @@ func (s *Server) npmAddServer(serverID, serverName string) {
 		return
 	}
 
-	// Reconcile: if a proxy host for this domain already exists, delete it first so
-	// we don't create a duplicate (NPM rejects overlapping domain_names anyway).
-	if hosts, err := c.ListProxyHosts(); err == nil {
-		for _, h := range hosts {
-			for _, d := range h.DomainNames {
-				if strings.EqualFold(d, domain) {
-					_ = c.DeleteProxyHost(h.ID)
-				}
-			}
-		}
-	}
-	// Also drop any host we previously recorded for this server (subdomain change).
+	// Reconcile: drop any existing host for this domain so we don't collide on the
+	// domain_names uniqueness (NPM rejects overlaps), then any host we previously
+	// recorded for this server (covers a subdomain change to a different domain).
+	npmDeleteByDomain(c, domain)
 	var oldID int
 	s.db.QueryRowContext(ctx, "SELECT COALESCE(npm_host_id,0) FROM servers WHERE id=?", serverID).Scan(&oldID)
 	if oldID != 0 {
@@ -137,14 +129,48 @@ func (s *Server) npmAddServer(serverID, serverName string) {
 		LEEmail: s.getSetting(ctx, "npm_le_email"),
 	})
 	if err != nil {
-		// LE HTTP-01 can fail on high-port-only setups; retry without SSL so the
-		// route still works (user can add a wildcard cert in NPM later).
+		// LE cert issuance can fail (HTTP-01 needs port 80 reachable for the domain).
+		// NPM may leave a partial host behind on that failure, so clean it up first,
+		// then retry without SSL so routing still works (add a wildcard cert later).
+		npmDeleteByDomain(c, domain)
 		id, err = c.CreateProxyHost(domain, internalHost, port, npm.CreateOpts{NoSSL: true})
 		if err != nil {
 			return
 		}
 	}
+	// Recover the id from the host list if the create response didn't carry one, so
+	// the stored npm_host_id is always precise for later deletes.
+	if id == 0 {
+		id = npmHostIDForDomain(c, domain)
+	}
 	s.db.ExecContext(ctx, "UPDATE servers SET npm_host_id=? WHERE id=?", id, serverID)
+}
+
+// npmDeleteByDomain removes every proxy host whose domain_names contain domain.
+func npmDeleteByDomain(c *npm.Client, domain string) {
+	if id := npmHostIDForDomain(c, domain); id != 0 {
+		_ = c.DeleteProxyHost(id)
+		// More than one may match (e.g. a partial LE residue); sweep again.
+		if again := npmHostIDForDomain(c, domain); again != 0 {
+			_ = c.DeleteProxyHost(again)
+		}
+	}
+}
+
+// npmHostIDForDomain returns the id of a proxy host serving domain, or 0.
+func npmHostIDForDomain(c *npm.Client, domain string) int {
+	hosts, err := c.ListProxyHosts()
+	if err != nil {
+		return 0
+	}
+	for _, h := range hosts {
+		for _, d := range h.DomainNames {
+			if strings.EqualFold(d, domain) {
+				return h.ID
+			}
+		}
+	}
+	return 0
 }
 
 // npmRemoveServer deletes the server's NPM proxy host (best-effort) and clears

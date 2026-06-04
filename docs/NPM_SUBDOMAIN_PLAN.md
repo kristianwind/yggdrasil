@@ -1,5 +1,30 @@
 # Feature plan: NPM subdomain integration (per-server domains)
 
+Status: **phase 1 built** (2026-06-04) — backend client + lifecycle hooks + settings
+card + per-server subdomain field all implemented and compiling. Not yet deployed/
+tested against the live NPM. Phase 2 (a **Domains** menu listing apps + reachable
+badges) is still open.
+
+### What was built (phase 1)
+- `internal/npm/npm.go` — client: `New`, `Login` (token), `ListProxyHosts`,
+  `CreateProxyHost(domain, fwdHost, fwdPort, CreateOpts{LEEmail, NoSSL})`, `DeleteProxyHost`.
+- DB: `servers.subdomain TEXT`, `servers.npm_host_id INTEGER` (via `addColumnIfMissing`).
+- `internal/api/handlers_npm.go` — `npmClient`, `npmFullDomain`, `serverWebPort`
+  (port named `web`, else first tcp), `npmAddServer`/`npmRemoveServer`,
+  `GET/PUT /api/settings/npm` + `POST /api/settings/npm/test`. LE-cert create falls
+  back to `NoSSL` (certificate_id 0) on failure.
+- Lifecycle: `npmAddServer` in `recreateAndStart` (NOT gated on auto_forward);
+  `npmRemoveServer` in stop, delete (sync, before row delete), and `stoppedCleanup`.
+  Subdomain change in update → `npmRemoveServer` then re-create on next start.
+- Settings (`app_settings`): `npm_url`, `npm_email`, `npm_password` (encrypted),
+  `npm_enabled`, `npm_base_domain`, `npm_internal_host` (default LAN IP), `npm_le_email`.
+- UI: Settings → NPM card (Settings.svelte); Subdomain field in the create modal
+  (Servers.svelte) and ServerDetail edit — both gated on the rune having a `web` port.
+
+---
+
+Original plan below.
+
 Status: **approved, not yet built** (designed 2026-06-04). Build phase 1 next.
 
 Give each HTTP app server an optional **subdomain** (e.g. `notes.yggdrasilpanel.com`);

@@ -146,7 +146,7 @@ func run(cfgPath string) error {
 // loadBuiltinGameskills upserts the embedded gameskill YAML files as builtins.
 // Re-runnable: existing rows are updated, preserving any server references.
 func loadBuiltinGameskills(database *sql.DB) error {
-	entries, err := fs.ReadDir(yggdrasil.GameskillsFS, "gameskills")
+	entries, err := fs.ReadDir(yggdrasil.GameskillsFS, "builtin-runes")
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func loadBuiltinGameskills(database *sql.DB) error {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
 			continue
 		}
-		data, err := fs.ReadFile(yggdrasil.GameskillsFS, "gameskills/"+e.Name())
+		data, err := fs.ReadFile(yggdrasil.GameskillsFS, "builtin-runes/"+e.Name())
 		if err != nil {
 			log.Printf("read %s: %v", e.Name(), err)
 			continue

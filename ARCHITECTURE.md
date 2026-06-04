@@ -35,11 +35,12 @@ yggdrasil/
 ├── web/                    # Svelte SPA (embedded via go:embed)
 │   ├── src/
 │   └── dist/               # built output (gitignored; built in CI)
-├── gameskills/             # bundled gameskill YAML files
+├── builtin-runes/          # the 4 built-in runes (gameskills), embedded
 │   ├── minecraft-java.yaml
 │   ├── minecraft-bedrock.yaml
 │   ├── rust.yaml
 │   └── dayz.yaml
+├── community-runes/        # importable runes (databases/ apps/ games/), not embedded
 ├── deploy/
 │   ├── yggdrasil.service   # systemd unit
 │   └── config.yaml.example

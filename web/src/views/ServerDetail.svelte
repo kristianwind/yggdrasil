@@ -686,8 +686,8 @@
             <input id="e-sub" class="input" placeholder="e.g. notes" bind:value={edit.subdomain} />
             <p class="text-xs text-muted mt-1">
               Routes <code>{edit.subdomain || "sub"}.&lt;your base domain&gt;</code> to this app via
-              Nginx Proxy Manager (configure it under Settings → Network). A proxy host is created
-              on start and removed on stop. You can also enter a full custom domain. Leave blank to disable.
+              Nginx Proxy Manager or Cloudflare Tunnel (configure under Settings → Network). The route is
+              created on start and removed on stop. You can also enter a full custom domain. Leave blank to disable.
             </p>
           </div>
         {/if}

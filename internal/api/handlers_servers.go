@@ -281,6 +281,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		// re-creates one for the new domain (and clears npm_host_id when cleared).
 		if sub != srv.Subdomain {
 			go s.npmRemoveServer(id)
+			go s.cfRemoveServer(id)
 		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET subdomain=? WHERE id=?", sub, id)
 	}
@@ -338,6 +339,7 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	}
 	s.unifiRemoveServer(id)
 	s.npmRemoveServer(id) // sync: reads npm_host_id before the row is deleted
+	s.cfRemoveServer(id)  // sync: reads cf_hostname before the row is deleted
 	// Capture the gameskill image now (DB row still present) in case we need a
 	// root container to delete root-owned files left by a failed install.
 	var rmImage string
@@ -514,9 +516,10 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 		go s.upnpAddServer(id, srv.Name)
 		go s.unifiAddServer(id, srv.Name)
 	}
-	// NPM subdomain routing is independent of firewall forwarding (NPM handles
-	// public exposure itself); self-gates on enabled + a configured subdomain.
+	// Subdomain routing is independent of firewall forwarding (NPM/Cloudflare each
+	// handle public exposure themselves); both self-gate on enabled + a subdomain.
 	go s.npmAddServer(id, srv.Name)
+	go s.cfAddServer(id, srv.Name)
 	return nil
 }
 
@@ -579,6 +582,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 	go s.upnpRemoveServer(id)
 	go s.unifiRemoveServer(id)
 	go s.npmRemoveServer(id)
+	go s.cfRemoveServer(id)
 	s.auditLog(r, "server.stop", "server:"+id, nil)
 	s.notifyAll("⏹️ " + srv.Name + " stopped")
 	jsonOK(w, map[string]string{"status": "stopped"})

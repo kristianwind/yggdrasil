@@ -314,7 +314,7 @@
           <input id="subdomain" class="input" placeholder="e.g. notes" bind:value={form.subdomain} />
           <p class="text-xs text-muted mt-1">
             Routes <code>{form.subdomain || "sub"}.&lt;your base domain&gt;</code> to this app via
-            Nginx Proxy Manager (set up under Settings → Network). Leave blank to disable.
+            Nginx Proxy Manager or Cloudflare Tunnel (set up under Settings → Network). Leave blank to disable.
           </p>
         </div>
       {/if}

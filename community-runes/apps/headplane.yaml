@@ -1,0 +1,71 @@
+gameskill:
+  id: headplane
+  name: "Headplane (Headscale UI)"
+  category: "Apps"
+  description: >
+    Feature-complete web UI for a Headscale control server (manage nodes, users,
+    pre-auth keys; DNS/ACL editing where integration is enabled). Pair it with a
+    Headscale rune. Set HEADSCALE_URL to your Headscale server's address, then log
+    in with a Headscale API key (`headscale apikeys create`).
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Headplane's image is shell-less (node entrypoint runs the server; default CMD).
+  # keep_entrypoint runs it as-is. Config is seeded via busybox into the persisted
+  # /etc/headplane volume; a random cookie secret is generated on install.
+  docker:
+    image: "ghcr.io/tale/headplane:latest"
+    # Mount at /var/lib/headplane — headplane writes its state DB
+    # (hp_persist.db) here; the seeded config.yaml lives here too (pointed at via
+    # HEADPLANE_CONFIG_PATH), so config + DB share the one persisted volume.
+    data_path: /var/lib/headplane
+    keep_entrypoint: true
+
+  variables:
+    # The address Headplane (server-side) reaches your Headscale server on. Use the
+    # LAN IP:port or the public host:port.
+    - key: HEADSCALE_URL
+      name: "Headscale server URL (e.g. http://192.168.1.50:25073)"
+      type: string
+      default: "http://127.0.0.1:8080"
+    # Read the config from the persisted volume (not the image's /etc/headplane).
+    - key: HEADPLANE_CONFIG_PATH
+      name: "Config path (leave as-is)"
+      type: string
+      default: "/var/lib/headplane/config.yaml"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      set -e
+      SECRET=$(head -c 48 /dev/urandom | base64 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 32)
+      [ -n "$SECRET" ] || SECRET="changemechangemechangemechangeme"
+      cat > /data/config.yaml <<CFG
+      server:
+        host: "0.0.0.0"
+        port: 3000
+        cookie_secret: "$SECRET"
+        cookie_secure: false
+      headscale:
+        url: "{{HEADSCALE_URL}}"
+        config_strict: false
+      integration:
+        agent:
+          enabled: false
+          pre_authkey: ""
+      CFG
+      echo "Headplane config written (set HEADSCALE_URL; log in with a Headscale API key)."
+
+  startup:
+    command: ""
+    done_regex: 'listening|ready|started|3000'
+
+  config_files:
+    - "config.yaml"
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+
+  backup:
+    include: ["."]

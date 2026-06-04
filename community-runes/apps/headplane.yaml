@@ -8,14 +8,14 @@ gameskill:
     Headscale rune. Set HEADSCALE_URL to your Headscale server's address, then log
     in with a Headscale API key (`headscale apikeys create`).
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # Headplane's image is shell-less (node entrypoint runs the server; default CMD).
   # keep_entrypoint runs it as-is. Config is seeded via busybox into the persisted
   # /etc/headplane volume; a random cookie secret is generated on install.
   docker:
-    image: "ghcr.io/tale/headplane:latest"
+    image: "ghcr.io/tale/headplane:0.6.1"
     # Mount at /var/lib/headplane — headplane writes its state DB
     # (hp_persist.db) here; the seeded config.yaml lives here too (pointed at via
     # HEADPLANE_CONFIG_PATH), so config + DB share the one persisted volume.
@@ -50,10 +50,6 @@ gameskill:
       headscale:
         url: "{{HEADSCALE_URL}}"
         config_strict: false
-      integration:
-        agent:
-          enabled: false
-          pre_authkey: ""
       CFG
       echo "Headplane config written (set HEADSCALE_URL; log in with a Headscale API key)."
 

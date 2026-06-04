@@ -11,16 +11,16 @@ gameskill:
     `headscale preauthkeys create --user <name> --reusable`, then
     `tailscale up --login-server <SERVER_URL> --authkey <key>` on each client.
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
-  # Pinned to a known config schema (headscale config keys change between minor
-  # versions). The official image is distroless (ko-built, no shell) with the
+  # Pinned to 0.26.1 to match the Headplane UI rune (config keys change between
+  # minor versions). The official image is distroless (ko-built, no shell) with the
   # binary as its ENTRYPOINT, so we keep_entrypoint and pass args via startup.exec
   # (raw argv — a /bin/sh -c command can't run in a shell-less image). Runs as the
   # panel uid; config + SQLite DB + noise key live in /var/lib/headscale (volume).
   docker:
-    image: "headscale/headscale:0.23.0"
+    image: "headscale/headscale:0.26.1"
     data_path: /var/lib/headscale
     keep_entrypoint: true
 
@@ -74,6 +74,12 @@ gameskill:
         type: sqlite
         sqlite:
           path: /var/lib/headscale/db.sqlite
+          write_ahead_log: true
+      # Access-control policy (0.26+). file mode with an empty path = allow-all
+      # default; edit config.yaml + add a policy file later to lock it down.
+      policy:
+        mode: file
+        path: ""
       log:
         format: text
         level: info

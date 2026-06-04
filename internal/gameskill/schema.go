@@ -52,6 +52,10 @@ type Docker struct {
 	// off-the-shelf app image behaves like a plain `docker run`. With it set, the
 	// startup command is optional (empty = the image's default CMD).
 	KeepEntrypoint bool `yaml:"keep_entrypoint,omitempty" json:"keep_entrypoint,omitempty"`
+	// ExtraVolumes are additional container paths that each get their own persisted
+	// directory (a subdir of the server's data dir) — for images that require more
+	// than one mount, e.g. Nginx Proxy Manager (/data + /etc/letsencrypt).
+	ExtraVolumes []string `yaml:"extra_volumes,omitempty" json:"extra_volumes,omitempty"`
 }
 
 type Variable struct {

@@ -54,11 +54,23 @@ type CreateOptions struct {
 	Ports          []PortMapping
 	DataDir        string // host path bind-mounted into the container
 	DataMount      string // mount target for DataDir (default /data); apps may differ
-	KeepEntrypoint bool   // run the image's own ENTRYPOINT instead of clearing it
+	// ExtraVolumes are additional container paths that each get their own persisted
+	// directory (a subdir of DataDir), for images that require more than one mount
+	// (e.g. Nginx Proxy Manager needs both /data and /etc/letsencrypt).
+	ExtraVolumes   []string
+	KeepEntrypoint bool // run the image's own ENTRYPOINT instead of clearing it
 	CPUPercent     float64
 	MemoryMB   int64
 	Labels     map[string]string
 	AutoRemove bool
+}
+
+// extraVolumeSubdir maps a container path to a filesystem-safe subdir name under
+// the server's data dir (e.g. "/etc/letsencrypt" -> "_etc_letsencrypt").
+func extraVolumeSubdir(containerPath string) string {
+	s := strings.Trim(containerPath, "/")
+	r := strings.NewReplacer("/", "_", ".", "_", " ", "_")
+	return "_" + r.Replace(s)
 }
 
 type PortMapping struct {
@@ -118,6 +130,16 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 			Source: opts.DataDir,
 			Target: dataMount,
 		})
+		// Additional persisted volumes (a subdir of the data dir each) for images
+		// that require more than one mount (e.g. NPM's /data + /etc/letsencrypt).
+		for _, vp := range opts.ExtraVolumes {
+			if vp == "" {
+				continue
+			}
+			src := filepath.Join(opts.DataDir, extraVolumeSubdir(vp))
+			os.MkdirAll(src, 0o775) //nolint:errcheck // bind source must exist
+			mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: src, Target: vp})
+		}
 		// When running as an explicit uid that may not exist in the image's
 		// /etc/passwd, provide a minimal passwd so getpwuid(uid) succeeds. Steam
 		// servers (DayZ, Rust) call getpwuid and segfault on a NULL result — which

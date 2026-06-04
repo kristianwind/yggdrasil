@@ -478,6 +478,7 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 		Ports:          portMappings,
 		DataDir:        srv.DataDir,
 		DataMount:      gs.Docker.DataPath, // empty = /data
+		ExtraVolumes:   gs.Docker.ExtraVolumes,
 		KeepEntrypoint: gs.Docker.KeepEntrypoint,
 		CPUPercent:     cpuLimit,
 		MemoryMB:       memLimit,

@@ -1,0 +1,44 @@
+gameskill:
+  id: nginx-proxy-manager
+  name: "Nginx Proxy Manager"
+  category: "Apps"
+  description: >
+    Reverse proxy with a friendly web UI + free Let's Encrypt SSL (jc21/NPM).
+    Admin UI is on port 81 — default login admin@example.com / changeme (change it
+    immediately). NOTE: only /data persists (config + SQLite); the /etc/letsencrypt
+    certs aren't persisted in the single-volume model, so they're re-issued if the
+    container is recreated. For real proxying, forward your router's 80/443 to this
+    server's allocated http/https ports.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # NPM runs its own s6 init (keep_entrypoint) as root — it binds the proxy ports
+  # and runs nginx + a node backend. Config + SQLite DB live in /data.
+  docker:
+    image: "jc21/nginx-proxy-manager:latest"
+    data_path: /data
+    # NPM mandates a separate /etc/letsencrypt mount (it refuses to start without
+    # it). extra_volumes gives it its own persisted dir under the data dir.
+    extra_volumes:
+      - /etc/letsencrypt
+    keep_entrypoint: true
+    user: "0:0"
+
+  install:
+    image: "jc21/nginx-proxy-manager:latest"
+    script: |
+      mkdir -p /data
+      echo "Nginx Proxy Manager data directory ready (admin UI on port 81)."
+
+  startup:
+    command: ""
+    done_regex: 'Backend PID|start worker process|Server started'
+
+  ports:
+    - { name: admin, default: 81,  protocol: tcp }
+    - { name: http,  default: 80,  protocol: tcp }
+    - { name: https, default: 443, protocol: tcp }
+
+  backup:
+    include: ["."]

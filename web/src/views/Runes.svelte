@@ -153,9 +153,9 @@
   }
 </script>
 
-<div class="flex items-center justify-between mb-2">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
   <h1 class="text-2xl font-semibold">Runes</h1>
-  <div class="flex gap-2 items-center">
+  <div class="flex flex-wrap items-center justify-end gap-2">
     {#if runes.length > 0}
       <div class="inline-flex rounded-md border border-border overflow-hidden mr-1">
         <button

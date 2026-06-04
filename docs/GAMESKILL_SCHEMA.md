@@ -93,7 +93,24 @@ startup:
   stop: "stop"                          # graceful-stop console command (else SIGTERM)
 ```
 
-The command becomes the container's command (run via `/bin/sh -lc`).
+The command becomes the container's command (run via `/bin/sh -c`).
+
+### `startup.exec` — raw argv (no shell)
+
+For **shell-less images** (distroless / ko-built, e.g. Headscale, Portainer) a
+`/bin/sh -c` command can't run. Use `exec` to pass a raw, `{{TEMPLATED}}` argv
+instead. With `docker.keep_entrypoint: true` it supplies arguments to the image's
+own ENTRYPOINT; otherwise it's the full command. `exec` takes precedence over
+`command`.
+
+```yaml
+docker:
+  image: "headscale/headscale:0.23.0"
+  keep_entrypoint: true                 # ENTRYPOINT = /ko-app/headscale
+startup:
+  exec: ["serve", "-c", "/var/lib/headscale/config.yaml"]
+  done_regex: 'listening and serving'
+```
 
 ## `query` (optional)
 

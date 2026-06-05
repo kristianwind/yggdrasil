@@ -1,9 +1,10 @@
-# 🌳 Yggdrasil
+# 🌳 Yggdrasil Panel
 
-A self-hosted **game & app server panel** for Debian/Ubuntu — think *AMP +
-Pterodactyl, but radically easier to install, update and maintain*, and not just
-for games: run databases and homelab apps (Vaultwarden, Gitea, Uptime Kuma,
-Grafana, WordPress, Nextcloud…) from the same one-click "Runes".
+**Yggdrasil Panel** is a self-hosted **game & app server control panel** for
+Debian/Ubuntu (Docker) — think *AMP + Pterodactyl, but radically easier to
+install, update and maintain*, and not just for games: run databases and homelab
+apps (Vaultwarden, Gitea, Uptime Kuma, Grafana, WordPress, Nextcloud…) from the
+same one-click "Runes".
 
 [![Yggdrasil dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
 

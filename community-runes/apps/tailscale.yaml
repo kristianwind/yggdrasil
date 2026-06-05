@@ -1,0 +1,76 @@
+gameskill:
+  id: tailscale
+  name: "Tailscale (subnet router / exit node)"
+  category: "Apps"
+  description: >
+    Join this VM to your Tailscale tailnet as a subnet router and/or exit node — no
+    port forwarding. Advertise your LAN (TS_ROUTES, e.g. 192.168.1.0/24) to reach
+    every device remotely, and/or add --advertise-exit-node in TS_EXTRA_ARGS to route
+    internet traffic through the VM. Create an auth key at
+    https://login.tailscale.com/admin/settings/keys and paste it as TS_AUTHKEY (a
+    reusable/ephemeral key is fine). After it starts, approve the advertised
+    routes/exit-node in the Tailscale admin console (Machines → this node → Edit route
+    settings). To use your own Headscale instead, add
+    --login-server=http://<headscale>:8080 to TS_EXTRA_ARGS.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Runs in kernel-networking mode (TS_USERSPACE=false) for real subnet routing /
+  # exit-node performance — hence NET_ADMIN + /dev/net/tun + ip_forward below. The
+  # image's containerboot entrypoint reads the TS_* env and brings the node up, so
+  # keep_entrypoint is set and no startup command is needed. Runs as root (tailscaled
+  # needs the capability + TUN); state persists in /var/lib/tailscale.
+  docker:
+    image: "tailscale/tailscale:latest"
+    keep_entrypoint: true
+    user: "0:0"
+    data_path: /var/lib/tailscale
+    capabilities: ["NET_ADMIN"]
+    devices: ["/dev/net/tun"]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+
+  variables:
+    # Auth key from the Tailscale admin console (tskey-auth-...). Reusable or
+    # ephemeral both work; ephemeral nodes auto-remove when stopped.
+    - key: TS_AUTHKEY
+      name: "Tailscale auth key (tskey-auth-...)"
+      type: string
+      default: ""
+    # Comma-separated CIDRs to advertise as subnet routes. Leave empty for none.
+    - key: TS_ROUTES
+      name: "Advertised subnet routes (e.g. 192.168.1.0/24)"
+      type: string
+      default: ""
+    # Extra `tailscale up` flags, e.g. --advertise-exit-node --hostname=ygg-vm
+    # --login-server=http://<headscale>:8080
+    - key: TS_EXTRA_ARGS
+      name: "Extra tailscale up args"
+      type: string
+      default: "--advertise-exit-node"
+    # Kernel networking (false) is required for subnet router / exit node; set true
+    # only for a plain userspace node with no routing.
+    - key: TS_USERSPACE
+      name: "Userspace networking (leave false for routing)"
+      type: string
+      default: "false"
+    # Where tailscaled persists state — keep on the mounted volume so logins survive
+    # restarts/reinstalls. Leave as-is.
+    - key: TS_STATE_DIR
+      name: "State dir (leave as-is)"
+      type: string
+      default: "/var/lib/tailscale"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Tailscale state dir ready — set TS_AUTHKEY (+ TS_ROUTES for a subnet router), then start."
+
+  startup:
+    command: ""
+    done_regex: 'Startup complete|Success\.|tailscaled is healthy'
+
+  backup:
+    include: ["."]

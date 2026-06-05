@@ -1,7 +1,7 @@
 {
-  "name": "Yggdrasil",
+  "name": "Yggdrasil Panel",
   "short_name": "Yggdrasil",
-  "description": "Game & app server panel",
+  "description": "Self-hosted game & app server control panel (Docker)",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

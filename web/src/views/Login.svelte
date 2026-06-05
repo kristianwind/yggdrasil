@@ -31,7 +31,7 @@
   <form onsubmit={submit} class="card p-6 w-full max-w-sm space-y-4">
     <div class="text-center">
       <div class="text-3xl">🌳</div>
-      <h1 class="text-xl font-semibold mt-1">Yggdrasil</h1>
+      <h1 class="text-xl font-semibold mt-1">Yggdrasil Panel</h1>
       <p class="text-muted text-sm">Sign in to manage your game &amp; app servers</p>
     </div>
     <div>

@@ -67,7 +67,7 @@
           mobileOpen = false;
         }}
       >
-        <span>🌳</span> Yggdrasil
+        <span>🌳</span> Yggdrasil Panel
       </button>
       <nav class="flex-1 min-h-0 overflow-y-auto px-2 space-y-1">
         {#each nav as item}
@@ -131,7 +131,7 @@
         style="padding-top: calc(0.75rem + env(safe-area-inset-top));"
       >
         <button class="btn-ghost px-2 py-1" aria-label="Open menu" onclick={() => (mobileOpen = true)}>☰</button>
-        <span class="font-semibold">🌳 Yggdrasil</span>
+        <span class="font-semibold">🌳 Yggdrasil Panel</span>
       </header>
       <main class="flex-1 p-4 md:p-6 overflow-auto">
         {#if $route.parts[0] === "servers" && $route.parts[1]}

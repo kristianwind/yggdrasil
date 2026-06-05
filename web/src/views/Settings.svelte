@@ -356,6 +356,42 @@
     }
   }
 
+  // Cloudflare Tunnel subdomain routing
+  let cf = $state({ token: "", account_id: "", zone_id: "", tunnel_id: "", base_domain: "", internal_host: "", enabled: false, configured: false });
+  let savingCf = $state(false);
+  let testingCf = $state(false);
+  async function loadCf() {
+    try {
+      cf = { ...cf, ...(await api.get("/settings/cloudflare")), token: "" };
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function saveCf() {
+    savingCf = true;
+    try {
+      const res = await api.put("/settings/cloudflare", cf);
+      cf = { ...cf, ...res, token: "" };
+      toast("Cloudflare settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingCf = false;
+    }
+  }
+  async function testCf() {
+    testingCf = true;
+    try {
+      const res = await api.post("/settings/cloudflare/test", cf);
+      toast(`Cloudflare token OK${res.zone_id ? " — zone resolved" : ""}`, "success");
+      if (res.zone_id) cf.zone_id = res.zone_id;
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      testingCf = false;
+    }
+  }
+
   onMount(() => {
     load();
     loadTemplates();
@@ -366,6 +402,7 @@
     loadNetwork();
     loadUnifi();
     loadNpm();
+    loadCf();
   });
 
   async function create() {
@@ -536,6 +573,54 @@
   <div class="flex gap-2">
     <button class="btn-primary" onclick={saveNpm} disabled={savingNpm}>{savingNpm ? "Saving…" : "Save"}</button>
     <button class="btn-ghost" onclick={testNpm} disabled={testingNpm}>{testingNpm ? "Testing…" : "Test connection"}</button>
+  </div>
+</div>
+
+<!-- Cloudflare Tunnel subdomain routing -->
+<h2 class="text-xl font-semibold mb-2">Cloudflare Tunnel (subdomains)</h2>
+<p class="text-muted mb-4 text-sm">
+  Expose HTTP app servers on a subdomain through a Cloudflare Tunnel — no port forwarding,
+  no public IP needed (the tunnel is outbound). Yggdrasil adds/removes a tunnel ingress rule
+  and a proxied <code>CNAME</code> when those servers start/stop. Prereqs: a tunnel created in
+  the Cloudflare dashboard with the <code>cloudflared</code> connector running (you can launch it
+  from the <b>cloudflared</b> rune), and an API token with <b>Account → Cloudflare Tunnel: Edit</b>
+  and <b>Zone → DNS: Edit</b>. Token encrypted at rest. Uses the same per-server Subdomain field as NPM.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div class="grid sm:grid-cols-2 gap-3">
+    <div>
+      <label class="label" for="cftoken">API token</label>
+      <input id="cftoken" class="input" type="password" bind:value={cf.token}
+        placeholder={cf.configured ? "•••••••• (unchanged)" : "token"} autocomplete="new-password" />
+    </div>
+    <div>
+      <label class="label" for="cfbase">Base domain</label>
+      <input id="cfbase" class="input" bind:value={cf.base_domain} placeholder="example.com" />
+    </div>
+    <div>
+      <label class="label" for="cfacct">Account ID</label>
+      <input id="cfacct" class="input" bind:value={cf.account_id} placeholder="32-char account id" autocomplete="off" />
+    </div>
+    <div>
+      <label class="label" for="cftunnel">Tunnel ID</label>
+      <input id="cftunnel" class="input" bind:value={cf.tunnel_id} placeholder="tunnel uuid" autocomplete="off" />
+    </div>
+    <div>
+      <label class="label" for="cfzone">Zone ID (optional)</label>
+      <input id="cfzone" class="input" bind:value={cf.zone_id} placeholder="(auto-resolved from base domain)" autocomplete="off" />
+    </div>
+    <div>
+      <label class="label" for="cfinternal">Internal host</label>
+      <input id="cfinternal" class="input" bind:value={cf.internal_host} placeholder="(auto: this VM's LAN IP)" />
+    </div>
+  </div>
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={cf.enabled} />
+    Enable subdomain routing via Cloudflare Tunnel
+  </label>
+  <div class="flex gap-2">
+    <button class="btn-primary" onclick={saveCf} disabled={savingCf}>{savingCf ? "Saving…" : "Save"}</button>
+    <button class="btn-ghost" onclick={testCf} disabled={testingCf}>{testingCf ? "Testing…" : "Test connection"}</button>
   </div>
 </div>
 

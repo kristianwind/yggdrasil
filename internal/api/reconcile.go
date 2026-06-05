@@ -94,4 +94,5 @@ func (s *Server) stoppedCleanup(serverID string) {
 	go s.upnpRemoveServer(serverID)
 	go s.unifiRemoveServer(serverID)
 	go s.npmRemoveServer(serverID)
+	go s.cfRemoveServer(serverID)
 }

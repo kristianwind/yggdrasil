@@ -224,6 +224,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/settings/npm", s.requireAdmin(s.handleGetNpmSettings))
 		r.Put("/api/settings/npm", s.requireAdmin(s.handleSetNpmSettings))
 		r.Post("/api/settings/npm/test", s.requireAdmin(s.handleTestNpm))
+		r.Get("/api/settings/cloudflare", s.requireAdmin(s.handleGetCloudflareSettings))
+		r.Put("/api/settings/cloudflare", s.requireAdmin(s.handleSetCloudflareSettings))
+		r.Post("/api/settings/cloudflare/test", s.requireAdmin(s.handleTestCloudflare))
 
 		// Per-server user delegation (server-centric view of server-scoped grants)
 		r.Get("/api/servers/{id}/delegates", s.requireAdmin(s.handleListDelegates))

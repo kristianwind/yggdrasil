@@ -1,0 +1,43 @@
+gameskill:
+  id: cloudflared
+  name: "Cloudflare Tunnel (cloudflared)"
+  category: "Apps"
+  description: >
+    The Cloudflare Tunnel connector. Run this once to link your VM to a Cloudflare
+    Tunnel — then enable "Cloudflare Tunnel (subdomains)" under Settings → Network and
+    give your app servers a Subdomain; Yggdrasil will route them through this tunnel
+    with no port forwarding or public IP. Create a tunnel in the Cloudflare dashboard
+    (Zero Trust → Networks → Tunnels), copy its connector token, and paste it below as
+    TUNNEL_TOKEN. The connector is outbound-only, so it needs no ports.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # cloudflared's image is distroless (no shell). keep_entrypoint runs the image's
+  # own `cloudflared` entrypoint; startup.exec supplies the raw argv (no /bin/sh).
+  # The connector pulls its ingress config from Cloudflare's edge using the token,
+  # so there's nothing to persist locally.
+  docker:
+    image: "cloudflare/cloudflared:latest"
+    keep_entrypoint: true
+
+  variables:
+    # The tunnel connector token from the Cloudflare dashboard
+    # (Zero Trust → Networks → Tunnels → your tunnel → Install connector).
+    - key: TUNNEL_TOKEN
+      name: "Tunnel connector token"
+      type: string
+      default: ""
+
+  install:
+    image: "busybox:latest"
+    script: |
+      echo "cloudflared connector ready — set TUNNEL_TOKEN, then start."
+
+  startup:
+    # Runs as: cloudflared tunnel --no-autoupdate run   (token read from TUNNEL_TOKEN env)
+    exec: ["tunnel", "--no-autoupdate", "run"]
+    done_regex: 'Registered tunnel connection|Updated to new configuration|Starting tunnel'
+
+  backup:
+    include: []

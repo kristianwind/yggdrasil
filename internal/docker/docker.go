@@ -46,23 +46,50 @@ func (c *Client) Ping(ctx context.Context) error {
 }
 
 type CreateOptions struct {
-	Name       string
-	Image      string
-	Env        []string
-	Cmd        []string // optional explicit command; empty uses image default
-	User       string   // "uid:gid" — run as the panel user so files stay editable
-	Ports          []PortMapping
-	DataDir        string // host path bind-mounted into the container
-	DataMount      string // mount target for DataDir (default /data); apps may differ
+	Name      string
+	Image     string
+	Env       []string
+	Cmd       []string // optional explicit command; empty uses image default
+	User      string   // "uid:gid" — run as the panel user so files stay editable
+	Ports     []PortMapping
+	DataDir   string // host path bind-mounted into the container
+	DataMount string // mount target for DataDir (default /data); apps may differ
 	// ExtraVolumes are additional container paths that each get their own persisted
 	// directory (a subdir of DataDir), for images that require more than one mount
 	// (e.g. Nginx Proxy Manager needs both /data and /etc/letsencrypt).
 	ExtraVolumes   []string
 	KeepEntrypoint bool // run the image's own ENTRYPOINT instead of clearing it
 	CPUPercent     float64
-	MemoryMB   int64
-	Labels     map[string]string
-	AutoRemove bool
+	MemoryMB       int64
+	Labels         map[string]string
+	AutoRemove     bool
+	// Capabilities (cap_add), Devices ("host[:container[:perms]]"), and Sysctls let
+	// special runes like Tailscale act as a subnet router / exit node.
+	Capabilities []string
+	Devices      []string
+	Sysctls      map[string]string
+}
+
+// parseDeviceMappings converts "host[:container[:perms]]" strings to Docker device
+// mappings (container path defaults to the host path; perms default to "rwm").
+func parseDeviceMappings(devs []string) []container.DeviceMapping {
+	var out []container.DeviceMapping
+	for _, d := range devs {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		parts := strings.SplitN(d, ":", 3)
+		m := container.DeviceMapping{PathOnHost: parts[0], PathInContainer: parts[0], CgroupPermissions: "rwm"}
+		if len(parts) >= 2 && parts[1] != "" {
+			m.PathInContainer = parts[1]
+		}
+		if len(parts) == 3 && parts[2] != "" {
+			m.CgroupPermissions = parts[2]
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // extraVolumeSubdir maps a container path to a filesystem-safe subdir name under
@@ -208,9 +235,12 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		Mounts:        mounts,
 		AutoRemove:    opts.AutoRemove,
 		RestartPolicy: restart,
+		CapAdd:        opts.Capabilities,
+		Sysctls:       opts.Sysctls,
 		Resources: container.Resources{
 			NanoCPUs: nanoCPU,
 			Memory:   memBytes,
+			Devices:  parseDeviceMappings(opts.Devices),
 		},
 	}, nil, nil, opts.Name)
 	if err != nil {
@@ -383,7 +413,7 @@ func (c *Client) FindByLabel(ctx context.Context, key, value string) ([]types.Co
 // EphemeralOptions configures a one-shot container run.
 type EphemeralOptions struct {
 	Image       string
-	DataDir     string            // bind-mounted to /data (optional)
+	DataDir     string // bind-mounted to /data (optional)
 	Env         []string
 	Script      string            // run via /bin/sh -c
 	ExtraMounts map[string]string // host path -> container path (e.g. Steam cache)

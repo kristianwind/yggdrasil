@@ -56,6 +56,15 @@ type Docker struct {
 	// directory (a subdir of the server's data dir) — for images that require more
 	// than one mount, e.g. Nginx Proxy Manager (/data + /etc/letsencrypt).
 	ExtraVolumes []string `yaml:"extra_volumes,omitempty" json:"extra_volumes,omitempty"`
+	// Capabilities are Linux capabilities to add (cap_add), e.g. ["NET_ADMIN"] for a
+	// Tailscale subnet router. Keep minimal — it widens a container's blast radius.
+	Capabilities []string `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
+	// Devices are host devices to expose, e.g. ["/dev/net/tun"] (kernel networking).
+	// Format: "host[:container[:perms]]" (container defaults to host, perms "rwm").
+	Devices []string `yaml:"devices,omitempty" json:"devices,omitempty"`
+	// Sysctls are kernel params set in the container's namespace, e.g.
+	// {"net.ipv4.ip_forward":"1"} for subnet routing / exit nodes.
+	Sysctls map[string]string `yaml:"sysctls,omitempty" json:"sysctls,omitempty"`
 }
 
 type Variable struct {
@@ -109,9 +118,9 @@ type Port struct {
 }
 
 type Anticheat struct {
-	Antixray            *AntixrayConfig `yaml:"antixray"              json:"antixray,omitempty"`
-	PluginsRecommended  []string        `yaml:"plugins_recommended"   json:"plugins_recommended,omitempty"`
-	BattlEye            *BattlEyeConfig `yaml:"battleye"              json:"battleye,omitempty"`
+	Antixray           *AntixrayConfig `yaml:"antixray"              json:"antixray,omitempty"`
+	PluginsRecommended []string        `yaml:"plugins_recommended"   json:"plugins_recommended,omitempty"`
+	BattlEye           *BattlEyeConfig `yaml:"battleye"              json:"battleye,omitempty"`
 }
 
 type AntixrayConfig struct {

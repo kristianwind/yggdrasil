@@ -495,6 +495,9 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 		DataMount:      gs.Docker.DataPath, // empty = /data
 		ExtraVolumes:   gs.Docker.ExtraVolumes,
 		KeepEntrypoint: gs.Docker.KeepEntrypoint,
+		Capabilities:   gs.Docker.Capabilities,
+		Devices:        gs.Docker.Devices,
+		Sysctls:        gs.Docker.Sysctls,
 		CPUPercent:     cpuLimit,
 		MemoryMB:       memLimit,
 		Labels:         map[string]string{"yggdrasil.server_id": id},

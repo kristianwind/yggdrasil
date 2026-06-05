@@ -98,9 +98,13 @@ func (c *Client) do(method, path string, in, out any) error {
 	return nil
 }
 
-// Verify confirms the API token is valid (used by the settings Test button).
-func (c *Client) Verify() error {
-	return c.do("GET", "/user/tokens/verify", nil, nil)
+// CheckTunnel confirms the token can reach this tunnel's config — i.e. it carries
+// the Account → Cloudflare Tunnel: Edit permission for the given account/tunnel.
+// (We deliberately don't use /user/tokens/verify: account-scoped tokens can't call
+// /user/* and it returns a misleading "Invalid API Token".)
+func (c *Client) CheckTunnel() error {
+	_, err := c.getConfig()
+	return err
 }
 
 // ResolveZoneID looks up the zone id for a domain (e.g. "example.com"). Handy so

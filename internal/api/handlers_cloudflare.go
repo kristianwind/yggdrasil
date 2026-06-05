@@ -199,18 +199,25 @@ func (s *Server) handleTestCloudflare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := cloudflare.New(token, account, zone, tunnel)
-	if err := c.Verify(); err != nil {
-		jsonError(w, "token check failed: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-	if zone == "" && base != "" {
+	// 1) Zone access (DNS) — resolve from the base domain when no zone id is set.
+	if zone == "" {
+		if base == "" {
+			jsonError(w, "base domain (or zone ID) is required", http.StatusBadRequest)
+			return
+		}
 		resolved, err := c.ResolveZoneID(base)
 		if err != nil {
-			jsonError(w, "token ok, but resolving the zone for "+base+" failed: "+err.Error(), http.StatusBadGateway)
+			jsonError(w, "couldn't read the zone for "+base+" — the token needs Zone → DNS: Edit (and Zone: Read). ("+err.Error()+")", http.StatusBadGateway)
 			return
 		}
 		zone = resolved
+		c.SetZoneID(resolved)
 		s.setSetting(r.Context(), "cf_zone_id", resolved)
+	}
+	// 2) Tunnel access — confirms Account → Cloudflare Tunnel: Edit + correct ids.
+	if err := c.CheckTunnel(); err != nil {
+		jsonError(w, "DNS/zone OK, but the tunnel isn't reachable — check the Account ID + Tunnel ID and give the token Account → Cloudflare Tunnel: Edit. ("+err.Error()+")", http.StatusBadGateway)
+		return
 	}
 	jsonOK(w, map[string]any{"ok": true, "zone_id": zone})
 }

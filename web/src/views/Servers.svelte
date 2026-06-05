@@ -55,10 +55,12 @@
   }
   onMount(async () => {
     await load();
-    // Opened from the Dashboard's "+ New Server" button (#/servers?new=1):
-    // launch the create modal, then drop the param so a refresh doesn't re-open it.
-    if (get(route).query.get("new") && gameskills.length > 0) {
-      await openCreate();
+    // Opened from a "+ New Server" button (#/servers?new=1) or a rune's "Create
+    // server" button (#/servers?new=<runeId>): launch the create modal pre-selected
+    // on that rune, then drop the param so a refresh doesn't re-open it.
+    const newParam = get(route).query.get("new");
+    if (newParam && gameskills.length > 0) {
+      await openCreate(newParam === "1" ? null : newParam);
       navigate("/servers");
     }
   });
@@ -74,8 +76,12 @@
     return g;
   });
 
-  async function openCreate() {
-    selectedSkill = gameskills[0]?.id || null;
+  async function openCreate(preselectId) {
+    // Pre-select the requested rune when it exists, else fall back to the first.
+    selectedSkill =
+      preselectId && gameskills.some((g) => g.id === preselectId)
+        ? preselectId
+        : gameskills[0]?.id || null;
     await loadSkill();
     form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "" };
     showCreate = true;

@@ -2,6 +2,11 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { navigate } from "../lib/router.js";
+  import { user } from "../lib/auth.js";
+
+  // Jump straight into the create-server flow with this rune pre-selected.
+  const createServer = (r) => navigate("/servers?new=" + r.id);
 
   let runes = $state([]);
   let uploading = $state(false);
@@ -215,10 +220,14 @@
             <td class="px-4 py-2 text-muted">{r.category}</td>
             <td class="px-4 py-2 text-muted font-mono text-xs hidden sm:table-cell">{r.id}</td>
             <td class="px-4 py-2 text-muted">v{r.version}</td>
-            <td class="px-4 py-2 text-right">
+            <td class="px-4 py-2 text-right whitespace-nowrap">
+              {#if $user.role === "admin"}
+                <button class="btn-primary px-2 py-1" onclick={() => createServer(r)}>Create server</button>
+              {/if}
               {#if !r.builtin}
-                <button class="btn-danger px-2 py-1" onclick={() => del(r)}>Delete</button>
-              {:else}
+                <button class="btn-danger px-2 py-1 ml-1" onclick={() => del(r)}>Delete</button>
+              {/if}
+              {#if r.builtin && $user.role !== "admin"}
                 <span class="text-muted">—</span>
               {/if}
             </td>
@@ -239,8 +248,11 @@
         </div>
         <div class="text-xs text-muted mt-1">{r.category} · v{r.version}</div>
         <div class="text-xs text-muted font-mono mt-1">{r.id}</div>
+        {#if $user.role === "admin"}
+          <button class="btn-primary mt-3 w-full" onclick={() => createServer(r)}>Create server</button>
+        {/if}
         {#if !r.builtin}
-          <button class="btn-danger mt-3 w-full" onclick={() => del(r)}>Delete</button>
+          <button class="btn-danger mt-2 w-full" onclick={() => del(r)}>Delete</button>
         {/if}
       </div>
     {/each}

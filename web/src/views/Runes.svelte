@@ -248,11 +248,15 @@
         </div>
         <div class="text-xs text-muted mt-1">{r.category} · v{r.version}</div>
         <div class="text-xs text-muted font-mono mt-1">{r.id}</div>
-        {#if $user.role === "admin"}
-          <button class="btn-primary mt-3 w-full" onclick={() => createServer(r)}>Create server</button>
-        {/if}
-        {#if !r.builtin}
-          <button class="btn-danger mt-2 w-full" onclick={() => del(r)}>Delete</button>
+        {#if $user.role === "admin" || !r.builtin}
+          <div class="flex gap-2 mt-3">
+            {#if $user.role === "admin"}
+              <button class="btn-primary flex-1" onclick={() => createServer(r)}>Create server</button>
+            {/if}
+            {#if !r.builtin}
+              <button class="btn-danger {$user.role === 'admin' ? 'px-4' : 'flex-1'}" onclick={() => del(r)}>Delete</button>
+            {/if}
+          </div>
         {/if}
       </div>
     {/each}

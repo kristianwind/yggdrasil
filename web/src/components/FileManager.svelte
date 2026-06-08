@@ -99,20 +99,88 @@
     list();
   }
 
-  async function upload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("path", path);
-    fd.append("file", file);
-    try {
-      await api.post(`/servers/${serverId}/files/upload`, fd);
-      toast("Uploaded", "success");
-      list();
-    } catch (err) {
-      toast(err.message, "error");
+  let uploading = $state(false);
+  let uploadMsg = $state("");
+  let dragOver = $state(false);
+
+  // Upload a batch of { file, rel } (rel = subdir relative to the current path, ""
+  // for top level). The single-file endpoint is called once per file; subfolders
+  // are preserved by passing the joined path.
+  async function uploadFiles(items) {
+    if (!items.length || uploading) return;
+    uploading = true;
+    let ok = 0;
+    let fail = 0;
+    for (const { file, rel } of items) {
+      const dest = [path, rel].filter(Boolean).join("/");
+      const fd = new FormData();
+      fd.append("path", dest);
+      fd.append("file", file);
+      try {
+        await api.post(`/servers/${serverId}/files/upload`, fd);
+        ok++;
+      } catch {
+        fail++;
+      }
+      uploadMsg = `Uploading… ${ok + fail}/${items.length}`;
     }
+    uploading = false;
+    uploadMsg = "";
+    toast(`Uploaded ${ok} file${ok !== 1 ? "s" : ""}${fail ? `, ${fail} failed` : ""}`, fail ? "warn" : "success");
+    list();
+  }
+
+  function onPick(e) {
+    const items = [...(e.target.files || [])].map((f) => ({ file: f, rel: "" }));
+    uploadFiles(items);
     e.target.value = "";
+  }
+
+  // Walk a dropped FileSystemEntry (file or directory) recursively, collecting
+  // files with their subpath so a whole site folder keeps its structure.
+  function walkEntry(entry, prefix) {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file(
+          (file) => resolve([{ file, rel: prefix }]),
+          () => resolve([]),
+        );
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const all = [];
+        const sub = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const readBatch = () =>
+          reader.readEntries(async (batch) => {
+            if (!batch.length) {
+              const nested = await Promise.all(all.map((c) => walkEntry(c, sub)));
+              resolve(nested.flat());
+              return;
+            }
+            all.push(...batch);
+            readBatch();
+          }, () => resolve([]));
+        readBatch();
+      } else {
+        resolve([]);
+      }
+    });
+  }
+
+  async function onDrop(e) {
+    e.preventDefault();
+    dragOver = false;
+    const dt = e.dataTransfer;
+    const roots = [...(dt.items || [])]
+      .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+      .filter(Boolean);
+    let items;
+    if (roots.length) {
+      const lists = await Promise.all(roots.map((r) => walkEntry(r, "")));
+      items = lists.flat();
+    } else {
+      items = [...(dt.files || [])].map((f) => ({ file: f, rel: "" }));
+    }
+    uploadFiles(items);
   }
 </script>
 
@@ -168,14 +236,28 @@
   <div class="flex items-center gap-2 mb-3">
     <button class="btn-ghost px-2 py-1" onclick={up} disabled={!path}>↑</button>
     <span class="font-mono text-sm text-muted">/{path}</span>
+    {#if uploading}<span class="text-xs text-muted">{uploadMsg}</span>{/if}
     <label class="btn-ghost ml-auto cursor-pointer">
-      Upload
-      <input type="file" class="hidden" onchange={upload} />
+      Upload files
+      <input type="file" class="hidden" multiple onchange={onPick} />
     </label>
   </div>
-  <div class="card divide-y divide-border">
+  <!-- Drop zone: drag a folder or several files anywhere over the listing. -->
+  <div
+    role="region"
+    aria-label="File drop zone"
+    class="card divide-y divide-border relative transition {dragOver ? 'ring-2 ring-accent2' : ''}"
+    ondragover={(e) => { e.preventDefault(); dragOver = true; }}
+    ondragleave={(e) => { e.preventDefault(); dragOver = false; }}
+    ondrop={onDrop}
+  >
+    {#if dragOver}
+      <div class="absolute inset-0 z-10 grid place-items-center bg-panel/80 pointer-events-none text-sm text-accent2 font-medium">
+        Drop to upload to /{path}
+      </div>
+    {/if}
     {#if entries.length === 0}
-      <div class="p-4 text-muted text-sm">Empty directory.</div>
+      <div class="p-4 text-muted text-sm">Empty directory — drag &amp; drop files or a folder here, or use “Upload files”.</div>
     {/if}
     {#each entries as entry}
       <button class="w-full text-left px-4 py-2 hover:bg-panel2/50 flex items-center justify-between" onclick={() => open(entry)}>

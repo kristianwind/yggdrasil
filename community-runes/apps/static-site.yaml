@@ -1,0 +1,49 @@
+gameskill:
+  id: static-site
+  name: "Static site (nginx)"
+  category: "Apps"
+  description: >
+    Host a static website (HTML / CSS / JS / images) with nginx. The server's file
+    area IS the web root — upload your site from the Files tab (drag & drop a folder
+    or several files at once) and it's served immediately. Give it a Subdomain
+    (NPM / Cloudflare) to publish it on the internet.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # nginx:alpine serves /usr/share/nginx/html by default; we mount the server's
+  # persisted data dir there so the Files tab edits the live web root. keep_entrypoint
+  # runs the image's own entrypoint; user 0:0 so the master can bind :80 and read the
+  # panel-owned files.
+  docker:
+    image: "nginx:alpine"
+    keep_entrypoint: true
+    user: "0:0"
+    data_path: /usr/share/nginx/html
+
+  install:
+    image: "busybox:latest"
+    script: |
+      if [ ! -f /data/index.html ]; then
+      cat > /data/index.html <<'HTML'
+      <!doctype html><html lang="en"><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>It works</title>
+      <body style="font-family:system-ui,sans-serif;background:#0b0f14;color:#e6edf3;display:grid;place-items:center;min-height:100vh;margin:0">
+      <div style="text-align:center;max-width:32rem;padding:2rem">
+      <h1 style="font-size:2rem">🌳 Static site ready</h1>
+      <p style="color:#9aa7b4">Upload your HTML to the <b>Files</b> tab — this directory is the web root.
+      Drag &amp; drop a folder or pick multiple files.</p></div></body></html>
+      HTML
+      fi
+      echo "Static site web root ready at /usr/share/nginx/html"
+
+  startup:
+    command: ""
+    done_regex: 'start worker process|ready for start up|Configuration complete'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

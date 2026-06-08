@@ -28,7 +28,8 @@
   header.nav{position:sticky;top:0;z-index:20;background:rgba(11,15,20,.8);backdrop-filter:blur(8px);
     border-bottom:1px solid var(--border)}
   .nav .wrap{display:flex;align-items:center;gap:1rem;height:60px}
-  .brand{font-weight:700;font-size:1.15rem;display:flex;align-items:center;gap:.5rem}
+  .brand{font-weight:700;font-size:1.15rem;display:flex;align-items:center;gap:.5rem;color:var(--fg)}
+  a.brand:hover{text-decoration:none;opacity:.85}
   .nav nav{margin-left:auto;display:flex;gap:1.25rem;align-items:center}
   .nav nav a{color:var(--muted);font-size:.95rem}
   .nav nav a:hover{color:var(--fg);text-decoration:none}
@@ -96,7 +97,7 @@
 
 <header class="nav">
   <div class="wrap">
-    <span class="brand">🌳 Yggdrasil&nbsp;Panel</span>
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
     <nav>
       <a href="#features">Features</a>
       <a href="#screens">Screenshots</a>

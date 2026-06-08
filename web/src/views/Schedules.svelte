@@ -9,7 +9,13 @@
   let targets = $state([]);
   let templates = $state([]);
   let showCreate = $state(false);
+  let editingId = $state(null); // null = creating, otherwise the schedule being edited
   let form = $state(blank());
+
+  // Per-schedule run-log state (id → open / rows / loading).
+  let logsOpen = $state({});
+  let logsData = $state({});
+  let logsLoading = $state({});
 
   function blank() {
     return {
@@ -52,8 +58,32 @@
     return servers.find((s) => s.id === id)?.name || id;
   }
 
-  async function create() {
+  function openCreate() {
+    editingId = null;
+    form = blank();
+    showCreate = true;
+  }
+
+  // Pre-fill the form from an existing schedule for editing.
+  function openEdit(s) {
+    editingId = s.id;
+    form = {
+      name: s.name,
+      scope: s.server_id ? "server" : s.realm_id ? "realm" : "global",
+      server_id: s.server_id || "",
+      realm_id: s.realm_id || "",
+      cron_expr: s.cron_expr,
+      action: s.action,
+      // merge stored args over the blank defaults so every field binds cleanly
+      args: { ...blank().args, ...(s.args || {}) },
+    };
+    showCreate = true;
+  }
+
+  async function save() {
     if (!form.name) return toast("Name required", "warn");
+    if (form.scope === "server" && !form.server_id) return toast("Pick a server", "warn");
+    if (form.scope === "realm" && !form.realm_id) return toast("Pick a realm", "warn");
     const payload = {
       name: form.name,
       cron_expr: form.cron_expr,
@@ -62,8 +92,6 @@
       realm_id: form.scope === "realm" ? form.realm_id : "",
       args: {},
     };
-    if (form.scope === "server" && !form.server_id) return toast("Pick a server", "warn");
-    if (form.scope === "realm" && !form.realm_id) return toast("Pick a realm", "warn");
     // Only include relevant args per action.
     if (form.action === "backup") payload.args.target_id = form.args.target_id;
     if (form.action === "command") payload.args.command = form.args.command;
@@ -74,14 +102,46 @@
     if (form.action === "restart" || form.action === "update")
       payload.args.skip_if_players = form.args.skip_if_players;
     try {
-      await api.post("/schedules", payload);
-      toast("Schedule created", "success");
+      if (editingId) {
+        await api.put(`/schedules/${editingId}`, payload);
+        toast("Schedule updated", "success");
+      } else {
+        await api.post("/schedules", payload);
+        toast("Schedule created", "success");
+      }
       showCreate = false;
+      editingId = null;
       form = blank();
       await load();
     } catch (e) {
       toast(e.message, "error");
     }
+  }
+
+  async function toggleLog(s) {
+    const open = !logsOpen[s.id];
+    logsOpen = { ...logsOpen, [s.id]: open };
+    if (open) {
+      logsLoading = { ...logsLoading, [s.id]: true };
+      try {
+        logsData = { ...logsData, [s.id]: await api.get(`/schedules/${s.id}/runs`) };
+      } catch (e) {
+        toast(e.message, "error");
+      } finally {
+        logsLoading = { ...logsLoading, [s.id]: false };
+      }
+    }
+  }
+
+  function fmtTime(t) {
+    if (!t) return "";
+    const d = new Date(t.includes("Z") || t.includes("+") ? t : t.replace(" ", "T") + "Z");
+    return isNaN(d) ? t : d.toLocaleString();
+  }
+  function statusClass(st) {
+    if (st === "ok") return "bg-accent2/20 text-accent2";
+    if (st === "error") return "bg-danger/20 text-danger";
+    return "bg-border text-muted"; // skipped / other
   }
 
   async function toggle(s) {
@@ -119,7 +179,7 @@
 
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-semibold">Schedules</h1>
-  <button class="btn-primary" onclick={() => (showCreate = true)}>+ New schedule</button>
+  <button class="btn-primary" onclick={openCreate}>+ New schedule</button>
 </div>
 
 <div class="card divide-y divide-border">
@@ -129,18 +189,52 @@
     </div>
   {/if}
   {#each schedules as s}
-    <div class="flex items-center gap-3 px-4 py-3">
-      <div class="flex-1 min-w-0">
-        <div class="font-medium">
-          {s.name}
-          <span class="badge bg-border text-muted ml-1">{s.action}</span>
-          {#if !s.enabled}<span class="badge bg-danger/20 text-danger ml-1">disabled</span>{/if}
+    <div class="px-4 py-3">
+      <div class="flex items-center gap-2">
+        <div class="flex-1 min-w-0">
+          <div class="font-medium">
+            {s.name}
+            <span class="badge bg-border text-muted ml-1">{s.action}</span>
+            {#if !s.enabled}<span class="badge bg-danger/20 text-danger ml-1">disabled</span>{/if}
+          </div>
+          <div class="text-xs text-muted font-mono">{s.cron_expr} · {scopeLabel(s)}</div>
         </div>
-        <div class="text-xs text-muted font-mono">{s.cron_expr} · {scopeLabel(s)}</div>
+        <button class="btn-ghost px-2" onclick={() => toggleLog(s)}>{logsOpen[s.id] ? "Hide log" : "Log"}</button>
+        <button class="btn-ghost px-2" onclick={() => run(s)}>Run now</button>
+        <button class="btn-ghost px-2" onclick={() => openEdit(s)}>Edit</button>
+        <button class="btn-ghost px-2" onclick={() => toggle(s)}>{s.enabled ? "Disable" : "Enable"}</button>
+        <button class="btn-danger px-2" onclick={() => del(s)}>Delete</button>
       </div>
-      <button class="btn-ghost" onclick={() => run(s)}>Run now</button>
-      <button class="btn-ghost" onclick={() => toggle(s)}>{s.enabled ? "Disable" : "Enable"}</button>
-      <button class="btn-danger" onclick={() => del(s)}>Delete</button>
+      {#if logsOpen[s.id]}
+        <div class="mt-3 rounded-md border border-border bg-panel2/40 p-2">
+          {#if logsLoading[s.id]}
+            <div class="text-xs text-muted px-1 py-1">Loading…</div>
+          {:else if (logsData[s.id] || []).length === 0}
+            <div class="text-xs text-muted px-1 py-1">No runs yet — fires on schedule or via “Run now”.</div>
+          {:else}
+            <table class="w-full text-xs">
+              <thead class="text-muted">
+                <tr>
+                  <th class="text-left font-medium px-1 py-1">When</th>
+                  <th class="text-left font-medium px-1 py-1">Server</th>
+                  <th class="text-left font-medium px-1 py-1">Status</th>
+                  <th class="text-left font-medium px-1 py-1">Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each logsData[s.id] as run}
+                  <tr class="border-t border-border/60">
+                    <td class="px-1 py-1 whitespace-nowrap text-muted">{fmtTime(run.ran_at)}</td>
+                    <td class="px-1 py-1">{run.server_name || "—"}</td>
+                    <td class="px-1 py-1"><span class="badge {statusClass(run.status)}">{run.status}</span></td>
+                    <td class="px-1 py-1 text-muted break-all">{run.detail}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
+      {/if}
     </div>
   {/each}
 </div>
@@ -153,7 +247,7 @@
 {#if showCreate}
   <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
     <div class="card w-full max-w-lg max-h-[90vh] overflow-auto p-5 space-y-3">
-      <h2 class="text-lg font-semibold">New schedule</h2>
+      <h2 class="text-lg font-semibold">{editingId ? "Edit schedule" : "New schedule"}</h2>
       <div>
         <label class="label" for="s-name">Name</label>
         <input id="s-name" class="input" bind:value={form.name} />
@@ -240,8 +334,8 @@
       {/if}
 
       <div class="flex gap-2 pt-2">
-        <button class="btn-ghost flex-1" onclick={() => (showCreate = false)}>Cancel</button>
-        <button class="btn-primary flex-1" onclick={create}>Create schedule</button>
+        <button class="btn-ghost flex-1" onclick={() => { showCreate = false; editingId = null; }}>Cancel</button>
+        <button class="btn-primary flex-1" onclick={save}>{editingId ? "Save changes" : "Create schedule"}</button>
       </div>
     </div>
   </div>

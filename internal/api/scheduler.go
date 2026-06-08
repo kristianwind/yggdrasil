@@ -76,13 +76,14 @@ func (s *Server) reloadSchedules() {
 	c.Start()
 }
 
-// runScheduleByID loads a schedule and executes its action over its scope.
+// runScheduleByID loads a schedule and executes its action over its scope,
+// recording one schedule_runs row per target server so the UI can show a log.
 func (s *Server) runScheduleByID(id string) {
 	defer recoverLog("runScheduleByID")
-	var action, argsJSON, serverID, realmID string
+	var name, action, argsJSON, serverID, realmID string
 	err := s.db.QueryRow(
-		"SELECT action, COALESCE(args_json,'{}'), COALESCE(server_id,''), COALESCE(realm_id,'') FROM schedules WHERE id=?",
-		id).Scan(&action, &argsJSON, &serverID, &realmID)
+		"SELECT name, action, COALESCE(args_json,'{}'), COALESCE(server_id,''), COALESCE(realm_id,'') FROM schedules WHERE id=?",
+		id).Scan(&name, &action, &argsJSON, &serverID, &realmID)
 	if err != nil {
 		return
 	}
@@ -91,9 +92,25 @@ func (s *Server) runScheduleByID(id string) {
 	if args == nil {
 		args = map[string]string{}
 	}
-	for _, srv := range s.scopeServers(serverID, realmID) {
-		s.runAction(scheduler.Action(action), srv, args)
+	targets := s.scopeServers(serverID, realmID)
+	if len(targets) == 0 {
+		s.recordRun(id, name, "", "", action, "skipped", "no servers in scope")
+		return
 	}
+	for _, srv := range targets {
+		status, detail := s.runAction(scheduler.Action(action), srv, args)
+		s.recordRun(id, name, srv, s.serverName(srv), action, status, detail)
+	}
+}
+
+// recordRun appends a run-log entry and prunes to the last 100 per schedule.
+func (s *Server) recordRun(scheduleID, scheduleName, serverID, serverName, action, status, detail string) {
+	s.db.Exec(
+		"INSERT INTO schedule_runs (id, schedule_id, schedule_name, server_id, server_name, action, status, detail) VALUES (?,?,?,?,?,?,?,?)",
+		uuid.New().String(), scheduleID, scheduleName, serverID, serverName, action, status, detail)
+	s.db.Exec(`DELETE FROM schedule_runs WHERE schedule_id=? AND id NOT IN (
+		SELECT id FROM schedule_runs WHERE schedule_id=? ORDER BY ran_at DESC, rowid DESC LIMIT 100)`,
+		scheduleID, scheduleID)
 }
 
 // scopeServers resolves the target servers for a schedule: a single server, all
@@ -134,71 +151,93 @@ func (s *Server) scopeServers(serverID, realmID string) []string {
 	return ids
 }
 
-// runAction executes one scheduled action against one server.
-func (s *Server) runAction(action scheduler.Action, serverID string, args map[string]string) {
+// runAction executes one scheduled action against one server and returns a
+// (status, detail) pair for the run log: status is "ok", "skipped" or "error".
+func (s *Server) runAction(action scheduler.Action, serverID string, args map[string]string) (status, detail string) {
 	ctx := context.Background()
 	switch action {
 	case scheduler.ActionBackup:
 		target := args["target_id"]
 		if target == "" {
-			return
+			return "error", "no backup target configured"
 		}
 		backupID := uuid.New().String()
 		s.db.Exec("INSERT INTO backups (id, server_id, target_id, status) VALUES (?,?,?,'pending')",
 			backupID, serverID, target)
 		s.runBackup(serverID, target, backupID)
+		return "ok", "backup started"
 
 	case scheduler.ActionRestart:
 		if args["skip_if_players"] == "true" && s.playersOnline(serverID) > 0 {
-			return
+			return "skipped", "players online"
 		}
 		// Recreate the container (not a plain docker-restart) so a scheduled restart
 		// applies any rune/env/mod changes too, consistent with the manual restart.
-		if cid := s.containerID(serverID); cid != "" {
-			if err := s.recreateAndStart(ctx, serverID); err != nil {
-				s.docker.Restart(ctx, cid) // fall back to a plain restart on error
-			}
+		cid := s.containerID(serverID)
+		if cid == "" {
+			return "error", "no container (server not started)"
 		}
+		if err := s.recreateAndStart(ctx, serverID); err != nil {
+			s.docker.Restart(ctx, cid) // fall back to a plain restart on error
+			return "ok", "restarted (fallback after: " + err.Error() + ")"
+		}
+		return "ok", "restarted"
 
 	case scheduler.ActionStart:
-		// Reuse the HTTP path's container creation by marking intent; here we only
-		// start an existing container. Full (re)create happens via the API.
-		if cid := s.containerID(serverID); cid != "" {
-			s.docker.Start(ctx, cid)
-			s.db.Exec("UPDATE servers SET status='running' WHERE id=?", serverID)
+		cid := s.containerID(serverID)
+		if cid == "" {
+			return "error", "no container to start"
 		}
+		if err := s.docker.Start(ctx, cid); err != nil {
+			return "error", err.Error()
+		}
+		s.db.Exec("UPDATE servers SET status='running' WHERE id=?", serverID)
+		return "ok", "started"
 
 	case scheduler.ActionStop:
-		if cid := s.containerID(serverID); cid != "" {
-			s.docker.Stop(ctx, cid, 30)
-			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", serverID)
+		cid := s.containerID(serverID)
+		if cid == "" {
+			return "skipped", "already stopped (no container)"
 		}
+		if err := s.docker.Stop(ctx, cid, 30); err != nil {
+			return "error", err.Error()
+		}
+		s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", serverID)
+		return "ok", "stopped"
 
 	case scheduler.ActionCommand:
-		if cmd := args["command"]; cmd != "" {
-			s.sendToServer(serverID, cmd)
+		cmd := args["command"]
+		if cmd == "" {
+			return "skipped", "no command configured"
 		}
+		s.sendToServer(serverID, cmd)
+		return "ok", "sent: " + cmd
 
 	case scheduler.ActionMessage:
 		body := args["text"]
 		if tid := args["template_id"]; tid != "" {
 			s.db.QueryRow("SELECT body FROM message_templates WHERE id=?", tid).Scan(&body)
 		}
-		if body != "" {
-			vars := map[string]string{
-				"server_name": s.serverName(serverID),
-				"minutes":     args["minutes"],
-				"seconds":     args["seconds"],
-			}
-			s.sendToServer(serverID, scheduler.Render(body, vars))
+		if body == "" {
+			return "skipped", "no message body"
 		}
+		vars := map[string]string{
+			"server_name": s.serverName(serverID),
+			"minutes":     args["minutes"],
+			"seconds":     args["seconds"],
+		}
+		rendered := scheduler.Render(body, vars)
+		s.sendToServer(serverID, rendered)
+		return "ok", "message sent: " + rendered
 
 	case scheduler.ActionUpdate:
 		if args["skip_if_players"] == "true" && s.playersOnline(serverID) > 0 {
-			return
+			return "skipped", "players online"
 		}
 		s.runInstall(serverID) //nolint:errcheck
+		return "ok", "update/reinstall started"
 	}
+	return "error", "unknown action: " + string(action)
 }
 
 // sendToServer delivers a command to a server via RCON, falling back to the

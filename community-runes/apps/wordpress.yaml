@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS (needs a MariaDB or MySQL rune)"
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -37,9 +37,30 @@ gameskill:
 
   install:
     image: "wordpress:latest"
+    # Seed an .htaccess that raises PHP upload limits (plugin/theme/media uploads).
+    # It lives in the webroot (mounted), so it survives container recreation; the
+    # block sits above WordPress's own # BEGIN/END WordPress section, which WP
+    # preserves when it manages permalinks. Apache mod_php reads php_value directives.
     script: |
       mkdir -p /data
-      echo "WordPress webroot directory ready"
+      if ! grep -q "Yggdrasil upload limits" /data/.htaccess 2>/dev/null; then
+        {
+          echo "# BEGIN Yggdrasil upload limits"
+          echo "<IfModule mod_php.c>"
+          echo "php_value upload_max_filesize 128M"
+          echo "php_value post_max_size 128M"
+          echo "php_value memory_limit 256M"
+          echo "php_value max_execution_time 300"
+          echo "php_value max_input_time 300"
+          echo "</IfModule>"
+          echo "# END Yggdrasil upload limits"
+          echo ""
+          [ -f /data/.htaccess ] && cat /data/.htaccess
+        } > /data/.htaccess.ygg && mv /data/.htaccess.ygg /data/.htaccess
+        chown 33:33 /data/.htaccess 2>/dev/null || true
+        chmod 644 /data/.htaccess
+      fi
+      echo "WordPress webroot ready (PHP upload limit raised to 128M)"
 
   startup:
     command: ""

@@ -78,6 +78,18 @@
   footer .wrap{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between}
   .warn{background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.35);color:#eab308;
     border-radius:.6rem;padding:.8rem 1rem;font-size:.85rem;max-width:48rem;margin:1.5rem auto 0;text-align:center}
+
+  /* clickable screenshots + lightbox */
+  .shots img,.shot-hero img{cursor:zoom-in;transition:transform .15s}
+  .shots figure:hover img{transform:scale(1.01)}
+  #lb{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.92);display:none;
+    place-items:center;padding:2rem;cursor:zoom-out}
+  #lb.open{display:grid}
+  #lb img{max-width:96vw;max-height:92vh;border-radius:.6rem;border:1px solid var(--border);
+    box-shadow:0 30px 80px -20px rgba(0,0,0,.8)}
+  #lb .x{position:fixed;top:1rem;right:1.4rem;color:#fff;font-size:2.2rem;line-height:1;
+    background:none;border:0;cursor:pointer;opacity:.85}
+  #lb .x:hover{opacity:1}
 </style>
 </head>
 <body>
@@ -192,6 +204,24 @@
     <a href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">github.com/kristianwind/yggdrasil ↗</a>
   </div>
 </footer>
+
+<!-- Lightbox: click any screenshot to view it full-size; click / Esc to close. -->
+<div id="lb" aria-hidden="true">
+  <button class="x" aria-label="Close">×</button>
+  <img alt="" />
+</div>
+<script>
+  (function () {
+    var lb = document.getElementById("lb"), img = lb.querySelector("img");
+    function open(src, alt) { img.src = src; img.alt = alt || ""; lb.classList.add("open"); lb.setAttribute("aria-hidden", "false"); }
+    function close() { lb.classList.remove("open"); lb.setAttribute("aria-hidden", "true"); img.removeAttribute("src"); }
+    document.querySelectorAll(".shots img, .shot-hero img").forEach(function (el) {
+      el.addEventListener("click", function () { open(el.currentSrc || el.src, el.alt); });
+    });
+    lb.addEventListener("click", close);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+  })();
+</script>
 
 </body>
 </html>

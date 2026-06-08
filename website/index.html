@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Yggdrasil Panel — self-hosted game &amp; app server control panel</title>
+<meta name="description" content="Yggdrasil Panel is a self-hosted game & app server control panel for Debian/Ubuntu (Docker). One binary, one-command install, one-click Runes for games and homelab apps." />
+<meta property="og:title" content="Yggdrasil Panel" />
+<meta property="og:description" content="Self-hosted game & app server control panel (Docker). One binary, one-command install, one-click Runes." />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#0b0f14; --bg2:#10161e; --panel:#141b24; --panel2:#1b2530;
+    --border:#243040; --fg:#e6edf3; --muted:#9aa7b4;
+    --accent:#22c55e; --accent2:#34d399;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--fg);line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 1.25rem}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  /* nav */
+  header.nav{position:sticky;top:0;z-index:20;background:rgba(11,15,20,.8);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border)}
+  .nav .wrap{display:flex;align-items:center;gap:1rem;height:60px}
+  .brand{font-weight:700;font-size:1.15rem;display:flex;align-items:center;gap:.5rem}
+  .nav nav{margin-left:auto;display:flex;gap:1.25rem;align-items:center}
+  .nav nav a{color:var(--muted);font-size:.95rem}
+  .nav nav a:hover{color:var(--fg);text-decoration:none}
+  .btn{display:inline-block;background:var(--accent);color:#04210f;font-weight:600;
+    padding:.6rem 1rem;border-radius:.6rem;border:0;cursor:pointer}
+  .btn:hover{text-decoration:none;filter:brightness(1.05)}
+  .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--border)}
+
+  /* hero */
+  .hero{padding:5rem 0 3rem;text-align:center;
+    background:radial-gradient(60rem 30rem at 50% -10%, rgba(34,197,94,.12), transparent 70%)}
+  .hero h1{font-size:clamp(2.2rem,6vw,3.6rem);margin:.2rem 0 .6rem;letter-spacing:-.02em}
+  .hero .tag{font-size:clamp(1.05rem,2.5vw,1.4rem);color:var(--muted);max-width:42rem;margin:0 auto 1.6rem}
+  .hero .cta{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;margin-bottom:2rem}
+  .install{display:inline-flex;align-items:center;gap:.75rem;background:var(--panel);border:1px solid var(--border);
+    border-radius:.6rem;padding:.7rem 1rem;max-width:100%;overflow:auto}
+  .install code{color:var(--accent2);white-space:nowrap}
+  .copy{background:var(--panel2);border:1px solid var(--border);color:var(--muted);border-radius:.4rem;
+    padding:.25rem .55rem;cursor:pointer;font-size:.8rem}
+  .copy:hover{color:var(--fg)}
+
+  /* sections */
+  section{padding:3.5rem 0}
+  h2{font-size:clamp(1.6rem,3.5vw,2.1rem);text-align:center;margin:0 0 .4rem;letter-spacing:-.01em}
+  .sub{text-align:center;color:var(--muted);max-width:40rem;margin:0 auto 2.5rem}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:.8rem;padding:1.25rem}
+  .card .ic{font-size:1.6rem}
+  .card h3{margin:.5rem 0 .3rem;font-size:1.1rem}
+  .card p{margin:0;color:var(--muted);font-size:.95rem}
+
+  /* shots */
+  .shot-hero{margin:2rem auto 0;max-width:960px;border:1px solid var(--border);border-radius:.9rem;
+    overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.7)}
+  .shot-hero img{display:block;width:100%}
+  .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+  .shots figure{margin:0;background:var(--panel);border:1px solid var(--border);border-radius:.8rem;overflow:hidden}
+  .shots img{display:block;width:100%;border-bottom:1px solid var(--border)}
+  .shots figcaption{padding:.6rem .9rem;color:var(--muted);font-size:.85rem}
+
+  .tag-pills{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin-top:1.5rem}
+  .pill{background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:.35rem .85rem;
+    color:var(--muted);font-size:.85rem}
+
+  footer{border-top:1px solid var(--border);padding:2.5rem 0;color:var(--muted);font-size:.9rem}
+  footer .wrap{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between}
+  .warn{background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.35);color:#eab308;
+    border-radius:.6rem;padding:.8rem 1rem;font-size:.85rem;max-width:48rem;margin:1.5rem auto 0;text-align:center}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <span class="brand">🌳 Yggdrasil&nbsp;Panel</span>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#screens">Screenshots</a>
+      <a href="#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div style="font-size:3.5rem">🌳</div>
+    <h1>Yggdrasil Panel</h1>
+    <p class="tag">A self-hosted <b>game &amp; app server control panel</b> for Debian/Ubuntu — think
+      AMP + Pterodactyl, but radically easier to install, update and maintain. And not just for games:
+      run databases and homelab apps from the same one-click <b>Runes</b>.</p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">View on GitHub</a>
+      <a class="btn ghost" href="#features">Explore features</a>
+    </div>
+    <div class="install">
+      <code id="cmd">curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash</code>
+      <button class="copy" onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button>
+    </div>
+    <div class="shot-hero">
+      <img src="screenshots/dashboard.png" alt="Yggdrasil Panel dashboard" loading="lazy" />
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Everything in one binary</h2>
+    <p class="sub">A single static Go binary with the web UI embedded — no separate database, no Redis,
+      no required reverse proxy. The installer handles Docker and everything else.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">📦</div><h3>One binary, one command</h3>
+        <p>One static binary + embedded PWA + SQLite. Install with a single command; updating is just swap &amp; restart.</p></div>
+      <div class="card"><div class="ic">ᚱ</div><h3>Runes for everything</h3>
+        <p>A game <i>or</i> app = one declarative YAML “Rune”. Minecraft, Rust, DayZ built in; a library of
+          community runes (databases + homelab apps) one click away.</p></div>
+      <div class="card"><div class="ic">🖥️</div><h3>Real-time console &amp; stats</h3>
+        <p>Live WebSocket console with command input, log streaming, per-server CPU/RAM limits and monitoring,
+          and a clear installing → running → stopped lifecycle.</p></div>
+      <div class="card"><div class="ic">🌐</div><h3>Networking that just works</h3>
+        <p>Automatic port-forwarding (UPnP / UniFi), per-server subdomains via Nginx Proxy Manager or
+          Cloudflare Tunnel, an “online from outside” check, and connect addresses per server.</p></div>
+      <div class="card"><div class="ic">💾</div><h3>Backups &amp; scheduler</h3>
+        <p>Backups to local / SFTP / SMB with retention &amp; restore. Cron schedules for restarts, updates,
+          backups, console commands and in-game warnings — with a run log.</p></div>
+      <div class="card"><div class="ic">🔐</div><h3>Access &amp; security</h3>
+        <p>Multiple admins with scoped permissions, optional 2FA, API tokens, a full audit log.
+          Secrets encrypted at rest (AES-256-GCM); argon2id passwords.</p></div>
+    </div>
+
+    <div class="tag-pills">
+      <span class="pill">Minecraft Java &amp; Bedrock</span>
+      <span class="pill">Rust</span>
+      <span class="pill">DayZ + Workshop mods</span>
+      <span class="pill">Vaultwarden</span>
+      <span class="pill">Gitea</span>
+      <span class="pill">Uptime Kuma</span>
+      <span class="pill">Grafana</span>
+      <span class="pill">Nextcloud</span>
+      <span class="pill">PostgreSQL / MariaDB / MongoDB</span>
+      <span class="pill">…and a growing catalog</span>
+    </div>
+  </div>
+</section>
+
+<section id="screens" style="background:var(--bg2)">
+  <div class="wrap">
+    <h2>See it in action</h2>
+    <p class="sub">Installable PWA, dark mode, mobile-friendly — works as an app on iOS/Android.</p>
+    <div class="shots">
+      <figure><img src="screenshots/servers.png" alt="Servers" loading="lazy" /><figcaption>Servers — grid/table, reachability badges</figcaption></figure>
+      <figure><img src="screenshots/runes.png" alt="Runes" loading="lazy" /><figcaption>Runes — one-click games &amp; apps</figcaption></figure>
+      <figure><img src="screenshots/server-console.png" alt="Console" loading="lazy" /><figcaption>Real-time console &amp; logs</figcaption></figure>
+      <figure><img src="screenshots/schedules.png" alt="Schedules" loading="lazy" /><figcaption>Schedules — cron automation with run log</figcaption></figure>
+      <figure><img src="screenshots/settings.png" alt="Settings" loading="lazy" /><figcaption>Settings — network, backups, integrations</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap" style="text-align:center">
+    <h2>Get started</h2>
+    <p class="sub">On a fresh Debian/Ubuntu box, run one command. The installer detects your distro,
+      installs Docker if missing, creates a service user, and prints your login URL + admin password.</p>
+    <div class="install" style="margin:0 auto">
+      <code id="cmd2">curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash</code>
+      <button class="copy" onclick="navigator.clipboard.writeText(document.getElementById('cmd2').textContent);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button>
+    </div>
+    <div style="margin-top:1.5rem">
+      <a class="btn" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">Read the docs on GitHub →</a>
+    </div>
+    <div class="warn">⚠️ Early development &amp; built with Claude Code. Provided <b>as-is</b>, with no warranty
+      and no liability whatsoever — you use it entirely at your own risk.</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>🌳 Yggdrasil Panel — self-hosted game &amp; app server control panel.</span>
+    <a href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">github.com/kristianwind/yggdrasil ↗</a>
+  </div>
+</footer>
+
+</body>
+</html>

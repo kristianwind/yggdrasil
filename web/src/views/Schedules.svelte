@@ -190,20 +190,22 @@
   {/if}
   {#each schedules as s}
     <div class="px-4 py-3">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div class="flex-1 min-w-0">
           <div class="font-medium">
             {s.name}
             <span class="badge bg-border text-muted ml-1">{s.action}</span>
             {#if !s.enabled}<span class="badge bg-danger/20 text-danger ml-1">disabled</span>{/if}
           </div>
-          <div class="text-xs text-muted font-mono">{s.cron_expr} · {scopeLabel(s)}</div>
+          <div class="text-xs text-muted font-mono break-words">{s.cron_expr} · {scopeLabel(s)}</div>
         </div>
-        <button class="btn-ghost px-2" onclick={() => toggleLog(s)}>{logsOpen[s.id] ? "Hide log" : "Log"}</button>
-        <button class="btn-ghost px-2" onclick={() => run(s)}>Run now</button>
-        <button class="btn-ghost px-2" onclick={() => openEdit(s)}>Edit</button>
-        <button class="btn-ghost px-2" onclick={() => toggle(s)}>{s.enabled ? "Disable" : "Enable"}</button>
-        <button class="btn-danger px-2" onclick={() => del(s)}>Delete</button>
+        <div class="flex flex-wrap gap-2 sm:justify-end sm:shrink-0">
+          <button class="btn-ghost px-2" onclick={() => toggleLog(s)}>{logsOpen[s.id] ? "Hide log" : "Log"}</button>
+          <button class="btn-ghost px-2" onclick={() => run(s)}>Run now</button>
+          <button class="btn-ghost px-2" onclick={() => openEdit(s)}>Edit</button>
+          <button class="btn-ghost px-2" onclick={() => toggle(s)}>{s.enabled ? "Disable" : "Enable"}</button>
+          <button class="btn-danger px-2" onclick={() => del(s)}>Delete</button>
+        </div>
       </div>
       {#if logsOpen[s.id]}
         <div class="mt-3 rounded-md border border-border bg-panel2/40 p-2">

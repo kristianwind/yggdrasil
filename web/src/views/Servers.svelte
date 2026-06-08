@@ -166,23 +166,24 @@
     <h2 class="text-sm uppercase tracking-wide text-muted mt-6 mb-2">{realm}</h2>
     {#if view === "table"}
       <div class="card overflow-x-auto">
-        <table class="w-full text-sm">
+        <!-- Fixed layout + identical column widths so every rune group's table aligns. -->
+        <table class="w-full text-sm" style="table-layout:fixed">
           <thead class="text-muted text-xs uppercase tracking-wide border-b border-border">
             <tr>
-              <th class="text-left font-medium px-4 py-2">Name</th>
-              <th class="text-left font-medium px-4 py-2">Rune</th>
-              <th class="text-left font-medium px-4 py-2">Status</th>
-              <th class="text-left font-medium px-4 py-2 hidden sm:table-cell">Ports</th>
-              <th class="text-right font-medium px-4 py-2">Actions</th>
+              <th class="text-left font-medium px-4 py-2" style="width:22%">Name</th>
+              <th class="text-left font-medium px-4 py-2" style="width:18%">Rune</th>
+              <th class="text-left font-medium px-4 py-2" style="width:16%">Status</th>
+              <th class="text-left font-medium px-4 py-2 hidden sm:table-cell" style="width:28%">Ports</th>
+              <th class="text-right font-medium px-4 py-2" style="width:16%">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border">
             {#each list as s}
               <tr class="hover:bg-panel2/40">
-                <td class="px-4 py-2">
+                <td class="px-4 py-2 truncate">
                   <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
                 </td>
-                <td class="px-4 py-2 text-muted">{s.gameskill_id}</td>
+                <td class="px-4 py-2 text-muted truncate">{s.gameskill_id}</td>
                 <td class="px-4 py-2 whitespace-nowrap">
                   <span
                     class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"

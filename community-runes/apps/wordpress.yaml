@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS (needs a MariaDB or MySQL rune)"
   author: "yggdrasil-community"
-  version: 2
+  version: 3
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -16,24 +16,28 @@ gameskill:
     user: "0:0"
 
   variables:
-    # Point these at a MariaDB/PostgreSQL rune's connect address (host:port form
-    # for the host, e.g. "192.168.1.50:25080"). Create that DB server first.
+    # IMPORTANT: create a MariaDB (or MySQL) rune FIRST, then point these at it.
+    # Yggdrasil publishes each DB container's 3306 on a RANDOM host port (see the
+    # DB server's Ports, e.g. db:25003) — containers reach each other via the host's
+    # LAN IP + that published port, NOT :3306. So the host is "<LAN-IP>:<db port>".
+    # User/password/name must match the DB rune's MARIADB_USER / MARIADB_PASSWORD
+    # (the app user — NOT the root password) / MARIADB_DATABASE.
     - key: WORDPRESS_DB_HOST
-      name: "Database host (host:port)"
+      name: "DB host:port — DB server's LAN IP + its published port (e.g. 192.168.1.50:25003), NOT 3306"
       type: string
-      default: "mariadb:3306"
+      default: ""
     - key: WORDPRESS_DB_USER
-      name: "Database user"
+      name: "DB user — the DB rune's MARIADB_USER (app user, not root)"
       type: string
-      default: "app"
+      default: ""
     - key: WORDPRESS_DB_PASSWORD
-      name: "Database password"
+      name: "DB password — the DB rune's MARIADB_PASSWORD (not the root password)"
       type: string
-      default: "change-me"
+      default: ""
     - key: WORDPRESS_DB_NAME
-      name: "Database name"
+      name: "DB name — the DB rune's MARIADB_DATABASE"
       type: string
-      default: "appdb"
+      default: ""
 
   install:
     image: "wordpress:latest"

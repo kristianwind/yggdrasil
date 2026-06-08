@@ -117,9 +117,16 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateSchedule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	// All fields optional: a plain toggle sends {enabled}, while a full edit sends
+	// name/cron/action/scope/args. Pointers let us tell "omitted" from "set empty".
 	var req struct {
-		Enabled *bool   `json:"enabled"`
-		Cron    *string `json:"cron_expr"`
+		Enabled  *bool              `json:"enabled"`
+		Name     *string            `json:"name"`
+		Cron     *string            `json:"cron_expr"`
+		Action   *string            `json:"action"`
+		ServerID *string            `json:"server_id"`
+		RealmID  *string            `json:"realm_id"`
+		Args     *map[string]string `json:"args"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -129,19 +136,89 @@ func (s *Server) handleUpdateSchedule(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "admin required", http.StatusForbidden)
 		return
 	}
-	if req.Enabled != nil {
-		s.db.ExecContext(r.Context(), "UPDATE schedules SET enabled=? WHERE id=?", boolToInt(*req.Enabled), id)
+	var exists int
+	if err := s.db.QueryRowContext(r.Context(), "SELECT 1 FROM schedules WHERE id=?", id).Scan(&exists); err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if req.Action != nil && !scheduler.ValidAction(scheduler.Action(*req.Action)) {
+		jsonError(w, "invalid action: "+*req.Action, http.StatusBadRequest)
+		return
 	}
 	if req.Cron != nil {
 		if err := scheduler.ValidateCron(*req.Cron); err != nil {
 			jsonError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+	}
+	if req.Enabled != nil {
+		s.db.ExecContext(r.Context(), "UPDATE schedules SET enabled=? WHERE id=?", boolToInt(*req.Enabled), id)
+	}
+	if req.Name != nil {
+		s.db.ExecContext(r.Context(), "UPDATE schedules SET name=? WHERE id=?", *req.Name, id)
+	}
+	if req.Cron != nil {
 		s.db.ExecContext(r.Context(), "UPDATE schedules SET cron_expr=? WHERE id=?", *req.Cron, id)
+	}
+	if req.Action != nil {
+		s.db.ExecContext(r.Context(), "UPDATE schedules SET action=? WHERE id=?", *req.Action, id)
+	}
+	if req.ServerID != nil {
+		s.db.ExecContext(r.Context(), "UPDATE schedules SET server_id=? WHERE id=?", nullableStr(*req.ServerID), id)
+	}
+	if req.RealmID != nil {
+		s.db.ExecContext(r.Context(), "UPDATE schedules SET realm_id=? WHERE id=?", nullableStr(*req.RealmID), id)
+	}
+	if req.Args != nil {
+		argsJSON, _ := json.Marshal(*req.Args)
+		s.db.ExecContext(r.Context(), "UPDATE schedules SET args_json=? WHERE id=?", string(argsJSON), id)
 	}
 	s.auditLog(r, "schedule.update", "schedule:"+id, nil)
 	s.reloadSchedules()
 	jsonOK(w, map[string]string{"status": "updated"})
+}
+
+// handleScheduleRuns returns the recent execution log for a schedule.
+func (s *Server) handleScheduleRuns(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	// Authorize like the list: admin for realm/global, ServerSchedule for server-scoped.
+	var serverID string
+	if err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(server_id,'') FROM schedules WHERE id=?", id).Scan(&serverID); err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if serverID == "" {
+		if !isAdmin(r) {
+			jsonError(w, "admin required", http.StatusForbidden)
+			return
+		}
+	} else if !s.can(w, r, rbac.ServerSchedule, s.serverTarget(r.Context(), serverID)) {
+		return
+	}
+	rows, err := s.db.QueryContext(r.Context(),
+		`SELECT COALESCE(server_name,''), COALESCE(action,''), COALESCE(status,''), COALESCE(detail,''), ran_at
+		 FROM schedule_runs WHERE schedule_id=? ORDER BY ran_at DESC, rowid DESC LIMIT 50`, id)
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	type runView struct {
+		ServerName string `json:"server_name"`
+		Action     string `json:"action"`
+		Status     string `json:"status"`
+		Detail     string `json:"detail"`
+		RanAt      string `json:"ran_at"`
+	}
+	list := []runView{}
+	for rows.Next() {
+		var v runView
+		if err := rows.Scan(&v.ServerName, &v.Action, &v.Status, &v.Detail, &v.RanAt); err != nil {
+			continue
+		}
+		list = append(list, v)
+	}
+	jsonOK(w, list)
 }
 
 func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {

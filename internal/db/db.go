@@ -112,6 +112,19 @@ CREATE TABLE IF NOT EXISTS schedules (
 	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS schedule_runs (
+	id            TEXT PRIMARY KEY,
+	schedule_id   TEXT NOT NULL,
+	schedule_name TEXT,
+	server_id     TEXT,
+	server_name   TEXT,
+	action        TEXT,
+	status        TEXT,            -- ok | error | skipped
+	detail        TEXT,
+	ran_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_runs_sid ON schedule_runs(schedule_id, ran_at);
+
 CREATE TABLE IF NOT EXISTS audit_log (
 	id          TEXT PRIMARY KEY,
 	user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,

@@ -14,6 +14,7 @@
   import Settings from "./views/Settings.svelte";
   import Schedules from "./views/Schedules.svelte";
   import Bans from "./views/Bans.svelte";
+  import Domains from "./views/Domains.svelte";
 
   let ready = $state(false);
   let build = $state(null); // { version, repo }
@@ -36,6 +37,7 @@
     { path: "/servers", label: "Servers", icon: "🖥️" },
     { path: "/runes", label: "Runes", icon: "ᚱ" },
     { path: "/schedules", label: "Schedules", icon: "⏰" },
+    { path: "/domains", label: "Domains", icon: "🌐" },
     { path: "/bans", label: "Bans", icon: "🚫", admin: true },
     { path: "/users", label: "Users", icon: "👥", admin: true },
     { path: "/audit", label: "Audit log", icon: "📜", admin: true },
@@ -142,6 +144,8 @@
           <Runes />
         {:else if $route.parts[0] === "schedules"}
           <Schedules />
+        {:else if $route.parts[0] === "domains"}
+          <Domains />
         {:else if $route.parts[0] === "bans"}
           <Bans />
         {:else if $route.parts[0] === "users"}

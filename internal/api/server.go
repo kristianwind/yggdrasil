@@ -157,6 +157,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/logs", s.handleServerLogs) // WebSocket
 		r.Get("/api/servers/{id}/console", s.handleConsole) // WebSocket
 
+		// Domains overview (NPM / Cloudflare subdomains; RBAC-filtered like the server list)
+		r.Get("/api/domains", s.handleListDomains)
+		r.Get("/api/domains/{id}/check", s.handleCheckDomain)
+
 		// Files
 		r.Get("/api/servers/{id}/files", s.handleListFiles)
 		r.Get("/api/servers/{id}/files/content", s.handleReadFile)

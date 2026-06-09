@@ -30,13 +30,25 @@ func (s *Server) repairDataPerms(ctx context.Context, serverID, relPath string) 
 	}
 	// Hand the whole tree back to the panel user, and ensure the specific target
 	// is writable. Best-effort: ignore errors inside the container.
+	//
+	// SECURITY: relPath is user-controlled and this runs as root via /bin/sh -c, so
+	// it MUST be shell-single-quoted. Go's %q emits double quotes, which leave $(),
+	// backticks and $VAR active — that was a root command-injection vector.
 	script := fmt.Sprintf(
-		"chown -R %d:%d /data 2>/dev/null || true; chmod -f u+rw %q 2>/dev/null || true; chmod -f u+rwx %q 2>/dev/null || true",
+		"chown -R %d:%d /data 2>/dev/null || true; chmod -f u+rw %s 2>/dev/null || true; chmod -f u+rwx %s 2>/dev/null || true",
 		os.Getuid(), os.Getgid(),
-		"/data/"+relPath, "/data/"+filepath.Dir(relPath))
+		shellSingleQuote("/data/"+relPath), shellSingleQuote("/data/"+filepath.Dir(relPath)))
 	return s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
 		Image: image, DataDir: dataDir, Script: script, User: "0:0", // root so chown works
 	}, io.Discard)
+}
+
+// shellSingleQuote wraps s in single quotes safe for /bin/sh, escaping embedded
+// single quotes. Inside single quotes the shell treats everything literally, so
+// $(), backticks, $VAR and ; cannot inject — use this for any user-controlled
+// value interpolated into a shell command string.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // safeJoin resolves rel against the server's data dir and guarantees the result

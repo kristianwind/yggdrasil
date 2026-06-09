@@ -104,13 +104,16 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// Gameskills (Runes)
 		r.Get("/api/gameskills", s.handleListGameskills)
-		r.Post("/api/gameskills", s.handleUploadGameskill)
-		r.Post("/api/gameskills/import-egg", s.handleImportEgg)
-		r.Post("/api/gameskills/import-xml", s.handleImportXML)
-		r.Get("/api/gameskills/github", s.handleGithubRunes)
-		r.Post("/api/gameskills/install-from-github", s.handleInstallGithubRune)
+		// Rune (gameskill) management is admin-only: a rune fully controls the Docker
+		// runtime (image, command, user, capabilities, devices, mounts), so letting a
+		// non-admin upload/import/delete one is a privilege-escalation path.
+		r.Post("/api/gameskills", s.requireAdmin(s.handleUploadGameskill))
+		r.Post("/api/gameskills/import-egg", s.requireAdmin(s.handleImportEgg))
+		r.Post("/api/gameskills/import-xml", s.requireAdmin(s.handleImportXML))
+		r.Get("/api/gameskills/github", s.requireAdmin(s.handleGithubRunes))
+		r.Post("/api/gameskills/install-from-github", s.requireAdmin(s.handleInstallGithubRune))
 		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
-		r.Delete("/api/gameskills/{id}", s.handleDeleteGameskill)
+		r.Delete("/api/gameskills/{id}", s.requireAdmin(s.handleDeleteGameskill))
 
 		// API tokens (for automation)
 		r.Get("/api/tokens", s.handleListTokens)
@@ -141,8 +144,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/dayz/import-mod-types", s.handleDayzImportModTypes)
 		r.Post("/api/servers/{id}/dayz/reset", s.handleDayzResetNorn)
 		r.Post("/api/servers/{id}/rcon", s.handleServerRcon)
-		r.Get("/api/servers/{id}/logs", s.handleServerLogs)     // WebSocket
-		r.Get("/api/servers/{id}/console", s.handleConsole)     // WebSocket
+		r.Get("/api/servers/{id}/logs", s.handleServerLogs) // WebSocket
+		r.Get("/api/servers/{id}/console", s.handleConsole) // WebSocket
 
 		// Files
 		r.Get("/api/servers/{id}/files", s.handleListFiles)

@@ -78,6 +78,14 @@ func (s *Server) handleUploadGameskill(w http.ResponseWriter, r *http.Request) {
 		id = uuid.New().String()
 	}
 
+	// Never let an uploaded rune overwrite a built-in one — that would let someone
+	// backdoor a rune already in use by running servers.
+	var builtin int
+	if s.db.QueryRowContext(r.Context(), "SELECT builtin FROM gameskills WHERE id=?", id).Scan(&builtin) == nil && builtin == 1 {
+		jsonError(w, "cannot overwrite a built-in rune; use a different id", http.StatusConflict)
+		return
+	}
+
 	_, err = s.db.ExecContext(r.Context(), `
 		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin)
 		VALUES (?,?,?,?,?,0)

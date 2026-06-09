@@ -21,9 +21,9 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
 ### Live versions
 | Where | Version |
 |---|---|
-| Latest GitHub tag | **v0.2.85** |
-| VM (`192.168.1.158`) — GAME server | **v0.2.85** ✅ |
-| VM (`192.168.1.164`) — PRODUCTION | **v0.2.85** ✅ |
+| Latest GitHub tag | **v0.2.86** |
+| VM (`192.168.1.158`) — GAME server | **v0.2.86** ✅ |
+| VM (`192.168.1.164`) — PRODUCTION | **v0.2.86** ✅ |
 
 > **Server roles (2026-06-09):** `.164` = **production** (public apps, WordPress, Vaultwarden,
 > panel.nolimit.dk); `.158` = **game** server (live game servers landing soon). Both
@@ -47,6 +47,15 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
   password on the command line. `git push origin main` is blocked → use a PR branch + `gh pr merge`.
 
 ### Session 2026-06-09 — what shipped since v0.2.82
+- **v0.2.86** (a) Delegates see/create only permitted runes: `GET /api/gameskills` returns
+  per-rune `creatable`; Runes page hides non-creatable runes + admin-only import actions; create
+  modal + per-rune Create button honor it. (b) Password generator (show/generate/copy, `PasswordField.svelte`)
+  on new-user + secret-looking server env fields. (c) **MongoDB rune → 4.4** (was mongo:7) — Mongo 5+
+  needs CPU AVX, which the default Proxmox/QEMU VM CPU lacks → "Illegal instruction (core dumped)".
+  Re-imported to `.158`'s live panel. **Open: the "Genshin Impact DB" server (mongodb, stopped) on
+  `.158` must be Started (recreates the container on mongo:4.4); if it ever ran on mongo:7 and wrote
+  data, 4.4 can't downgrade-read it → clear its `/data/db` first.** To run newer Mongo: set the
+  Proxmox VM CPU type to "host" + reboot, then bump the rune image.
 - **v0.2.83** Domains overview (NPM/Cloudflare phase 2): Domains nav page listing every routed
   domain (server × provider) with provisioned + live reachability badges. `GET /api/domains` +
   `GET /api/domains/{id}/check?provider=` (domain derived server-side; 30s cache).

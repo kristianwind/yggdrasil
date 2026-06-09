@@ -101,18 +101,35 @@
     return p[p.length - 1] || b.id;
   }
 
-  // Norn — DayZ loot economy / despawn helper (only shown for DayZ servers).
+  // can(perm) — does the caller hold this permission on this server? The API
+  // attaches `perms` (effective permissions; admins get all). Drives which tabs
+  // and action buttons a delegated user sees, so they never face a button that
+  // would just 403.
+  const can = (p) => server?.perms?.includes(p) ?? false;
+
+  // Tabs are filtered to what the caller may actually do (Norn/Mods are DayZ-only
+  // and need write access; Install log only needs view).
   let tabs = $derived(
     [
-      ["console", "Console"],
-      ["files", "Files"],
-      ["backups", "Backups"],
-      ["settings", "Settings"],
-      ["anticheat", "Anti-cheat"],
-      ...(server?.gameskill_id === "dayz" ? [["mods", "Mods"], ["norn", "Norn (loot)"]] : []),
+      ...(can("server.console") ? [["console", "Console"]] : []),
+      ...(can("server.files") ? [["files", "Files"]] : []),
+      ...(can("server.backup") ? [["backups", "Backups"]] : []),
+      ...(can("server.control") ? [["settings", "Settings"]] : []),
+      ...(can("server.files") ? [["anticheat", "Anti-cheat"]] : []),
+      ...(server?.gameskill_id === "dayz" && can("server.control")
+        ? [["mods", "Mods"], ["norn", "Norn (loot)"]]
+        : []),
       ["install", "Install log"],
     ],
   );
+
+  // Keep the active tab valid as perms/tabs resolve — if the current tab isn't
+  // available to this user, fall back to the first one they can see.
+  $effect(() => {
+    if (tabs.length && !tabs.some(([k]) => k === tab)) {
+      tab = tabs[0][0];
+    }
+  });
   let economy = $state(null);
   let modLoot = $state(null);
   let nornBusy = $state(false);
@@ -534,20 +551,26 @@
   </div>
   <div class="text-muted text-sm mb-4">{server.gameskill_id}</div>
 
-  <!-- Controls + live stats -->
+  <!-- Controls + live stats (each gated on the caller's permissions) -->
   <div class="flex flex-wrap items-center gap-2 mb-4">
     {#if !server.installed}
-      <button class="btn-primary" onclick={runInstall} disabled={server.install_status === "installing"}>
-        {server.install_status === "installing" ? "Installing…" : server.install_status === "error" ? "Retry install" : "Install"}
-      </button>
+      {#if can("server.control")}
+        <button class="btn-primary" onclick={runInstall} disabled={server.install_status === "installing"}>
+          {server.install_status === "installing" ? "Installing…" : server.install_status === "error" ? "Retry install" : "Install"}
+        </button>
+      {/if}
     {:else if (server.status === "running" || server.status === "starting")}
-      <button class="btn-ghost" onclick={() => action("restart")}>Restart</button>
-      <button class="btn-ghost" onclick={() => action("stop")}>Stop</button>
-    {:else}
+      {#if can("server.control")}
+        <button class="btn-ghost" onclick={() => action("restart")}>Restart</button>
+        <button class="btn-ghost" onclick={() => action("stop")}>Stop</button>
+      {/if}
+    {:else if can("server.control")}
       <button class="btn-primary" onclick={() => action("start")}>Start</button>
       <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
     {/if}
-    <button class="btn-danger ml-auto" onclick={del}>Delete</button>
+    {#if can("server.delete")}
+      <button class="btn-danger ml-auto" onclick={del}>Delete</button>
+    {/if}
   </div>
 
   {#if !server.installed}

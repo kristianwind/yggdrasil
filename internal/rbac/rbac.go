@@ -101,3 +101,27 @@ func Allowed(grants []Grant, perm Permission, target Target) bool {
 func VisibleServer(grants []Grant, target Target) bool {
 	return Allowed(grants, ServerView, target)
 }
+
+// EffectivePerms returns every permission in All that grants permit on target,
+// in display order. The API attaches this to a server so the UI can show only
+// the actions a delegated (non-admin) user is actually allowed to perform.
+func EffectivePerms(grants []Grant, target Target) []Permission {
+	out := []Permission{}
+	for _, p := range All {
+		if Allowed(grants, p, target) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// HasAny reports whether grants include perm at any scope (used for "can this
+// user create a server anywhere?" UI gating, independent of a specific target).
+func HasAny(grants []Grant, perm Permission) bool {
+	for _, g := range grants {
+		if g.has(perm) {
+			return true
+		}
+	}
+	return false
+}

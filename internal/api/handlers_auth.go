@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kristianwind/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/rbac"
 	"github.com/kristianwind/yggdrasil/internal/totp"
 )
 
@@ -205,9 +206,16 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromContext(r.Context())
+	// can_create lets the UI show the "New server" button only to users who can
+	// actually create one (admins, or a delegate with a create grant somewhere).
+	canCreate := claims.Role == "admin"
+	if !canCreate {
+		canCreate = rbac.HasAny(s.loadGrants(r.Context(), claims.UserID), rbac.ServerCreate)
+	}
 	jsonOK(w, map[string]interface{}{
-		"id":       claims.UserID,
-		"username": claims.Username,
-		"role":     claims.Role,
+		"id":         claims.UserID,
+		"username":   claims.Username,
+		"role":       claims.Role,
+		"can_create": canCreate,
 	})
 }

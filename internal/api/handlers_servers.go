@@ -50,6 +50,7 @@ type serverRow struct {
 	BMServerID    string            `json:"bm_server_id,omitempty"`
 	AutoForward   bool              `json:"auto_forward"`
 	Subdomain     string            `json:"subdomain,omitempty"`
+	Perms         []string          `json:"perms"` // caller's effective permissions on this server
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,'')"
@@ -102,7 +103,11 @@ func (s *Server) handleListServers(w http.ResponseWriter, r *http.Request) {
 
 	list := []serverRow{}
 	for _, srv := range all {
-		if admin || rbac.VisibleServer(grants, srv.target()) {
+		if admin {
+			srv.Perms = allPermStrings
+			list = append(list, srv)
+		} else if rbac.VisibleServer(grants, srv.target()) {
+			srv.Perms = permStrings(rbac.EffectivePerms(grants, srv.target()))
 			list = append(list, srv)
 		}
 	}
@@ -118,6 +123,11 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.can(w, r, rbac.ServerView, srv.target()) {
 		return
+	}
+	if isAdmin(r) {
+		srv.Perms = allPermStrings
+	} else if c := claimsFromContext(r.Context()); c != nil {
+		srv.Perms = permStrings(rbac.EffectivePerms(s.loadGrants(r.Context(), c.UserID), srv.target()))
 	}
 	// Single GET also returns the current variable values + resource caps so the
 	// edit form can be pre-filled.

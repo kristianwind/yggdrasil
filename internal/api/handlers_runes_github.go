@@ -286,6 +286,10 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 		jsonError(w, "rune is missing an id", http.StatusBadRequest)
 		return
 	}
+	if s.isBuiltinRune(r.Context(), gs.ID) {
+		jsonError(w, "cannot overwrite a built-in rune; use a different id", http.StatusConflict)
+		return
+	}
 	_, err = s.db.ExecContext(r.Context(), `
 		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin)
 		VALUES (?,?,?,?,?,0)

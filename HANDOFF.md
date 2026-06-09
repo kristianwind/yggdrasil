@@ -21,9 +21,18 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
 ### Live versions
 | Where | Version |
 |---|---|
-| Latest GitHub tag | **v0.2.83** |
-| VM (`192.168.1.158`) | **v0.2.83** ✅ |
-| VM (`192.168.1.164`) | **v0.2.83** ✅ |
+| Latest GitHub tag | **v0.2.85** |
+| VM (`192.168.1.158`) — GAME server | **v0.2.85** ✅ |
+| VM (`192.168.1.164`) — PRODUCTION | **v0.2.85** ✅ |
+
+> **Server roles (2026-06-09):** `.164` = **production** (public apps, WordPress, Vaultwarden,
+> panel.nolimit.dk); `.158` = **game** server (live game servers landing soon). Both
+> production-grade.
+> **Cloudflare Workers Git integration is connected to the repo and fails on every push** (the
+> repo isn't a Workers app — it spawns `cloudflare/workers-autoconfig` branches and emails red ❌).
+> Harmless to the project, but the user should disconnect it: CF dashboard → Workers & Pages →
+> `yggdrasil` → Settings → disconnect Git / delete the project. (CF mutations are classifier-blocked
+> for Claude.)
 
 > **Two VMs, both unattended-deployable.** `192.168.1.158` (hostname `yggdrasil`) and
 > `192.168.1.164` (hostname `yggdrasilpanel`) BOTH now have **passwordless sudo** for `kw`
@@ -36,6 +45,20 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
   exact dashboard step or curl.
 - Minting a panel API token in the DB; writing `.claude/settings.json`; putting a sudo/login
   password on the command line. `git push origin main` is blocked → use a PR branch + `gh pr merge`.
+
+### Session 2026-06-09 — what shipped since v0.2.82
+- **v0.2.83** Domains overview (NPM/Cloudflare phase 2): Domains nav page listing every routed
+  domain (server × provider) with provisioned + live reachability badges. `GET /api/domains` +
+  `GET /api/domains/{id}/check?provider=` (domain derived server-side; 30s cache).
+- **v0.2.84** SECURITY PASS 3 (re-audit, 3 reviewers → `docs/SECURITY_AUDIT.md` "Pass 3"):
+  install-log WebSocket now RBAC-gated (was an unauth'd cross-server leak); domain-probe SSRF
+  guard (rejects loopback/private/link-local/metadata IPs at connect time — the `subdomain` is
+  `server.control`-editable); realm CRUD admin-gated; builtin-rune overwrite guard on all four
+  import paths.
+- **v0.2.85** Users permission gating: non-admin delegates now see only the servers they're
+  granted and only the actions in their per-server perms (tabs + buttons hidden accordingly).
+  API attaches effective `perms` per server; `/auth/me` gains `can_create`. Backend enforcement
+  was already in place — this is the UI honoring it.
 
 ### Session 2026-06-08 — what shipped since v0.2.70
 - **v0.2.71** Cloudflare Tunnel subdomain integration (`internal/cloudflare/`, `cf_*` settings,
@@ -344,4 +367,4 @@ import sqlite3; db=sqlite3.connect('/var/lib/yggdrasil/yggdrasil.db')
 
 ---
 
-*Last updated: 2026-06-08*
+*Last updated: 2026-06-09*

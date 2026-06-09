@@ -2,6 +2,7 @@ package gameskill
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -195,6 +196,77 @@ func validate(gs *Gameskill) error {
 		}
 	}
 
+	// Privilege guardrails. Runes are semi-trusted (imported from GitHub or
+	// uploaded), and these fields can escalate a container to host access, so they
+	// are restricted to a conservative allowlist — enforced here, which is the
+	// single chokepoint for both upload (Parse on POST) and runtime (Parse on load).
+	for _, c := range gs.Docker.Capabilities {
+		if !allowedCapabilities[strings.ToUpper(strings.TrimSpace(c))] {
+			return fmt.Errorf("docker.capabilities: %q is not allowed (permitted: NET_ADMIN, NET_RAW, NET_BIND_SERVICE, SYS_NICE)", c)
+		}
+	}
+	for _, d := range gs.Docker.Devices {
+		host := strings.SplitN(strings.TrimSpace(d), ":", 2)[0]
+		if !allowedDevices[host] {
+			return fmt.Errorf("docker.devices: %q is not allowed (permitted: /dev/net/tun, /dev/dri, /dev/fuse)", d)
+		}
+	}
+	for k := range gs.Docker.Sysctls {
+		if !allowedSysctls[k] {
+			return fmt.Errorf("docker.sysctls: %q is not allowed (permitted: net.ipv4.ip_forward, net.ipv6.conf.all.forwarding, net.ipv4.conf.all.src_valid_mark)", k)
+		}
+	}
+	for _, vp := range gs.Docker.ExtraVolumes {
+		if err := validateExtraVolumeTarget(vp); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Allowlists for privilege-bearing Docker fields. Deliberately minimal: only what
+// legitimate runes need (e.g. NET_ADMIN + /dev/net/tun for a VPN/subnet router,
+// /dev/dri for GPU transcoding). Everything else (SYS_ADMIN, SYS_MODULE, raw block
+// devices, arbitrary sysctls, …) is a host-escape risk and is refused.
+var allowedCapabilities = map[string]bool{
+	"NET_ADMIN": true, "NET_RAW": true, "NET_BIND_SERVICE": true, "SYS_NICE": true,
+}
+var allowedDevices = map[string]bool{
+	"/dev/net/tun": true, "/dev/dri": true, "/dev/fuse": true,
+}
+var allowedSysctls = map[string]bool{
+	"net.ipv4.ip_forward":              true,
+	"net.ipv6.conf.all.forwarding":     true,
+	"net.ipv4.conf.all.src_valid_mark": true,
+}
+
+// validateExtraVolumeTarget rejects mount targets that would shadow sensitive
+// container directories (the host source is already confined to the data dir).
+func validateExtraVolumeTarget(p string) error {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return nil
+	}
+	if !strings.HasPrefix(p, "/") {
+		return fmt.Errorf("docker.extra_volumes: %q must be an absolute container path", p)
+	}
+	if strings.Contains(p, "..") {
+		return fmt.Errorf("docker.extra_volumes: %q must not contain ..", p)
+	}
+	clean := "/" + strings.Trim(filepath.Clean(p), "/")
+	// Exact-match denies (but allow subpaths, e.g. /etc/letsencrypt for NPM).
+	for _, deny := range []string{"/", "/etc", "/var", "/var/run", "/run", "/home"} {
+		if clean == deny {
+			return fmt.Errorf("docker.extra_volumes: %q shadows a sensitive container path", p)
+		}
+	}
+	// Prefix denies: shadowing system binaries / kernel pseudo-fs is never legitimate.
+	for _, deny := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev", "/boot", "/root"} {
+		if clean == deny || strings.HasPrefix(clean, deny+"/") {
+			return fmt.Errorf("docker.extra_volumes: %q shadows a sensitive container path", p)
+		}
+	}
 	return nil
 }
 

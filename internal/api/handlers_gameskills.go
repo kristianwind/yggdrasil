@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -80,8 +81,7 @@ func (s *Server) handleUploadGameskill(w http.ResponseWriter, r *http.Request) {
 
 	// Never let an uploaded rune overwrite a built-in one — that would let someone
 	// backdoor a rune already in use by running servers.
-	var builtin int
-	if s.db.QueryRowContext(r.Context(), "SELECT builtin FROM gameskills WHERE id=?", id).Scan(&builtin) == nil && builtin == 1 {
+	if s.isBuiltinRune(r.Context(), id) {
 		jsonError(w, "cannot overwrite a built-in rune; use a different id", http.StatusConflict)
 		return
 	}
@@ -103,6 +103,14 @@ func (s *Server) handleUploadGameskill(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"id": id, "name": gs.Name})
 }
 
+// isBuiltinRune reports whether a rune with this id exists and is built-in.
+// Used to refuse any import/install path from overwriting (backdooring) a
+// built-in rune that running servers may rely on.
+func (s *Server) isBuiltinRune(ctx context.Context, id string) bool {
+	var builtin int
+	return s.db.QueryRowContext(ctx, "SELECT builtin FROM gameskills WHERE id=?", id).Scan(&builtin) == nil && builtin == 1
+}
+
 // handleImportEgg converts an uploaded Pterodactyl egg JSON into a gameskill,
 // stores it as a (non-builtin) rune, and returns its id.
 func (s *Server) handleImportEgg(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +123,10 @@ func (s *Server) handleImportEgg(w http.ResponseWriter, r *http.Request) {
 	gs, err := gameskill.ImportEgg(data)
 	if err != nil {
 		jsonError(w, "egg import: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if s.isBuiltinRune(r.Context(), gs.ID) {
+		jsonError(w, "cannot overwrite a built-in rune; use a different id", http.StatusConflict)
 		return
 	}
 	yamlBlob, err := gameskill.ToYAML(gs)
@@ -149,6 +161,10 @@ func (s *Server) handleImportXML(w http.ResponseWriter, r *http.Request) {
 	gs, err := gameskill.ImportXML(data)
 	if err != nil {
 		jsonError(w, "xml import: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if s.isBuiltinRune(r.Context(), gs.ID) {
+		jsonError(w, "cannot overwrite a built-in rune; use a different id", http.StatusConflict)
 		return
 	}
 	yamlBlob, err := gameskill.ToYAML(gs)

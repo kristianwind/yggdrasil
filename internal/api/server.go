@@ -217,11 +217,13 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/templates", s.requireAdmin(s.handleSaveTemplate))
 		r.Delete("/api/templates/{id}", s.requireAdmin(s.handleDeleteTemplate))
 
-		// Realms
+		// Realms — list is read-only (the create-server form needs it); mutations
+		// are admin-only (a realm is a permission scope; letting a delegate
+		// rename/delete one would let them detach servers + strip realm grants).
 		r.Get("/api/realms", s.handleListRealms)
-		r.Post("/api/realms", s.handleCreateRealm)
-		r.Put("/api/realms/{id}", s.handleUpdateRealm)
-		r.Delete("/api/realms/{id}", s.handleDeleteRealm)
+		r.Post("/api/realms", s.requireAdmin(s.handleCreateRealm))
+		r.Put("/api/realms/{id}", s.requireAdmin(s.handleUpdateRealm))
+		r.Delete("/api/realms/{id}", s.requireAdmin(s.handleDeleteRealm))
 
 		// Users (admin only)
 		r.Get("/api/users", s.requireAdmin(s.handleListUsers))

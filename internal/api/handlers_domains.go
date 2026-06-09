@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -172,13 +174,55 @@ func (s *Server) domainForServer(ctx context.Context, serverID, provider string)
 	return ""
 }
 
+// errBlockedSSRF is returned by the guarded dialer when a domain resolves to a
+// non-public address (loopback / private / link-local / metadata). The
+// `subdomain` column that feeds this probe is editable by a server.control
+// holder and a dotted value is treated as a verbatim domain, so without this
+// guard the probe would be an SSRF primitive against the panel host's network.
+var errBlockedSSRF = errors.New("blocked: domain resolves to a non-public address")
+
+// isPublicIP reports whether ip is a routable public address (rejects loopback,
+// private RFC1918/ULA, link-local incl. 169.254.169.254 cloud metadata,
+// unspecified, and multicast).
+func isPublicIP(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
+		return false
+	}
+	return true
+}
+
+// guardedDial resolves+validates the target at connect time (so a DNS-rebind to
+// an internal IP between resolution and dial is also caught) and only dials a
+// public address.
+func guardedDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	var d net.Dialer
+	for _, ipa := range ips {
+		if isPublicIP(ipa.IP) {
+			return d.DialContext(ctx, network, net.JoinHostPort(ipa.IP.String(), port))
+		}
+	}
+	return nil, errBlockedSSRF
+}
+
 // probeDomain fetches https://domain/ (falling back to http://) and reports
 // whether anything answered, with the HTTP status. Redirects are not followed
-// — a 301/302 from the proxy already proves the route works.
+// — a 301/302 from the proxy already proves the route works. All connections go
+// through guardedDial so the probe can't reach internal/metadata addresses.
 func probeDomain(domain string) map[string]any {
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	client := &http.Client{
 		Timeout:       6 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		CheckRedirect: noRedirect,
+		Transport:     &http.Transport{DialContext: guardedDial},
 	}
 	for _, scheme := range []string{"https", "http"} {
 		url := scheme + "://" + domain + "/"
@@ -188,13 +232,17 @@ func probeDomain(domain string) map[string]any {
 		}
 		resp, err := client.Do(req)
 		if err != nil {
+			if errors.Is(err, errBlockedSSRF) {
+				return map[string]any{"reachable": false, "status": 0, "url": url, "blocked": true}
+			}
 			// Self-signed cert (e.g. an app serving its own HTTPS behind no proxy
-			// cert): the route still works, so retry once without verification.
+			// cert): the route still works, so retry once without verification —
+			// still through the guarded dialer.
 			if scheme == "https" && strings.Contains(err.Error(), "certificate") {
 				insecure := &http.Client{
 					Timeout:       6 * time.Second,
-					CheckRedirect: client.CheckRedirect,
-					Transport:     &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+					CheckRedirect: noRedirect,
+					Transport:     &http.Transport{DialContext: guardedDial, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 				}
 				if resp2, err2 := insecure.Do(req); err2 == nil {
 					resp2.Body.Close()

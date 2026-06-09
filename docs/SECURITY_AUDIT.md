@@ -79,6 +79,27 @@ injection findings matter.
   browser WS which can't set headers; mitigated by the WS same-origin check.
 - **`server.control` can edit env/subdomain** — consider a dedicated `server.edit` perm.
 
+### ✅ Pass 3 — shipped v0.2.84 (re-audit, 3 parallel reviewers)
+A second review after passes 1–2, focused on the per-server delegated-permission
+boundary (the panel now leans on it for non-admin users). Findings fixed:
+- **Install-log WebSocket RBAC** (`handlers_install.go`): `GET /api/servers/{id}/install/log`
+  streamed build output (mod ids, paths, sometimes credential-bearing env) with no
+  per-server check — any authenticated user could read another server's log. Now gated on
+  `ServerView` for that specific server, before the WS upgrade (matches `handleServerLogs`).
+- **Domain-probe SSRF** (`handlers_domains.go`): the reachability probe derived its target
+  from `servers.subdomain`, which a `server.control` holder can edit, and a dotted value is
+  probed verbatim — so it could be aimed at `169.254.169.254`/localhost/LAN with status-code
+  reflection. `probeDomain` now dials through `guardedDial`, which resolves and rejects
+  loopback/private/link-local/metadata IPs **at connect time** (also closes DNS-rebinding);
+  the `InsecureSkipVerify` cert-retry reuses the same guard.
+- **Realm CRUD admin-gate** (`server.go`): realm create/update/delete were authenticated-only —
+  a non-admin could rename/delete a realm (a permission scope), detaching its servers and
+  silently stripping other delegates' realm-scoped grants. Now `requireAdmin`; list stays
+  read-only (the create-server form needs it).
+- **Builtin-rune overwrite guard** (`handlers_gameskills.go`, `handlers_runes_github.go`): the
+  anti-backdoor guard only covered direct upload; egg-import, xml-import, and github-install
+  could overwrite a builtin on an id collision. Shared `isBuiltinRune()` now guards all four.
+
 ## Confirmed good
 argon2id password hashing; API tokens stored only as SHA-256 hash; parameterized SQL throughout;
 no docker.sock mount and runes can't request it; `extra_volumes` host source confined to the

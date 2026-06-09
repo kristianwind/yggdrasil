@@ -33,6 +33,12 @@ func (s *Server) handleInstallServer(w http.ResponseWriter, r *http.Request) {
 // handleInstallLog streams install/build output (history + live) over WebSocket.
 func (s *Server) handleInstallLog(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	// Gate before the WS upgrade: install output echoes the templated install
+	// script (mod ids, paths, sometimes credential-bearing env), so a delegate
+	// must hold at least ServerView on this specific server — not just any login.
+	if !s.can(w, r, rbac.ServerView, s.serverTarget(r.Context(), id)) {
+		return
+	}
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

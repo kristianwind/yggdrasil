@@ -21,7 +21,13 @@ import (
 )
 
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// Reject cross-site WebSocket handshakes (the console WS writes to the container
+	// stdin). Same-origin browser connections and non-browser clients (no Origin,
+	// e.g. CLI/automation) are allowed.
+	CheckOrigin: func(r *http.Request) bool {
+		o := r.Header.Get("Origin")
+		return o == "" || sameOriginHost(o, r.Host)
+	},
 }
 
 type serverRow struct {

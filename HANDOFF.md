@@ -16,26 +16,53 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
 
 ---
 
-## Current State (as of 2026-06-03)
+## Current State (as of 2026-06-08)
 
 ### Live versions
 | Where | Version |
 |---|---|
-| Latest GitHub tag | **v0.2.70** |
-| VM (`192.168.1.158`) | **v0.2.70** ✅ |
-| VM (`192.168.1.164`) | **v0.2.70** ✅ (second host, added 2026-06-04) |
+| Latest GitHub tag | **v0.2.82** |
+| VM (`192.168.1.158`) | **v0.2.82** ✅ |
+| VM (`192.168.1.164`) | **v0.2.82** ✅ |
 
-> **`.158` currently runs a `dev` build ahead of v0.2.70** = the **Cloudflare Tunnel** integration
-> (branch `cloudflare-tunnel`, PR pending), deployed 2026-06-04 for review. Sibling to NPM: same
-> per-server `subdomain` field, routes via a Cloudflare Tunnel (outbound — no port-forward). Settings →
-> Network has a new **Cloudflare Tunnel** card; a **cloudflared** community rune launches the connector.
-> Full design in `docs/CLOUDFLARE_TUNNEL_PLAN.md`. After review: merge → cut **v0.2.71** → roll to both hosts.
+> **Two VMs, both unattended-deployable.** `192.168.1.158` (hostname `yggdrasil`) and
+> `192.168.1.164` (hostname `yggdrasilpanel`) BOTH now have **passwordless sudo** for `kw`
+> (`/etc/sudoers.d/kw-nopasswd`), so the full build→release→`install`→restart loop runs without the
+> user. SSH key `~/.ssh/ygg-vm/id_ygg` works on both. Both `secret_key`s are 44 chars (fail-closed
+> crypto guard won't trip). API token for `.158` at `~/.ssh/ygg-vm/.api-token`.
 
-> **Two VMs now.** `192.168.1.158` has **passwordless sudo** for `kw` (sudoers.d). `192.168.1.164`
-> does NOT — its sudo still needs the password, so deploys there require the user to run the
-> privileged `install`+`systemctl restart` step manually (classifier blocks the password on the
-> command line, and weakening sudo there wasn't authorized). SSH key (`~/.ssh/ygg-vm/id_ygg`) works on
-> both. v0.2.70 was deployed to .158 by Claude and to .164 by the user (one pasted install line).
+### Deploy classifier guardrails (things Claude CANNOT do — hand to the user)
+- Cloudflare API mutations (DNS / tunnel ingress) — even with explicit yes. Give the user the
+  exact dashboard step or curl.
+- Minting a panel API token in the DB; writing `.claude/settings.json`; putting a sudo/login
+  password on the command line. `git push origin main` is blocked → use a PR branch + `gh pr merge`.
+
+### Session 2026-06-08 — what shipped since v0.2.70
+- **v0.2.71** Cloudflare Tunnel subdomain integration (`internal/cloudflare/`, `cf_*` settings,
+  `servers.cf_hostname`, Settings→Network card). Live-proven (`memos.nolimit.dk`). CF token needs
+  perms **Argo Tunnel (Legacy)→Edit** (= the Tunnel API perm) + **Zone→DNS:Edit**. Account-scoped
+  tokens can't call `/user/tokens/verify` (so Test uses CheckTunnel + zone-resolve).
+- **v0.2.72** Rebrand to **"Yggdrasil Panel"** (binary/module/repo unchanged) · per-rune
+  **"Create server"** button (`#/servers?new=<id>`) · `capabilities`/`devices`/`sysctls` rune fields.
+- **v0.2.73** Compact side-by-side Runes card buttons.
+- **v0.2.74** Schedules: **edit after creation** + **run log** (`schedule_runs` table,
+  `GET /api/schedules/{id}/runs`).
+- **v0.2.75** Schedules mobile layout (buttons wrap).
+- **v0.2.76** **Static hosting**: `community-runes/apps/static-site.yaml` (nginx, data dir = web
+  root) + FileManager **drag&drop / multi-file upload** (recursive folders).
+- **v0.2.77** Servers table: aligned columns across rune groups (`table-layout:fixed`).
+- **v0.2.78–v0.2.82** SECURITY HARDENING (5-agent audit → `docs/SECURITY_AUDIT.md`). See that doc
+  for the full list. Highlights: rune cap/device/sysctl/extra_volumes **allowlist** + admin-gated
+  rune endpoints; JWT live re-validation + token revocation + per-account login lockout; CSP +
+  conditional HSTS + WS same-origin + CORS-creds-off; symlink/zip-slip defenses + PidsLimit; RCON
+  password masking + BattleMetrics token encryption + TOTP replay protection + crypto fail-closed.
+- **WordPress rune v3**: install seeds `.htaccess` raising PHP upload to 128M; DB-field labels
+  spell out the gotcha (DB host = the DB rune's **published host port**, e.g. `192.168.1.164:25003`,
+  NOT `:3306`; use the app user `MARIADB_USER`/`MARIADB_PASSWORD`, not root).
+- **Landing page** at `website/` (index.html + screenshots), hosted live on **`yggdrasilpanel.com`**
+  via a static-site server on `.164:25005` (apex A-record → public IP `5.186.58.205`).
+- **Tailscale**: NOT a rune (removed — bad fit). Installed **host-native** on `.164`
+  (subnet-router/exit-node). The cap/device/sysctl rune support stays (GPU/WireGuard).
 
 > **NPM subdomain integration — SHIPPED in v0.2.70** (PR #3 merged 2026-06-04). Per-server subdomains via
 > Nginx Proxy Manager, mirroring UniFi. `internal/npm/npm.go` client; `servers.subdomain` +
@@ -284,11 +311,16 @@ import sqlite3; db=sqlite3.connect('/var/lib/yggdrasil/yggdrasil.db')
 
 ## Next Steps / Backlog
 
-### Immediate
-1. **Fix Restart/Reinstall recreate gap** (see Known Issues #1) — the main outstanding engineering item.
+### Immediate / open threads (2026-06-09)
+1. ~~NPM Phase 2 — Domains overview~~ — **SHIPPED v0.2.83** (Domains nav page: every routed
+   domain × provider with provisioned + reachable badges; `GET /api/domains` +
+   `GET /api/domains/{id}/check?provider=`). See `docs/NPM_SUBDOMAIN_PLAN.md`.
+2. **Security Pass 2 deferred items** (low priority, documented in `docs/SECURITY_AUDIT.md`): NPM/UniFi/SFTP TLS-pinning, full env-at-rest encryption, startup-command `{{TEMPLATED}}` env injection, a dedicated `server.edit` perm.
+3. **Tailscale on `.164`** — host-native install done; user still needs to approve the node + routes/exit-node in the Tailscale admin console (one-time).
+4. **Old Tailscale rune-server + dead container** may still linger in `.164`'s panel/Docker — delete in the UI if so (the rune itself was removed from the repo).
 
 ### WISHLIST open
-- **Sleep toggle**: add ability to enable/disable "sleep mode" for a server (pause without stopping?). Needs design.
+- **Sleep toggle**: enable/disable "sleep mode" for a server (pause without stopping?). Needs design.
 
 ### Potential improvements (not on any list)
 - Panel warns when Expansion-Navigation version doesn't match DayZ version (detects `player connect will stay disabled` in logs → shows alert)
@@ -300,13 +332,14 @@ import sqlite3; db=sqlite3.connect('/var/lib/yggdrasil/yggdrasil.db')
 ---
 
 ## Security Notes
-- Steam password/Guard code: never stored or logged
-- RCON/backup/Steam credentials: encrypted at rest (AES-256-GCM)
-- UniFi credentials: encrypted, never returned in API responses
-- Argon2id for user passwords
-- Rate-limiting on login, CSRF-safe token auth, path-traversal guards on file access
-- VM sudo password: transient — do not store in files
+- Full audit + hardening status: **`docs/SECURITY_AUDIT.md`** (read this first for the security picture).
+- Steam password/Guard code: never stored or logged.
+- Secrets encrypted at rest (AES-256-GCM): UniFi / NPM / Cloudflare / backup / Steam / TOTP / BattleMetrics; never returned in API responses. `crypto.New` fails closed on a secret < 16 chars.
+- Argon2id passwords; JWT sessions re-validated live per request (disable/role/logout effective immediately via `users.token_version`); per-account login lockout; TOTP replay protection.
+- Rune privilege allowlist (capabilities/devices/sysctls/extra_volumes); rune management is admin-only.
+- CSP + conditional HSTS, WebSocket same-origin, CORS creds off; path-traversal + symlink/zip-slip guards; PidsLimit on all containers.
+- VM sudo password: transient — do not store in files.
 
 ---
 
-*Last updated: 2026-06-03*
+*Last updated: 2026-06-08*

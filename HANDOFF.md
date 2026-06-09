@@ -21,9 +21,9 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
 ### Live versions
 | Where | Version |
 |---|---|
-| Latest GitHub tag | **v0.2.82** |
-| VM (`192.168.1.158`) | **v0.2.82** ✅ |
-| VM (`192.168.1.164`) | **v0.2.82** ✅ |
+| Latest GitHub tag | **v0.2.83** |
+| VM (`192.168.1.158`) | **v0.2.83** ✅ |
+| VM (`192.168.1.164`) | **v0.2.83** ✅ |
 
 > **Two VMs, both unattended-deployable.** `192.168.1.158` (hostname `yggdrasil`) and
 > `192.168.1.164` (hostname `yggdrasilpanel`) BOTH now have **passwordless sudo** for `kw`
@@ -316,8 +316,10 @@ import sqlite3; db=sqlite3.connect('/var/lib/yggdrasil/yggdrasil.db')
    domain × provider with provisioned + reachable badges; `GET /api/domains` +
    `GET /api/domains/{id}/check?provider=`). See `docs/NPM_SUBDOMAIN_PLAN.md`.
 2. **Security Pass 2 deferred items** (low priority, documented in `docs/SECURITY_AUDIT.md`): NPM/UniFi/SFTP TLS-pinning, full env-at-rest encryption, startup-command `{{TEMPLATED}}` env injection, a dedicated `server.edit` perm.
-3. **Tailscale on `.164`** — host-native install done; user still needs to approve the node + routes/exit-node in the Tailscale admin console (one-time).
-4. **Old Tailscale rune-server + dead container** may still linger in `.164`'s panel/Docker — delete in the UI if so (the rune itself was removed from the repo).
+3. ~~Tailscale on `.164`~~ — **DONE** (user-confirmed 2026-06-09; `ygg-164` is up and offers exit
+   node). Audited 2026-06-09: no tailscale runes/servers/containers remain in either panel,
+   either Docker, or the repo. Only trace: an offline tailnet node `13324081f245` (the old rune
+   container, last seen days ago) — remove it in the **Tailscale admin console** if it bothers.
 
 ### WISHLIST open
 - **Sleep toggle**: enable/disable "sleep mode" for a server (pause without stopping?). Needs design.

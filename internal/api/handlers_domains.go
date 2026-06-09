@@ -135,7 +135,8 @@ func (s *Server) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := id + "|" + provider
+	// Domain is part of the key so a subdomain change doesn't serve a stale probe.
+	key := id + "|" + provider + "|" + domain
 	domainCheckMu.Lock()
 	if e, ok := domainCheckCache[key]; ok && time.Since(e.at) < 30*time.Second {
 		domainCheckMu.Unlock()

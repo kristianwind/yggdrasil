@@ -47,7 +47,12 @@ func (s *Server) SetVersion(v string) { s.version = v }
 
 func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
 	subFS, _ := fs.Sub(webFS, "web/dist")
-	cipher, _ := crypto.New(cfg.Auth.SecretKey)
+	// Fail closed: a bad/empty secret key means credentials can't be safely encrypted,
+	// so refuse to start rather than silently run with a known/weak key.
+	cipher, err := crypto.New(cfg.Auth.SecretKey)
+	if err != nil {
+		panic("yggdrasil: " + err.Error())
+	}
 
 	s := &Server{
 		cfg:     cfg,

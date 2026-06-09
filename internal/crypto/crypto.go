@@ -19,8 +19,13 @@ type Cipher struct {
 	aead cipher.AEAD
 }
 
-// New derives a 32-byte key from secret (SHA-256) and returns a Cipher.
+// New derives a 32-byte key from secret (SHA-256) and returns a Cipher. The secret
+// must be non-trivial: SHA-256 of an empty/short string is a publicly known value,
+// which would make every "encrypted" credential trivially decryptable.
 func New(secret string) (*Cipher, error) {
+	if len(secret) < 16 {
+		return nil, fmt.Errorf("secret key too short (need >= 16 chars) — cannot derive an encryption key")
+	}
 	key := sha256.Sum256([]byte(secret))
 	block, err := aes.NewCipher(key[:])
 	if err != nil {

@@ -48,22 +48,36 @@ injection findings matter.
 - **PidsLimit (8192)** on all runtime + install containers — caps process count so a fork bomb in
   one server can't exhaust the host PID table.
 
-### ⏳ Pass 2 — remaining (in priority order)
+### ✅ Pass 2 #3 + #7 (Secrets + Misc) — shipped v0.2.82
+- **RCON password masked** in the server GET response (sentinel `••••••••`); the update handler
+  treats the sentinel as "keep existing", so the edit form round-trips without leaking or
+  clobbering it. (No longer echoed to ServerView holders.)
+- **BattleMetrics token encrypted at rest** (was plaintext in app_settings); legacy plaintext
+  still readable.
+- **TOTP replay protection**: a 2FA code (or earlier step) already accepted is rejected
+  (`users.totp_last_counter`), so an observed code can't be reused inside its window. With the
+  per-account lockout from #1, 2FA brute force is now bounded too.
+- **crypto fail-closed**: `crypto.New` rejects a secret < 16 chars (SHA-256 of a trivial secret is
+  a known value), and the server refuses to start rather than running with a weak/known key.
+
+### ⏳ Pass 2 #2 (Transport) — accepted / deferred, with rationale
+- **NPM** is reached over plain `http://…:81` here, so `InsecureSkipVerify` is moot for it.
+- **UniFi** is a self-signed LAN appliance and **SFTP** host-key pinning would be TOFU; both are
+  LAN-path MITM risks only, fiddly to pin, and untestable here. Documented as accepted for the
+  homelab; cert/host-key pinning is a future enhancement (store a fingerprint in the encrypted
+  config and verify it).
+
+### ⏳ Still open (lower priority, by design)
 - **Startup-command env injection**: `{{TEMPLATED}}` env values flow into `/bin/sh -c`. Naive
-  shell-quoting breaks runes that word-split (e.g. `JAVA_OPTS`); needs a per-rune-tested fix
-  (prefer `startup.exec`; validate env keys; quote only where safe).
-- **Transport**: NPM/UniFi clients use `InsecureSkipVerify` (MITM of admin creds) → TOFU cert
-  pinning or explicit per-integration opt-in. SFTP backup uses `InsecureIgnoreHostKey` → pin.
-- **Secrets at rest**: server `env_json` (RCON/admin passwords) stored plaintext and returned in
-  GET; encrypt secret-typed vars + mask in responses. BattleMetrics token → encrypt.
-- **Files**: backup restore follows symlinks (zip-slip); `safeJoin` should `EvalSymlinks`.
-- **Web**: WS `CheckOrigin` allowlist (today saved only by `SameSite=Strict`); CSP + HSTS
-  headers; lock CORS to same-origin; Origin/Referer check on mutations; drop `?token=` fallback.
-- **Runtime**: default `PidsLimit` + resource caps (anti fork-bomb); harden install containers
-  (no-new-privileges, restricted network) without breaking root chown.
-- **TOTP**: narrow window + reject replayed counter.
-- **Low**: `crypto.New` error ignored; default bind `0.0.0.0` plain HTTP (document TLS-proxy req);
-  `server.control` can edit env/subdomain (consider a stronger perm).
+  shell-quoting breaks runes that word-split (e.g. `JAVA_OPTS`), so it needs a per-rune-tested
+  fix (prefer `startup.exec`; validate env keys; quote only where safe). Bounded today: it
+  requires `server.control`, which already implies console access to that container.
+- **Env-at-rest encryption**: non-RCON secret env vars are still stored plaintext in `env_json`
+  (RCON is now masked in responses). Full encryption is a migration with corruption risk; the
+  main leak (RCON password echoed to ServerView) is closed.
+- **`?token=` query-param auth** on WebSocket handshakes (lands in proxy logs) — kept for
+  browser WS which can't set headers; mitigated by the WS same-origin check.
+- **`server.control` can edit env/subdomain** — consider a dedicated `server.edit` perm.
 
 ## Confirmed good
 argon2id password hashing; API tokens stored only as SHA-256 hash; parameterized SQL throughout;

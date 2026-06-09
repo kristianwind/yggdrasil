@@ -62,6 +62,9 @@ func (s *Server) battlemetricsLookup(ctx context.Context, bmID string) (map[stri
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
 		"https://api.battlemetrics.com/servers/"+url.PathEscape(bmID), nil)
 	if tok := s.getSetting(ctx, "battlemetrics_token"); tok != "" {
+		if dec, err := s.cipher.Decrypt(tok); err == nil {
+			tok = dec // encrypted at rest; fall back to raw for any legacy plaintext value
+		}
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)

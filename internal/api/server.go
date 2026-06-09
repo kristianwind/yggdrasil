@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"embed"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -78,11 +80,14 @@ func (s *Server) buildRouter() *chi.Mux {
 	// are long-lived, and container operations (image pulls, server start) can
 	// exceed a minute. A blanket timeout dropped those connections ("Failed to
 	// fetch" on the client). Individual operations use their own contexts.
+	// The UI is served same-origin from this binary, so cross-origin credentialed
+	// access is never needed. Allow tokenless cross-origin API use (Bearer header,
+	// not a CORS "credential") but never reflect cookies cross-origin.
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 	}))
 	r.Use(secureHeaders)
 
@@ -281,16 +286,56 @@ func (s *Server) spaHandler() http.HandlerFunc {
 
 func secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// The SPA loads only its own bundled assets (no inline scripts, no eval), so a
+		// strict CSP fits. 'unsafe-inline' is kept for styles only (runtime style
+		// injection); frame-ancestors 'none' is the modern clickjacking control.
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; font-src 'self'; connect-src 'self'; "+
+				"frame-ancestors 'none'; base-uri 'self'; object-src 'none'")
+		// Only assert HSTS when actually served over HTTPS (via the TLS-terminating
+		// proxy). Sending it on plain-HTTP LAN access (http://<lan-ip>:8080) would make
+		// the browser force HTTPS there and lock the user out.
+		if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
 
+// sameOriginHost reports whether an Origin header's host matches the request host
+// (hostname only, ignoring port). Used to block cross-site WebSocket hijacking and
+// cross-origin state-changing requests. Behind the TLS proxy/tunnel both reflect
+// the public hostname, so legitimate same-origin traffic passes.
+func sameOriginHost(origin, host string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	reqHost := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		reqHost = h
+	}
+	return strings.EqualFold(u.Hostname(), reqHost)
+}
+
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// CSRF defense-in-depth: reject state-changing requests whose Origin doesn't
+		// match this host. Bearer/API-token automation sends no Origin (passes); a
+		// same-origin browser matches. This backs up the SameSite=Strict cookie so it
+		// isn't the only CSRF layer.
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			if o := r.Header.Get("Origin"); o != "" && !sameOriginHost(o, r.Host) {
+				jsonError(w, "cross-origin request blocked", http.StatusForbidden)
+				return
+			}
+		}
 		tokenStr := extractToken(r)
 		if tokenStr == "" {
 			jsonError(w, "unauthorized", http.StatusUnauthorized)

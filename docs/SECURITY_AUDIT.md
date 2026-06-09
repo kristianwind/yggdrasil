@@ -30,6 +30,16 @@ injection findings matter.
   independent of source IP (defeats `X-Forwarded-For` rotation). The per-IP limiter map is now
   swept to bound memory.
 
+### ✅ Pass 2 #4 (Web) — shipped v0.2.80
+- **CSP** (`default-src 'self'`, `script-src 'self'`, `frame-ancestors 'none'`, …) + **HSTS**
+  (only when served over HTTPS, so plain-HTTP LAN access isn't force-upgraded and locked out).
+- **WebSocket same-origin check** (`CheckOrigin` now compares Origin host to the request host)
+  — blocks cross-site WebSocket hijacking of the console; non-browser clients (no Origin) pass.
+- **CORS**: `AllowCredentials` off (no cookie reflection cross-origin); tokenless Bearer API use
+  still allowed.
+- **Cross-origin mutation block**: state-changing requests with a mismatched Origin are rejected
+  (defense-in-depth behind SameSite=Strict; Bearer automation sends no Origin and passes).
+
 ### ⏳ Pass 2 — remaining (in priority order)
 - **Startup-command env injection**: `{{TEMPLATED}}` env values flow into `/bin/sh -c`. Naive
   shell-quoting breaks runes that word-split (e.g. `JAVA_OPTS`); needs a per-rune-tested fix

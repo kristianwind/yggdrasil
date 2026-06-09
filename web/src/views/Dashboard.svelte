@@ -72,7 +72,7 @@
     <h1 class="text-2xl font-semibold mb-1">Dashboard</h1>
     <p class="text-muted">Welcome back, {$user.username}.</p>
   </div>
-  {#if $user.role === "admin"}
+  {#if $user.can_create}
     <button class="btn-primary shrink-0" onclick={() => navigate("/servers?new=1")}>+ New Server</button>
   {/if}
 </div>

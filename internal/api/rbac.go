@@ -72,6 +72,25 @@ func (s *Server) allowed(r *http.Request, perm rbac.Permission, target rbac.Targ
 	return rbac.Allowed(s.loadGrants(r.Context(), c.UserID), perm, target)
 }
 
+// allPermStrings is every assignable permission as strings — what an admin
+// effectively holds on any server.
+var allPermStrings = func() []string {
+	out := make([]string, len(rbac.All))
+	for i, p := range rbac.All {
+		out[i] = string(p)
+	}
+	return out
+}()
+
+// permStrings converts a permission slice to strings for the API.
+func permStrings(perms []rbac.Permission) []string {
+	out := make([]string, len(perms))
+	for i, p := range perms {
+		out[i] = string(p)
+	}
+	return out
+}
+
 // serverTarget resolves a server's realm and gameskill into an rbac.Target.
 func (s *Server) serverTarget(ctx context.Context, serverID string) rbac.Target {
 	var realmID, gsID string

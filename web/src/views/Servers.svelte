@@ -4,7 +4,12 @@
   import { toast } from "../lib/toast.js";
   import { navigate, route } from "../lib/router.js";
   import { get } from "svelte/store";
+  import { user } from "../lib/auth.js";
   import VarForm from "../components/VarForm.svelte";
+
+  // can(server, perm) — the API attaches each server's effective `perms` for the
+  // caller (admins get all). Lets a delegated user see only the actions they hold.
+  const can = (s, p) => s?.perms?.includes(p) ?? false;
 
   let servers = $state([]);
   let realms = $state([]);
@@ -149,9 +154,11 @@
         >
       </div>
     {/if}
-    <button class="btn-primary" onclick={openCreate} disabled={gameskills.length === 0}>
-      + New server
-    </button>
+    {#if $user?.can_create}
+      <button class="btn-primary" onclick={openCreate} disabled={gameskills.length === 0}>
+        + New server
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -214,11 +221,13 @@
                 </td>
                 <td class="px-4 py-2">
                   <div class="flex gap-2 justify-end">
-                    {#if s.status === "running" || s.status === "starting"}
-                      <button class="btn-ghost px-2 py-1" onclick={() => action(s, "restart")}>Restart</button>
-                      <button class="btn-ghost px-2 py-1" onclick={() => action(s, "stop")}>Stop</button>
-                    {:else}
-                      <button class="btn-primary px-2 py-1" onclick={() => action(s, "start")}>Start</button>
+                    {#if can(s, "server.control")}
+                      {#if s.status === "running" || s.status === "starting"}
+                        <button class="btn-ghost px-2 py-1" onclick={() => action(s, "restart")}>Restart</button>
+                        <button class="btn-ghost px-2 py-1" onclick={() => action(s, "stop")}>Stop</button>
+                      {:else}
+                        <button class="btn-primary px-2 py-1" onclick={() => action(s, "start")}>Start</button>
+                      {/if}
                     {/if}
                   </div>
                 </td>
@@ -258,14 +267,16 @@
                 {/each}
               </div>
             {/if}
-            <div class="flex gap-2 mt-3">
-              {#if s.status === "running" || s.status === "starting"}
-                <button class="btn-ghost flex-1" onclick={() => action(s, "restart")}>Restart</button>
-                <button class="btn-ghost flex-1" onclick={() => action(s, "stop")}>Stop</button>
-              {:else}
-                <button class="btn-primary flex-1" onclick={() => action(s, "start")}>Start</button>
-              {/if}
-            </div>
+            {#if can(s, "server.control")}
+              <div class="flex gap-2 mt-3">
+                {#if s.status === "running" || s.status === "starting"}
+                  <button class="btn-ghost flex-1" onclick={() => action(s, "restart")}>Restart</button>
+                  <button class="btn-ghost flex-1" onclick={() => action(s, "stop")}>Stop</button>
+                {:else}
+                  <button class="btn-primary flex-1" onclick={() => action(s, "start")}>Start</button>
+                {/if}
+              </div>
+            {/if}
           </div>
         {/each}
       </div>

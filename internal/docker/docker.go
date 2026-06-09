@@ -70,6 +70,15 @@ type CreateOptions struct {
 	Sysctls      map[string]string
 }
 
+// defaultPidsLimit caps the number of processes a container may spawn, so a
+// runaway/forked process (fork bomb) in one server can't exhaust the host's PID
+// table and take down the panel + other servers. Generous enough for any real
+// workload (game servers, SteamCMD, app stacks).
+func defaultPidsLimit() *int64 {
+	n := int64(8192)
+	return &n
+}
+
 // parseDeviceMappings converts "host[:container[:perms]]" strings to Docker device
 // mappings (container path defaults to the host path; perms default to "rwm").
 func parseDeviceMappings(devs []string) []container.DeviceMapping {
@@ -238,9 +247,10 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 		CapAdd:        opts.Capabilities,
 		Sysctls:       opts.Sysctls,
 		Resources: container.Resources{
-			NanoCPUs: nanoCPU,
-			Memory:   memBytes,
-			Devices:  parseDeviceMappings(opts.Devices),
+			NanoCPUs:  nanoCPU,
+			Memory:    memBytes,
+			Devices:   parseDeviceMappings(opts.Devices),
+			PidsLimit: defaultPidsLimit(), // cap process count to blunt fork bombs
 		},
 	}, nil, nil, opts.Name)
 	if err != nil {
@@ -449,7 +459,10 @@ func (c *Client) RunEphemeralOpts(ctx context.Context, opts EphemeralOptions, ou
 		Entrypoint: []string{"/bin/sh", "-c"},
 		Cmd:        []string{opts.Script},
 		WorkingDir: "/data",
-	}, &container.HostConfig{Mounts: mounts}, nil, nil, "")
+	}, &container.HostConfig{
+		Mounts:    mounts,
+		Resources: container.Resources{PidsLimit: defaultPidsLimit()},
+	}, nil, nil, "")
 	if err != nil {
 		return fmt.Errorf("create ephemeral container: %w", err)
 	}

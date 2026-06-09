@@ -67,6 +67,27 @@ func safeJoin(dataDir, rel string) (string, bool) {
 	if rp != base && !strings.HasPrefix(rp, base+string(os.PathSeparator)) {
 		return "", false
 	}
+	// Symlink defense: a symlink *inside* the data dir could still point outside it.
+	// Resolve the nearest existing ancestor (rp itself may not exist yet for a new
+	// file) and re-check it stays within the resolved base.
+	evalBase, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return "", false
+	}
+	probe := rp
+	for {
+		if ev, e := filepath.EvalSymlinks(probe); e == nil {
+			if ev != evalBase && !strings.HasPrefix(ev, evalBase+string(os.PathSeparator)) {
+				return "", false
+			}
+			break
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			break // reached root without an existing ancestor
+		}
+		probe = parent
+	}
 	return rp, true
 }
 

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // Archive writes a gzip-compressed tar of dataDir to w. When include is
@@ -127,6 +128,16 @@ func Restore(r io.Reader, destDir string) error {
 				return err
 			}
 		case tar.TypeSymlink:
+			// Zip-slip via symlink: reject links pointing outside the destination,
+			// otherwise a later entry could be written through them onto host files.
+			resolved := hdr.Linkname
+			if !filepath.IsAbs(resolved) {
+				resolved = filepath.Join(filepath.Dir(target), resolved)
+			}
+			resolved = filepath.Clean(resolved)
+			if resolved != absDest && !strings.HasPrefix(resolved, absDest+string(os.PathSeparator)) {
+				return fmt.Errorf("archive symlink escapes destination: %s -> %s", hdr.Name, hdr.Linkname)
+			}
 			os.MkdirAll(filepath.Dir(target), 0755)
 			os.Remove(target)
 			if err := os.Symlink(hdr.Linkname, target); err != nil {
@@ -136,7 +147,9 @@ func Restore(r io.Reader, destDir string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(hdr.Mode))
+			// O_NOFOLLOW: if target already exists as a symlink, fail instead of
+			// writing through it (symlink-then-file ordering defense).
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY|syscall.O_NOFOLLOW, os.FileMode(hdr.Mode))
 			if err != nil {
 				return err
 			}

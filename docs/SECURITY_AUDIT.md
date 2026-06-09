@@ -40,6 +40,14 @@ injection findings matter.
 - **Cross-origin mutation block**: state-changing requests with a mismatched Origin are rejected
   (defense-in-depth behind SameSite=Strict; Bearer automation sends no Origin and passes).
 
+### ✅ Pass 2 #5 + #6 (Files + Runtime) — shipped v0.2.81
+- **safeJoin** now resolves symlinks (nearest existing ancestor) and re-checks the result stays
+  in the data dir — a symlink planted inside can't be used to read/write host files.
+- **Backup restore** rejects symlink entries whose target escapes the destination (zip-slip via
+  symlink) and opens files with `O_NOFOLLOW`.
+- **PidsLimit (8192)** on all runtime + install containers — caps process count so a fork bomb in
+  one server can't exhaust the host PID table.
+
 ### ⏳ Pass 2 — remaining (in priority order)
 - **Startup-command env injection**: `{{TEMPLATED}}` env values flow into `/bin/sh -c`. Naive
   shell-quoting breaks runes that word-split (e.g. `JAVA_OPTS`); needs a per-rune-tested fix

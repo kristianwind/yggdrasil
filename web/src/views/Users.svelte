@@ -3,6 +3,7 @@
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
   import PermissionEditor from "../components/PermissionEditor.svelte";
+  import PasswordField from "../components/PasswordField.svelte";
 
   let users = $state([]);
   let showCreate = $state(false);
@@ -94,7 +95,7 @@
       </div>
       <div>
         <label class="label" for="pw">Password</label>
-        <input id="pw" class="input" type="password" bind:value={form.password} />
+        <PasswordField id="pw" bind:value={form.password} autocomplete="new-password" />
       </div>
       <div>
         <label class="label" for="role">Role</label>

@@ -10,9 +10,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
+	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
 
 func (s *Server) handleListGameskills(w http.ResponseWriter, r *http.Request) {
+	// Load the caller's grants first (its cursor opens+closes fully) — doing it
+	// while the gameskills cursor below is open would deadlock the single-conn
+	// modernc pool. `creatable` lets the UI show only the runes a delegated user
+	// may actually create a server from (admins can create any).
+	admin := isAdmin(r)
+	var grants []rbac.Grant
+	if !admin {
+		if c := claimsFromContext(r.Context()); c != nil {
+			grants = s.loadGrants(r.Context(), c.UserID)
+		}
+	}
+
 	rows, err := s.db.QueryContext(r.Context(),
 		"SELECT id, name, category, version, builtin FROM gameskills ORDER BY name")
 	if err != nil {
@@ -22,11 +35,12 @@ func (s *Server) handleListGameskills(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type item struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Category string `json:"category"`
-		Version  int    `json:"version"`
-		Builtin  bool   `json:"builtin"`
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Category  string `json:"category"`
+		Version   int    `json:"version"`
+		Builtin   bool   `json:"builtin"`
+		Creatable bool   `json:"creatable"` // caller may create a server of this rune type
 	}
 	var list []item
 	for rows.Next() {
@@ -36,6 +50,10 @@ func (s *Server) handleListGameskills(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		it.Builtin = builtin == 1
+		// Mirror the create endpoint's check: ServerCreate against a gameskill-only
+		// target (the create UI picks no realm), so a global or gameskill-scoped
+		// grant qualifies — matching exactly what POST /api/servers will allow.
+		it.Creatable = admin || rbac.Allowed(grants, rbac.ServerCreate, rbac.Target{GameskillID: it.ID})
 		list = append(list, it)
 	}
 	if list == nil {

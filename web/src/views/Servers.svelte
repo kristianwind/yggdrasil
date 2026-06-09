@@ -81,12 +81,18 @@
     return g;
   });
 
+  // Only runes the caller may actually create a server from (admins: all).
+  let creatableSkills = $derived(gameskills.filter((g) => g.creatable));
+
   async function openCreate(preselectId) {
-    // Pre-select the requested rune when it exists, else fall back to the first.
+    if (creatableSkills.length === 0) {
+      return toast("You don't have permission to create a server from any rune", "warn");
+    }
+    // Pre-select the requested rune when it's one the caller can create, else the first.
     selectedSkill =
-      preselectId && gameskills.some((g) => g.id === preselectId)
+      preselectId && creatableSkills.some((g) => g.id === preselectId)
         ? preselectId
-        : gameskills[0]?.id || null;
+        : creatableSkills[0].id;
     await loadSkill();
     form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "" };
     showCreate = true;
@@ -300,7 +306,7 @@
           bind:value={selectedSkill}
           onchange={loadSkill}
         >
-          {#each gameskills as g}
+          {#each creatableSkills as g}
             <option value={g.id}>{g.name}</option>
           {/each}
         </select>

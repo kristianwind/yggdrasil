@@ -127,8 +127,20 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB)
 	srv.Env = map[string]string{}
 	json.Unmarshal([]byte(envJSON), &srv.Env)
+	// Mask secret env vars (e.g. the RCON password) so they aren't echoed to anyone
+	// with only ServerView. The update handler treats secretMask as "keep existing",
+	// so the edit form round-trips without clobbering the real value.
+	if rt, err := s.loadRuntime(r.Context(), id); err == nil && rt.gs.RCON != nil && rt.gs.RCON.PasswordVar != "" {
+		if v := srv.Env[rt.gs.RCON.PasswordVar]; v != "" {
+			srv.Env[rt.gs.RCON.PasswordVar] = secretMask
+		}
+	}
 	jsonOK(w, srv)
 }
+
+// secretMask is returned in place of secret env values; the update handler keeps the
+// existing value when it sees this sentinel (so the UI can round-trip without leaking).
+const secretMask = "••••••••"
 
 func (s *Server) getServer(ctx context.Context, id string) (*serverRow, error) {
 	row := s.db.QueryRowContext(ctx, "SELECT "+serverCols+" FROM servers WHERE id=?", id)
@@ -310,6 +322,9 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		s.db.QueryRowContext(r.Context(), "SELECT env_json FROM servers WHERE id=?", id).Scan(&envJSON)
 		json.Unmarshal([]byte(envJSON), &current)
 		for k, v := range req.Env {
+			if v == secretMask {
+				continue // unchanged masked secret (e.g. RCON password) — keep existing
+			}
 			current[k] = v
 		}
 		// Top-level "mods" wins over env["MODS"] when both are sent.

@@ -53,9 +53,14 @@ func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request
 	s.setSetting(r.Context(), "public_hostname", host)
 	s.setSetting(r.Context(), "upnp_enabled", boolStr(req.UPnPEnabled))
 	// BattleMetrics token is optional; only overwrite when provided (so the UI can
-	// omit it to keep the existing one). Stored as-is in app_settings.
+	// omit it to keep the existing one). Encrypted at rest like other secrets.
 	if req.BattleMetricsToken != nil {
-		s.setSetting(r.Context(), "battlemetrics_token", strings.TrimSpace(*req.BattleMetricsToken))
+		tok := strings.TrimSpace(*req.BattleMetricsToken)
+		if tok == "" {
+			s.setSetting(r.Context(), "battlemetrics_token", "")
+		} else if enc, err := s.cipher.Encrypt(tok); err == nil {
+			s.setSetting(r.Context(), "battlemetrics_token", enc)
+		}
 	}
 	s.auditLog(r, "settings.network", "public_hostname", map[string]string{"host": host})
 	jsonOK(w, map[string]any{

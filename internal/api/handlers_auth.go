@@ -147,11 +147,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		secret, derr := s.cipher.Decrypt(totpSecret.String)
-		if derr != nil || !totp.Validate(secret, req.Code) {
+		ctr, valid := totp.ValidateAt(secret, req.Code)
+		if derr != nil || !valid {
 			loginAccountLock.fail(acctKey)
 			jsonError(w, "invalid 2FA code", http.StatusUnauthorized)
 			return
 		}
+		// Replay protection: reject a code (or earlier step) already accepted, so an
+		// observed code can't be reused within its ±1-step validity window.
+		var lastCtr int64
+		s.db.QueryRow("SELECT COALESCE(totp_last_counter,0) FROM users WHERE id=?", userID).Scan(&lastCtr)
+		if int64(ctr) <= lastCtr {
+			loginAccountLock.fail(acctKey)
+			jsonError(w, "2FA code already used; wait for the next one", http.StatusUnauthorized)
+			return
+		}
+		s.db.Exec("UPDATE users SET totp_last_counter=? WHERE id=?", int64(ctr), userID)
 	}
 
 	loginAccountLock.reset(acctKey) // successful auth clears the failure counter

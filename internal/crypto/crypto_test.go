@@ -3,7 +3,7 @@ package crypto
 import "testing"
 
 func TestEncryptDecryptRoundTrip(t *testing.T) {
-	c, err := New("panel-secret")
+	c, err := New("panel-secret-key-0123456789")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 }
 
 func TestEncryptIsNondeterministic(t *testing.T) {
-	c, _ := New("k")
+	c, _ := New("test-secret-key-0123456789")
 	a, _ := c.Encrypt("same")
 	b, _ := c.Encrypt("same")
 	if a == b {
@@ -35,8 +35,8 @@ func TestEncryptIsNondeterministic(t *testing.T) {
 }
 
 func TestWrongKeyFails(t *testing.T) {
-	c1, _ := New("key-a")
-	c2, _ := New("key-b")
+	c1, _ := New("test-secret-key-aaaaaaaaaa")
+	c2, _ := New("test-secret-key-bbbbbbbbbb")
 	enc, _ := c1.Encrypt("secret")
 	if _, err := c2.Decrypt(enc); err == nil {
 		t.Error("decryption with the wrong key should fail")

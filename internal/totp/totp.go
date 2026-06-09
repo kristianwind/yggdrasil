@@ -52,17 +52,25 @@ func code(secret string, counter uint64) (string, error) {
 
 // Validate checks a code against the secret, allowing ±1 step for clock skew.
 func Validate(secret, input string) bool {
+	_, ok := ValidateAt(secret, input)
+	return ok
+}
+
+// ValidateAt is like Validate but also returns the matched step counter, so callers
+// can persist it and reject a replayed code (the same code reused within its
+// ±1-step validity window).
+func ValidateAt(secret, input string) (uint64, bool) {
 	input = strings.TrimSpace(input)
 	if len(input) != digits {
-		return false
+		return 0, false
 	}
 	counter := uint64(time.Now().Unix() / step)
 	for _, c := range []uint64{counter - 1, counter, counter + 1} {
 		if got, err := code(secret, c); err == nil && hmacEqual(got, input) {
-			return true
+			return c, true
 		}
 	}
-	return false
+	return 0, false
 }
 
 // hmacEqual is a constant-time string compare.

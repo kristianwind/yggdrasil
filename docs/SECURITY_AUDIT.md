@@ -20,10 +20,17 @@ injection findings matter.
 - **Root command injection fixed** (`repairDataPerms`): user path was interpolated via `%q`
   (double quotes leave `$()`/backticks active) into a root `/bin/sh -c`; now shell-single-quoted.
 
-### ⏳ Pass 2 — planned (in priority order)
-- **Auth**: session/token revocation (check `disabled` + live `role` per request; bump a
-  `token_version` on logout/disable/role-change/password-reset). Per-account login lockout +
-  don't trust `X-Forwarded-For` for the limiter when not behind a known proxy.
+### ✅ Pass 2 #1 (Auth) — shipped v0.2.79
+- **Live session re-validation**: `authMiddleware` now re-checks the JWT against the DB every
+  request — `disabled` users and role changes take effect immediately (the live role is used,
+  not the token's). `users.token_version` column + `ver` JWT claim; a mismatch = revoked.
+- **Real logout / revocation**: logout, and any password/role/disabled change, bump
+  `token_version` → all of that user's existing tokens are invalidated.
+- **Per-account login lockout**: 10 failed attempts/15 min locks a username for 15 min,
+  independent of source IP (defeats `X-Forwarded-For` rotation). The per-IP limiter map is now
+  swept to bound memory.
+
+### ⏳ Pass 2 — remaining (in priority order)
 - **Startup-command env injection**: `{{TEMPLATED}}` env values flow into `/bin/sh -c`. Naive
   shell-quoting breaks runes that word-split (e.g. `JAVA_OPTS`); needs a per-rune-tested fix
   (prefer `startup.exec`; validate env keys; quote only where safe).

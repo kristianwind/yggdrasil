@@ -312,6 +312,17 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			jsonError(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
+		// Re-validate against the live DB: disabling a user, changing their role, or
+		// logging out (token_version bump) takes effect immediately rather than waiting
+		// for the JWT to expire. The current role is used, not the one baked in the token.
+		var role string
+		var disabled, ver int
+		if s.db.QueryRowContext(r.Context(), "SELECT role, disabled, COALESCE(token_version,0) FROM users WHERE id=?", claims.UserID).
+			Scan(&role, &disabled, &ver) != nil || disabled == 1 || ver != claims.Ver {
+			jsonError(w, "session expired", http.StatusUnauthorized)
+			return
+		}
+		claims.Role = role
 		r = r.WithContext(withClaims(r.Context(), claims))
 		next.ServeHTTP(w, r)
 	})

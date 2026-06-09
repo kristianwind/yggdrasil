@@ -27,7 +27,7 @@ func TestHashIsSalted(t *testing.T) {
 
 func TestTokenRoundTrip(t *testing.T) {
 	const secret = "test-secret-key"
-	tok, err := GenerateToken("uid-1", "alice", "admin", secret, 1)
+	tok, err := GenerateToken("uid-1", "alice", "admin", 0, secret, 1)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -41,14 +41,14 @@ func TestTokenRoundTrip(t *testing.T) {
 }
 
 func TestTokenWrongSecretRejected(t *testing.T) {
-	tok, _ := GenerateToken("uid-1", "alice", "admin", "secret-a", 1)
+	tok, _ := GenerateToken("uid-1", "alice", "admin", 0, "secret-a", 1)
 	if _, err := ParseToken(tok, "secret-b"); err == nil {
 		t.Error("token validated with wrong secret")
 	}
 }
 
 func TestTokenExpired(t *testing.T) {
-	tok, _ := GenerateToken("uid-1", "alice", "admin", "secret", 0) // expires immediately
+	tok, _ := GenerateToken("uid-1", "alice", "admin", 0, "secret", 0) // expires immediately
 	if _, err := ParseToken(tok, "secret"); err == nil {
 		t.Error("expired token accepted")
 	}

@@ -97,6 +97,11 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		s.db.ExecContext(r.Context(), "UPDATE users SET disabled=? WHERE id=?", d, id)
 	}
+	// Any of password / role / disabled changing must revoke the user's existing
+	// sessions (a demoted, disabled, or password-reset user shouldn't keep access).
+	if (req.Password != nil && *req.Password != "") || req.Role != nil || req.Disabled != nil {
+		s.db.ExecContext(r.Context(), "UPDATE users SET token_version = COALESCE(token_version,0)+1 WHERE id=?", id)
+	}
 	s.auditLog(r, "user.update", "user:"+id, nil)
 	jsonOK(w, map[string]string{"status": "updated"})
 }

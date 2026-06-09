@@ -28,6 +28,7 @@ type Claims struct {
 	UserID   string `json:"uid"`
 	Username string `json:"sub"`
 	Role     string `json:"role"`
+	Ver      int    `json:"ver"` // token version; must equal users.token_version or the token is revoked
 	jwt.RegisteredClaims
 }
 
@@ -69,11 +70,12 @@ func VerifyPassword(password, encoded string) (bool, error) {
 	return subtle.ConstantTimeCompare(hash, storedHash) == 1, nil
 }
 
-func GenerateToken(userID, username, role, secret string, ttlHours int) (string, error) {
+func GenerateToken(userID, username, role string, ver int, secret string, ttlHours int) (string, error) {
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
 		Role:     role,
+		Ver:      ver,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(ttlHours) * time.Hour)),

@@ -65,6 +65,6 @@ tunnel is **outbound**, there's no port forwarding / public IP at all (pairs nat
 5. A DayZ server (UDP-only) shows no subdomain field and is untouched.
 
 ## Open
-- Phase 2 (shared with NPM): a **Domains** overview menu listing apps + subdomain + provider +
-  reachable badge.
+- ~~Phase 2 (shared with NPM): a **Domains** overview menu~~ — **shipped in v0.2.83**
+  (see `NPM_SUBDOMAIN_PLAN.md` for the endpoint/UI details).
 - Optional: a per-server provider selector (NPM vs Cloudflare) instead of "both fire if enabled".

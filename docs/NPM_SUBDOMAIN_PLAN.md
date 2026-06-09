@@ -1,9 +1,10 @@
 # Feature plan: NPM subdomain integration (per-server domains)
 
-Status: **phase 1 built** (2026-06-04) — backend client + lifecycle hooks + settings
-card + per-server subdomain field all implemented and compiling. Not yet deployed/
-tested against the live NPM. Phase 2 (a **Domains** menu listing apps + reachable
-badges) is still open.
+Status: **phase 1 shipped in v0.2.70** (PR #3, live-verified). **Phase 2 shipped in
+v0.2.83** (2026-06-09): a **Domains** menu (shared with Cloudflare Tunnel) — `GET
+/api/domains` lists every routed domain (server × provider, RBAC-filtered), `GET
+/api/domains/{id}/check?provider=` probes the public URL (domain derived server-side;
+30s cache), and a Domains nav page shows provider/provisioned/reachable badges.
 
 ### What was built (phase 1)
 - `internal/npm/npm.go` — client: `New`, `Login` (token), `ListProxyHosts`,

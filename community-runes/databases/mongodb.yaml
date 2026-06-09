@@ -2,13 +2,19 @@ gameskill:
   id: mongodb
   name: "MongoDB"
   category: "Databases"
-  description: "MongoDB database server (official image) — a backing store for other runes/apps (e.g. Grasscutter)"
+  # Pinned to 4.4 — MongoDB 5.0+ requires the CPU AVX instruction set, which a
+  # default Proxmox/QEMU VM ("kvm64" / "QEMU Virtual CPU") does NOT expose, so
+  # mongo:5/6/7 crash on boot with "Illegal instruction (core dumped)". 4.4 is
+  # the last AVX-free release and is exactly what Grasscutter (the main consumer
+  # here) wants anyway. To run a newer MongoDB, set the Proxmox VM CPU type to
+  # "host" (Hardware → Processors → Type: host), reboot the VM, then bump this image.
+  description: "MongoDB 4.4 (avoids the AVX requirement of Mongo 5+, which a default Proxmox VM CPU can't satisfy) — a backing store for other runes/apps (e.g. Grasscutter)."
   author: "yggdrasil-core"
-  version: 1
+  version: 2
   icon: "database"
 
   docker:
-    image: "mongo:7"
+    image: "mongo:4.4"
 
   variables:
     # These keys are the exact env vars the official mongo image reads to create
@@ -23,7 +29,7 @@ gameskill:
       default: "change-me"
 
   install:
-    image: "mongo:7"
+    image: "mongo:4.4"
     script: |
       set -e
       # mongod stores its data under /data/db (the image default); /data is the

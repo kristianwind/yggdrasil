@@ -11,6 +11,10 @@
   let runes = $state([]);
   let uploading = $state(false);
 
+  const isAdmin = $derived($user?.role === "admin");
+  // Non-admins only see runes they can create a server from; admins see all.
+  let visibleRunes = $derived(isAdmin ? runes : runes.filter((r) => r.creatable));
+
   // View mode (grid cards vs. compact table), remembered per browser.
   let view = $state(localStorage.getItem("ygg_runes_view") || "grid");
   function setView(v) {
@@ -161,14 +165,16 @@
 <!-- Title row: primary action sits on the heading line (like the Servers page). -->
 <div class="flex items-center justify-between gap-2 mb-3">
   <h1 class="text-2xl font-semibold">Runes</h1>
-  <label class="btn-primary cursor-pointer shrink-0">
-    {uploading ? "Carving…" : "Carve a rune (upload)"}
-    <input type="file" accept=".yaml,.yml" class="hidden" onchange={upload} />
-  </label>
+  {#if isAdmin}
+    <label class="btn-primary cursor-pointer shrink-0">
+      {uploading ? "Carving…" : "Carve a rune (upload)"}
+      <input type="file" accept=".yaml,.yml" class="hidden" onchange={upload} />
+    </label>
+  {/if}
 </div>
-<!-- Secondary actions: view toggle + imports, wrapping below the title. -->
+<!-- Secondary actions: view toggle (everyone) + imports (admin), below the title. -->
 <div class="flex flex-wrap items-center gap-2 mb-2">
-  {#if runes.length > 0}
+  {#if visibleRunes.length > 0}
     <div class="inline-flex rounded-md border border-border overflow-hidden">
       <button
         class="px-2.5 py-1.5 text-sm {view === 'grid' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
@@ -184,19 +190,31 @@
       >
     </div>
   {/if}
-  <button class="btn-ghost" onclick={openGithub}>Browse GitHub</button>
-  <label class="btn-ghost cursor-pointer">
-    Import egg
-    <input type="file" accept=".json" class="hidden" onchange={importEgg} />
-  </label>
-  <label class="btn-ghost cursor-pointer">
-    Import XML
-    <input type="file" accept=".xml" class="hidden" onchange={importXml} />
-  </label>
+  {#if isAdmin}
+    <button class="btn-ghost" onclick={openGithub}>Browse GitHub</button>
+    <label class="btn-ghost cursor-pointer">
+      Import egg
+      <input type="file" accept=".json" class="hidden" onchange={importEgg} />
+    </label>
+    <label class="btn-ghost cursor-pointer">
+      Import XML
+      <input type="file" accept=".xml" class="hidden" onchange={importXml} />
+    </label>
+  {/if}
 </div>
-<p class="text-muted mb-6">A Rune is a declarative game definition. Upload your own YAML to add new games.</p>
+<p class="text-muted mb-6">
+  {#if isAdmin}
+    A Rune is a declarative game/app definition. Upload your own YAML to add new ones.
+  {:else}
+    The games and apps you can deploy. Pick one and click <b>Create server</b>.
+  {/if}
+</p>
 
-{#if view === "table"}
+{#if visibleRunes.length === 0}
+  <div class="card p-8 text-center text-muted">
+    {isAdmin ? "No runes yet — carve or import one above." : "No runes available to you yet — ask an admin to grant create access."}
+  </div>
+{:else if view === "table"}
   <div class="card overflow-x-auto">
     <table class="w-full text-sm">
       <thead class="text-muted text-xs uppercase tracking-wide border-b border-border">
@@ -209,7 +227,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
-        {#each runes as r}
+        {#each visibleRunes as r}
           <tr class="hover:bg-panel2/40">
             <td class="px-4 py-2">
               <span class="font-medium">{r.name}</span>
@@ -221,13 +239,13 @@
             <td class="px-4 py-2 text-muted font-mono text-xs hidden sm:table-cell">{r.id}</td>
             <td class="px-4 py-2 text-muted">v{r.version}</td>
             <td class="px-4 py-2 text-right whitespace-nowrap">
-              {#if $user.role === "admin"}
+              {#if r.creatable}
                 <button class="btn-primary px-2 py-1" onclick={() => createServer(r)}>Create server</button>
               {/if}
-              {#if !r.builtin}
+              {#if isAdmin && !r.builtin}
                 <button class="btn-danger px-2 py-1 ml-1" onclick={() => del(r)}>Delete</button>
               {/if}
-              {#if r.builtin && $user.role !== "admin"}
+              {#if !r.creatable && !(isAdmin && !r.builtin)}
                 <span class="text-muted">—</span>
               {/if}
             </td>
@@ -238,7 +256,7 @@
   </div>
 {:else}
   <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-    {#each runes as r}
+    {#each visibleRunes as r}
       <div class="card p-4">
         <div class="flex items-start justify-between">
           <div class="font-medium">{r.name}</div>
@@ -248,13 +266,13 @@
         </div>
         <div class="text-xs text-muted mt-1">{r.category} · v{r.version}</div>
         <div class="text-xs text-muted font-mono mt-1">{r.id}</div>
-        {#if $user.role === "admin" || !r.builtin}
+        {#if r.creatable || (isAdmin && !r.builtin)}
           <div class="flex gap-2 mt-3">
-            {#if $user.role === "admin"}
+            {#if r.creatable}
               <button class="btn-primary flex-1" onclick={() => createServer(r)}>Create server</button>
             {/if}
-            {#if !r.builtin}
-              <button class="btn-danger {$user.role === 'admin' ? 'px-4' : 'flex-1'}" onclick={() => del(r)}>Delete</button>
+            {#if isAdmin && !r.builtin}
+              <button class="btn-danger {r.creatable ? 'px-4' : 'flex-1'}" onclick={() => del(r)}>Delete</button>
             {/if}
           </div>
         {/if}

@@ -1,6 +1,8 @@
 <script>
   // Auto-generates a settings form from a gameskill's `variables`.
   // Two-way binds into `values` (a plain object keyed by variable key).
+  import PasswordField from "./PasswordField.svelte";
+
   let { variables = [], values = $bindable({}) } = $props();
 
   // Seed defaults for any unset keys.
@@ -11,6 +13,13 @@
       }
     }
   });
+
+  // Treat string vars that look like a secret (password / pass / secret / token)
+  // as password fields — gives them the show/generate/copy controls. A rune can
+  // also opt in explicitly with `secret: true` on the variable.
+  const isSecret = (v) =>
+    (v.type === "string" || !v.type) &&
+    (v.secret === true || /pass(word)?|secret|token/i.test(`${v.key} ${v.name || ""}`));
 </script>
 
 <div class="space-y-3">
@@ -34,6 +43,8 @@
         </label>
       {:else if v.type === "int"}
         <input id={`var-${v.key}`} class="input" type="number" bind:value={values[v.key]} />
+      {:else if isSecret(v)}
+        <PasswordField id={`var-${v.key}`} bind:value={values[v.key]} />
       {:else}
         <input id={`var-${v.key}`} class="input" bind:value={values[v.key]} />
       {/if}

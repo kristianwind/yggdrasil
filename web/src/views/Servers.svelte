@@ -27,7 +27,7 @@
   let showCreate = $state(false);
   let selectedSkill = $state(null);
   let skillDetail = $state(null);
-  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "" });
+  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: "" });
   let creating = $state(false);
 
   // External reachability per server (id -> {reachable,...}), for the at-a-glance
@@ -81,21 +81,49 @@
     return g;
   });
 
-  // Only runes the caller may actually create a server from (admins: all).
-  let creatableSkills = $derived(gameskills.filter((g) => g.creatable));
+  // The caller's create-scopes from /auth/me. Create permission is a function of
+  // (realm × rune): global = any realm/rune; a realm grant = any rune in that
+  // realm; a gameskill grant = that rune in any realm.
+  let createScope = $derived($user?.create || { global: false, realms: [], gameskills: [] });
+
+  // Realms the user may target. Global/gameskill creators can place into any realm
+  // (gameskill grants are realm-agnostic) and into "no realm"; a realm-only creator
+  // is limited to their realms and can't create unrealmed (a realm grant needs a match).
+  let createRealmOptions = $derived.by(() => {
+    const c = createScope;
+    const anyRealm = c.global || (c.gameskills?.length > 0);
+    const ids = anyRealm ? realms.map((r) => r.id) : c.realms || [];
+    return { allowNoRealm: anyRealm, realms: realms.filter((r) => ids.includes(r.id)) };
+  });
+
+  // Runes creatable for the chosen realm: a realm the user owns (or global) unlocks
+  // every rune; otherwise only their gameskill-creatable runes (g.creatable).
+  function runesForRealm(realmId) {
+    const c = createScope;
+    if (c.global || (realmId && (c.realms || []).includes(realmId))) return gameskills;
+    return gameskills.filter((g) => g.creatable);
+  }
+  let availableSkills = $derived(runesForRealm(form.realm_id));
 
   async function openCreate(preselectId) {
-    if (creatableSkills.length === 0) {
-      return toast("You don't have permission to create a server from any rune", "warn");
-    }
-    // Pre-select the requested rune when it's one the caller can create, else the first.
-    selectedSkill =
-      preselectId && creatableSkills.some((g) => g.id === preselectId)
-        ? preselectId
-        : creatableSkills[0].id;
+    if (!$user?.can_create) return toast("You don't have permission to create servers", "warn");
+    const ro = createRealmOptions;
+    const realmId = ro.allowNoRealm ? "" : ro.realms[0]?.id || "";
+    const skills = runesForRealm(realmId);
+    if (skills.length === 0) return toast("No runes available with your permissions", "warn");
+    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: realmId };
+    selectedSkill = preselectId && skills.some((g) => g.id === preselectId) ? preselectId : skills[0].id;
     await loadSkill();
-    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "" };
     showCreate = true;
+  }
+
+  // When the realm changes, keep the selected rune valid for that realm.
+  async function onRealmChange() {
+    const skills = runesForRealm(form.realm_id);
+    if (!skills.some((g) => g.id === selectedSkill)) {
+      selectedSkill = skills[0]?.id || null;
+      await loadSkill();
+    }
   }
   async function loadSkill() {
     if (!selectedSkill) return;
@@ -115,6 +143,7 @@
       const res = await api.post("/servers", {
         name: form.name,
         gameskill_id: selectedSkill,
+        realm_id: form.realm_id || "",
         env,
         cpu_percent: Number(form.cpu_percent) || 0,
         memory_mb: Number(form.memory_mb) || 0,
@@ -298,6 +327,16 @@
         <button class="btn-ghost px-2 py-1" onclick={() => (showCreate = false)}>✕</button>
       </div>
 
+      {#if createRealmOptions.realms.length > 0}
+        <div>
+          <label class="label" for="realm">Realm</label>
+          <select id="realm" class="input" bind:value={form.realm_id} onchange={onRealmChange}>
+            {#if createRealmOptions.allowNoRealm}<option value="">No realm</option>{/if}
+            {#each createRealmOptions.realms as r}<option value={r.id}>{r.name}</option>{/each}
+          </select>
+        </div>
+      {/if}
+
       <div>
         <label class="label" for="skill">Rune (game)</label>
         <select
@@ -306,7 +345,7 @@
           bind:value={selectedSkill}
           onchange={loadSkill}
         >
-          {#each creatableSkills as g}
+          {#each availableSkills as g}
             <option value={g.id}>{g.name}</option>
           {/each}
         </select>

@@ -9,6 +9,25 @@
   let showCreate = $state(false);
   let form = $state({ username: "", password: "", role: "user" });
   let permUser = $state(null); // user whose permissions are being edited
+  let editUser = $state(null); // user being edited (role / password)
+  let editForm = $state({ role: "user", password: "" });
+
+  function openEdit(u) {
+    editUser = u;
+    editForm = { role: u.role, password: "" };
+  }
+  async function saveEdit() {
+    try {
+      const payload = { role: editForm.role };
+      if (editForm.password) payload.password = editForm.password; // blank = keep current
+      await api.put(`/users/${editUser.id}`, payload);
+      toast("User updated", "success");
+      editUser = null;
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
 
   async function load() {
     try {
@@ -65,6 +84,7 @@
         <div class="font-medium">{u.username}</div>
         <div class="text-xs text-muted">{u.role}{u.disabled ? " · disabled" : ""}</div>
       </div>
+      <button class="btn-ghost" onclick={() => openEdit(u)}>Edit</button>
       {#if u.role !== "admin"}
         <button class="btn-ghost" onclick={() => (permUser = u)}>Permissions</button>
       {/if}
@@ -84,6 +104,32 @@
   Global admins have full access. For other users, click <b>Permissions</b> to grant scoped
   access — per realm, per game type, or per server.
 </p>
+
+{#if editUser}
+  <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+    <div class="card w-full max-w-sm p-5 space-y-4">
+      <h2 class="text-lg font-semibold">Edit {editUser.username}</h2>
+      <div>
+        <label class="label" for="e-role">Role</label>
+        <select id="e-role" class="input" bind:value={editForm.role}>
+          <option value="user">User</option>
+          <option value="admin">Global admin</option>
+        </select>
+      </div>
+      <div>
+        <label class="label" for="e-pw">New password</label>
+        <PasswordField id="e-pw" bind:value={editForm.password} autocomplete="new-password" />
+        <p class="text-xs text-muted mt-1">
+          Leave blank to keep the current password. Saving signs the user out of existing sessions.
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn-ghost flex-1" onclick={() => (editUser = null)}>Cancel</button>
+        <button class="btn-primary flex-1" onclick={saveEdit}>Save</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if showCreate}
   <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">

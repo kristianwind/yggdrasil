@@ -114,14 +114,3 @@ func EffectivePerms(grants []Grant, target Target) []Permission {
 	}
 	return out
 }
-
-// HasAny reports whether grants include perm at any scope (used for "can this
-// user create a server anywhere?" UI gating, independent of a specific target).
-func HasAny(grants []Grant, perm Permission) bool {
-	for _, g := range grants {
-		if g.has(perm) {
-			return true
-		}
-	}
-	return false
-}

@@ -206,16 +206,41 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromContext(r.Context())
-	// can_create lets the UI show the "New server" button only to users who can
-	// actually create one (admins, or a delegate with a create grant somewhere).
-	canCreate := claims.Role == "admin"
-	if !canCreate {
-		canCreate = rbac.HasAny(s.loadGrants(r.Context(), claims.UserID), rbac.ServerCreate)
+	// Surface the caller's create-scopes so the create modal can offer the right
+	// realms + runes: ServerCreate at global scope (any realm/rune), realm scope
+	// (any rune in that realm), or gameskill scope (that rune in any realm).
+	createGlobal := claims.Role == "admin"
+	createRealms := []string{}
+	createGameskills := []string{}
+	for _, g := range s.loadGrants(r.Context(), claims.UserID) {
+		hasCreate := false
+		for _, p := range g.Perms {
+			if p == rbac.ServerCreate {
+				hasCreate = true
+				break
+			}
+		}
+		if !hasCreate {
+			continue
+		}
+		switch g.ScopeType {
+		case rbac.ScopeGlobal:
+			createGlobal = true
+		case rbac.ScopeRealm:
+			createRealms = append(createRealms, g.ScopeID)
+		case rbac.ScopeGameskill:
+			createGameskills = append(createGameskills, g.ScopeID)
+		}
 	}
 	jsonOK(w, map[string]interface{}{
 		"id":         claims.UserID,
 		"username":   claims.Username,
 		"role":       claims.Role,
-		"can_create": canCreate,
+		"can_create": createGlobal || len(createRealms) > 0 || len(createGameskills) > 0,
+		"create": map[string]interface{}{
+			"global":     createGlobal,
+			"realms":     createRealms,
+			"gameskills": createGameskills,
+		},
 	})
 }

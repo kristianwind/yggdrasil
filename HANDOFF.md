@@ -21,9 +21,9 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
 ### Live versions
 | Where | Version |
 |---|---|
-| Latest GitHub tag | **v0.2.86** |
-| VM (`192.168.1.158`) — GAME server | **v0.2.86** ✅ |
-| VM (`192.168.1.164`) — PRODUCTION | **v0.2.86** ✅ |
+| Latest GitHub tag | **v0.2.87** |
+| VM (`192.168.1.158`) — GAME server | **v0.2.87** ✅ |
+| VM (`192.168.1.164`) — PRODUCTION | **v0.2.87** ✅ |
 
 > **Server roles (2026-06-09):** `.164` = **production** (public apps, WordPress, Vaultwarden,
 > panel.nolimit.dk); `.158` = **game** server (live game servers landing soon). Both
@@ -45,6 +45,19 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
   exact dashboard step or curl.
 - Minting a panel API token in the DB; writing `.claude/settings.json`; putting a sudo/login
   password on the command line. `git push origin main` is blocked → use a PR branch + `gh pr merge`.
+
+### Session 2026-06-10 — what shipped since v0.2.86
+- **v0.2.87** (A3) **Realm-scoped server creation** for delegates: a user granted ServerCreate on a
+  realm can now create servers there. `/auth/me` exposes the caller's create-scopes
+  `{global, realms[], gameskills[]}`; the create modal gained a Realm dropdown + a rune list that
+  adapts to the chosen realm (realm you own / global → all runes; else only gameskill-creatable).
+  Backend already enforced it — the modal just never sent `realm_id`. (B1) **Edit-user modal** on the
+  Users page: change role + reset password (with the 🎲 generator); revokes sessions.
+- **Brand asset**: `yggdrasil-tree.svg` (+ 512/1024/2048 PNGs) — the 🌳 emoji bomærke rendered
+  high-res and auto-traced to a scalable vector via `vtracer` (pip). Not wired into the app icon yet.
+- **Deploy gotcha learned**: don't `gh release create` manually before CI — the Release workflow
+  creates the release; a pre-existing one makes the asset-upload step fail ("Requires
+  authentication"). Fix: delete the release (keep tag) + delete/re-push the tag to re-trigger CI.
 
 ### Session 2026-06-09 — what shipped since v0.2.82
 - **v0.2.86** (a) Delegates see/create only permitted runes: `GET /api/gameskills` returns
@@ -376,4 +389,4 @@ import sqlite3; db=sqlite3.connect('/var/lib/yggdrasil/yggdrasil.db')
 
 ---
 
-*Last updated: 2026-06-09*
+*Last updated: 2026-06-10*

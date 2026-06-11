@@ -21,9 +21,9 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
 ### Live versions
 | Where | Version |
 |---|---|
-| Latest GitHub tag | **v0.2.88** |
-| VM (`192.168.1.158`) — GAME server | **v0.2.88** ✅ |
-| VM (`192.168.1.164`) — PRODUCTION | **v0.2.88** ✅ |
+| Latest GitHub tag | **v0.2.89** |
+| VM (`192.168.1.158`) — GAME server | **v0.2.89** ✅ |
+| VM (`192.168.1.164`) — PRODUCTION | **v0.2.89** ✅ |
 
 > **Server roles (2026-06-09):** `.164` = **production** (public apps, WordPress, Vaultwarden,
 > panel.nolimit.dk); `.158` = **game** server (live game servers landing soon). Both
@@ -45,6 +45,14 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
   exact dashboard step or curl.
 - Minting a panel API token in the DB; writing `.claude/settings.json`; putting a sudo/login
   password on the command line. `git push origin main` is blocked → use a PR branch + `gh pr merge`.
+
+### Session 2026-06-11 (cont.) — what shipped since v0.2.88
+- **v0.2.89** **Scheduler notifications**: scheduled start/stop/restart/update now send one summary
+  notification per firing (`❌ Schedule "X" (restart): 2 ok, 1 skipped, 1 failed`). Backups keep
+  their own ✅/❌; message/command excluded (in-game only). Scheduled update now reports the real
+  install outcome.
+- Deleted the `cloudflare/workers-autoconfig` noise branch — **but the user still needs to disconnect
+  the Cloudflare Workers Git integration in the CF dashboard** or it respawns + resumes the ❌ emails.
 
 ### Session 2026-06-11 — what shipped since v0.2.87
 - **v0.2.88** **Host mounts** — admin-only per-server bind of a host folder into a container

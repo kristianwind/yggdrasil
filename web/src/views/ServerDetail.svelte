@@ -252,6 +252,8 @@
   // Edit settings
   let edit = $state(null); // { name, env, cpu_percent, memory_mb }
   let savingEdit = $state(false);
+  // Admin-only host bind mounts (e.g. a media library /mnt/mediaserver → /media).
+  let hostMounts = $state([]);
   function openEdit() {
     edit = {
       name: server.name,
@@ -262,13 +264,16 @@
       auto_forward: server.auto_forward !== false,
       subdomain: server.subdomain || "",
     };
+    hostMounts = (server.host_mounts || []).map((m) => ({ host: m.host, container: m.container, rw: !!m.rw }));
   }
+  const addMount = () => (hostMounts = [...hostMounts, { host: "", container: "", rw: false }]);
+  const removeMount = (i) => (hostMounts = hostMounts.filter((_, j) => j !== i));
   async function saveEdit() {
     savingEdit = true;
     try {
       const env = {};
       for (const [k, v] of Object.entries(edit.env)) env[k] = String(v);
-      await api.put(`/servers/${id}`, {
+      const payload = {
         name: edit.name,
         env,
         cpu_percent: Number(edit.cpu_percent) || 0,
@@ -276,7 +281,15 @@
         bm_server_id: edit.bm_server_id || "",
         auto_forward: !!edit.auto_forward,
         subdomain: edit.subdomain || "",
-      });
+      };
+      // Host mounts are admin-only; only send the field when the caller is an admin
+      // (the backend rejects it otherwise), and drop blank rows.
+      if ($user?.role === "admin") {
+        payload.host_mounts = hostMounts
+          .filter((m) => m.host.trim() && m.container.trim())
+          .map((m) => ({ host: m.host.trim(), container: m.container.trim(), rw: !!m.rw }));
+      }
+      await api.put(`/servers/${id}`, payload);
       toast("Saved — restart to apply (reinstall for file-baked values)", "success");
       await loadServer();
     } catch (e) {
@@ -712,6 +725,30 @@
               Nginx Proxy Manager or Cloudflare Tunnel (configure under Settings → Network). The route is
               created on start and removed on stop. You can also enter a full custom domain. Leave blank to disable.
             </p>
+          </div>
+        {/if}
+        {#if $user?.role === "admin"}
+          <div>
+            <span class="label">Host mounts (admin)</span>
+            <p class="text-xs text-muted mt-1 mb-2">
+              Mount a folder from the panel host into this container — e.g. a media library
+              <code>/mnt/mediaserver → /media</code> for Jellyfin. Read-only by default (tick
+              <b>Write</b> only if the app must write there). Applies on the next start.
+            </p>
+            <div class="space-y-2">
+              {#each hostMounts as m, i}
+                <div class="flex flex-wrap items-center gap-2">
+                  <input class="input flex-1 min-w-[10rem] font-mono text-xs" placeholder="/mnt/mediaserver" bind:value={m.host} />
+                  <span class="text-muted">→</span>
+                  <input class="input flex-1 min-w-[8rem] font-mono text-xs" placeholder="/media" bind:value={m.container} />
+                  <label class="inline-flex items-center gap-1 text-xs text-muted" title="Allow the container to write to this path">
+                    <input type="checkbox" bind:checked={m.rw} /> Write
+                  </label>
+                  <button class="btn-ghost px-2 py-1 text-danger" aria-label="Remove mount" onclick={() => removeMount(i)}>✕</button>
+                </div>
+              {/each}
+              <button class="btn-ghost text-sm" onclick={addMount}>+ Add host mount</button>
+            </div>
           </div>
         {/if}
         <div class="card bg-warn/10 border-warn/40 text-warn text-xs px-3 py-2">

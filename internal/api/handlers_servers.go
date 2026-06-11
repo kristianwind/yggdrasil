@@ -31,35 +31,37 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 type serverRow struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	GameskillID   string            `json:"gameskill_id"`
-	RealmID       string            `json:"realm_id,omitempty"`
-	Status        string            `json:"status"`
-	ContainerID   string            `json:"container_id,omitempty"`
-	EnvJSON       string            `json:"-"`
-	PortsJSON     string            `json:"-"`
-	Ports         map[string]int    `json:"ports"`
-	Env           map[string]string `json:"env,omitempty"` // populated only on single GET
-	CPUPercent    float64           `json:"cpu_percent"`
-	MemoryMB      int64             `json:"memory_mb"`
-	DataDir       string            `json:"data_dir"`
-	Installed     bool              `json:"installed"`
-	InstallStatus string            `json:"install_status"`
-	CreatedAt     string            `json:"created_at"`
-	BMServerID    string            `json:"bm_server_id,omitempty"`
-	AutoForward   bool              `json:"auto_forward"`
-	Subdomain     string            `json:"subdomain,omitempty"`
-	Perms         []string          `json:"perms"` // caller's effective permissions on this server
+	ID             string            `json:"id"`
+	Name           string            `json:"name"`
+	GameskillID    string            `json:"gameskill_id"`
+	RealmID        string            `json:"realm_id,omitempty"`
+	Status         string            `json:"status"`
+	ContainerID    string            `json:"container_id,omitempty"`
+	EnvJSON        string            `json:"-"`
+	PortsJSON      string            `json:"-"`
+	Ports          map[string]int    `json:"ports"`
+	Env            map[string]string `json:"env,omitempty"` // populated only on single GET
+	CPUPercent     float64           `json:"cpu_percent"`
+	MemoryMB       int64             `json:"memory_mb"`
+	DataDir        string            `json:"data_dir"`
+	Installed      bool              `json:"installed"`
+	InstallStatus  string            `json:"install_status"`
+	CreatedAt      string            `json:"created_at"`
+	BMServerID     string            `json:"bm_server_id,omitempty"`
+	AutoForward    bool              `json:"auto_forward"`
+	Subdomain      string            `json:"subdomain,omitempty"`
+	Perms          []string          `json:"perms"`                 // caller's effective permissions on this server
+	HostMountsJSON string            `json:"-"`                     // raw servers.host_mounts (admin host binds)
+	HostMounts     []hostMount       `json:"host_mounts,omitempty"` // populated on single GET for admins only
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,'')"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,'')"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
 	var installed, autoFwd int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
 	srv.Ports = map[string]int{}
@@ -126,6 +128,10 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if isAdmin(r) {
 		srv.Perms = allPermStrings
+		// Host bind mounts are an admin-only concern (host paths) — only echo them back to admins.
+		if srv.HostMountsJSON != "" {
+			_ = json.Unmarshal([]byte(srv.HostMountsJSON), &srv.HostMounts)
+		}
 	} else if c := claimsFromContext(r.Context()); c != nil {
 		srv.Perms = permStrings(rbac.EffectivePerms(s.loadGrants(r.Context(), c.UserID), srv.target()))
 	}
@@ -167,11 +173,28 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		Mods        *string           `json:"mods"` // alias for env["MODS"]; see handleUpdateServer
 		CPUPercent  float64           `json:"cpu_percent"`
 		MemoryMB    int64             `json:"memory_mb"`
-		Subdomain   string            `json:"subdomain"` // NPM subdomain for HTTP apps (empty = off)
+		Subdomain   string            `json:"subdomain"`   // NPM subdomain for HTTP apps (empty = off)
+		HostMounts  []hostMount       `json:"host_mounts"` // admin-only host bind mounts
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
+	}
+	// Host mounts bind host paths in — admin-only, and validated against a denylist.
+	var hostMountsJSON string
+	if len(req.HostMounts) > 0 {
+		if !isAdmin(r) {
+			jsonError(w, "host mounts require admin", http.StatusForbidden)
+			return
+		}
+		cleaned, err := validateHostMounts(req.HostMounts)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if b, err := json.Marshal(cleaned); err == nil {
+			hostMountsJSON = string(b)
+		}
 	}
 	if req.Name == "" || req.GameskillID == "" {
 		jsonError(w, "name and gameskill_id required", http.StatusBadRequest)
@@ -246,6 +269,9 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if hostMountsJSON != "" {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET host_mounts=? WHERE id=?", hostMountsJSON, serverID)
+	}
 
 	// Record port allocations
 	for portName, hostPort := range allocatedPorts {
@@ -292,16 +318,32 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		// IDs in load order). The web UI sends mods inside env, but API clients
 		// naturally reach for a top-level "mods" — accept both so it can't silently
 		// no-op.
-		Mods        *string  `json:"mods"`
-		CPUPercent  *float64 `json:"cpu_percent"`
-		MemoryMB    *int64   `json:"memory_mb"`
-		BMServerID  *string  `json:"bm_server_id"`
-		AutoForward *bool    `json:"auto_forward"`
-		Subdomain   *string  `json:"subdomain"`
+		Mods        *string      `json:"mods"`
+		CPUPercent  *float64     `json:"cpu_percent"`
+		MemoryMB    *int64       `json:"memory_mb"`
+		BMServerID  *string      `json:"bm_server_id"`
+		AutoForward *bool        `json:"auto_forward"`
+		Subdomain   *string      `json:"subdomain"`
+		HostMounts  *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
+	}
+	if req.HostMounts != nil {
+		// Host mounts expose host paths to a semi-trusted container — admin-only,
+		// validated against a denylist. Applies on the next container recreate.
+		if !isAdmin(r) {
+			jsonError(w, "host mounts require admin", http.StatusForbidden)
+			return
+		}
+		cleaned, err := validateHostMounts(*req.HostMounts)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		b, _ := json.Marshal(cleaned)
+		s.db.ExecContext(r.Context(), "UPDATE servers SET host_mounts=? WHERE id=?", string(b), id)
 	}
 	if req.Subdomain != nil {
 		sub := normalizeSubdomain(*req.Subdomain)
@@ -529,6 +571,7 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 		Capabilities:   gs.Docker.Capabilities,
 		Devices:        gs.Docker.Devices,
 		Sysctls:        gs.Docker.Sysctls,
+		HostMounts:     s.loadHostMounts(ctx, id), // admin-set host binds (validated on save)
 		CPUPercent:     cpuLimit,
 		MemoryMB:       memLimit,
 		Labels:         map[string]string{"yggdrasil.server_id": id},

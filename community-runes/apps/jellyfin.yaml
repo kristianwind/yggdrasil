@@ -26,7 +26,10 @@ gameskill:
   ports:
     - { name: web, default: 8096, protocol: tcp }
 
-  # Tip: to serve media, add a bind mount of your library to /media via a custom
-  # rune edit, or point Jellyfin at a network share from its web UI.
+  # To serve media: as an admin, open this server's Settings → "Host mounts" and add
+  # your library, e.g. /mnt/mediaserver → /media (read-only is fine). Then add /media
+  # as a library inside Jellyfin's web UI. Host mounts are admin-only and set per
+  # server (never in the rune), so an imported rune can't mount the host filesystem.
+  # You can also point Jellyfin at a network share (SMB/NFS) directly from its UI.
   backup:
     include: ["."]

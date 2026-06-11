@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -97,10 +99,52 @@ func (s *Server) runScheduleByID(id string) {
 		s.recordRun(id, name, "", "", action, "skipped", "no servers in scope")
 		return
 	}
+	var oks, skips, errs []string
 	for _, srv := range targets {
 		status, detail := s.runAction(scheduler.Action(action), srv, args)
 		s.recordRun(id, name, srv, s.serverName(srv), action, status, detail)
+		switch status {
+		case "ok":
+			oks = append(oks, s.serverName(srv))
+		case "skipped":
+			skips = append(skips, s.serverName(srv)+" ("+detail+")")
+		case "error":
+			errs = append(errs, s.serverName(srv)+": "+detail)
+		}
 	}
+	s.notifyScheduleRun(name, scheduler.Action(action), oks, skips, errs)
+}
+
+// notifyScheduleRun sends one notification summarizing a schedule firing — but
+// only for state-changing actions (start/stop/restart/update). Backups already
+// emit their own ✅/❌ from runBackup, and message/command actions are in-game
+// only, so notifying for those would be noise or duplicates.
+func (s *Server) notifyScheduleRun(name string, action scheduler.Action, oks, skips, errs []string) {
+	switch action {
+	case scheduler.ActionStart, scheduler.ActionStop, scheduler.ActionRestart, scheduler.ActionUpdate:
+	default:
+		return
+	}
+	if len(oks)+len(skips)+len(errs) == 0 {
+		return
+	}
+	icon := "✅"
+	if len(errs) > 0 {
+		icon = "❌"
+	} else if len(oks) == 0 {
+		icon = "⏰"
+	}
+	msg := fmt.Sprintf("%s Schedule %q (%s): %d ok, %d skipped, %d failed", icon, name, action, len(oks), len(skips), len(errs))
+	if len(oks) > 0 {
+		msg += "\n  ok: " + strings.Join(oks, ", ")
+	}
+	if len(skips) > 0 {
+		msg += "\n  skipped: " + strings.Join(skips, ", ")
+	}
+	if len(errs) > 0 {
+		msg += "\n  failed: " + strings.Join(errs, ", ")
+	}
+	s.notifyAll(msg)
 }
 
 // recordRun appends a run-log entry and prunes to the last 100 per schedule.
@@ -234,8 +278,12 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		if args["skip_if_players"] == "true" && s.playersOnline(serverID) > 0 {
 			return "skipped", "players online"
 		}
-		s.runInstall(serverID) //nolint:errcheck
-		return "ok", "update/reinstall started"
+		// runInstall is synchronous here, so by the time it returns the (re)install
+		// has finished — report the real outcome for the run log + notification.
+		if err := s.runInstall(serverID); err != nil {
+			return "error", err.Error()
+		}
+		return "ok", "update/reinstall complete"
 	}
 	return "error", "unknown action: " + string(action)
 }

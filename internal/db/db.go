@@ -235,6 +235,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")         // NPM subdomain label/full domain for HTTP apps (empty = off)
 	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")     // NPM proxy-host id we created (0 = none)
 	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")       // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)
+	addColumnIfMissing(db, "servers", "host_mounts", "TEXT NOT NULL DEFAULT ''")       // admin-set host bind mounts (JSON array); read-only by default
 	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")     // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)
 	addColumnIfMissing(db, "users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0") // last accepted TOTP step; rejects replay within the validity window
 	return nil

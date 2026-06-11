@@ -68,6 +68,17 @@ type CreateOptions struct {
 	Capabilities []string
 	Devices      []string
 	Sysctls      map[string]string
+	// HostMounts bind host paths into the container (e.g. a media library at
+	// /mnt/mediaserver → /media). Admin-set per server, validated + read-only by
+	// default — NEVER sourced from rune YAML (a rune can't mount the host fs).
+	HostMounts []HostMount
+}
+
+// HostMount is an admin-configured bind of a host path into a container.
+type HostMount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
 }
 
 // defaultPidsLimit caps the number of processes a container may spawn, so a
@@ -206,6 +217,17 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 				Type: mount.TypeBind, Source: caBundle, Target: "/etc/ssl/certs/ca-certificates.crt", ReadOnly: true,
 			})
 		}
+	}
+	// Admin-configured host bind mounts (e.g. a media library at /mnt/mediaserver →
+	// /media). Validated in the API layer (admin-only, denylist, source must exist);
+	// read-only unless explicitly made writable. NEVER sourced from rune YAML.
+	for _, hm := range opts.HostMounts {
+		if hm.Source == "" || hm.Target == "" {
+			continue
+		}
+		mounts = append(mounts, mount.Mount{
+			Type: mount.TypeBind, Source: hm.Source, Target: hm.Target, ReadOnly: hm.ReadOnly,
+		})
 	}
 
 	// Auto-recover from genuine crashes, but cap retries so a server that fails

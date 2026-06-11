@@ -21,9 +21,9 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
 ### Live versions
 | Where | Version |
 |---|---|
-| Latest GitHub tag | **v0.2.87** |
-| VM (`192.168.1.158`) — GAME server | **v0.2.87** ✅ |
-| VM (`192.168.1.164`) — PRODUCTION | **v0.2.87** ✅ |
+| Latest GitHub tag | **v0.2.88** |
+| VM (`192.168.1.158`) — GAME server | **v0.2.88** ✅ |
+| VM (`192.168.1.164`) — PRODUCTION | **v0.2.88** ✅ |
 
 > **Server roles (2026-06-09):** `.164` = **production** (public apps, WordPress, Vaultwarden,
 > panel.nolimit.dk); `.158` = **game** server (live game servers landing soon). Both
@@ -45,6 +45,14 @@ A self-hosted **game & app server panel** for Debian/Ubuntu.
   exact dashboard step or curl.
 - Minting a panel API token in the DB; writing `.claude/settings.json`; putting a sudo/login
   password on the command line. `git push origin main` is blocked → use a PR branch + `gh pr merge`.
+
+### Session 2026-06-11 — what shipped since v0.2.87
+- **v0.2.88** **Host mounts** — admin-only per-server bind of a host folder into a container
+  (e.g. a media library `/mnt/mediaserver → /media` for Jellyfin). Read-only by default; validated
+  against a denylist (sensitive host paths + system/`/data` container targets) and the host source
+  must exist; admin-only to set + only echoed back to admins; never from rune YAML (keeps the audit's
+  rune-mount confinement). Editor in ServerDetail → Settings. (`extra_volumes` ≠ host mounts — it
+  just makes subdirs of the data dir.)
 
 ### Session 2026-06-10 — what shipped since v0.2.86
 - **v0.2.87** (A3) **Realm-scoped server creation** for delegates: a user granted ServerCreate on a

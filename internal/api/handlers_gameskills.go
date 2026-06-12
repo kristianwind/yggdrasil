@@ -25,6 +25,21 @@ func (s *Server) handleListGameskills(w http.ResponseWriter, r *http.Request) {
 			grants = s.loadGrants(r.Context(), c.UserID)
 		}
 	}
+	// A realm-scoped ServerCreate grant lets the user create ANY rune (in that
+	// realm), so every rune is creatable for them even though the per-rune check
+	// below — which uses a gameskill-only target — wouldn't match a realm grant.
+	// Without this, a realm-only creator saw an empty Runes page ("ask an admin").
+	hasRealmCreate := false
+	for _, g := range grants {
+		if g.ScopeType != rbac.ScopeRealm {
+			continue
+		}
+		for _, p := range g.Perms {
+			if p == rbac.ServerCreate {
+				hasRealmCreate = true
+			}
+		}
+	}
 
 	rows, err := s.db.QueryContext(r.Context(),
 		"SELECT id, name, category, version, builtin FROM gameskills ORDER BY name")
@@ -50,10 +65,10 @@ func (s *Server) handleListGameskills(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		it.Builtin = builtin == 1
-		// Mirror the create endpoint's check: ServerCreate against a gameskill-only
-		// target (the create UI picks no realm), so a global or gameskill-scoped
-		// grant qualifies — matching exactly what POST /api/servers will allow.
-		it.Creatable = admin || rbac.Allowed(grants, rbac.ServerCreate, rbac.Target{GameskillID: it.ID})
+		// Creatable if: admin, a realm-scoped create grant (any rune in some realm —
+		// picked in the create modal), or a global/gameskill-scoped grant for this
+		// rune (gameskill-only target matches global + gameskill scopes).
+		it.Creatable = admin || hasRealmCreate || rbac.Allowed(grants, rbac.ServerCreate, rbac.Target{GameskillID: it.ID})
 		list = append(list, it)
 	}
 	if list == nil {

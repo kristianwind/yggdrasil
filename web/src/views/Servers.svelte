@@ -27,7 +27,7 @@
   let showCreate = $state(false);
   let selectedSkill = $state(null);
   let skillDetail = $state(null);
-  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: "" });
+  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: "", autostart: true });
   let creating = $state(false);
 
   // External reachability per server (id -> {reachable,...}), for the at-a-glance
@@ -111,7 +111,7 @@
     const realmId = ro.allowNoRealm ? "" : ro.realms[0]?.id || "";
     const skills = runesForRealm(realmId);
     if (skills.length === 0) return toast("No runes available with your permissions", "warn");
-    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: realmId };
+    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: realmId, autostart: true };
     selectedSkill = preselectId && skills.some((g) => g.id === preselectId) ? preselectId : skills[0].id;
     await loadSkill();
     showCreate = true;
@@ -148,6 +148,7 @@
         cpu_percent: Number(form.cpu_percent) || 0,
         memory_mb: Number(form.memory_mb) || 0,
         subdomain: form.subdomain || "",
+        autostart: !!form.autostart,
       });
       toast("Server created", "success");
       showCreate = false;
@@ -381,6 +382,11 @@
           </p>
         </div>
       {/if}
+
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" bind:checked={form.autostart} />
+        Start automatically after a reboot
+      </label>
 
       <div class="flex gap-2 pt-2">
         <button class="btn-ghost flex-1" onclick={() => (showCreate = false)}>Cancel</button>

@@ -49,21 +49,23 @@ type serverRow struct {
 	CreatedAt      string            `json:"created_at"`
 	BMServerID     string            `json:"bm_server_id,omitempty"`
 	AutoForward    bool              `json:"auto_forward"`
+	Autostart      bool              `json:"autostart"` // start on panel/host boot
 	Subdomain      string            `json:"subdomain,omitempty"`
 	Perms          []string          `json:"perms"`                 // caller's effective permissions on this server
 	HostMountsJSON string            `json:"-"`                     // raw servers.host_mounts (admin host binds)
 	HostMounts     []hostMount       `json:"host_mounts,omitempty"` // populated on single GET for admins only
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,'')"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1)"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
-	var installed, autoFwd int
+	var installed, autoFwd, autostart int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
+	srv.Autostart = autostart == 1
 	srv.Ports = map[string]int{}
 	json.Unmarshal([]byte(srv.PortsJSON), &srv.Ports)
 	return srv, err
@@ -175,6 +177,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		MemoryMB    int64             `json:"memory_mb"`
 		Subdomain   string            `json:"subdomain"`   // NPM subdomain for HTTP apps (empty = off)
 		HostMounts  []hostMount       `json:"host_mounts"` // admin-only host bind mounts
+		Autostart   *bool             `json:"autostart"`   // start on boot; nil = default on
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -272,6 +275,10 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	if hostMountsJSON != "" {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET host_mounts=? WHERE id=?", hostMountsJSON, serverID)
 	}
+	// Autostart defaults to on (the column default); only persist when explicitly off.
+	if req.Autostart != nil && !*req.Autostart {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET autostart=0 WHERE id=?", serverID)
+	}
 
 	// Record port allocations
 	for portName, hostPort := range allocatedPorts {
@@ -323,6 +330,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		MemoryMB    *int64       `json:"memory_mb"`
 		BMServerID  *string      `json:"bm_server_id"`
 		AutoForward *bool        `json:"auto_forward"`
+		Autostart   *bool        `json:"autostart"`
 		Subdomain   *string      `json:"subdomain"`
 		HostMounts  *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
 	}
@@ -360,6 +368,9 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AutoForward != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET auto_forward=? WHERE id=?", boolInt(*req.AutoForward), id)
+	}
+	if req.Autostart != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET autostart=? WHERE id=?", boolInt(*req.Autostart), id)
 	}
 	if req.Name != nil && *req.Name != "" {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"log"
 	"regexp"
 	"time"
 
@@ -46,6 +47,55 @@ func (s *Server) watchStartupReady(serverID, containerID, doneRegex string) {
 	// Took too long to signal readiness but it's still up — show it as running.
 	if running, _, _ := s.docker.State(context.Background(), containerID); running {
 		s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+	}
+}
+
+// startAutostartServers brings autostart-enabled servers back up after a panel
+// or host restart. It restarts only servers that were RUNNING (per the DB, which
+// persists across a reboot) but whose container is now down — so:
+//   - a real host reboot (containers stopped) restarts them,
+//   - a plain panel restart / deploy (game containers keep running) is a no-op,
+//   - a server the user manually stopped (status 'stopped') stays stopped.
+//
+// Runs once at startup; bounded waiting for the Docker daemon on a cold boot.
+func (s *Server) startAutostartServers() {
+	defer recoverLog("startAutostartServers")
+	ctx := context.Background()
+	// On a cold boot the panel may come up just before dockerd; wait for it.
+	for i := 0; i < 10; i++ {
+		c, cancel := context.WithTimeout(ctx, 3*time.Second)
+		err := s.docker.Ping(c)
+		cancel()
+		if err == nil {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+	rows, err := s.db.Query(
+		"SELECT id, COALESCE(container_id,'') FROM servers WHERE autostart=1 AND installed=1 AND status IN ('running','starting')")
+	if err != nil {
+		return
+	}
+	type sv struct{ id, cid string }
+	var list []sv
+	for rows.Next() {
+		var x sv
+		if rows.Scan(&x.id, &x.cid) == nil {
+			list = append(list, x)
+		}
+	}
+	rows.Close()
+
+	for _, x := range list {
+		if x.cid != "" {
+			if running, _, err := s.docker.State(ctx, x.cid); err == nil && running {
+				continue // still up (panel restarted but the container kept running)
+			}
+		}
+		if err := s.recreateAndStart(ctx, x.id); err != nil {
+			log.Printf("autostart: server %s failed to start: %v", x.id, err)
+		}
 	}
 }
 

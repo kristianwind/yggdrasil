@@ -68,6 +68,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.viol.Start()
 	s.startDiskMonitor()
 	s.startStatusReconciler()
+	go s.startAutostartServers()
 	return s
 }
 

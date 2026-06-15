@@ -262,6 +262,7 @@
       memory_mb: server.memory_mb || 0,
       bm_server_id: server.bm_server_id || "",
       auto_forward: server.auto_forward !== false,
+      autostart: server.autostart !== false,
       subdomain: server.subdomain || "",
     };
     hostMounts = (server.host_mounts || []).map((m) => ({ host: m.host, container: m.container, rw: !!m.rw }));
@@ -280,6 +281,7 @@
         memory_mb: Number(edit.memory_mb) || 0,
         bm_server_id: edit.bm_server_id || "",
         auto_forward: !!edit.auto_forward,
+        autostart: !!edit.autostart,
         subdomain: edit.subdomain || "",
       };
       // Host mounts are admin-only; only send the field when the caller is an admin
@@ -714,6 +716,16 @@
           <p class="text-xs text-muted mt-1">
             On by default. Turn off to keep this server LAN-only — its ports won't be forwarded
             on the router when it starts. Takes effect on the next start.
+          </p>
+        </div>
+        <div>
+          <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={edit.autostart} />
+            Start automatically after a reboot
+          </label>
+          <p class="text-xs text-muted mt-1">
+            On by default. If this server was running when the host/panel restarts, it's brought
+            back up automatically. Turn off to leave it stopped after a reboot.
           </p>
         </div>
         {#if server.ports?.web}

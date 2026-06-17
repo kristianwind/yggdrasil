@@ -1,0 +1,62 @@
+gameskill:
+  id: hermes-agent
+  name: "Hermes Agent"
+  category: "Apps"
+  description: >
+    EXPERIMENTAL / COMMUNITY. Hermes — a self-improving AI agent by Nous Research
+    (github.com/NousResearch/hermes-agent). Serves a web dashboard (the default
+    port here) plus an optional OpenAI-compatible API, and keeps its memory,
+    skills and sessions in the data volume. You MUST provide an LLM provider key
+    (Anthropic OR OpenAI) for it to do anything — the agent is free, you pay the
+    provider's API usage. Set a dashboard username/password before exposing it.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    # Official image. s6-overlay runs as PID 1 (as root) and drops to PUID:PGID,
+    # so keep the image's entrypoint and run it as 0:0 — files in the data volume
+    # end up owned by the panel user (PUID/PGID below) and stay editable.
+    image: "nousresearch/hermes-agent:latest"
+    data_path: /opt/data          # "single source of truth for all Hermes state"
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # Provide ONE of these. Hermes can't run the model without a provider key.
+    - { key: ANTHROPIC_API_KEY, name: "Anthropic API key (or use OpenAI below)", type: string, default: "", secret: true }
+    - { key: OPENAI_API_KEY,    name: "OpenAI API key (alternative to Anthropic)", type: string, default: "", secret: true }
+    # Web dashboard. Port must match the rune's `web` port (9119) so the panel can
+    # publish it / attach a subdomain.
+    - { key: HERMES_DASHBOARD,      name: "Enable web dashboard (1 = on)", type: string, default: "1" }
+    - { key: HERMES_DASHBOARD_HOST, name: "Dashboard bind address",       type: string, default: "0.0.0.0" }
+    - { key: HERMES_DASHBOARD_PORT, name: "Dashboard port (keep 9119)",   type: int,    default: 9119 }
+    - { key: HERMES_DASHBOARD_BASIC_AUTH_USERNAME, name: "Dashboard username", type: string, default: "admin" }
+    - { key: HERMES_DASHBOARD_BASIC_AUTH_PASSWORD, name: "Dashboard password", type: string, default: "change-me", secret: true }
+    # Run-as ids so the data volume is owned by the panel user (editable in Files).
+    - { key: PUID, name: "Run-as UID", type: string, default: "999" }
+    - { key: PGID, name: "Run-as GID", type: string, default: "982" }
+
+  install:
+    image: "nousresearch/hermes-agent:latest"
+    script: |
+      echo "Hermes Agent: state (config, memories, skills, sessions) is created in"
+      echo "the data volume on first start. Set an LLM key + dashboard password,"
+      echo "then Start. Dashboard will be on the published web port."
+
+  startup:
+    # docker.md: `docker run nousresearch/hermes-agent gateway run` runs the
+    # persistent gateway (+ dashboard when HERMES_DASHBOARD=1). exec = raw argv to
+    # the image's own entrypoint.
+    exec: [gateway, run]
+    done_regex: ''   # no documented ready-line — mark running once it stays up
+
+  # Hermes writes config.yaml in the data volume; expose it for hand-editing.
+  config_files:
+    - "config.yaml"
+
+  ports:
+    - { name: web, default: 9119, protocol: tcp }   # dashboard (web UI)
+
+  backup:
+    include: ["."]

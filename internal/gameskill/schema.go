@@ -77,6 +77,10 @@ type Variable struct {
 	Required bool        `yaml:"required" json:"required,omitempty"`
 	Min      *int        `yaml:"min"      json:"min,omitempty"`
 	Max      *int        `yaml:"max"      json:"max,omitempty"`
+	// Secret marks a value the UI should render as a password field (masked, with
+	// the generate/copy controls) — e.g. an API key. The VarForm also auto-detects
+	// password/secret/token by name; this is the explicit opt-in for others.
+	Secret bool `yaml:"secret" json:"secret,omitempty"`
 }
 
 type Install struct {

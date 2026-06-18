@@ -105,16 +105,23 @@
   }
   let availableSkills = $derived(runesForRealm(form.realm_id));
 
-  async function openCreate(preselectId) {
+  function openCreate(preselectId) {
     if (!$user?.can_create) return toast("You don't have permission to create servers", "warn");
     const ro = createRealmOptions;
     const realmId = ro.allowNoRealm ? "" : ro.realms[0]?.id || "";
     const skills = runesForRealm(realmId);
     if (skills.length === 0) return toast("No runes available with your permissions", "warn");
     form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: realmId, autostart: true };
-    selectedSkill = preselectId && skills.some((g) => g.id === preselectId) ? preselectId : skills[0].id;
-    await loadSkill();
+    // preselectId is a rune id when opened from a "Create server" button; when the
+    // handler is wired straight to onclick it's a click Event — ignore non-strings.
+    selectedSkill =
+      typeof preselectId === "string" && skills.some((g) => g.id === preselectId) ? preselectId : skills[0].id;
+    // Open the modal synchronously (in the click frame) so Svelte flushes it, THEN
+    // load the rune's variables — fetching first and setting showCreate after the
+    // await left the modal stuck closed. VarForm fills in once skillDetail loads.
+    skillDetail = null;
     showCreate = true;
+    loadSkill();
   }
 
   // When the realm changes, keep the selected rune valid for that realm.

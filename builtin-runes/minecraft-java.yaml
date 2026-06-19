@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 1
+  version: 2
   icon: "minecraft"
 
   docker:
@@ -152,9 +152,13 @@ gameskill:
       ls -la server.jar
 
   startup:
+    # Re-stamp eula.txt from the current EULA toggle on every start, so flipping
+    # "Accept the EULA" in Settings + restart actually takes effect (install only
+    # writes it once). `exec` hands PID 1 + stdin to Java so the "stop" command
+    # and signals still reach the server.
     # --enable-native-access=ALL-UNNAMED silences the Java 24+ "restricted
     # method ... java.lang.System::load (JNA)" warnings; harmless either way.
-    command: "java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui"
+    command: "echo eula={{EULA}} > eula.txt && exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui"
     done_regex: 'Done \(.*\)! For help'
     stop: "stop"
 

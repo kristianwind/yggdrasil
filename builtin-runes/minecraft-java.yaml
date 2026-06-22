@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 3
+  version: 4
   icon: "minecraft"
 
   docker:
@@ -165,14 +165,21 @@ gameskill:
       ls -la server.jar
 
   startup:
-    # Re-stamp eula.txt + difficulty from the current settings on every start, so
-    # flipping "Accept the EULA" or changing Difficulty in Settings + restart
-    # actually takes effect (install only writes them once). World type is omitted
-    # here — it's fixed at world generation and can't change after. `exec` hands
-    # PID 1 + stdin to Java so the "stop" command and signals still reach it.
+    # Re-stamp eula.txt + the mutable server.properties toggles (difficulty,
+    # whitelist) from the CURRENT settings on every start, so changing them in
+    # Settings + restart actually takes effect — install only writes them once,
+    # and the toggle otherwise looks applied while the server keeps the old value.
+    # World type is omitted — it's fixed at world generation and can't change.
+    # `exec` hands PID 1 + stdin to Java so the "stop" command and signals reach it.
     # --enable-native-access=ALL-UNNAMED silences the Java 24+ "restricted
     # method ... java.lang.System::load (JNA)" warnings; harmless either way.
-    command: "echo eula={{EULA}} > eula.txt; sed -i 's/^difficulty=.*/difficulty={{DIFFICULTY}}/' server.properties 2>/dev/null; grep -q '^difficulty=' server.properties 2>/dev/null || echo 'difficulty={{DIFFICULTY}}' >> server.properties; exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui"
+    command: |
+      setprop() { if grep -q "^$1=" server.properties 2>/dev/null; then sed -i "s/^$1=.*/$1=$2/" server.properties; else echo "$1=$2" >> server.properties; fi; }
+      echo eula={{EULA}} > eula.txt
+      setprop difficulty {{DIFFICULTY}}
+      setprop white-list {{ENABLE_WHITELIST}}
+      setprop enforce-whitelist {{ENABLE_WHITELIST}}
+      exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui
     done_regex: 'Done \(.*\)! For help'
     stop: "stop"
 

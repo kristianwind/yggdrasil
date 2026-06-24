@@ -11,6 +11,14 @@
       if (values[v.key] === undefined && v.default !== undefined && v.default !== null) {
         values[v.key] = v.default;
       }
+      // Normalize bool vars: env round-trips through env_json as the *string*
+      // "true"/"false", and a non-empty string like "false" is truthy — which
+      // renders the checkbox as checked even when the stored value is false (so
+      // saving silently writes "false" back). Coerce to a real boolean so the
+      // toggle reflects — and saves — the actual value.
+      if (v.type === "bool" && typeof values[v.key] === "string") {
+        values[v.key] = values[v.key] === "true";
+      }
     }
   });
 

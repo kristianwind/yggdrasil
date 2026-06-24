@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 1
+  version: 4
   icon: "minecraft"
 
   docker:
@@ -34,6 +34,16 @@ gameskill:
       name: "World seed (blank = random)"
       type: string
       default: ""
+    - key: LEVEL_TYPE
+      name: "World type (only applies to a new world)"
+      type: select
+      options: [normal, flat, large_biomes, amplified]
+      default: normal
+    - key: DIFFICULTY
+      name: "Difficulty"
+      type: select
+      options: [peaceful, easy, normal, hard]
+      default: easy
     - key: RCON_PORT
       name: "RCON port (container-internal)"
       type: int
@@ -137,6 +147,9 @@ gameskill:
           echo "rcon.password={{RCON_PASSWORD}}"
           echo "white-list={{ENABLE_WHITELIST}}"
           echo "enforce-whitelist={{ENABLE_WHITELIST}}"
+          echo "difficulty={{DIFFICULTY}}"
+          # World type is fixed at generation — only meaningful on the first run.
+          echo "level-type=minecraft:{{LEVEL_TYPE}}"
         } >> server.properties
       fi
       # World seed (only on first install, before the world is generated).
@@ -152,9 +165,21 @@ gameskill:
       ls -la server.jar
 
   startup:
+    # Re-stamp eula.txt + the mutable server.properties toggles (difficulty,
+    # whitelist) from the CURRENT settings on every start, so changing them in
+    # Settings + restart actually takes effect — install only writes them once,
+    # and the toggle otherwise looks applied while the server keeps the old value.
+    # World type is omitted — it's fixed at world generation and can't change.
+    # `exec` hands PID 1 + stdin to Java so the "stop" command and signals reach it.
     # --enable-native-access=ALL-UNNAMED silences the Java 24+ "restricted
     # method ... java.lang.System::load (JNA)" warnings; harmless either way.
-    command: "java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui"
+    command: |
+      setprop() { if grep -q "^$1=" server.properties 2>/dev/null; then sed -i "s/^$1=.*/$1=$2/" server.properties; else echo "$1=$2" >> server.properties; fi; }
+      echo eula={{EULA}} > eula.txt
+      setprop difficulty {{DIFFICULTY}}
+      setprop white-list {{ENABLE_WHITELIST}}
+      setprop enforce-whitelist {{ENABLE_WHITELIST}}
+      exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui
     done_regex: 'Done \(.*\)! For help'
     stop: "stop"
 

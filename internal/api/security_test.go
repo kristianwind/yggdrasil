@@ -8,9 +8,61 @@ import (
 	"testing"
 
 	"github.com/kristianwind/yggdrasil/internal/config"
+	"github.com/kristianwind/yggdrasil/internal/crypto"
+	"github.com/kristianwind/yggdrasil/internal/gameskill"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 	"github.com/kristianwind/yggdrasil/internal/scheduler"
 )
+
+func TestSecretEnvEncryption(t *testing.T) {
+	cipher, err := crypto.New("test-secret-key-at-least-16-chars-long")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{cipher: cipher}
+	gs := &gameskill.Gameskill{
+		Variables: []gameskill.Variable{
+			{Key: "RCON_PASSWORD", Secret: true},
+			{Key: "API_KEY", Secret: true},
+			{Key: "MEMORY_MB"},
+		},
+		RCON: &gameskill.RCON{PasswordVar: "RCON_PASSWORD"},
+	}
+	env := map[string]string{"RCON_PASSWORD": "hunter2", "API_KEY": "sk-abc", "MEMORY_MB": "4096"}
+
+	s.encryptSecretEnv(env, gs)
+	if env["RCON_PASSWORD"] == "hunter2" {
+		t.Fatal("RCON password stored in plaintext at rest")
+	}
+	if env["API_KEY"] == "sk-abc" {
+		t.Fatal("secret var API_KEY stored in plaintext")
+	}
+	if env["MEMORY_MB"] != "4096" {
+		t.Fatalf("non-secret var altered: %q", env["MEMORY_MB"])
+	}
+
+	// Idempotent: re-encrypting (as the update-merge path does) must not
+	// double-encrypt.
+	enc := env["RCON_PASSWORD"]
+	s.encryptSecretEnv(env, gs)
+	if env["RCON_PASSWORD"] != enc {
+		t.Fatal("double-encrypted on re-save")
+	}
+
+	// Round-trips back to the original values.
+	s.decryptSecretEnv(env, gs)
+	if env["RCON_PASSWORD"] != "hunter2" || env["API_KEY"] != "sk-abc" {
+		t.Fatalf("decrypt did not round-trip: %v", env)
+	}
+
+	// Legacy plaintext (written before at-rest encryption) is left intact so it
+	// still works and gets encrypted on the next save.
+	legacy := map[string]string{"RCON_PASSWORD": "plainpw"}
+	s.decryptSecretEnv(legacy, gs)
+	if legacy["RCON_PASSWORD"] != "plainpw" {
+		t.Fatalf("legacy plaintext mangled: %q", legacy["RCON_PASSWORD"])
+	}
+}
 
 func TestSanitizeConsoleArg(t *testing.T) {
 	// Newline-based command injection must be neutralized.

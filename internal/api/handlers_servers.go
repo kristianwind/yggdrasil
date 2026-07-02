@@ -145,12 +145,15 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB)
 	srv.Env = map[string]string{}
 	json.Unmarshal([]byte(envJSON), &srv.Env)
-	// Mask secret env vars (e.g. the RCON password) so they aren't echoed to anyone
-	// with only ServerView. The update handler treats secretMask as "keep existing",
-	// so the edit form round-trips without clobbering the real value.
-	if rt, err := s.loadRuntime(r.Context(), id); err == nil && rt.gs.RCON != nil && rt.gs.RCON.PasswordVar != "" {
-		if v := srv.Env[rt.gs.RCON.PasswordVar]; v != "" {
-			srv.Env[rt.gs.RCON.PasswordVar] = secretMask
+	// Mask ALL secret env vars (RCON password + password-typed vars) so they're
+	// never echoed — neither plaintext nor the at-rest ciphertext — to anyone with
+	// only ServerView. The update handler treats secretMask as "keep existing", so
+	// the edit form round-trips without clobbering the real value.
+	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+		for k := range secretEnvKeys(rt.gs) {
+			if srv.Env[k] != "" {
+				srv.Env[k] = secretMask
+			}
 		}
 	}
 	jsonOK(w, srv)
@@ -255,6 +258,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.encryptSecretEnv(env, gs) // encrypt secret-typed values before persisting
 	envJSON, _ := json.Marshal(env)
 	portsJSON, _ := json.Marshal(allocatedPorts)
 	realmID := req.RealmID
@@ -387,7 +391,13 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET realm_id=? WHERE id=?", nullableStr(*req.RealmID), id)
 	}
 	if req.Env != nil || req.Mods != nil {
-		// Merge onto the existing env so unspecified vars are preserved.
+		// Merge onto the existing env so unspecified vars are preserved. The
+		// existing secret values stay encrypted through the merge; encryptSecretEnv
+		// below encrypts only the newly-supplied (plaintext) ones (idempotent).
+		var gs *gameskill.Gameskill
+		if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+			gs = rt.gs
+		}
 		current := map[string]string{}
 		var envJSON string
 		s.db.QueryRowContext(r.Context(), "SELECT env_json FROM servers WHERE id=?", id).Scan(&envJSON)
@@ -402,6 +412,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		if req.Mods != nil {
 			current["MODS"] = strings.TrimSpace(*req.Mods)
 		}
+		s.encryptSecretEnv(current, gs)
 		b, _ := json.Marshal(current)
 		s.db.ExecContext(r.Context(), "UPDATE servers SET env_json=? WHERE id=?", string(b), id)
 	}

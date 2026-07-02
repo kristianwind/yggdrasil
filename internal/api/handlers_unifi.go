@@ -58,6 +58,9 @@ func (s *Server) unifiAddServer(serverID, serverName string) {
 	}
 	tag := unifiRuleTag(serverID)
 	for _, pp := range s.serverPortProtos(ctx, serverID) {
+		if pp.Admin {
+			continue // never WAN-forward the RCON/admin port
+		}
 		port := strconv.Itoa(pp.Port)
 		_ = c.CreatePortForward(unifi.PortForward{
 			Name:          fmt.Sprintf("Yggdrasil: %s %s", serverName, tag),

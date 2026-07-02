@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/kristianwind/yggdrasil/internal/upnp"
 )
@@ -18,9 +19,12 @@ func (s *Server) upnpEnabled(ctx context.Context) bool {
 type portProto struct {
 	Port  int
 	Proto string
+	Admin bool // admin/RCON port — reachable locally but never WAN-forwarded
 }
 
 // serverPortProtos returns the (host port, protocol) pairs to map for a server.
+// Admin/RCON ports are flagged so the WAN-forwarding paths can skip them: an
+// RCON console must never be opened to the internet by auto-forward.
 func (s *Server) serverPortProtos(ctx context.Context, serverID string) []portProto {
 	rt, err := s.loadRuntime(ctx, serverID)
 	if err != nil {
@@ -33,7 +37,7 @@ func (s *Server) serverPortProtos(ctx context.Context, serverID string) []portPr
 			if proto == "" {
 				proto = "tcp"
 			}
-			out = append(out, portProto{Port: hp, Proto: proto})
+			out = append(out, portProto{Port: hp, Proto: proto, Admin: strings.EqualFold(p.Name, "rcon")})
 		}
 	}
 	return out
@@ -51,6 +55,9 @@ func (s *Server) upnpAddServer(serverID, serverName string) {
 		return // no IGD; manual forwarding helper is shown instead
 	}
 	for _, pp := range s.serverPortProtos(ctx, serverID) {
+		if pp.Admin {
+			continue // never WAN-forward the RCON/admin port
+		}
 		_ = cl.AddMapping(pp.Port, pp.Proto, "Yggdrasil: "+serverName, upnpLease)
 	}
 }

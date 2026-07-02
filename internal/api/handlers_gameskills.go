@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -230,8 +231,12 @@ func (s *Server) handleDeleteGameskill(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	if builtin == 1 {
-		jsonError(w, "cannot delete built-in gameskill", http.StatusForbidden)
+	// Any rune — including built-in defaults — can be deleted, but not while
+	// servers still use it (that would orphan them). Delete those servers first.
+	var inUse int
+	s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM servers WHERE gameskill_id=?", id).Scan(&inUse)
+	if inUse > 0 {
+		jsonError(w, fmt.Sprintf("%d server(s) still use this rune — delete them first", inUse), http.StatusConflict)
 		return
 	}
 
@@ -240,8 +245,12 @@ func (s *Server) handleDeleteGameskill(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
 	}
+	// Record deleted defaults so seeding doesn't re-add them on the next boot.
+	if builtin == 1 {
+		s.db.ExecContext(r.Context(), "INSERT OR IGNORE INTO deleted_builtins (id) VALUES (?)", id)
+	}
 
-	s.auditLog(r, "gameskill.delete", "gameskill:"+id, nil)
+	s.auditLog(r, "gameskill.delete", "gameskill:"+id, map[string]int{"builtin": builtin})
 	jsonOK(w, map[string]string{"status": "deleted"})
 }
 

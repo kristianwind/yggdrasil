@@ -101,7 +101,10 @@
   }
 
   async function del(r) {
-    if (!confirm(`Delete rune "${r.name}"?`)) return;
+    const extra = r.builtin
+      ? " This is a built-in default rune — it won't be re-added on restart."
+      : "";
+    if (!confirm(`Delete rune "${r.name}"?${extra}`)) return;
     try {
       await api.del(`/gameskills/${r.id}`);
       toast("Rune deleted", "success");
@@ -242,10 +245,10 @@
               {#if r.creatable}
                 <button class="btn-primary px-2 py-1" onclick={() => createServer(r)}>Create server</button>
               {/if}
-              {#if isAdmin && !r.builtin}
+              {#if isAdmin}
                 <button class="btn-danger px-2 py-1 ml-1" onclick={() => del(r)}>Delete</button>
               {/if}
-              {#if !r.creatable && !(isAdmin && !r.builtin)}
+              {#if !r.creatable && !(isAdmin)}
                 <span class="text-muted">—</span>
               {/if}
             </td>
@@ -266,12 +269,12 @@
         </div>
         <div class="text-xs text-muted mt-1">{r.category} · v{r.version}</div>
         <div class="text-xs text-muted font-mono mt-1">{r.id}</div>
-        {#if r.creatable || (isAdmin && !r.builtin)}
+        {#if r.creatable || (isAdmin)}
           <div class="flex gap-2 mt-3">
             {#if r.creatable}
               <button class="btn-primary flex-1" onclick={() => createServer(r)}>Create server</button>
             {/if}
-            {#if isAdmin && !r.builtin}
+            {#if isAdmin}
               <button class="btn-danger {r.creatable ? 'px-4' : 'flex-1'}" onclick={() => del(r)}>Delete</button>
             {/if}
           </div>

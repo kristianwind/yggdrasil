@@ -158,6 +158,17 @@ func loadBuiltinGameskills(database *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	// Builtins an admin deleted stay deleted — don't re-seed them.
+	deleted := map[string]bool{}
+	if rows, err := database.Query("SELECT id FROM deleted_builtins"); err == nil {
+		for rows.Next() {
+			var id string
+			if rows.Scan(&id) == nil {
+				deleted[id] = true
+			}
+		}
+		rows.Close()
+	}
 	shipped := map[string]bool{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
@@ -172,6 +183,9 @@ func loadBuiltinGameskills(database *sql.DB) error {
 		if err != nil {
 			log.Printf("invalid builtin gameskill %s: %v", e.Name(), err)
 			continue
+		}
+		if deleted[gs.ID] {
+			continue // admin deleted this default rune — respect that
 		}
 		_, err = database.Exec(`
 			INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin)

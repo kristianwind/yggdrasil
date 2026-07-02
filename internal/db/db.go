@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS gameskills (
 	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Builtin runes an admin explicitly deleted. Seeding skips these so a deleted
+-- default rune stays deleted instead of reappearing on the next boot.
+CREATE TABLE IF NOT EXISTS deleted_builtins (
+	id          TEXT PRIMARY KEY,
+	deleted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS servers (
 	id           TEXT PRIMARY KEY,
 	name         TEXT NOT NULL,

@@ -70,6 +70,23 @@ func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, list)
 }
 
+// scheduleActionPerm maps a schedule action to the extra permission it requires
+// beyond ServerSchedule, so a Schedule grant can't be escalated into Console,
+// Control, or Backup capabilities. ActionMessage (a rendered player broadcast)
+// needs nothing beyond Schedule.
+func scheduleActionPerm(a scheduler.Action) (rbac.Permission, bool) {
+	switch a {
+	case scheduler.ActionCommand:
+		return rbac.ServerConsole, true
+	case scheduler.ActionStart, scheduler.ActionStop, scheduler.ActionRestart, scheduler.ActionUpdate:
+		return rbac.ServerControl, true
+	case scheduler.ActionBackup:
+		return rbac.ServerBackup, true
+	default:
+		return "", false
+	}
+}
+
 func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	var req scheduleView
 	if err := decodeJSON(r, &req); err != nil || req.Name == "" || req.Cron == "" {
@@ -88,6 +105,15 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	if req.ServerID != "" {
 		if !s.can(w, r, rbac.ServerSchedule, s.serverTarget(r.Context(), req.ServerID)) {
 			return
+		}
+		// A schedule must not let a Schedule-only delegate run actions they can't
+		// trigger directly: require the action's own permission too (Command =>
+		// Console, start/stop/restart/update => Control, backup => Backup).
+		if !isAdmin(r) {
+			if p, need := scheduleActionPerm(scheduler.Action(req.Action)); need &&
+				!s.can(w, r, p, s.serverTarget(r.Context(), req.ServerID)) {
+				return
+			}
 		}
 	} else if !isAdmin(r) {
 		jsonError(w, "only admins can create realm/global schedules", http.StatusForbidden)

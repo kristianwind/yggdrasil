@@ -190,7 +190,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "host mounts require admin", http.StatusForbidden)
 			return
 		}
-		cleaned, err := validateHostMounts(req.HostMounts)
+		cleaned, err := s.validateHostMounts(req.HostMounts)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusBadRequest)
 			return
@@ -345,7 +345,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "host mounts require admin", http.StatusForbidden)
 			return
 		}
-		cleaned, err := validateHostMounts(*req.HostMounts)
+		cleaned, err := s.validateHostMounts(*req.HostMounts)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusBadRequest)
 			return
@@ -376,6 +376,14 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)
 	}
 	if req.RealmID != nil {
+		// realm_id is a permission-scoping field: moving a server between realms
+		// changes which delegates can reach it, so it's admin-only — a delegate
+		// with mere ServerControl must not be able to reassign scope (like the
+		// host_mounts block above).
+		if !isAdmin(r) {
+			jsonError(w, "changing realm requires admin", http.StatusForbidden)
+			return
+		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET realm_id=? WHERE id=?", nullableStr(*req.RealmID), id)
 	}
 	if req.Env != nil || req.Mods != nil {

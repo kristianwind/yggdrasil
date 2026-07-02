@@ -3,11 +3,19 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
 	"github.com/kristianwind/yggdrasil/internal/auth"
 )
+
+// maxRequestBody caps JSON request bodies. decodeJSON is used by nearly every
+// state-changing handler, including the pre-auth login endpoint, so an
+// unbounded body would let an unauthenticated client exhaust memory. 1 MiB is
+// far above any legitimate JSON payload here (file uploads use multipart, not
+// decodeJSON, and have their own limits).
+const maxRequestBody = 1 << 20
 
 type contextKey string
 
@@ -51,5 +59,5 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 }
 
 func decodeJSON(r *http.Request, v interface{}) error {
-	return json.NewDecoder(r.Body).Decode(v)
+	return json.NewDecoder(io.LimitReader(r.Body, maxRequestBody)).Decode(v)
 }

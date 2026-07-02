@@ -51,7 +51,14 @@ func underAny(path string, prefixes []string) bool {
 // validateHostMounts cleans and checks a set of admin-supplied host mounts. The
 // source must be an existing directory outside the denylist; the target an
 // absolute container path that doesn't shadow the system or the data mount.
-func validateHostMounts(ms []hostMount) ([]hostMount, error) {
+func (s *Server) validateHostMounts(ms []hostMount) ([]hostMount, error) {
+	// Derive the panel's data-dir root from the configured DB path so a
+	// non-default Database.Path (e.g. /opt/ygg/ygg.db) still denies mounting the
+	// SQLite DB, auth data, and every other server's files into a container.
+	denied := append([]string{}, hostMountSourceDenylist...)
+	if dbDir := filepath.Dir(s.cfg.Database.Path); dbDir != "" && dbDir != "/" && dbDir != "." {
+		denied = append(denied, dbDir)
+	}
 	out := []hostMount{}
 	seen := map[string]bool{}
 	for _, m := range ms {
@@ -69,7 +76,7 @@ func validateHostMounts(ms []hostMount) ([]hostMount, error) {
 		if strings.Contains(host, "..") || strings.Contains(ctr, "..") {
 			return nil, fmt.Errorf("paths must not contain ..")
 		}
-		if underAny(host, hostMountSourceDenylist) {
+		if underAny(host, denied) {
 			return nil, fmt.Errorf("host path %q is not allowed (sensitive system location)", host)
 		}
 		if underAny(ctr, hostMountTargetDenylist) {
@@ -79,6 +86,18 @@ func validateHostMounts(ms []hostMount) ([]hostMount, error) {
 		if err != nil || !fi.IsDir() {
 			return nil, fmt.Errorf("host path %q must be an existing directory on the panel host", host)
 		}
+		// Resolve symlinks and re-check the denylist against the REAL target.
+		// filepath.Clean alone can't see through a symlink (e.g. /srv/media ->
+		// /etc or /var/lib/yggdrasil), which would otherwise smuggle a sensitive
+		// host path past the string-level denylist. Bind the resolved path.
+		resolved, err := filepath.EvalSymlinks(host)
+		if err != nil {
+			return nil, fmt.Errorf("cannot resolve host path %q", m.Host)
+		}
+		if underAny(resolved, denied) {
+			return nil, fmt.Errorf("host path %q resolves to a sensitive system location", m.Host)
+		}
+		host = resolved
 		if seen[ctr] {
 			return nil, fmt.Errorf("duplicate container path %q", ctr)
 		}

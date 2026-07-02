@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -76,11 +77,43 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
 
+// accessLogger is a request logger that redacts sensitive query parameters
+// (notably the WebSocket handshake ?token=<JWT>) so session tokens and API
+// tokens never land in stdout/journald. It replaces chi's middleware.Logger,
+// which logs the full raw RequestURI.
+func accessLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		start := time.Now()
+		defer func() {
+			log.Printf("%s %s from %s -> %d %dB in %s",
+				r.Method, redactURI(r.URL), r.RemoteAddr, ww.Status(), ww.BytesWritten(), time.Since(start))
+		}()
+		next.ServeHTTP(ww, r)
+	})
+}
+
+// redactURI renders a URL for logging with sensitive query params masked. The
+// original request URL is untouched (Query() returns a copy), so token
+// extraction in the handler still sees the real value.
+func redactURI(u *url.URL) string {
+	if u.RawQuery == "" {
+		return u.Path
+	}
+	q := u.Query()
+	for _, k := range []string{"token", "access_token", "api_key"} {
+		if q.Has(k) {
+			q.Set(k, "REDACTED")
+		}
+	}
+	return u.Path + "?" + q.Encode()
+}
+
 func (s *Server) buildRouter() *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(accessLogger)
 	r.Use(middleware.Recoverer)
 	// NOTE: no global request timeout — WebSocket streams (console/logs/install)
 	// are long-lived, and container operations (image pulls, server start) can

@@ -73,8 +73,11 @@ func (s *Server) handle2FADisable(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	// Fail closed: require a loadable secret AND a valid current code. Previously
+	// an unreadable secret (ok=false) skipped the check and let 2FA be turned off
+	// with no code at all — a hijacked session could strip the second factor.
 	secret, ok := s.userTOTPSecret(r, claims.UserID)
-	if ok && !totp.Validate(secret, req.Code) {
+	if !ok || !totp.Validate(secret, req.Code) {
 		jsonError(w, "invalid code", http.StatusBadRequest)
 		return
 	}

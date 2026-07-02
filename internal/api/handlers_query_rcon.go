@@ -41,6 +41,9 @@ func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRunti
 	}
 	rt := &serverRuntime{gs: gs, env: map[string]string{}, ports: map[string]int{}}
 	json.Unmarshal([]byte(envJSON), &rt.env)
+	// Decrypt secret-typed env (RCON password, password vars) — this is the one
+	// path that feeds real values to the container and RCON.
+	s.decryptSecretEnv(rt.env, gs)
 	json.Unmarshal([]byte(portsJSON), &rt.ports)
 	// Inject the panel's server name so gameskills can use {{SERVER_NAME}} as the
 	// in-game/browser name without a duplicate form field.

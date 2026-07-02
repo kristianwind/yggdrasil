@@ -122,8 +122,23 @@ func (s *Server) pushBan(ctx context.Context, serverID, player, reason string, b
 	if tmpl == "" {
 		return false
 	}
-	cmd := strings.ReplaceAll(tmpl, "{{player}}", player)
-	cmd = strings.ReplaceAll(cmd, "{{reason}}", reason)
+	cmd := strings.ReplaceAll(tmpl, "{{player}}", sanitizeConsoleArg(player))
+	cmd = strings.ReplaceAll(cmd, "{{reason}}", sanitizeConsoleArg(reason))
 	s.sendToServer(serverID, cmd)
 	return true
+}
+
+// sanitizeConsoleArg neutralizes control characters — notably newlines — in a
+// value interpolated into a game console/RCON command. Without this, a crafted
+// player name or ban reason like "foo\nop attacker" would inject an additional
+// command line when the ban command is delivered over container stdin or a
+// line-oriented RCON protocol. Control chars are collapsed to spaces so the
+// remainder stays on the same (single) command line as harmless arguments.
+func sanitizeConsoleArg(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == 0x7f || r < 0x20 {
+			return ' '
+		}
+		return r
+	}, s)
 }

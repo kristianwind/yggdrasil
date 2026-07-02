@@ -95,7 +95,15 @@ func run(cfgPath string) error {
 		pw := cfg.Admin.Password
 		if pw == "" {
 			pw, _ = auth.GenerateSecureKey(12)
-			log.Printf("generated admin password for %q: %s", cfg.Admin.Username, pw)
+			// Print the bootstrap credential to stdout as a one-time banner rather
+			// than through the app logger, so it isn't timestamped and buried in
+			// (indefinitely retained) request logs. Operators should change it and
+			// then set a real password in config.
+			fmt.Printf("\n=== Yggdrasil first-run admin credential (shown once) ===\n"+
+				"  username: %s\n  password: %s\n"+
+				"  Log in and change this now.\n"+
+				"========================================================\n\n",
+				cfg.Admin.Username, pw)
 		}
 		if err := auth.EnsureAdmin(database, cfg.Admin.Username, pw); err != nil {
 			return fmt.Errorf("ensure admin: %w", err)

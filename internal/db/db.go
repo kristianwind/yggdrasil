@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS deleted_builtins (
 	deleted_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- WebAuthn / passkey credentials (supplement to password+TOTP; passwordless
+-- login). cred_id is the raw credential ID for lookup; cred_json is the full
+-- serialized go-webauthn Credential (public key, sign count, transports, ...).
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+	id          TEXT PRIMARY KEY,
+	user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	cred_id     BLOB NOT NULL UNIQUE,
+	cred_json   TEXT NOT NULL,
+	name        TEXT NOT NULL DEFAULT 'passkey',
+	created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+	last_used   TEXT
+);
+
 CREATE TABLE IF NOT EXISTS servers (
 	id           TEXT PRIMARY KEY,
 	name         TEXT NOT NULL,

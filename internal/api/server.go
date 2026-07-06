@@ -132,6 +132,8 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// Public routes
 	r.Post("/api/auth/login", s.handleLogin)
+	r.Post("/api/auth/passkey/login/begin", s.handleWALoginBegin)
+	r.Post("/api/auth/passkey/login/finish", s.handleWALoginFinish)
 	r.Get("/api/version", s.handleVersion)
 
 	// Authenticated routes
@@ -145,6 +147,13 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/auth/2fa/setup", s.handle2FASetup)
 		r.Post("/api/auth/2fa/enable", s.handle2FAEnable)
 		r.Post("/api/auth/2fa/disable", s.handle2FADisable)
+
+		// Passkeys (WebAuthn) — register/manage under the user's own account.
+		r.Get("/api/auth/passkey/credentials", s.handleWAList)
+		r.Post("/api/auth/passkey/register/begin", s.handleWARegisterBegin)
+		r.Post("/api/auth/passkey/register/finish", s.handleWARegisterFinish)
+		r.Put("/api/auth/passkey/credentials/{id}", s.handleWARename)
+		r.Delete("/api/auth/passkey/credentials/{id}", s.handleWADelete)
 
 		// Gameskills (Runes)
 		r.Get("/api/gameskills", s.handleListGameskills)

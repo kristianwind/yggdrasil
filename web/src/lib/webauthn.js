@@ -1,6 +1,7 @@
 // Passkey (WebAuthn) helpers: bridge the base64url wire format used by the Go
 // backend and the ArrayBuffers that navigator.credentials expects.
 import { api, setToken } from "./api.js";
+import { loadUser } from "./auth.js";
 
 function b64urlToBuf(s) {
   s = s.replace(/-/g, "+").replace(/_/g, "/");
@@ -92,6 +93,11 @@ export async function loginWithPasskey() {
   const res = await api.post(`/auth/passkey/login/finish?${q}`, credentialToJSON(cred, "assertion"), {
     allow401: true,
   });
-  if (res && res.token) setToken(res.token);
+  if (res && res.token) {
+    setToken(res.token);
+    // Populate the reactive user store (mirrors auth.js login()), so the app
+    // switches to the logged-in view immediately — no reload needed.
+    await loadUser();
+  }
   return res;
 }

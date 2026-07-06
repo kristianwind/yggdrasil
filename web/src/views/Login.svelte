@@ -1,12 +1,14 @@
 <script>
   import { login } from "../lib/auth.js";
   import { toast } from "../lib/toast.js";
+  import { loginWithPasskey, passkeysSupported } from "../lib/webauthn.js";
 
   let username = $state("");
   let password = $state("");
   let code = $state("");
   let needCode = $state(false);
   let busy = $state(false);
+  const canPasskey = passkeysSupported();
 
   async function submit(e) {
     e.preventDefault();
@@ -20,6 +22,24 @@
         toast("Enter your 2FA code", "info");
       } else {
         toast(err.message === "unauthorized" ? "Invalid credentials" : err.message, "error");
+      }
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function passkeyLogin() {
+    busy = true;
+    try {
+      const res = await loginWithPasskey();
+      if (!res || !res.token) throw new Error("passkey login failed");
+      location.hash = "#/";
+    } catch (err) {
+      // A user cancelling the browser prompt throws NotAllowedError/AbortError.
+      if (err.name === "NotAllowedError" || err.name === "AbortError") {
+        toast("Passkey sign-in cancelled", "info");
+      } else {
+        toast(err.message || "Passkey sign-in failed", "error");
       }
     } finally {
       busy = false;
@@ -52,5 +72,16 @@
     <button class="btn-primary w-full" disabled={busy}>
       {busy ? "Signing in…" : "Sign in"}
     </button>
+
+    {#if canPasskey}
+      <div class="flex items-center gap-3 text-muted text-xs">
+        <div class="h-px bg-border flex-1"></div>
+        or
+        <div class="h-px bg-border flex-1"></div>
+      </div>
+      <button type="button" class="btn-secondary w-full" disabled={busy} onclick={passkeyLogin}>
+        🔑 Sign in with a passkey
+      </button>
+    {/if}
   </form>
 </div>

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { registerPasskey, passkeysSupported } from "../lib/webauthn.js";
 
   let targets = $state([]);
   let showCreate = $state(false);
@@ -11,6 +12,44 @@
   let twofa = $state({ enabled: false });
   let twofaSetup = $state(null); // { secret, uri }
   let twofaCode = $state("");
+
+  // Passkeys (WebAuthn)
+  let passkeys = $state([]);
+  let pkBusy = $state(false);
+  const canPasskey = passkeysSupported();
+
+  async function loadPasskeys() {
+    try {
+      passkeys = await api.get("/auth/passkey/credentials");
+    } catch {
+      passkeys = [];
+    }
+  }
+  async function addPasskey() {
+    const name = prompt("Name this passkey (e.g. 'MacBook Touch ID'):", "passkey");
+    if (name === null) return;
+    pkBusy = true;
+    try {
+      await registerPasskey(name.trim() || "passkey");
+      toast("Passkey added", "success");
+      await loadPasskeys();
+    } catch (err) {
+      if (err.name === "NotAllowedError" || err.name === "AbortError") toast("Cancelled", "info");
+      else toast(err.message || "Could not add passkey", "error");
+    } finally {
+      pkBusy = false;
+    }
+  }
+  async function delPasskey(pk) {
+    if (!confirm(`Remove passkey "${pk.name}"?`)) return;
+    try {
+      await api.del(`/auth/passkey/credentials/${pk.id}`);
+      toast("Passkey removed", "success");
+      await loadPasskeys();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
 
   async function load2fa() {
     try {
@@ -399,6 +438,7 @@
     loadChannels();
     loadSteam();
     load2fa();
+    loadPasskeys();
     loadNetwork();
     loadUnifi();
     loadNpm();
@@ -653,6 +693,37 @@
       <button class="btn-primary" onclick={start2fa}>Enable 2FA</button>
     </div>
   {/if}
+</div>
+
+<!-- Passkeys (WebAuthn) -->
+<h2 class="text-xl font-semibold mb-2">Passkeys</h2>
+<p class="text-muted mb-4 text-sm">
+  Sign in without a password using Touch ID, Windows Hello, a phone, or a security key — a passkey is
+  itself two-factor (your device + biometrics/PIN).
+  {#if !canPasskey}<span class="text-danger">Only available when the panel is opened over HTTPS on a domain (not plain HTTP/LAN).</span>{/if}
+</p>
+<div class="card p-4 mb-10">
+  {#if passkeys.length}
+    <div class="divide-y divide-border mb-3">
+      {#each passkeys as pk}
+        <div class="flex items-center gap-3 py-2">
+          <span>🔑</span>
+          <div class="flex-1">
+            <div class="text-sm">{pk.name}</div>
+            <div class="text-xs text-muted">
+              added {pk.created_at?.slice(0, 10)}{pk.last_used ? ` · last used ${pk.last_used.slice(0, 10)}` : ""}
+            </div>
+          </div>
+          <button class="btn-danger px-2 py-1" onclick={() => delPasskey(pk)}>Remove</button>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <p class="text-sm text-muted mb-3">No passkeys registered yet.</p>
+  {/if}
+  <button class="btn-primary" disabled={!canPasskey || pkBusy} onclick={addPasskey}>
+    {pkBusy ? "Waiting for passkey…" : "Add a passkey"}
+  </button>
 </div>
 
 <!-- Steam authorization -->

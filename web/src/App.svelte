@@ -18,6 +18,9 @@
 
   let ready = $state(false);
   let build = $state(null); // { version, repo }
+  let mobileOpen = $state(false);
+  let menuGuardUntil = 0; // ignore ☰ taps until this time (ms) — see below
+  let wasAuthed = false;
 
   onMount(async () => {
     await loadUser();
@@ -30,6 +33,21 @@
   $effect(() => {
     if (ready && !$user && $route.path !== "/login") navigate("/login");
     if (ready && $user && $route.path === "/login") navigate("/");
+    // On the transition to logged-in, land on the dashboard with the menu closed
+    // and briefly ignore the ☰ button: on an iOS home-screen PWA the tap that
+    // dismisses the passkey sheet can pass through to the freshly-rendered menu
+    // button ("ghost tap"), which otherwise pops the nav open right after login.
+    if (ready && $user && !wasAuthed) {
+      mobileOpen = false;
+      menuGuardUntil = Date.now() + 900;
+    }
+    wasAuthed = ready && !!$user;
+  });
+
+  // Any route change closes the mobile nav drawer.
+  $effect(() => {
+    void $route.path;
+    mobileOpen = false;
   });
 
   const nav = [
@@ -43,8 +61,6 @@
     { path: "/audit", label: "Audit log", icon: "📜", admin: true },
     { path: "/settings", label: "Settings", icon: "⚙️", admin: true },
   ];
-
-  let mobileOpen = $state(false);
 </script>
 
 <Toasts />
@@ -132,7 +148,7 @@
         class="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-border bg-panel"
         style="padding-top: calc(0.75rem + env(safe-area-inset-top));"
       >
-        <button class="btn-ghost px-2 py-1" aria-label="Open menu" onclick={() => (mobileOpen = true)}>☰</button>
+        <button class="btn-ghost px-2 py-1" aria-label="Open menu" onclick={() => { if (Date.now() >= menuGuardUntil) mobileOpen = true; }}>☰</button>
         <span class="font-semibold">🌳 Yggdrasil Panel</span>
       </header>
       <main class="flex-1 p-4 md:p-6 overflow-auto">

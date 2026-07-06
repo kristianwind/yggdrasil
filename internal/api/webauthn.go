@@ -194,15 +194,39 @@ func (s *Server) handleWARegisterFinish(w http.ResponseWriter, r *http.Request) 
 	if name == "" {
 		name = "passkey"
 	}
+	rowID := uuid.NewString()
 	cj, _ := json.Marshal(cred)
 	if _, err := s.db.ExecContext(r.Context(),
 		"INSERT INTO webauthn_credentials (id, user_id, cred_id, cred_json, name) VALUES (?,?,?,?,?)",
-		uuid.NewString(), claims.UserID, cred.ID, string(cj), name); err != nil {
+		rowID, claims.UserID, cred.ID, string(cj), name); err != nil {
 		jsonError(w, "could not store passkey", http.StatusInternalServerError)
 		return
 	}
 	s.auditLog(r, "webauthn.register", "user:"+claims.UserID, map[string]string{"name": name})
-	jsonOK(w, map[string]string{"status": "registered", "name": name})
+	jsonOK(w, map[string]string{"status": "registered", "id": rowID, "name": name})
+}
+
+// handleWARename renames one of the caller's passkeys.
+func (s *Server) handleWARename(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromContext(r.Context())
+	if claims == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "passkey"
+	}
+	s.db.ExecContext(r.Context(), "UPDATE webauthn_credentials SET name=? WHERE id=? AND user_id=?",
+		name, chi.URLParam(r, "id"), claims.UserID)
+	jsonOK(w, map[string]string{"status": "ok", "name": name})
 }
 
 func (s *Server) handleWAList(w http.ResponseWriter, r *http.Request) {

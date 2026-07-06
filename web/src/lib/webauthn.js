@@ -60,8 +60,12 @@ function credentialToJSON(cred, kind) {
   return out;
 }
 
-// Register a new passkey for the currently-logged-in user.
-export async function registerPasskey(name) {
+// Register a new passkey for the currently-logged-in user. The whole ceremony
+// (begin → navigator.credentials.create → finish) must run within the transient
+// user activation of the triggering click, so the caller MUST NOT block on a
+// dialog (prompt/confirm) before calling this — name the passkey afterwards.
+// Returns the finish response { status, id, name }.
+export async function registerPasskey() {
   const begin = await api.post("/auth/passkey/register/begin", {});
   const pk = begin.publicKey;
   pk.challenge = b64urlToBuf(pk.challenge);
@@ -70,7 +74,7 @@ export async function registerPasskey(name) {
     pk.excludeCredentials = pk.excludeCredentials.map((c) => ({ ...c, id: b64urlToBuf(c.id) }));
   }
   const cred = await navigator.credentials.create({ publicKey: pk });
-  const q = new URLSearchParams({ session: begin.session, name: name || "passkey" });
+  const q = new URLSearchParams({ session: begin.session });
   return api.post(`/auth/passkey/register/finish?${q}`, credentialToJSON(cred, "attestation"));
 }
 

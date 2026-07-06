@@ -26,18 +26,41 @@
     }
   }
   async function addPasskey() {
-    const name = prompt("Name this passkey (e.g. 'MacBook Touch ID'):", "passkey");
-    if (name === null) return;
+    // Run the WebAuthn ceremony immediately on this click (no blocking dialog
+    // first — that would break the transient user activation create() needs).
+    // Name it afterwards.
     pkBusy = true;
     try {
-      await registerPasskey(name.trim() || "passkey");
+      const res = await registerPasskey();
+      const name = prompt("Name this passkey (e.g. 'MacBook Touch ID'):", "passkey");
+      if (name && name.trim() && name.trim() !== "passkey" && res?.id) {
+        try {
+          await api.put(`/auth/passkey/credentials/${res.id}`, { name: name.trim() });
+        } catch {
+          /* naming is best-effort; the passkey is already registered */
+        }
+      }
       toast("Passkey added", "success");
       await loadPasskeys();
     } catch (err) {
-      if (err.name === "NotAllowedError" || err.name === "AbortError") toast("Cancelled", "info");
-      else toast(err.message || "Could not add passkey", "error");
+      if (err.name === "NotAllowedError" || err.name === "AbortError") {
+        toast("Passkey creation was cancelled or timed out", "info");
+      } else {
+        toast(`Could not add passkey: ${err.name ? err.name + " — " : ""}${err.message || err}`, "error");
+      }
     } finally {
       pkBusy = false;
+    }
+  }
+
+  async function renamePasskey(pk) {
+    const name = prompt("Rename passkey:", pk.name);
+    if (name === null) return;
+    try {
+      await api.put(`/auth/passkey/credentials/${pk.id}`, { name: name.trim() || "passkey" });
+      await loadPasskeys();
+    } catch (err) {
+      toast(err.message, "error");
     }
   }
   async function delPasskey(pk) {
@@ -714,6 +737,7 @@
               added {pk.created_at?.slice(0, 10)}{pk.last_used ? ` · last used ${pk.last_used.slice(0, 10)}` : ""}
             </div>
           </div>
+          <button class="btn-ghost px-2 py-1" onclick={() => renamePasskey(pk)}>Rename</button>
           <button class="btn-danger px-2 py-1" onclick={() => delPasskey(pk)}>Remove</button>
         </div>
       {/each}

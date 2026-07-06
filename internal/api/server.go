@@ -152,6 +152,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/auth/passkey/credentials", s.handleWAList)
 		r.Post("/api/auth/passkey/register/begin", s.handleWARegisterBegin)
 		r.Post("/api/auth/passkey/register/finish", s.handleWARegisterFinish)
+		r.Put("/api/auth/passkey/credentials/{id}", s.handleWARename)
 		r.Delete("/api/auth/passkey/credentials/{id}", s.handleWADelete)
 
 		// Gameskills (Runes)

@@ -13,6 +13,49 @@
   let twofaSetup = $state(null); // { secret, uri }
   let twofaCode = $state("");
 
+  // Software update
+  let build = $state(null);
+  let updating = $state(false);
+  async function loadBuild() {
+    try {
+      build = await api.get("/version");
+    } catch {
+      build = null;
+    }
+  }
+  async function doUpdate() {
+    if (!build?.latest) return;
+    if (!confirm(`Update Yggdrasil to ${build.latest}? The panel will restart briefly.`)) return;
+    updating = true;
+    try {
+      await api.post("/system/update", {});
+      toast(`Updating to ${build.latest}… the panel will restart`, "info");
+      await waitForRestart(build.latest);
+    } catch (err) {
+      toast(err.message || "Update failed", "error");
+      updating = false;
+    }
+  }
+  async function waitForRestart(target) {
+    const deadline = Date.now() + 90000;
+    await new Promise((r) => setTimeout(r, 3000)); // let the scheduled restart kick in
+    while (Date.now() < deadline) {
+      try {
+        const v = await api.get("/version", { allow401: true });
+        if (v && v.version === target) {
+          toast(`Updated to ${target} — reloading`, "success");
+          setTimeout(() => location.reload(), 800);
+          return;
+        }
+      } catch {
+        /* server mid-restart — keep polling */
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    toast("Update is taking longer than expected — reload the page in a moment", "info");
+    updating = false;
+  }
+
   // Passkeys (WebAuthn)
   let passkeys = $state([]);
   let pkBusy = $state(false);
@@ -462,6 +505,7 @@
     loadSteam();
     load2fa();
     loadPasskeys();
+    loadBuild();
     loadNetwork();
     loadUnifi();
     loadNpm();
@@ -502,6 +546,40 @@
 </script>
 
 <h1 class="text-2xl font-semibold mb-6">Settings</h1>
+
+<!-- Software update -->
+<h2 class="text-xl font-semibold mb-2">Software update</h2>
+<div class="card p-4 mb-10">
+  {#if build}
+    <div class="flex items-center gap-3 flex-wrap">
+      <span class="text-sm">Version <span class="font-mono">{build.version}</span></span>
+      {#if build.update_available}
+        <span class="badge bg-warn/20 text-warn">{build.latest} available</span>
+      {:else}
+        <span class="badge bg-accent2/20 text-accent">up to date</span>
+      {/if}
+      <div class="flex-1"></div>
+      {#if build.update_available && build.can_self_update}
+        <button class="btn-primary" disabled={updating} onclick={doUpdate}>
+          {updating ? "Updating…" : `Update to ${build.latest}`}
+        </button>
+      {:else if build.update_available}
+        <a class="btn-ghost" href={`${build.repo}/releases/latest`} target="_blank" rel="noopener">View release ↗</a>
+      {/if}
+    </div>
+    {#if build.update_available && !build.can_self_update}
+      <p class="text-xs text-muted mt-2">
+        In-panel update isn't available here (dev build, or the update helper isn't installed). Re-run
+        <code>install.sh</code> on the host once to enable one-click updates.
+      </p>
+    {/if}
+    {#if updating}
+      <p class="text-xs text-muted mt-2">Downloading &amp; installing, then the panel restarts — this page reconnects automatically.</p>
+    {/if}
+  {:else}
+    <p class="text-sm text-muted">Checking for updates…</p>
+  {/if}
+</div>
 
 <!-- Network -->
 <h2 class="text-xl font-semibold mb-2">Network</h2>

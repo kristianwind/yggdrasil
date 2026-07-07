@@ -300,6 +300,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// System info
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
+		r.Post("/api/system/update", s.requireAdmin(s.handleSystemUpdate))
 	})
 
 	// Static assets + SPA fallback (serve index.html for client-side routes).

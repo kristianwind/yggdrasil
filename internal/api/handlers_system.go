@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -21,7 +20,10 @@ import (
 // releaseTagRe bounds the version passed to the root update helper.
 var releaseTagRe = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 
-const updateHelper = "/usr/local/bin/yggdrasil-update"
+const (
+	updateHelper   = "/usr/local/bin/yggdrasil-update"
+	updatePathUnit = "/etc/systemd/system/yggdrasil-update.path"
+)
 
 // diskUsage returns free and total bytes for the filesystem holding path.
 // Works on Linux (production) and darwin (dev): Bsize differs in type, hence the
@@ -112,15 +114,14 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	latest := s.latestRelease()
 	updAvail := v != "dev" && latest != "" && semverLess(v, latest)
-	_, helperErr := os.Stat(updateHelper)
 	jsonOK(w, map[string]any{
 		"version":          v,
 		"repo":             "https://github.com/kristianwind/yggdrasil",
 		"latest":           latest,
 		"update_available": updAvail,
 		// The panel can update itself only for a released (vX.Y.Z) build with the
-		// root helper installed; otherwise the UI points at manual instructions.
-		"can_self_update": updAvail && strings.HasPrefix(v, "v") && helperErr == nil,
+		// decoupled updater installed; otherwise the UI points at manual steps.
+		"can_self_update": updAvail && strings.HasPrefix(v, "v") && s.selfUpdateAvailable(),
 	})
 }
 
@@ -159,9 +160,28 @@ var (
 	errNotReleased   = errors.New("in-panel update is only available for released builds")
 )
 
-// selfUpdate installs the latest official release via the root helper and
-// triggers a detached service restart. Returns the target tag. Shared by the
-// manual endpoint and the scheduled auto-updater.
+func (s *Server) dataDir() string {
+	if d := filepath.Dir(s.cfg.Database.Path); d != "" && d != "." {
+		return d
+	}
+	return "/var/lib/yggdrasil"
+}
+
+// selfUpdateAvailable reports whether the decoupled updater is installed (the
+// root helper + the systemd path unit that watches the request file).
+func (s *Server) selfUpdateAvailable() bool {
+	if _, err := os.Stat(updateHelper); err != nil {
+		return false
+	}
+	_, err := os.Stat(updatePathUnit)
+	return err == nil
+}
+
+// selfUpdate triggers an update to the latest official release. The panel is
+// sandboxed (NoNewPrivileges + ProtectSystem) so it cannot escalate itself;
+// instead it drops the target tag into a request file in its (read-write) state
+// dir, which a systemd path unit picks up and runs the root oneshot updater on.
+// Returns the target tag. Shared by the manual endpoint and the auto-updater.
 func (s *Server) selfUpdate() (string, error) {
 	cur := s.version
 	if !strings.HasPrefix(cur, "v") {
@@ -177,14 +197,30 @@ func (s *Server) selfUpdate() (string, error) {
 	if !releaseTagRe.MatchString(target) {
 		return "", fmt.Errorf("unexpected release tag format")
 	}
-	if fi, err := os.Stat(updateHelper); err != nil || fi.IsDir() {
+	if !s.selfUpdateAvailable() {
 		return "", errHelperMissing
 	}
-	out, err := exec.Command("sudo", "-n", updateHelper, target).CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%s", lastLine(string(out)))
+	req := filepath.Join(s.dataDir(), ".update-request")
+	if err := os.WriteFile(req, []byte(target+"\n"), 0o644); err != nil {
+		return "", fmt.Errorf("could not trigger the updater: %v", err)
 	}
 	return target, nil
+}
+
+// handleUpdateStatus surfaces the last update result written by the oneshot
+// helper, so the UI can show a checksum/download failure after a restart poll
+// times out.
+func (s *Server) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	b, err := os.ReadFile(filepath.Join(s.dataDir(), ".update-status"))
+	if err != nil {
+		jsonOK(w, map[string]any{"state": "idle"})
+		return
+	}
+	var st map[string]any
+	if json.Unmarshal(b, &st) != nil {
+		st = map[string]any{"state": "unknown"}
+	}
+	jsonOK(w, st)
 }
 
 // handleSystemUpdate updates the panel to the latest official release (admin).
@@ -281,16 +317,6 @@ func (s *Server) maybeAutoUpdate() {
 	}
 }
 
-func lastLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.LastIndexByte(s, '\n'); i >= 0 {
-		s = strings.TrimSpace(s[i+1:])
-	}
-	if s == "" {
-		return "unknown error"
-	}
-	return s
-}
 
 // semverLess reports whether version a is older than b. Tags look like vMAJOR.
 // MINOR.PATCH; unparsable parts compare as 0.

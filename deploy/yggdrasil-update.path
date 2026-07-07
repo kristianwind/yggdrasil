@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch for Yggdrasil self-update requests
+
+[Path]
+# The panel (unprivileged) drops a version tag here; systemd then runs the
+# root oneshot updater. /var/lib/yggdrasil is the panel's state dir.
+PathExists=/var/lib/yggdrasil/.update-request
+Unit=yggdrasil-update.service
+
+[Install]
+WantedBy=multi-user.target

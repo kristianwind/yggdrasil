@@ -1,0 +1,9 @@
+[Unit]
+Description=Yggdrasil self-update (panel-triggered)
+# Runs in its own unit — deliberately WITHOUT the panel's sandbox — so it can
+# write /usr/local/bin and restart the panel even though yggdrasil.service sets
+# NoNewPrivileges + ProtectSystem.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/yggdrasil-update

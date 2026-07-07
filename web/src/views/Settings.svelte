@@ -38,7 +38,7 @@
   }
   async function waitForRestart(target) {
     const deadline = Date.now() + 90000;
-    await new Promise((r) => setTimeout(r, 3000)); // let the scheduled restart kick in
+    await new Promise((r) => setTimeout(r, 2000));
     while (Date.now() < deadline) {
       try {
         const v = await api.get("/version", { allow401: true });
@@ -49,6 +49,17 @@
         }
       } catch {
         /* server mid-restart — keep polling */
+      }
+      // The download/verify runs in a background unit; surface a recorded failure.
+      try {
+        const st = await api.get("/system/update-status", { allow401: true });
+        if (st?.state === "error") {
+          toast(`Update failed: ${st.message || "see server logs"}`, "error");
+          updating = false;
+          return;
+        }
+      } catch {
+        /* ignore while restarting */
       }
       await new Promise((r) => setTimeout(r, 2000));
     }

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { route, navigate } from "./lib/router.js";
   import { user, loadUser, logout } from "./lib/auth.js";
+  import { getTheme, toggleTheme } from "./lib/theme.js";
   import { api } from "./lib/api.js";
   import Toasts from "./components/Toasts.svelte";
   import Login from "./views/Login.svelte";
@@ -21,6 +22,7 @@
   let mobileOpen = $state(false);
   let menuGuardUntil = 0; // ignore ☰ taps until this time (ms) — see below
   let wasAuthed = false;
+  let theme = $state(getTheme());
 
   onMount(async () => {
     await loadUser();
@@ -130,7 +132,17 @@
           {/if}
         {/if}
         <div class="px-2 py-1 text-muted truncate">{$user.username} · {$user.role}</div>
-        <button class="btn-ghost w-full mt-1" onclick={logout}>Sign out</button>
+        <div class="flex gap-1 mt-1">
+          <button class="btn-ghost flex-1" onclick={logout}>Sign out</button>
+          <button
+            class="btn-ghost px-3"
+            aria-label="Toggle light/dark theme"
+            title="Toggle light/dark theme"
+            onclick={() => (theme = toggleTheme())}
+          >
+            {theme === "light" ? "🌙" : "☀️"}
+          </button>
+        </div>
       </div>
     </aside>
 

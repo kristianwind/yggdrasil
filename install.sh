@@ -149,6 +149,33 @@ WorkingDirectory=/var/lib/yggdrasil
 WantedBy=multi-user.target
 EOF
 
+# --- In-panel self-update helper ------------------------------------------
+# A root-owned helper + a narrowly-scoped NOPASSWD sudoers rule let the panel's
+# "Update" button replace the binary and restart the service without a terminal.
+# The helper only ever installs a checksum-verified official release.
+log "Installing self-update helper..."
+UPDATE_HELPER="/usr/local/bin/yggdrasil-update"
+if curl -fsSL -o "$UPDATE_HELPER.new" "https://raw.githubusercontent.com/$REPO/main/deploy/yggdrasil-update.sh" 2>/dev/null \
+  && grep -q "yggdrasil-update" "$UPDATE_HELPER.new"; then
+  install -m 0755 "$UPDATE_HELPER.new" "$UPDATE_HELPER"
+  rm -f "$UPDATE_HELPER.new"
+else
+  rm -f "$UPDATE_HELPER.new"
+  warn "Could not fetch the update helper; in-panel updates will be disabled until the next install.sh run."
+fi
+if [ -x "$UPDATE_HELPER" ]; then
+  SUDOERS="/etc/sudoers.d/yggdrasil-update"
+  printf '%s\n' "# Allow the Yggdrasil service user to run ONLY the self-update helper as root." \
+    "$SERVICE_USER ALL=(root) NOPASSWD: $UPDATE_HELPER" > "$SUDOERS.new"
+  chmod 0440 "$SUDOERS.new"
+  if visudo -cf "$SUDOERS.new" >/dev/null 2>&1; then
+    mv "$SUDOERS.new" "$SUDOERS"
+  else
+    rm -f "$SUDOERS.new"
+    warn "sudoers validation failed; in-panel updates disabled."
+  fi
+fi
+
 systemctl daemon-reload
 systemctl enable yggdrasil >/dev/null 2>&1 || true
 systemctl restart yggdrasil

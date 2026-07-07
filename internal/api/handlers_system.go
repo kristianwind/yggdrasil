@@ -4,13 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
+
+// releaseTagRe bounds the version passed to the root update helper.
+var releaseTagRe = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+
+const updateHelper = "/usr/local/bin/yggdrasil-update"
 
 // diskUsage returns free and total bytes for the filesystem holding path.
 // Works on Linux (production) and darwin (dev): Bsize differs in type, hence the
@@ -100,11 +108,16 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		v = "dev"
 	}
 	latest := s.latestRelease()
+	updAvail := v != "dev" && latest != "" && semverLess(v, latest)
+	_, helperErr := os.Stat(updateHelper)
 	jsonOK(w, map[string]any{
 		"version":          v,
 		"repo":             "https://github.com/kristianwind/yggdrasil",
 		"latest":           latest,
-		"update_available": v != "dev" && latest != "" && semverLess(v, latest),
+		"update_available": updAvail,
+		// The panel can update itself only for a released (vX.Y.Z) build with the
+		// root helper installed; otherwise the UI points at manual instructions.
+		"can_self_update": updAvail && strings.HasPrefix(v, "v") && helperErr == nil,
 	})
 }
 
@@ -135,6 +148,54 @@ func (s *Server) latestRelease() string {
 		s.latestAt = time.Now()
 	}
 	return s.latestVer
+}
+
+// handleSystemUpdate updates the panel to the latest official release via the
+// root-owned helper (scoped sudoers rule), after which the host restarts the
+// service. Admin only. The helper is run synchronously so download/checksum
+// failures surface in the response; it schedules the restart a couple of seconds
+// out, after we've replied, so the client can start polling /api/version.
+func (s *Server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
+	cur := s.version
+	if !strings.HasPrefix(cur, "v") {
+		jsonError(w, "in-panel update is only available for released builds", http.StatusBadRequest)
+		return
+	}
+	target := s.latestRelease()
+	if target == "" {
+		jsonError(w, "could not determine the latest release", http.StatusBadGateway)
+		return
+	}
+	if !semverLess(cur, target) {
+		jsonError(w, "already on the latest version", http.StatusBadRequest)
+		return
+	}
+	if !releaseTagRe.MatchString(target) {
+		jsonError(w, "unexpected release tag format", http.StatusInternalServerError)
+		return
+	}
+	if fi, err := os.Stat(updateHelper); err != nil || fi.IsDir() {
+		jsonError(w, "in-panel update isn't enabled on this host — re-run the installer (install.sh) once to add the update helper", http.StatusServiceUnavailable)
+		return
+	}
+	out, err := exec.Command("sudo", "-n", updateHelper, target).CombinedOutput()
+	if err != nil {
+		jsonError(w, "update failed: "+lastLine(string(out)), http.StatusInternalServerError)
+		return
+	}
+	s.auditLog(r, "system.update", "version:"+target, map[string]string{"from": cur})
+	jsonOK(w, map[string]any{"status": "updating", "from": cur, "to": target})
+}
+
+func lastLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndexByte(s, '\n'); i >= 0 {
+		s = strings.TrimSpace(s[i+1:])
+	}
+	if s == "" {
+		return "unknown error"
+	}
+	return s
 }
 
 // semverLess reports whether version a is older than b. Tags look like vMAJOR.

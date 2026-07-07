@@ -3,6 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -150,41 +153,132 @@ func (s *Server) latestRelease() string {
 	return s.latestVer
 }
 
-// handleSystemUpdate updates the panel to the latest official release via the
-// root-owned helper (scoped sudoers rule), after which the host restarts the
-// service. Admin only. The helper is run synchronously so download/checksum
-// failures surface in the response; it schedules the restart a couple of seconds
-// out, after we've replied, so the client can start polling /api/version.
-func (s *Server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
+var (
+	errAlreadyLatest = errors.New("already on the latest version")
+	errHelperMissing = errors.New("in-panel update isn't enabled on this host — re-run the installer (install.sh) once to add the update helper")
+	errNotReleased   = errors.New("in-panel update is only available for released builds")
+)
+
+// selfUpdate installs the latest official release via the root helper and
+// triggers a detached service restart. Returns the target tag. Shared by the
+// manual endpoint and the scheduled auto-updater.
+func (s *Server) selfUpdate() (string, error) {
 	cur := s.version
 	if !strings.HasPrefix(cur, "v") {
-		jsonError(w, "in-panel update is only available for released builds", http.StatusBadRequest)
-		return
+		return "", errNotReleased
 	}
 	target := s.latestRelease()
 	if target == "" {
-		jsonError(w, "could not determine the latest release", http.StatusBadGateway)
-		return
+		return "", fmt.Errorf("could not determine the latest release")
 	}
 	if !semverLess(cur, target) {
-		jsonError(w, "already on the latest version", http.StatusBadRequest)
-		return
+		return "", errAlreadyLatest
 	}
 	if !releaseTagRe.MatchString(target) {
-		jsonError(w, "unexpected release tag format", http.StatusInternalServerError)
-		return
+		return "", fmt.Errorf("unexpected release tag format")
 	}
 	if fi, err := os.Stat(updateHelper); err != nil || fi.IsDir() {
-		jsonError(w, "in-panel update isn't enabled on this host — re-run the installer (install.sh) once to add the update helper", http.StatusServiceUnavailable)
-		return
+		return "", errHelperMissing
 	}
 	out, err := exec.Command("sudo", "-n", updateHelper, target).CombinedOutput()
 	if err != nil {
-		jsonError(w, "update failed: "+lastLine(string(out)), http.StatusInternalServerError)
+		return "", fmt.Errorf("%s", lastLine(string(out)))
+	}
+	return target, nil
+}
+
+// handleSystemUpdate updates the panel to the latest official release (admin).
+// Runs the helper synchronously so download/checksum failures surface in the
+// response; the helper schedules the restart a couple of seconds out, after we
+// reply, so the client can poll /api/version.
+func (s *Server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
+	from := s.version
+	target, err := s.selfUpdate()
+	if err != nil {
+		code := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, errAlreadyLatest), errors.Is(err, errNotReleased):
+			code = http.StatusBadRequest
+		case errors.Is(err, errHelperMissing):
+			code = http.StatusServiceUnavailable
+		}
+		jsonError(w, err.Error(), code)
 		return
 	}
-	s.auditLog(r, "system.update", "version:"+target, map[string]string{"from": cur})
-	jsonOK(w, map[string]any{"status": "updating", "from": cur, "to": target})
+	s.auditLog(r, "system.update", "version:"+target, map[string]string{"from": from})
+	jsonOK(w, map[string]any{"status": "updating", "from": from, "to": target})
+}
+
+func autoUpdateHour(v string) int {
+	if h, err := strconv.Atoi(v); err == nil && h >= 0 && h <= 23 {
+		return h
+	}
+	return 4
+}
+
+// handleGetAutoUpdate / handleSetAutoUpdate manage the opt-in scheduled updater.
+func (s *Server) handleGetAutoUpdate(w http.ResponseWriter, r *http.Request) {
+	jsonOK(w, map[string]any{
+		"enabled": s.getSetting(r.Context(), "auto_update_enabled") == "1",
+		"hour":    autoUpdateHour(s.getSetting(r.Context(), "auto_update_hour")),
+	})
+}
+
+func (s *Server) handleSetAutoUpdate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled bool `json:"enabled"`
+		Hour    int  `json:"hour"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.Hour < 0 || req.Hour > 23 {
+		req.Hour = 4
+	}
+	s.setSetting(r.Context(), "auto_update_enabled", boolStr(req.Enabled))
+	s.setSetting(r.Context(), "auto_update_hour", strconv.Itoa(req.Hour))
+	s.auditLog(r, "settings.auto_update", "", map[string]any{"enabled": req.Enabled, "hour": req.Hour})
+	jsonOK(w, map[string]any{"enabled": req.Enabled, "hour": req.Hour})
+}
+
+// autoUpdateLoop applies releases when opt-in auto-update is on. The hour gate +
+// per-day marker make it act at most once a day at the chosen server-local hour.
+// A self-update restarts only the panel binary — game/app containers keep
+// running — so the impact is a few seconds of UI downtime.
+func (s *Server) autoUpdateLoop() {
+	t := time.NewTicker(20 * time.Minute)
+	defer t.Stop()
+	for range t.C {
+		s.maybeAutoUpdate()
+	}
+}
+
+func (s *Server) maybeAutoUpdate() {
+	ctx := context.Background()
+	if s.getSetting(ctx, "auto_update_enabled") != "1" {
+		return
+	}
+	now := time.Now()
+	if now.Hour() != autoUpdateHour(s.getSetting(ctx, "auto_update_hour")) {
+		return
+	}
+	today := now.Format("2006-01-02")
+	if s.getSetting(ctx, "auto_update_last") == today {
+		return
+	}
+	if !strings.HasPrefix(s.version, "v") {
+		return
+	}
+	latest := s.latestRelease()
+	if latest == "" || !semverLess(s.version, latest) {
+		return
+	}
+	s.setSetting(ctx, "auto_update_last", today) // mark before attempting — no retry storms
+	log.Printf("yggdrasil: auto-update %s -> %s", s.version, latest)
+	if _, err := s.selfUpdate(); err != nil {
+		log.Printf("yggdrasil: auto-update failed: %v", err)
+	}
 }
 
 func lastLine(s string) string {

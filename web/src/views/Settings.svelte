@@ -56,6 +56,27 @@
     updating = false;
   }
 
+  // Scheduled auto-update (opt-in)
+  let autoUpdate = $state({ enabled: false, hour: 4 });
+  async function loadAutoUpdate() {
+    try {
+      autoUpdate = await api.get("/system/auto-update");
+    } catch {
+      /* keep defaults */
+    }
+  }
+  async function saveAutoUpdate() {
+    try {
+      autoUpdate = await api.post("/system/auto-update", {
+        enabled: autoUpdate.enabled,
+        hour: Number(autoUpdate.hour),
+      });
+      toast("Auto-update settings saved", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
+
   // Passkeys (WebAuthn)
   let passkeys = $state([]);
   let pkBusy = $state(false);
@@ -506,6 +527,7 @@
     load2fa();
     loadPasskeys();
     loadBuild();
+    loadAutoUpdate();
     loadNetwork();
     loadUnifi();
     loadNpm();
@@ -576,6 +598,26 @@
     {#if updating}
       <p class="text-xs text-muted mt-2">Downloading &amp; installing, then the panel restarts — this page reconnects automatically.</p>
     {/if}
+
+    <div class="border-t border-border mt-4 pt-4">
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={autoUpdate.enabled} onchange={saveAutoUpdate} />
+        <span>Automatically install updates</span>
+      </label>
+      <div class="flex items-center gap-2 mt-2 text-sm {autoUpdate.enabled ? '' : 'opacity-50'}">
+        <span class="text-muted">Daily at</span>
+        <select class="input w-auto py-1" bind:value={autoUpdate.hour} onchange={saveAutoUpdate} disabled={!autoUpdate.enabled}>
+          {#each Array(24) as _, h}
+            <option value={h}>{String(h).padStart(2, "0")}:00</option>
+          {/each}
+        </select>
+        <span class="text-muted">server time</span>
+      </div>
+      <p class="text-xs text-muted mt-2">
+        Off by default. When on, the panel checks daily and installs a newer release automatically — only the
+        panel restarts (a few seconds); your game &amp; app servers keep running.
+      </p>
+    </div>
   {:else}
     <p class="text-sm text-muted">Checking for updates…</p>
   {/if}

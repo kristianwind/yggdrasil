@@ -70,6 +70,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.startDiskMonitor()
 	s.startStatusReconciler()
 	go s.startAutostartServers()
+	go s.autoUpdateLoop()
 	return s
 }
 
@@ -301,6 +302,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		// System info
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
 		r.Post("/api/system/update", s.requireAdmin(s.handleSystemUpdate))
+		r.Get("/api/system/auto-update", s.requireAdmin(s.handleGetAutoUpdate))
+		r.Post("/api/system/auto-update", s.requireAdmin(s.handleSetAutoUpdate))
 	})
 
 	// Static assets + SPA fallback (serve index.html for client-side routes).

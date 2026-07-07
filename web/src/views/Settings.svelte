@@ -16,11 +16,23 @@
   // Software update
   let build = $state(null);
   let updating = $state(false);
+  let checking = $state(false);
   async function loadBuild() {
     try {
       build = await api.get("/version");
     } catch {
       build = null;
+    }
+  }
+  async function checkUpdates() {
+    checking = true;
+    try {
+      build = await api.post("/system/check-update", {});
+      toast(build.update_available ? `Update available: ${build.latest}` : "You're on the latest version", "info");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      checking = false;
     }
   }
   async function doUpdate() {
@@ -592,6 +604,9 @@
         <span class="badge bg-accent2/20 text-accent">up to date</span>
       {/if}
       <div class="flex-1"></div>
+      <button class="btn-ghost" disabled={checking} onclick={checkUpdates}>
+        {checking ? "Checking…" : "Check now"}
+      </button>
       {#if build.update_available && build.can_self_update}
         <button class="btn-primary" disabled={updating} onclick={doUpdate}>
           {updating ? "Updating…" : `Update to ${build.latest}`}

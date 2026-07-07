@@ -4,17 +4,20 @@ export default {
   content: ["./index.html", "./src/**/*.{svelte,js}"],
   theme: {
     extend: {
+      // Colors resolve from CSS variables (see app.css), so light/dark is a swap
+      // of :root values. Space-separated RGB channels keep Tailwind's opacity
+      // modifiers (e.g. bg-panel/50, bg-black/60) working.
       colors: {
-        bg: "#0b0f14",
-        panel: "#11161d",
-        panel2: "#161b22",
-        border: "#222a35",
-        accent: "#3fb950",
-        accent2: "#2ea043",
-        muted: "#8b949e",
-        text: "#e6edf3",
-        danger: "#f85149",
-        warn: "#d29922",
+        bg: "rgb(var(--c-bg) / <alpha-value>)",
+        panel: "rgb(var(--c-panel) / <alpha-value>)",
+        panel2: "rgb(var(--c-panel2) / <alpha-value>)",
+        border: "rgb(var(--c-border) / <alpha-value>)",
+        accent: "rgb(var(--c-accent) / <alpha-value>)",
+        accent2: "rgb(var(--c-accent2) / <alpha-value>)",
+        muted: "rgb(var(--c-muted) / <alpha-value>)",
+        text: "rgb(var(--c-text) / <alpha-value>)",
+        danger: "rgb(var(--c-danger) / <alpha-value>)",
+        warn: "rgb(var(--c-warn) / <alpha-value>)",
       },
       fontFamily: {
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],

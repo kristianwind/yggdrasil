@@ -2,6 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme palettes. Dark is default; [data-theme="light"] swaps the channels.
+   Space-separated RGB so Tailwind opacity modifiers keep working. */
+:root {
+  --c-bg: 11 15 20;
+  --c-panel: 17 22 29;
+  --c-panel2: 22 27 34;
+  --c-border: 34 42 53;
+  --c-accent: 63 185 80;
+  --c-accent2: 46 160 67;
+  --c-muted: 139 148 158;
+  --c-text: 230 237 243;
+  --c-danger: 248 81 73;
+  --c-warn: 210 153 34;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --c-bg: 246 248 250;
+  --c-panel: 255 255 255;
+  --c-panel2: 241 244 247;
+  --c-border: 208 215 222;
+  --c-accent: 45 164 78;
+  --c-accent2: 45 164 78;
+  --c-muted: 87 96 106;
+  --c-text: 31 35 40;
+  --c-danger: 207 34 46;
+  --c-warn: 154 103 0;
+  color-scheme: light;
+}
+
 html,
 body {
   @apply bg-bg text-text;

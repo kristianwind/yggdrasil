@@ -252,6 +252,28 @@ func autoUpdateHour(v string) int {
 	return 4
 }
 
+// handleCheckUpdate forces a fresh GitHub release check (bypassing the 6h cache)
+// and returns the current version info, so the UI's "Check now" button reflects
+// a just-published release immediately.
+func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
+	s.latestMu.Lock()
+	s.latestAt = time.Time{} // invalidate the cache so latestRelease refetches
+	s.latestMu.Unlock()
+	latest := s.latestRelease()
+	v := s.version
+	if v == "" {
+		v = "dev"
+	}
+	updAvail := v != "dev" && latest != "" && semverLess(v, latest)
+	jsonOK(w, map[string]any{
+		"version":          v,
+		"repo":             "https://github.com/kristianwind/yggdrasil",
+		"latest":           latest,
+		"update_available": updAvail,
+		"can_self_update":  updAvail && strings.HasPrefix(v, "v") && s.selfUpdateAvailable(),
+	})
+}
+
 // handleGetAutoUpdate / handleSetAutoUpdate manage the opt-in scheduled updater.
 func (s *Server) handleGetAutoUpdate(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]any{

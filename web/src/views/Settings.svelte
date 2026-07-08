@@ -8,6 +8,24 @@
   let showCreate = $state(false);
   let form = $state(blank());
 
+  // Settings are grouped into tabs so the page doesn't grow into one long scroll.
+  const settingsTabs = [
+    { id: "system", label: "System" },
+    { id: "network", label: "Network" },
+    { id: "domains", label: "Domains" },
+    { id: "security", label: "Security" },
+    { id: "integrations", label: "Integrations" },
+  ];
+  let tab = $state(localStorage.getItem("ygg_settings_tab") || "system");
+  function selectTab(id) {
+    tab = id;
+    try {
+      localStorage.setItem("ygg_settings_tab", id);
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Two-factor auth
   let twofa = $state({ enabled: false });
   let twofaSetup = $state(null); // { secret, uri }
@@ -590,8 +608,22 @@
   }
 </script>
 
-<h1 class="text-2xl font-semibold mb-6">Settings</h1>
+<h1 class="text-2xl font-semibold mb-4">Settings</h1>
 
+<div class="flex flex-wrap gap-1 border-b border-border mb-6">
+  {#each settingsTabs as t}
+    <button
+      class="px-3 py-2 text-sm border-b-2 -mb-px {tab === t.id
+        ? 'border-accent text-text font-medium'
+        : 'border-transparent text-muted hover:text-text'}"
+      onclick={() => selectTab(t.id)}
+    >
+      {t.label}
+    </button>
+  {/each}
+</div>
+
+{#if tab === "system"}
 <!-- Software update -->
 <h2 class="text-xl font-semibold mb-2">Software update</h2>
 <div class="card p-4 mb-10">
@@ -649,6 +681,9 @@
   {/if}
 </div>
 
+{/if}
+
+{#if tab === "network"}
 <!-- Network -->
 <h2 class="text-xl font-semibold mb-2">Network</h2>
 <p class="text-muted mb-4 text-sm">The public hostname players use to connect. It's shown as the connect address on each server's page.</p>
@@ -739,6 +774,9 @@
   </div>
 </div>
 
+{/if}
+
+{#if tab === "domains"}
 <!-- NPM subdomain routing -->
 <h2 class="text-xl font-semibold mb-2">Nginx Proxy Manager (subdomains)</h2>
 <p class="text-muted mb-4 text-sm">
@@ -833,6 +871,9 @@
   </div>
 </div>
 
+{/if}
+
+{#if tab === "security"}
 <!-- Two-factor auth -->
 <h2 class="text-xl font-semibold mb-2">Two-factor authentication</h2>
 <p class="text-muted mb-4 text-sm">Protect your account with a TOTP authenticator app.</p>
@@ -896,6 +937,9 @@
   </button>
 </div>
 
+{/if}
+
+{#if tab === "integrations"}
 <!-- Steam authorization -->
 <h2 class="text-xl font-semibold mb-2">Steam account</h2>
 <p class="text-muted mb-4 text-sm">
@@ -1225,4 +1269,5 @@
       </div>
     </div>
   </div>
+{/if}
 {/if}

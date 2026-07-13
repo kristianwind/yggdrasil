@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -90,6 +92,43 @@ func (s *Server) handleServerQuery(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, st)
 }
 
+// rconExec dials a server's RCON, runs one command, and returns the response.
+// Shared by the raw console endpoint, the players tab, and any other RCON caller
+// that needs the reply text (sendToServer is the fire-and-forget cousin). Returns
+// errNoRCON when the rune has no enabled rcon: block so callers can map it to 400.
+func (s *Server) rconExec(ctx context.Context, serverID, command string) (string, error) {
+	rt, err := s.loadRuntime(ctx, serverID)
+	if err != nil {
+		return "", err
+	}
+	if rt.gs.RCON == nil || !rt.gs.RCON.Enabled {
+		return "", errNoRCON
+	}
+	port := rt.ports["rcon"]
+	if port == 0 {
+		port = rt.ports["game"] // BattlEye shares the game port
+	}
+	password := ""
+	if rt.gs.RCON.PasswordVar != "" {
+		password = rt.env[rt.gs.RCON.PasswordVar]
+	}
+	client, err := rcon.Dial(rcon.Config{
+		Type:     rt.gs.RCON.Type,
+		Host:     "127.0.0.1",
+		Port:     port,
+		Password: password,
+		Timeout:  5 * time.Second,
+	})
+	if err != nil {
+		return "", fmt.Errorf("rcon connect: %w", err)
+	}
+	defer client.Close()
+	return client.Execute(command)
+}
+
+// errNoRCON marks a rune without an enabled rcon: block.
+var errNoRCON = errors.New("this game has no RCON; use the console instead")
+
 func (s *Server) handleServerRcon(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
@@ -102,41 +141,13 @@ func (s *Server) handleServerRcon(w http.ResponseWriter, r *http.Request) {
 	if !s.can(w, r, rbac.ServerConsole, s.serverTarget(r.Context(), id)) {
 		return
 	}
-	rt, err := s.loadRuntime(r.Context(), id)
+	out, err := s.rconExec(r.Context(), id, req.Command)
 	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
-		return
-	}
-	if rt.gs.RCON == nil || !rt.gs.RCON.Enabled {
-		jsonError(w, "this game has no RCON; use the console instead", http.StatusBadRequest)
-		return
-	}
-
-	port := rt.ports["rcon"]
-	if port == 0 {
-		port = rt.ports["game"] // BattlEye shares the game port
-	}
-	password := ""
-	if rt.gs.RCON.PasswordVar != "" {
-		password = rt.env[rt.gs.RCON.PasswordVar]
-	}
-
-	client, err := rcon.Dial(rcon.Config{
-		Type:     rt.gs.RCON.Type,
-		Host:     "127.0.0.1",
-		Port:     port,
-		Password: password,
-		Timeout:  5 * time.Second,
-	})
-	if err != nil {
-		jsonError(w, "rcon connect: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-	defer client.Close()
-
-	out, err := client.Execute(req.Command)
-	if err != nil {
-		jsonError(w, "rcon exec: "+err.Error(), http.StatusBadGateway)
+		if errors.Is(err, errNoRCON) {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		jsonError(w, "rcon: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	s.auditLog(r, "server.rcon", "server:"+id, map[string]string{"command": req.Command})

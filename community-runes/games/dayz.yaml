@@ -215,6 +215,20 @@ gameskill:
     ban_command: "addBan {{player}} 0 {{reason}}"
     unban_command: "removeBan {{player}}"
 
+  # Live Players tab over BattlEye BERcon. `players` returns a table:
+  #   0   45.83.19.12:2304   31   9a8b...(OK) SurvivorName
+  # player_regex parses one row per line (named groups; unmatched header/total
+  # lines are skipped). Kick is by slot id; broadcast is "say -1" (all players);
+  # #lock/#unlock stop/allow new joins. Single-quoted so regex backslashes stay
+  # literal.
+  players:
+    list_command: "players"
+    player_regex: '^(?P<id>\d+)\s+(?P<ip>[0-9.]+):\d+\s+(?P<ping>\d+)\s+(?P<guid>[0-9a-f]+)\s*\((?:OK|\?)\)\s+(?P<name>.+?)\s*$'
+    kick_command: "kick {{id}} {{reason}}"
+    broadcast_command: "say -1 {{message}}"
+    lock_command: "#lock"
+    unlock_command: "#unlock"
+
   backup:
     include: ["mpmissions", "serverDZ.cfg", "battleye", "profiles"]
 

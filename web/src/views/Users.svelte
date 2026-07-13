@@ -84,14 +84,16 @@
         <div class="font-medium">{u.username}</div>
         <div class="text-xs text-muted">{u.role}{u.disabled ? " · disabled" : ""}</div>
       </div>
-      <button class="btn-ghost" onclick={() => openEdit(u)}>Edit</button>
+      <button class="btn-ghost" onclick={() => openEdit(u)} title="Change this user's username, role or password.">Edit</button>
       {#if u.role !== "admin"}
-        <button class="btn-ghost" onclick={() => (permUser = u)}>Permissions</button>
+        <button class="btn-ghost" onclick={() => (permUser = u)}
+          title="Grant this user access to specific servers, realms or games, and choose what they can do (view, control, console, files, backups, schedules).">Permissions</button>
       {/if}
-      <button class="btn-ghost" onclick={() => toggleDisabled(u)}>
+      <button class="btn-ghost" onclick={() => toggleDisabled(u)}
+        title={u.disabled ? "Re-enable sign-in for this user." : "Block this user from signing in without deleting the account. Ends their active sessions."}>
         {u.disabled ? "Enable" : "Disable"}
       </button>
-      <button class="btn-danger" onclick={() => del(u)}>Delete</button>
+      <button class="btn-danger" onclick={() => del(u)} title="Permanently delete this user account.">Delete</button>
     </div>
   {/each}
 </div>

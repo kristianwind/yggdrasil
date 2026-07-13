@@ -179,7 +179,8 @@
 
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-semibold">Schedules</h1>
-  <button class="btn-primary" onclick={openCreate}>+ New schedule</button>
+  <button class="btn-primary" onclick={openCreate}
+    title="Create a recurring task on a cron schedule — backup, restart, update, in-game message or console command.">+ New schedule</button>
 </div>
 
 <div class="card divide-y divide-border">
@@ -200,11 +201,14 @@
           <div class="text-xs text-muted font-mono break-words">{s.cron_expr} · {scopeLabel(s)}</div>
         </div>
         <div class="flex flex-wrap gap-2 sm:justify-end sm:shrink-0">
-          <button class="btn-ghost px-2" onclick={() => toggleLog(s)}>{logsOpen[s.id] ? "Hide log" : "Log"}</button>
-          <button class="btn-ghost px-2" onclick={() => run(s)}>Run now</button>
-          <button class="btn-ghost px-2" onclick={() => openEdit(s)}>Edit</button>
-          <button class="btn-ghost px-2" onclick={() => toggle(s)}>{s.enabled ? "Disable" : "Enable"}</button>
-          <button class="btn-danger px-2" onclick={() => del(s)}>Delete</button>
+          <button class="btn-ghost px-2" onclick={() => toggleLog(s)}
+            title="Show the recent run history for this schedule (when it fired, and the result).">{logsOpen[s.id] ? "Hide log" : "Log"}</button>
+          <button class="btn-ghost px-2" onclick={() => run(s)}
+            title="Trigger this schedule once, right now, regardless of its cron time.">Run now</button>
+          <button class="btn-ghost px-2" onclick={() => openEdit(s)} title="Edit this schedule's action, timing and scope.">Edit</button>
+          <button class="btn-ghost px-2" onclick={() => toggle(s)}
+            title={s.enabled ? "Pause this schedule — it stays but won't fire until re-enabled." : "Resume this schedule so it fires on its cron time again."}>{s.enabled ? "Disable" : "Enable"}</button>
+          <button class="btn-danger px-2" onclick={() => del(s)} title="Delete this schedule permanently.">Delete</button>
         </div>
       </div>
       {#if logsOpen[s.id]}
@@ -286,13 +290,15 @@
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="label" for="s-action">Action</label>
-          <select id="s-action" class="input" bind:value={form.action}>
+          <select id="s-action" class="input" bind:value={form.action}
+            title="What this schedule does when it fires. Restart recreates the container (applies rune/env/mod changes, no game update); Update re-runs install/SteamCMD to fetch the newest game version + mods; Backup archives the data; Message sends an in-game broadcast; Command runs a raw console/RCON command.">
             {#each actions as [val, label]}<option value={val}>{label}</option>{/each}
           </select>
         </div>
         <div>
           <label class="label" for="s-cron">Cron (min hour day month weekday)</label>
-          <input id="s-cron" class="input font-mono" bind:value={form.cron_expr} />
+          <input id="s-cron" class="input font-mono" bind:value={form.cron_expr}
+            title="Standard cron: minute hour day month weekday. Examples — '0 4 * * *' = every day at 04:00; '0 */6 * * *' = every 6 hours; '30 5 * * 1' = 05:30 every Monday." />
         </div>
       </div>
 
@@ -324,7 +330,8 @@
           </div>
         </div>
       {:else if form.action === "restart" || form.action === "update"}
-        <label class="flex items-center gap-2 text-sm">
+        <label class="flex items-center gap-2 text-sm"
+          title="If anyone is connected when this fires, skip it this time instead of interrupting them. The task runs on its next scheduled time when the server is empty.">
           <input
             type="checkbox"
             class="accent-accent2 w-4 h-4"

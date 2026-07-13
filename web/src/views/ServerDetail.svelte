@@ -298,6 +298,20 @@
     ],
   );
 
+  // Hover help for each tab (English), shown on the tab buttons.
+  const tabHelp = {
+    console: "Live server console — read output and send commands (or RCON, where the game supports it).",
+    players: "Who's connected right now. Kick, broadcast a message, or lock joins.",
+    activity: "Recent server activity parsed from the game's admin log — joins, disconnects, deaths, kills.",
+    files: "Browse, edit and upload this server's files (configs, mods, world data).",
+    backups: "Create, restore and manage backups of this server's data.",
+    settings: "Edit this server's variables, resource limits, mods and delegated access.",
+    anticheat: "Anti-cheat status and configuration hints for this game.",
+    mods: "Workshop mods for this server (add/remove, then Update to download).",
+    norn: "DayZ loot economy (Norn) — lifetimes, spawn tuning, mod loot import.",
+    install: "Live output from the last install / update / reinstall run.",
+  };
+
   // Keep the active tab valid as perms/tabs resolve — if the current tab isn't
   // available to this user, fall back to the first one they can see.
   $effect(() => {
@@ -746,24 +760,33 @@
   <div class="flex flex-wrap items-center gap-2 mb-4">
     {#if !server.installed}
       {#if can("server.control")}
-        <button class="btn-primary" onclick={runInstall} disabled={server.install_status === "installing"}>
+        <button class="btn-primary" onclick={runInstall} disabled={server.install_status === "installing"}
+          title="Download and build this server (runs the rune's install script). Needed once before it can start.">
           {server.install_status === "installing" ? "Installing…" : server.install_status === "error" ? "Retry install" : "Install"}
         </button>
       {/if}
     {:else if (server.status === "running" || server.status === "starting")}
       {#if can("server.control")}
-        <button class="btn-ghost" onclick={() => action("restart")}>Restart</button>
-        <button class="btn-ghost" onclick={() => { showSafe = true; if (!backupTargets.length) loadBackups(); }}>
+        <button class="btn-ghost" onclick={() => action("restart")}
+          title="Restart now, immediately — no player warning. Recreates the container so rune/env/mod changes apply. Does not update the game version.">Restart</button>
+        <button class="btn-ghost" onclick={() => { showSafe = true; if (!backupTargets.length) loadBackups(); }}
+          title={server.restart_warn
+            ? "Restart with an in-game countdown for players first (and an optional backup). Opens a dialog — nothing happens until you confirm."
+            : "Restart, with an optional backup first. This rune has no player warnings, so it restarts promptly. Opens a dialog first."}>
           Safe restart{server.restart_warn ? " ⏱" : ""}
         </button>
-        <button class="btn-ghost" onclick={() => { showAuto = true; if (!backupTargets.length) loadBackups(); }}>
+        <button class="btn-ghost" onclick={() => { showAuto = true; if (!backupTargets.length) loadBackups(); }}
+          title="Schedule automatic restarts every N hours (a managed schedule). Opens a dialog to configure hours, player warning and backup.">
           🔁 Auto-restart{autoRestart.enabled ? ` · ${autoRestart.every_hours}h` : ""}
         </button>
-        <button class="btn-ghost" onclick={() => action("stop")}>Stop</button>
+        <button class="btn-ghost" onclick={() => action("stop")}
+          title="Stop the server now (graceful shutdown). Players are disconnected.">Stop</button>
       {/if}
     {:else if can("server.control")}
-      <button class="btn-primary" onclick={() => action("start")}>Start</button>
-      <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
+      <button class="btn-primary" onclick={() => action("start")}
+        title="Start this server now.">Start</button>
+      <button class="btn-ghost" onclick={() => runInstall(true)}
+        title="Re-run the install script: updates the game to the latest version and re-downloads mods (SteamCMD). Back up your world first — config files may be regenerated.">Update / Reinstall</button>
     {/if}
     {#if server.installed && server.watchdog_supported && can("server.control")}
       <button
@@ -775,10 +798,12 @@
       </button>
     {/if}
     {#if server.wipe_supported && can("server.control")}
-      <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}>🧹 Wipe</button>
+      <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}
+        title="Reset the world / persistence (loot, bases, progress) as defined by the rune. Opens a confirmation dialog with a backup-first option — it does not wipe until you confirm. Runs immediately once confirmed (it is not a schedule). Config and mods are kept.">🧹 Wipe</button>
     {/if}
     {#if can("server.delete")}
-      <button class="btn-danger ml-auto" onclick={del}>Delete</button>
+      <button class="btn-danger ml-auto" onclick={del}
+        title="Permanently delete this server and all its data (world, backups list, ports). Cannot be undone.">Delete</button>
     {/if}
   </div>
 
@@ -947,6 +972,7 @@
   <div class="flex gap-1 border-b border-border mb-4">
     {#each tabs as [key, label]}
       <button
+        title={tabHelp[key] || ""}
         class="px-4 py-2 text-sm border-b-2 -mb-px {tab === key
           ? 'border-accent text-text'
           : 'border-transparent text-muted hover:text-text'}"
@@ -998,9 +1024,13 @@
             {playersData.players.length} online
           {/if}
         </span>
-        <button class="btn-ghost text-xs ml-auto" disabled={playersBusy} onclick={loadPlayers}>Refresh</button>
+        <button class="btn-ghost text-xs ml-auto" disabled={playersBusy} onclick={loadPlayers}
+          title="Reload the player list now (it also auto-refreshes every 10 seconds).">Refresh</button>
         {#if playersData.can_lock}
-          <button class="btn-ghost text-xs {serverLocked ? 'text-warn' : ''}" disabled={playersBusy} onclick={toggleLock}>
+          <button class="btn-ghost text-xs {serverLocked ? 'text-warn' : ''}" disabled={playersBusy} onclick={toggleLock}
+            title={serverLocked
+              ? "Allow new players to join again."
+              : "Stop new players from joining (current players stay). Useful before a restart or during maintenance."}>
             {serverLocked ? "🔒 Unlock joins" : "🔓 Lock joins"}
           </button>
         {/if}
@@ -1008,8 +1038,10 @@
 
       {#if playersData.can_broadcast}
         <form onsubmit={(e) => { e.preventDefault(); sendBroadcast(); }} class="flex gap-2">
-          <input class="input" bind:value={broadcastMsg} placeholder="Broadcast a message to all players…" disabled={playersBusy || !playersData.online} />
-          <button class="btn-primary" disabled={playersBusy || !playersData.online || !broadcastMsg.trim()}>Broadcast</button>
+          <input class="input" bind:value={broadcastMsg} placeholder="Broadcast a message to all players…" disabled={playersBusy || !playersData.online}
+            title="Send an in-game message shown to everyone currently connected." />
+          <button class="btn-primary" disabled={playersBusy || !playersData.online || !broadcastMsg.trim()}
+            title="Send this message to all online players.">Broadcast</button>
         </form>
       {/if}
 
@@ -1036,7 +1068,8 @@
                   <td class="px-3 py-2 font-mono text-xs text-muted hidden sm:table-cell truncate max-w-[12rem]">{p.guid || "—"}</td>
                   {#if playersData.can_kick}
                     <td class="px-3 py-2 text-right">
-                      <button class="btn-ghost text-xs text-warn" disabled={playersBusy} onclick={() => kickPlayer(p)}>Kick</button>
+                      <button class="btn-ghost text-xs text-warn" disabled={playersBusy} onclick={() => kickPlayer(p)}
+                        title="Disconnect this player now (they can rejoin). You'll be asked for an optional reason. To block them permanently, use Bans.">Kick</button>
                     </td>
                   {/if}
                 </tr>
@@ -1049,10 +1082,11 @@
   {:else if tab === "activity"}
     <div class="space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-sm text-muted">
+        <span class="text-sm text-muted" title="Parsed from the game's admin log — joins, disconnects, deaths and kills, newest first.">
           Recent server activity{activity.file ? ` · ${activity.file}` : ""}
         </span>
-        <button class="btn-ghost text-xs ml-auto" disabled={activityBusy} onclick={loadActivity}>Refresh</button>
+        <button class="btn-ghost text-xs ml-auto" disabled={activityBusy} onclick={loadActivity}
+          title="Re-read the admin log and refresh the feed.">Refresh</button>
       </div>
       {#if !activity.events.length}
         <div class="card p-4 text-sm text-muted text-center">
@@ -1288,7 +1322,8 @@
     <div class="flex flex-wrap items-end gap-2 mb-4">
       <div>
         <label class="label" for="bt">Target</label>
-        <select id="bt" class="input" bind:value={selectedTarget}>
+        <select id="bt" class="input" bind:value={selectedTarget}
+          title="Where the backup archive is stored (local disk or a remote target configured in Settings).">
           {#if backupTargets.length === 0}
             <option value="">No targets — add one in Settings</option>
           {/if}
@@ -1297,10 +1332,11 @@
           {/each}
         </select>
       </div>
-      <button class="btn-primary" onclick={runBackup} disabled={backupBusy || !selectedTarget}>
+      <button class="btn-primary" onclick={runBackup} disabled={backupBusy || !selectedTarget}
+        title="Create a backup archive of this server's data now, to the selected target.">
         {backupBusy ? "Starting…" : "Back up now"}
       </button>
-      <button class="btn-ghost" onclick={loadBackups}>Refresh</button>
+      <button class="btn-ghost" onclick={loadBackups} title="Reload the backup list and target list.">Refresh</button>
     </div>
 
     <div class="card divide-y divide-border">
@@ -1325,9 +1361,11 @@
             </div>
           </div>
           {#if b.status === "done"}
-            <button class="btn-ghost" onclick={() => restoreBackup(b)}>Restore</button>
+            <button class="btn-ghost" onclick={() => restoreBackup(b)}
+              title="Stop the server and overwrite its files with this backup. Current data is replaced — you'll be asked to confirm.">Restore</button>
           {/if}
-          <button class="btn-danger" onclick={() => deleteBackup(b)}>Delete</button>
+          <button class="btn-danger" onclick={() => deleteBackup(b)}
+            title="Delete this backup archive. Does not affect the running server.">Delete</button>
         </div>
       {/each}
     </div>

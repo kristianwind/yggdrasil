@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 4
+  version: 5
   icon: "minecraft"
 
   docker:
@@ -214,3 +214,10 @@ gameskill:
 
   backup:
     include: ["world", "world_nether", "world_the_end", "server.properties", "whitelist.json", "ops.json", "plugins"]
+
+  # "Wipe" deletes the world folders; a fresh world regenerates on next start
+  # (same seed if level-seed is set, otherwise random). Keeps server.properties,
+  # whitelist and ops.
+  wipe:
+    paths: ["world", "world_nether", "world_the_end"]
+    backup_first: true

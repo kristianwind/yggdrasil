@@ -40,6 +40,35 @@
   let showSafe = $state(false);
   let safeBackupFirst = $state(false);
   let safeBusy = $state(false);
+
+  // Auto-restart toggle (a managed schedule under the hood — restart every N hours)
+  let showAuto = $state(false);
+  let autoBusy = $state(false);
+  let autoRestart = $state({ enabled: false, every_hours: 6, warn: true, backup_first: false, target_id: "" });
+  const autoHourOptions = [1, 2, 3, 4, 6, 8, 12, 24];
+
+  async function loadAutoRestart() {
+    try {
+      autoRestart = await api.get(`/servers/${id}/auto-restart`);
+    } catch {
+      // non-fatal — leave defaults
+    }
+  }
+
+  async function saveAutoRestart(enabled) {
+    if (enabled && autoRestart.backup_first && !autoRestart.target_id)
+      return toast("Pick a backup target, or turn off backup-first", "warn");
+    autoBusy = true;
+    try {
+      autoRestart = await api.put(`/servers/${id}/auto-restart`, { ...autoRestart, enabled });
+      toast(enabled ? `Auto-restart on — every ${autoRestart.every_hours}h` : "Auto-restart off", "success");
+      showAuto = false;
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      autoBusy = false;
+    }
+  }
   async function doSafeRestart() {
     if (safeBackupFirst && !selectedTarget) return toast("Pick a backup target, or turn off backup-first", "warn");
     safeBusy = true;
@@ -451,6 +480,7 @@
       }
       loadBM();
       loadReach();
+      if (server.installed && can("server.control")) loadAutoRestart();
     } catch (e) {
       toast(e.message, "error");
     }
@@ -623,6 +653,9 @@
         <button class="btn-ghost" onclick={() => { showSafe = true; if (!backupTargets.length) loadBackups(); }}>
           Safe restart{server.restart_warn ? " ⏱" : ""}
         </button>
+        <button class="btn-ghost" onclick={() => { showAuto = true; if (!backupTargets.length) loadBackups(); }}>
+          🔁 Auto-restart{autoRestart.enabled ? ` · ${autoRestart.every_hours}h` : ""}
+        </button>
         <button class="btn-ghost" onclick={() => action("stop")}>Stop</button>
       {/if}
     {:else if can("server.control")}
@@ -698,6 +731,55 @@
           <button class="btn-ghost flex-1" disabled={safeBusy} onclick={() => (showSafe = false)}>Cancel</button>
           <button class="btn-primary flex-1" disabled={safeBusy} onclick={doSafeRestart}>
             {safeBusy ? "Starting…" : "Safe restart"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showAuto}
+    <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+      <div class="card p-5 w-full max-w-md space-y-4">
+        <h2 class="text-lg font-semibold">🔁 Auto-restart {server.name}</h2>
+        <p class="text-sm text-muted">
+          Restarts the server on a schedule to keep it fresh (clears memory leaks, applies pending
+          changes). Runs through the same safe-restart path{server.restart_warn ? ", so players get the rune's in-game countdown first" : ""}.
+        </p>
+        <div>
+          <label class="label" for="auto-hours">Restart every</label>
+          <select id="auto-hours" class="input" bind:value={autoRestart.every_hours}>
+            {#each autoHourOptions as h}<option value={h}>{h === 24 ? "24 hours (daily)" : `${h} hours`}</option>{/each}
+          </select>
+          <p class="text-xs text-muted mt-1">Fires at the top of the hour, every {autoRestart.every_hours}h (server local time).</p>
+        </div>
+        {#if server.restart_warn}
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={autoRestart.warn} />
+            <span>Warn players with the in-game countdown first</span>
+          </label>
+        {/if}
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={autoRestart.backup_first} />
+          <span>Back up before each restart</span>
+        </label>
+        {#if autoRestart.backup_first}
+          <div>
+            <label class="label" for="auto-target">Backup target</label>
+            <select id="auto-target" class="input" bind:value={autoRestart.target_id}>
+              {#if backupTargets.length === 0}<option value="">No targets — create one in Settings</option>{/if}
+              {#each backupTargets as t}<option value={t.id}>{t.name}</option>{/each}
+            </select>
+          </div>
+        {/if}
+        <div class="flex gap-2 pt-1">
+          <button class="btn-ghost flex-1" disabled={autoBusy} onclick={() => (showAuto = false)}>Cancel</button>
+          {#if autoRestart.enabled}
+            <button class="btn-ghost flex-1 text-warn" disabled={autoBusy} onclick={() => saveAutoRestart(false)}>
+              {autoBusy ? "…" : "Turn off"}
+            </button>
+          {/if}
+          <button class="btn-primary flex-1" disabled={autoBusy} onclick={() => saveAutoRestart(true)}>
+            {autoBusy ? "Saving…" : autoRestart.enabled ? "Update" : "Turn on"}
           </button>
         </div>
       </div>

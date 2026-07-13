@@ -186,6 +186,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/stop", s.handleStopServer)
 		r.Post("/api/servers/{id}/restart", s.handleRestartServer)
 		r.Post("/api/servers/{id}/safe-restart", s.handleSafeRestart)
+		r.Get("/api/servers/{id}/auto-restart", s.handleGetAutoRestart)
+		r.Put("/api/servers/{id}/auto-restart", s.handleSetAutoRestart)
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)

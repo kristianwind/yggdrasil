@@ -161,7 +161,19 @@ type Startup struct {
 	// and each element is {{TEMPLATED}}. Command (run via /bin/sh -c) is the default.
 	Exec      []string `yaml:"exec"       json:"exec,omitempty"`
 	DoneRegex string   `yaml:"done_regex" json:"done_regex,omitempty"`
-	Stop      string   `yaml:"stop"       json:"stop,omitempty"`
+	// Stop is a console command sent before the container is signalled, to shut the
+	// game down cleanly (e.g. Minecraft "stop").
+	Stop string `yaml:"stop" json:"stop,omitempty"`
+	// SaveCommand is a console command sent (and given a moment to run) *before* the
+	// stop command, to flush in-memory state to disk on a restart/stop — e.g.
+	// Minecraft "save-all". Games with no such command (DayZ persists on its own CE
+	// timer) leave this empty and instead rely on a longer StopTimeout.
+	SaveCommand string `yaml:"save_command,omitempty" json:"save_command,omitempty"`
+	// StopTimeout is the SIGTERM→SIGKILL grace period (seconds) for the graceful
+	// stop. 0 = the panel default. Games that flush persistence on shutdown (DayZ
+	// writes its whole Central Economy state) need well more than a couple of
+	// seconds, or they get SIGKILL'd mid-save. Capped to a sane maximum.
+	StopTimeout int `yaml:"stop_timeout,omitempty" json:"stop_timeout,omitempty"`
 }
 
 type Query struct {
@@ -241,6 +253,9 @@ func validate(gs *Gameskill) error {
 	}
 	if gs.Startup.Command == "" && len(gs.Startup.Exec) == 0 && !gs.Docker.KeepEntrypoint {
 		return fmt.Errorf("gameskill.startup.command (or .exec) is required (unless docker.keep_entrypoint is set)")
+	}
+	if gs.Startup.StopTimeout < 0 {
+		return fmt.Errorf("gameskill.startup.stop_timeout must be >= 0")
 	}
 
 	validTypes := map[string]bool{"string": true, "int": true, "bool": true, "select": true}

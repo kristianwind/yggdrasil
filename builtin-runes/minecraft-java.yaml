@@ -181,6 +181,9 @@ gameskill:
       setprop enforce-whitelist {{ENABLE_WHITELIST}}
       exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui
     done_regex: 'Done \(.*\)! For help'
+    # Flush chunks to disk before shutting down, then stop cleanly (the "stop"
+    # command already saves, but save-all first makes a graceful restart robust).
+    save_command: "save-all"
     stop: "stop"
 
   query:

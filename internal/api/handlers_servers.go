@@ -55,6 +55,7 @@ type serverRow struct {
 	HostMountsJSON string            `json:"-"`                     // raw servers.host_mounts (admin host binds)
 	HostMounts     []hostMount       `json:"host_mounts,omitempty"` // populated on single GET for admins only
 	WipeSupported  bool              `json:"wipe_supported"`        // rune declares a wipe: block (single GET)
+	RestartWarn    bool              `json:"restart_warn"`          // rune declares restart warnings (single GET)
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1)"
@@ -157,6 +158,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		srv.WipeSupported = rt.gs.Wipe != nil
+		srv.RestartWarn = rt.gs.Restart != nil && len(rt.gs.Restart.Warnings) > 0
 	}
 	jsonOK(w, srv)
 }

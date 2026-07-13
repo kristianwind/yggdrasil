@@ -46,12 +46,13 @@ const (
 	ActionCommand Action = "command" // raw RCON/console command
 	ActionMessage Action = "message" // rendered template sent to players
 	ActionUpdate  Action = "update"  // re-run install/SteamCMD update
+	ActionWipe    Action = "wipe"    // reset world/persistence (rune-defined)
 )
 
 // ValidAction reports whether a is a known action.
 func ValidAction(a Action) bool {
 	switch a {
-	case ActionBackup, ActionRestart, ActionStart, ActionStop, ActionCommand, ActionMessage, ActionUpdate:
+	case ActionBackup, ActionRestart, ActionStart, ActionStop, ActionCommand, ActionMessage, ActionUpdate, ActionWipe:
 		return true
 	}
 	return false

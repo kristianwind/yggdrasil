@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,6 +31,7 @@ type Gameskill struct {
 	Bans        *Bans      `yaml:"bans"        json:"bans,omitempty"`
 	Backup      *Backup    `yaml:"backup"      json:"backup,omitempty"`
 	Wipe        *Wipe      `yaml:"wipe"        json:"wipe,omitempty"`
+	Restart     *Restart   `yaml:"restart"     json:"restart,omitempty"`
 }
 
 // Wipe declares what "reset the world / persistence" means for this rune: the
@@ -40,6 +42,19 @@ type Gameskill struct {
 type Wipe struct {
 	Paths       []string `yaml:"paths" json:"paths"`
 	BackupFirst bool     `yaml:"backup_first,omitempty" json:"backup_first,omitempty"`
+}
+
+// Restart declares in-game warnings broadcast before a "safe restart": a
+// countdown from the largest `at` down to zero, each entry sending `msg` (a full
+// console/RCON broadcast command) that many minutes/seconds before the restart.
+// Enables warned restarts (manual button + scheduled) so players get notice.
+type Restart struct {
+	Warnings []RestartWarning `yaml:"warnings" json:"warnings,omitempty"`
+}
+
+type RestartWarning struct {
+	At  string `yaml:"at" json:"at"`   // time before restart, e.g. "15m", "60s"
+	Msg string `yaml:"msg" json:"msg"` // full broadcast command, e.g. "say Restart in 15 min"
 }
 
 // Bans declares how to ban/unban a player via the game's console/RCON. Commands
@@ -220,6 +235,14 @@ func validate(gs *Gameskill) error {
 			// Reject anything that would escape the data dir or nuke it wholesale.
 			if p == "" || p == "/" || p == "." || strings.Contains(p, "..") {
 				return fmt.Errorf("gameskill.wipe.paths entry %q is invalid", p)
+			}
+		}
+	}
+
+	if gs.Restart != nil {
+		for _, rw := range gs.Restart.Warnings {
+			if d, err := time.ParseDuration(strings.TrimSpace(rw.At)); err != nil || d <= 0 {
+				return fmt.Errorf("gameskill.restart.warnings has invalid 'at' %q (use e.g. 15m, 60s)", rw.At)
 			}
 		}
 	}

@@ -211,9 +211,22 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		s.runBackup(serverID, target, backupID)
 		return "ok", "backup started"
 
+	case scheduler.ActionWipe:
+		if err := s.wipeServer(ctx, serverID, args["backup_first"] == "true", args["target_id"]); err != nil {
+			return "error", err.Error()
+		}
+		return "ok", "wiped"
+
 	case scheduler.ActionRestart:
 		if args["skip_if_players"] == "true" && s.playersOnline(serverID) > 0 {
 			return "skipped", "players online"
+		}
+		// Warned "safe" restart: broadcast the rune's countdown to players (and
+		// optionally back up) before recreating. Runs asynchronously since the
+		// countdown blocks for minutes.
+		if args["warn"] == "true" {
+			go s.warnedRestart(serverID, args["backup_first"] == "true", args["target_id"])
+			return "ok", "warned restart initiated"
 		}
 		// Recreate the container (not a plain docker-restart) so a scheduled restart
 		// applies any rune/env/mod changes too, consistent with the manual restart.

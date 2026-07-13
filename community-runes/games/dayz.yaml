@@ -224,3 +224,11 @@ gameskill:
   wipe:
     paths: ["mpmissions/*/storage_*"]
     backup_first: true
+
+  # In-game countdown broadcast (BattlEye RCon "say -1" = all players) before a
+  # safe restart.
+  restart:
+    warnings:
+      - { at: "15m", msg: "say -1 Server restart in 15 minutes." }
+      - { at: "5m",  msg: "say -1 Server restart in 5 minutes." }
+      - { at: "1m",  msg: "say -1 Restarting in 1 minute!" }

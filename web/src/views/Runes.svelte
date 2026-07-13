@@ -194,12 +194,13 @@
     </div>
   {/if}
   {#if isAdmin}
-    <button class="btn-ghost" onclick={openGithub}>Browse GitHub</button>
-    <label class="btn-ghost cursor-pointer">
+    <button class="btn-ghost" onclick={openGithub}
+      title="Browse and install community runes straight from a GitHub repo folder. Reinstalling an already-installed rune updates it to the latest version.">Browse GitHub</button>
+    <label class="btn-ghost cursor-pointer" title="Import a Pterodactyl egg (.json) and convert it into a rune.">
       Import egg
       <input type="file" accept=".json" class="hidden" onchange={importEgg} />
     </label>
-    <label class="btn-ghost cursor-pointer">
+    <label class="btn-ghost cursor-pointer" title="Import a rune from an XML definition file.">
       Import XML
       <input type="file" accept=".xml" class="hidden" onchange={importXml} />
     </label>
@@ -243,10 +244,12 @@
             <td class="px-4 py-2 text-muted">v{r.version}</td>
             <td class="px-4 py-2 text-right whitespace-nowrap">
               {#if r.creatable}
-                <button class="btn-primary px-2 py-1" onclick={() => createServer(r)}>Create server</button>
+                <button class="btn-primary px-2 py-1" onclick={() => createServer(r)}
+                  title="Create a new game server from this rune — you'll pick a name and settings next.">Create server</button>
               {/if}
               {#if isAdmin}
-                <button class="btn-danger px-2 py-1 ml-1" onclick={() => del(r)}>Delete</button>
+                <button class="btn-danger px-2 py-1 ml-1" onclick={() => del(r)}
+                  title="Remove this rune from the panel. Existing servers built from it keep running, but you can't create new ones until it's re-added.">Delete</button>
               {/if}
               {#if !r.creatable && !(isAdmin)}
                 <span class="text-muted">—</span>
@@ -338,7 +341,8 @@
               </div>
               {#if r.installed}
                 <span class="badge bg-accent2/15 text-accent shrink-0">installed</span>
-                <button class="btn-ghost text-xs shrink-0" onclick={() => installGh(r)} disabled={ghBusy === r.download_url}>
+                <button class="btn-ghost text-xs shrink-0" onclick={() => installGh(r)} disabled={ghBusy === r.download_url}
+                  title="Re-download this rune from GitHub and overwrite the installed copy with the latest version. All existing servers using it pick up the changes (no need to recreate them).">
                   Reinstall
                 </button>
               {:else if !r.parse_error}

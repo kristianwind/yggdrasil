@@ -90,7 +90,8 @@
 
 <div class="flex items-center justify-between mb-2">
   <h1 class="text-2xl font-semibold">Bans</h1>
-  <button class="btn-primary" onclick={() => (showCreate = true)}>+ Ban a player</button>
+  <button class="btn-primary" onclick={() => (showCreate = true)}
+    title="Add a player to the ban list and push the ban to the matching running server(s) — on one server or everywhere.">+ Ban a player</button>
 </div>
 <p class="text-muted mb-6">
   A cross-server ban list. Ban a player on one server or everywhere at once — the ban command is
@@ -112,7 +113,8 @@
           {b.reason || "(no reason)"} · by {b.banned_by || "—"} · {b.created_at}
         </div>
       </div>
-      <button class="btn-ghost" onclick={() => unban(b)}>Unban</button>
+      <button class="btn-ghost" onclick={() => unban(b)}
+        title="Remove this ban from the list and send the unban command to the affected server(s).">Unban</button>
     </div>
   {/each}
 </div>
@@ -120,7 +122,8 @@
 <!-- Violation auto-action rules -->
 <div class="flex items-center justify-between mt-10 mb-2">
   <h2 class="text-xl font-semibold">Auto-action rules</h2>
-  <button class="btn-primary" onclick={() => (showRule = true)}>+ New rule</button>
+  <button class="btn-primary" onclick={() => (showRule = true)}
+    title="Create a rule that watches server logs and auto-kicks or auto-bans a player when a pattern recurs past a threshold.">+ New rule</button>
 </div>
 <p class="text-muted mb-4 text-sm">
   Watch running servers' logs for a regex pattern (capture group 1 = player). When it recurs past
@@ -142,8 +145,9 @@
           /{rl.pattern}/ ≥{rl.threshold} in {rl.window_minutes}m
         </div>
       </div>
-      <button class="btn-ghost" onclick={() => toggleRule(rl)}>{rl.enabled ? "Disable" : "Enable"}</button>
-      <button class="btn-danger" onclick={() => deleteRule(rl)}>Delete</button>
+      <button class="btn-ghost" onclick={() => toggleRule(rl)}
+        title={rl.enabled ? "Pause this rule — it stays but stops watching logs." : "Resume watching logs with this rule."}>{rl.enabled ? "Disable" : "Enable"}</button>
+      <button class="btn-danger" onclick={() => deleteRule(rl)} title="Delete this auto-action rule.">Delete</button>
     </div>
   {/each}
 </div>

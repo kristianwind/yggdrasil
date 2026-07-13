@@ -636,11 +636,13 @@
         <span class="badge bg-accent2/20 text-accent">up to date</span>
       {/if}
       <div class="flex-1"></div>
-      <button class="btn-ghost" disabled={checking} onclick={checkUpdates}>
+      <button class="btn-ghost" disabled={checking} onclick={checkUpdates}
+        title="Check GitHub for a newer Yggdrasil panel release.">
         {checking ? "Checking…" : "Check now"}
       </button>
       {#if build.update_available && build.can_self_update}
-        <button class="btn-primary" disabled={updating} onclick={doUpdate}>
+        <button class="btn-primary" disabled={updating} onclick={doUpdate}
+          title="Download the new panel binary and restart into it. Game servers keep running; the panel is briefly unavailable during the swap.">
           {updating ? "Updating…" : `Update to ${build.latest}`}
         </button>
       {:else if build.update_available}
@@ -900,7 +902,8 @@
     <div class="flex items-center gap-3">
       <span class="badge bg-border text-muted">disabled</span>
       <span class="flex-1 text-sm text-muted">Add a second factor to your login.</span>
-      <button class="btn-primary" onclick={start2fa}>Enable 2FA</button>
+      <button class="btn-primary" onclick={start2fa}
+        title="Set up time-based one-time codes (TOTP). You'll scan a secret into an authenticator app and confirm a code.">Enable 2FA</button>
     </div>
   {/if}
 </div>
@@ -932,7 +935,8 @@
   {:else}
     <p class="text-sm text-muted mb-3">No passkeys registered yet.</p>
   {/if}
-  <button class="btn-primary" disabled={!canPasskey || pkBusy} onclick={addPasskey}>
+  <button class="btn-primary" disabled={!canPasskey || pkBusy} onclick={addPasskey}
+    title="Register a passkey (fingerprint, face, security key or device PIN) so you can sign in without a password.">
     {pkBusy ? "Waiting for passkey…" : "Add a passkey"}
   </button>
 </div>
@@ -960,7 +964,8 @@
         </div>
         {#if steam.authorized_at}<div class="text-xs text-muted">since {steam.authorized_at}</div>{/if}
       </div>
-      <button class="btn-danger" onclick={forgetSteam}>Forget</button>
+      <button class="btn-danger" onclick={forgetSteam}
+        title="Remove the stored Steam authorization + credential cache. Games that need a Steam login (e.g. DayZ) won't be able to install or update until you re-authorize.">Forget</button>
     </div>
   {:else if steamStep === 1}
     <div class="text-xs text-muted mb-2">

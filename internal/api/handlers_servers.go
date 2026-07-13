@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -497,6 +498,45 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 // baked-in command/env, which is why restart alone never picked up changes. Shared
 // by start, restart, and the post-(re)install refresh. The caller is responsible
 // for permission + install-state checks.
+// Graceful-stop grace period (SIGTERM→SIGKILL) when a rune doesn't set one, and
+// the ceiling a rune may request. DayZ flushes its whole Central Economy on
+// shutdown, so a couple of seconds isn't enough — the default is generous and a
+// rune can raise it (dayz: 90) up to the cap.
+const (
+	defaultStopTimeout = 30
+	maxStopTimeout     = 300
+)
+
+// stopTimeout resolves a rune's SIGTERM→SIGKILL grace period, clamped to sane bounds.
+func stopTimeout(gs *gameskill.Gameskill) int {
+	t := gs.Startup.StopTimeout
+	if t <= 0 {
+		return defaultStopTimeout
+	}
+	if t > maxStopTimeout {
+		return maxStopTimeout
+	}
+	return t
+}
+
+// gracefulStop shuts a server's container down as cleanly as the rune allows: it
+// sends the rune's save_command (flush state) then its stop command over the
+// console, gives the game a moment to act, and finally docker-stops with the
+// rune's grace period before SIGKILL. Centralizes what restart/stop both need so
+// a game like DayZ isn't killed mid-persistence-save. A rune that declares
+// neither command just gets the (longer, rune-tunable) SIGTERM grace.
+func (s *Server) gracefulStop(ctx context.Context, containerID string, gs *gameskill.Gameskill) error {
+	if gs.Startup.SaveCommand != "" {
+		s.docker.SendStdin(ctx, containerID, gs.Startup.SaveCommand)
+		time.Sleep(2 * time.Second) // let the save flush before we ask it to stop
+	}
+	if gs.Startup.Stop != "" {
+		s.docker.SendStdin(ctx, containerID, gs.Startup.Stop)
+		time.Sleep(2 * time.Second)
+	}
+	return s.docker.Stop(ctx, containerID, stopTimeout(gs))
+}
+
 func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	srv, err := s.getServer(ctx, id)
 	if err != nil {
@@ -509,8 +549,10 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	gs, env, ports := rt.gs, rt.env, rt.ports
 
 	// Remove any existing container first (its ports free up for reconcile below).
+	// Stop gracefully so games that flush persistence on shutdown (DayZ's Central
+	// Economy) aren't killed mid-save — the old path used a hard 5s SIGKILL.
 	if srv.ContainerID != "" {
-		s.docker.Stop(ctx, srv.ContainerID, 5)
+		s.gracefulStop(ctx, srv.ContainerID, gs)
 		s.docker.Remove(ctx, srv.ContainerID)
 		s.db.ExecContext(ctx, "UPDATE servers SET container_id='' WHERE id=?", id)
 		srv.ContainerID = ""
@@ -687,12 +729,14 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if srv.ContainerID != "" {
-		// Graceful shutdown: send the gameskill's stop console command first
-		// (e.g. Minecraft "stop"), so the world saves before the container stops.
-		if rt, err := s.loadRuntime(r.Context(), id); err == nil && rt.gs.Startup.Stop != "" {
-			s.docker.SendStdin(r.Context(), srv.ContainerID, rt.gs.Startup.Stop)
-		}
-		if err := s.docker.Stop(r.Context(), srv.ContainerID, 30); err != nil {
+		// Graceful shutdown: flush + stop via the rune's console commands, then
+		// SIGTERM with the rune's grace period, so the world saves before it stops.
+		if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+			if err := s.gracefulStop(r.Context(), srv.ContainerID, rt.gs); err != nil {
+				jsonError(w, "stop failed: "+err.Error(), http.StatusBadGateway)
+				return
+			}
+		} else if err := s.docker.Stop(r.Context(), srv.ContainerID, defaultStopTimeout); err != nil {
 			jsonError(w, "stop failed: "+err.Error(), http.StatusBadGateway)
 			return
 		}

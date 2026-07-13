@@ -185,7 +185,12 @@ gameskill:
       # DayZ finds and initialises BattlEye on its own from the server dir.
       exec ./DayZServer -config=serverDZ.cfg -port={{GAME_PORT}} $MODARG -dologs -adminlog -netlog -freezecheck
     done_regex: 'Mission read'
-    # DayZ stops on SIGTERM.
+    # DayZ has no console save/stop command — it persists on its own Central
+    # Economy timer and flushes on a clean SIGTERM shutdown. So give it a generous
+    # grace period (90s) instead of being SIGKILL'd mid-save on restart/stop.
+    # (Also: keep a short CE auto-save interval in your mission so at most a couple
+    # of minutes of base/vehicle/stash changes are ever at risk.)
+    stop_timeout: 90
 
   query:
     type: a2s

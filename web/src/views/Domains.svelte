@@ -51,7 +51,8 @@
 
 <div class="flex items-center justify-between mb-2">
   <h1 class="text-2xl font-semibold">Domains</h1>
-  <button class="btn-ghost" onclick={() => { checks = {}; load(); }}>↻ Refresh</button>
+  <button class="btn-ghost" onclick={() => { checks = {}; load(); }}
+    title="Re-check each domain's DNS and reachability now.">↻ Refresh</button>
 </div>
 <p class="text-muted mb-6">
   Every public domain the panel routes — via Nginx Proxy Manager or a Cloudflare Tunnel — with a

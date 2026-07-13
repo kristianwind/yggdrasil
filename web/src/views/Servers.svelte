@@ -198,7 +198,8 @@
       </div>
     {/if}
     {#if $user?.can_create}
-      <button class="btn-primary" onclick={openCreate} disabled={gameskills.length === 0}>
+      <button class="btn-primary" onclick={openCreate} disabled={gameskills.length === 0}
+        title={gameskills.length === 0 ? "Add a rune first (Runes → Browse GitHub) before creating a server." : "Create a new game server from one of your runes."}>
         + New server
       </button>
     {/if}
@@ -266,10 +267,10 @@
                   <div class="flex gap-2 justify-end">
                     {#if can(s, "server.control")}
                       {#if s.status === "running" || s.status === "starting"}
-                        <button class="btn-ghost px-2 py-1" onclick={() => action(s, "restart")}>Restart</button>
-                        <button class="btn-ghost px-2 py-1" onclick={() => action(s, "stop")}>Stop</button>
+                        <button class="btn-ghost px-2 py-1" onclick={() => action(s, "restart")} title="Restart this server now (no player warning).">Restart</button>
+                        <button class="btn-ghost px-2 py-1" onclick={() => action(s, "stop")} title="Stop this server now.">Stop</button>
                       {:else}
-                        <button class="btn-primary px-2 py-1" onclick={() => action(s, "start")}>Start</button>
+                        <button class="btn-primary px-2 py-1" onclick={() => action(s, "start")} title="Start this server now.">Start</button>
                       {/if}
                     {/if}
                   </div>
@@ -313,10 +314,10 @@
             {#if can(s, "server.control")}
               <div class="flex gap-2 mt-3">
                 {#if s.status === "running" || s.status === "starting"}
-                  <button class="btn-ghost flex-1" onclick={() => action(s, "restart")}>Restart</button>
-                  <button class="btn-ghost flex-1" onclick={() => action(s, "stop")}>Stop</button>
+                  <button class="btn-ghost flex-1" onclick={() => action(s, "restart")} title="Restart this server now (no player warning).">Restart</button>
+                  <button class="btn-ghost flex-1" onclick={() => action(s, "stop")} title="Stop this server now.">Stop</button>
                 {:else}
-                  <button class="btn-primary flex-1" onclick={() => action(s, "start")}>Start</button>
+                  <button class="btn-primary flex-1" onclick={() => action(s, "start")} title="Start this server now.">Start</button>
                 {/if}
               </div>
             {/if}

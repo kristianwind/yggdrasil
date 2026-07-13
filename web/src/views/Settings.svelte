@@ -488,6 +488,42 @@
     }
   }
 
+  // AI assistant (advisory features — admin brings their own LLM)
+  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false });
+  let savingAi = $state(false);
+  let testingAi = $state(false);
+  const aiProviders = ["openai", "anthropic", "openrouter", "deepseek", "mistral", "ollama", "custom"];
+  async function loadAi() {
+    try {
+      ai = { ...ai, ...(await api.get("/ai/config")), api_key: "" };
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function saveAi() {
+    savingAi = true;
+    try {
+      await api.put("/ai/config", ai);
+      toast("AI settings saved", "success");
+      await loadAi();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingAi = false;
+    }
+  }
+  async function testAi() {
+    testingAi = true;
+    try {
+      const r = await api.post("/ai/config/test", {});
+      toast(`AI connected — replied: ${r.reply}`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      testingAi = false;
+    }
+  }
+
   // NPM (Nginx Proxy Manager) subdomain routing
   let npm = $state({ url: "", email: "", password: "", base_domain: "", internal_host: "", le_email: "", enabled: false, configured: false });
   let savingNpm = $state(false);
@@ -573,6 +609,7 @@
     loadUnifi();
     loadNpm();
     loadCf();
+    loadAi();
   });
 
   async function create() {
@@ -944,6 +981,54 @@
 {/if}
 
 {#if tab === "integrations"}
+<!-- AI assistant (advisory) -->
+<h2 class="text-xl font-semibold mb-2">AI assistant</h2>
+<p class="text-muted mb-4 text-sm">
+  Optional, <b>advisory-only</b> AI features (like the Activity tab's “what happened while I was away”
+  digest). Bring your own provider and key — nothing is sent anywhere you don't configure here, and the
+  AI never acts on a server by itself. Log data (player names, events) is sent to the endpoint below when
+  a summary is requested.
+</p>
+<div class="card p-4 mb-10 space-y-3">
+  <div class="grid sm:grid-cols-2 gap-3">
+    <div>
+      <label class="label" for="ai-prov">Provider</label>
+      <select id="ai-prov" class="input" bind:value={ai.provider}
+        title="Which API dialect to speak. Anthropic uses the Messages API; everything else uses the OpenAI /chat/completions shape (OpenRouter, DeepSeek, Mistral, Ollama, or any compatible gateway via 'custom').">
+        {#each aiProviders as p}<option value={p}>{p}</option>{/each}
+      </select>
+    </div>
+    <div>
+      <label class="label" for="ai-model">Model</label>
+      <input id="ai-model" class="input" bind:value={ai.model} autocomplete="off"
+        placeholder="e.g. gpt-4o-mini, claude-…, deepseek-chat"
+        title="The exact model id for your provider." />
+    </div>
+  </div>
+  <div>
+    <label class="label" for="ai-base">Base URL <span class="text-muted">(optional — required for “custom”)</span></label>
+    <input id="ai-base" class="input" bind:value={ai.base_url} autocomplete="off"
+      placeholder="(uses the provider default; e.g. http://192.168.1.x:11434/v1 for Ollama)"
+      title="Override the API base. Leave blank to use the provider's default endpoint. For a LAN Ollama, use the host's LAN IP, not localhost." />
+  </div>
+  <div>
+    <label class="label" for="ai-key">API key</label>
+    <input id="ai-key" class="input" type="password" bind:value={ai.api_key} autocomplete="new-password"
+      placeholder={ai.configured ? "•••••••• (unchanged)" : "your provider API key (not needed for local Ollama)"}
+      title="Stored encrypted; never shown again. Leave blank to keep the existing key." />
+  </div>
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer"
+    title="When off, all AI features are hidden and no data is sent anywhere.">
+    <input type="checkbox" bind:checked={ai.enabled} />
+    Enable advisory AI features
+  </label>
+  <div class="flex gap-2">
+    <button class="btn-primary" onclick={saveAi} disabled={savingAi}>{savingAi ? "Saving…" : "Save"}</button>
+    <button class="btn-ghost" onclick={testAi} disabled={testingAi}
+      title="Send a tiny test prompt using the saved config to verify the key and endpoint. Save first.">{testingAi ? "Testing…" : "Test connection"}</button>
+  </div>
+</div>
+
 <!-- Steam authorization -->
 <h2 class="text-xl font-semibold mb-2">Steam account</h2>
 <p class="text-muted mb-4 text-sm">

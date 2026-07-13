@@ -119,6 +119,24 @@
     }
   });
 
+  // Activity feed (parsed admin log — session history)
+  let activity = $state({ supported: true, file: "", events: [] });
+  let activityBusy = $state(false);
+  const activityIcons = { join: "🟢", leave: "⚪", death: "💀", kill: "🔫" };
+  async function loadActivity() {
+    activityBusy = true;
+    try {
+      activity = await api.get(`/servers/${id}/admin-log`);
+    } catch (e) {
+      // leave prior data
+    } finally {
+      activityBusy = false;
+    }
+  }
+  $effect(() => {
+    if (tab === "activity" && server?.admin_log_supported) loadActivity();
+  });
+
   // Safe restart (broadcast warnings, optional backup, then restart)
   let showSafe = $state(false);
   let safeBackupFirst = $state(false);
@@ -268,6 +286,7 @@
     [
       ...(can("server.console") ? [["console", "Console"]] : []),
       ...(server?.players_supported && can("server.console") ? [["players", "Players"]] : []),
+      ...(server?.admin_log_supported && can("server.view") ? [["activity", "Activity"]] : []),
       ...(can("server.files") ? [["files", "Files"]] : []),
       ...(can("server.backup") ? [["backups", "Backups"]] : []),
       ...(can("server.control") ? [["settings", "Settings"]] : []),
@@ -1024,6 +1043,32 @@
               {/each}
             </tbody>
           </table>
+        </div>
+      {/if}
+    </div>
+  {:else if tab === "activity"}
+    <div class="space-y-3">
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-muted">
+          Recent server activity{activity.file ? ` · ${activity.file}` : ""}
+        </span>
+        <button class="btn-ghost text-xs ml-auto" disabled={activityBusy} onclick={loadActivity}>Refresh</button>
+      </div>
+      {#if !activity.events.length}
+        <div class="card p-4 text-sm text-muted text-center">
+          {activityBusy ? "Loading…" : "No activity logged yet (the server writes its admin log while running)."}
+        </div>
+      {:else}
+        <div class="card divide-y divide-border/50">
+          {#each activity.events as ev}
+            <div class="flex items-start gap-3 px-3 py-2 text-sm">
+              <span class="shrink-0" title={ev.type}>{activityIcons[ev.type] || "•"}</span>
+              <span class="shrink-0 font-mono text-xs text-muted w-16">{ev.time || "—"}</span>
+              <span class="flex-1 break-words">
+                {#if ev.player}<span class="font-medium">{ev.player}</span> {/if}<span class="text-muted">{ev.line}</span>
+              </span>
+            </div>
+          {/each}
         </div>
       {/if}
     </div>

@@ -229,6 +229,23 @@ gameskill:
     lock_command: "#lock"
     unlock_command: "#unlock"
 
+  # Admin-log feed (session history). DayZ writes a per-session .ADM log under
+  # profiles/ with timestamped lines like:
+  #   15:04:23 | Player "Bob" is connected (id=abc)
+  #   15:41:07 | Player "Bob"(...) has been disconnected
+  #   16:02:55 | Player "Bob"(...) killed by Player "Bandit"(...) with M4A1
+  #   16:10:31 | Player "Bob"(...) died. Stats>...
+  # The most recent .ADM is tailed and each line classified. Single-quoted so
+  # regex backslashes stay literal.
+  admin_log:
+    path: "profiles/*.ADM"
+    time_regex: '^(?P<time>\d{1,2}:\d{2}:\d{2})'
+    events:
+      - { type: "kill",  regex: 'Player "(?P<name>[^"]+)".*killed by' }
+      - { type: "death", regex: 'Player "(?P<name>[^"]+)".*(died\.|bled out|committed suicide)' }
+      - { type: "join",  regex: 'Player "(?P<name>[^"]+)" is connected' }
+      - { type: "leave", regex: 'Player "(?P<name>[^"]+)".*has been disconnected' }
+
   backup:
     include: ["mpmissions", "serverDZ.cfg", "battleye", "profiles"]
 

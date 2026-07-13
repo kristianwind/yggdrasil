@@ -59,6 +59,7 @@ type serverRow struct {
 	Watchdog       bool              `json:"watchdog"`              // auto-heal enabled for this server
 	WatchdogSup    bool              `json:"watchdog_supported"`    // rune has a query the watchdog can health-check (single GET)
 	PlayersSup     bool              `json:"players_supported"`     // rune declares a players: block (Players tab; single GET)
+	AdminLogSup    bool              `json:"admin_log_supported"`   // rune declares an admin_log: block (Activity tab; single GET)
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0)"
@@ -165,6 +166,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		srv.RestartWarn = rt.gs.Restart != nil && len(rt.gs.Restart.Warnings) > 0
 		srv.WatchdogSup = rt.gs.Query != nil
 		srv.PlayersSup = rt.gs.Players != nil
+		srv.AdminLogSup = rt.gs.AdminLog != nil
 	}
 	jsonOK(w, srv)
 }

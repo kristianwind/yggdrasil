@@ -34,6 +34,26 @@ type Gameskill struct {
 	Wipe        *Wipe      `yaml:"wipe"        json:"wipe,omitempty"`
 	Restart     *Restart   `yaml:"restart"     json:"restart,omitempty"`
 	Players     *Players   `yaml:"players"     json:"players,omitempty"`
+	AdminLog    *AdminLog  `yaml:"admin_log"   json:"admin_log,omitempty"`
+}
+
+// AdminLog declares how to surface a game's admin/activity log as a parsed feed
+// (joins, disconnects, deaths, kills, ...) — the deterministic session-history
+// base that the later AI "what happened while I was away" digest reads. Path is
+// a glob relative to the server's data dir; the most recently modified match is
+// tailed. Each Events entry classifies a log line via a regexp with an optional
+// (?P<name>...) player-name group; TimeRegex optionally pulls a leading timestamp
+// (named group `time`, else the whole match). It's the first game to fill this in
+// (DayZ .ADM); the generic feed lights up for any rune that declares it.
+type AdminLog struct {
+	Path      string         `yaml:"path"                json:"path"`
+	TimeRegex string         `yaml:"time_regex,omitempty" json:"time_regex,omitempty"`
+	Events    []AdminLogRule `yaml:"events"              json:"events"`
+}
+
+type AdminLogRule struct {
+	Type  string `yaml:"type"  json:"type"`  // classification, e.g. join | leave | death | kill
+	Regex string `yaml:"regex" json:"regex"` // matched per line; optional (?P<name>...) player group
 }
 
 // Players declares how to list and moderate connected players over the game's
@@ -285,6 +305,29 @@ func validate(gs *Gameskill) error {
 		}
 		if !hasName {
 			return fmt.Errorf("gameskill.players.player_regex must have a (?P<name>...) capture group")
+		}
+	}
+
+	if gs.AdminLog != nil {
+		p := strings.TrimSpace(gs.AdminLog.Path)
+		if p == "" || strings.Contains(p, "..") {
+			return fmt.Errorf("gameskill.admin_log.path is required and must not contain ..")
+		}
+		if gs.AdminLog.TimeRegex != "" {
+			if _, err := regexp.Compile(gs.AdminLog.TimeRegex); err != nil {
+				return fmt.Errorf("gameskill.admin_log.time_regex does not compile: %w", err)
+			}
+		}
+		if len(gs.AdminLog.Events) == 0 {
+			return fmt.Errorf("gameskill.admin_log.events is required when admin_log is set")
+		}
+		for _, e := range gs.AdminLog.Events {
+			if strings.TrimSpace(e.Type) == "" {
+				return fmt.Errorf("gameskill.admin_log.events entry missing type")
+			}
+			if _, err := regexp.Compile(e.Regex); err != nil {
+				return fmt.Errorf("gameskill.admin_log.events %q regex does not compile: %w", e.Type, err)
+			}
 		}
 	}
 

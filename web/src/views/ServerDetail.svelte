@@ -36,6 +36,27 @@
   let showWipe = $state(false);
   let wipeBackupFirst = $state(true);
   let wiping = $state(false);
+  // Safe restart (broadcast warnings, optional backup, then restart)
+  let showSafe = $state(false);
+  let safeBackupFirst = $state(false);
+  let safeBusy = $state(false);
+  async function doSafeRestart() {
+    if (safeBackupFirst && !selectedTarget) return toast("Pick a backup target, or turn off backup-first", "warn");
+    safeBusy = true;
+    try {
+      await api.post(`/servers/${id}/safe-restart`, {
+        backup_first: safeBackupFirst,
+        target_id: safeBackupFirst ? selectedTarget : "",
+      });
+      toast(server.restart_warn ? "Players warned — restarting after the countdown" : "Restart scheduled", "success");
+      showSafe = false;
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      safeBusy = false;
+    }
+  }
+
   async function doWipe() {
     if (wipeBackupFirst && !selectedTarget) return toast("Pick a backup target, or turn off backup-first", "warn");
     wiping = true;
@@ -599,6 +620,9 @@
     {:else if (server.status === "running" || server.status === "starting")}
       {#if can("server.control")}
         <button class="btn-ghost" onclick={() => action("restart")}>Restart</button>
+        <button class="btn-ghost" onclick={() => { showSafe = true; if (!backupTargets.length) loadBackups(); }}>
+          Safe restart{server.restart_warn ? " ⏱" : ""}
+        </button>
         <button class="btn-ghost" onclick={() => action("stop")}>Stop</button>
       {/if}
     {:else if can("server.control")}
@@ -639,6 +663,41 @@
           <button class="btn-ghost flex-1" disabled={wiping} onclick={() => (showWipe = false)}>Cancel</button>
           <button class="btn-danger flex-1" disabled={wiping} onclick={doWipe}>
             {wiping ? "Wiping…" : "Wipe now"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showSafe}
+    <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+      <div class="card p-5 w-full max-w-md space-y-4">
+        <h2 class="text-lg font-semibold">Safe restart {server.name}</h2>
+        <p class="text-sm text-muted">
+          {#if server.restart_warn}
+            Players get an in-game countdown, then the server restarts. Good for a graceful reboot.
+          {:else}
+            Restarts the server{safeBackupFirst ? " after a backup" : ""}. (This rune has no player
+            warnings, so it restarts promptly.)
+          {/if}
+        </p>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={safeBackupFirst} />
+          <span>Back up first</span>
+        </label>
+        {#if safeBackupFirst}
+          <div>
+            <label class="label" for="safe-target">Backup target</label>
+            <select id="safe-target" class="input" bind:value={selectedTarget}>
+              {#if backupTargets.length === 0}<option value="">No targets — create one in Settings</option>{/if}
+              {#each backupTargets as t}<option value={t.id}>{t.name}</option>{/each}
+            </select>
+          </div>
+        {/if}
+        <div class="flex gap-2 pt-1">
+          <button class="btn-ghost flex-1" disabled={safeBusy} onclick={() => (showSafe = false)}>Cancel</button>
+          <button class="btn-primary flex-1" disabled={safeBusy} onclick={doSafeRestart}>
+            {safeBusy ? "Starting…" : "Safe restart"}
           </button>
         </div>
       </div>

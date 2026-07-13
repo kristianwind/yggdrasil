@@ -27,6 +27,10 @@ func TestBuildDigestMessages(t *testing.T) {
 	if !strings.Contains(sys, "advisory") || !strings.Contains(sys, "do not invent") {
 		t.Errorf("system prompt missing advisory/no-invent guardrails:\n%s", msgs[0].Content)
 	}
+	// Prompt-injection guardrail: player names are untrusted and must be treated as data.
+	if !strings.Contains(sys, "untrusted") {
+		t.Errorf("system prompt missing prompt-injection guardrail:\n%s", msgs[0].Content)
+	}
 }
 
 func TestBuildDigestMessagesCaps(t *testing.T) {

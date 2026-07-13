@@ -32,7 +32,8 @@ type Server struct {
 	cipher  *crypto.Cipher
 	sched   *schedulerState
 	viol    *violationWatcher
-	version string // build version (set via SetVersion)
+	wd      *watchdogState // auto-heal: per-server query health streaks + cooldowns
+	version string         // build version (set via SetVersion)
 
 	extIP   string // cached external IP (detectPublicAddr)
 	extIPAt time.Time
@@ -62,6 +63,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		webFS:   subFS,
 		install: newProgressHub(),
 		cipher:  cipher,
+		wd:      newWatchdogState(),
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()
@@ -188,6 +190,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/safe-restart", s.handleSafeRestart)
 		r.Get("/api/servers/{id}/auto-restart", s.handleGetAutoRestart)
 		r.Put("/api/servers/{id}/auto-restart", s.handleSetAutoRestart)
+		r.Put("/api/servers/{id}/watchdog", s.handleSetWatchdog)
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)
@@ -202,6 +205,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/dayz/import-mod-types", s.handleDayzImportModTypes)
 		r.Post("/api/servers/{id}/dayz/reset", s.handleDayzResetNorn)
 		r.Post("/api/servers/{id}/rcon", s.handleServerRcon)
+		r.Get("/api/servers/{id}/players", s.handleListPlayers)
+		r.Post("/api/servers/{id}/players/kick", s.handleKickPlayer)
+		r.Post("/api/servers/{id}/players/broadcast", s.handleBroadcast)
+		r.Post("/api/servers/{id}/players/lock", s.handleLockServer)
 		r.Get("/api/servers/{id}/logs", s.handleServerLogs) // WebSocket
 		r.Get("/api/servers/{id}/console", s.handleConsole) // WebSocket
 

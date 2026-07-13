@@ -36,6 +36,89 @@
   let showWipe = $state(false);
   let wipeBackupFirst = $state(true);
   let wiping = $state(false);
+  // Watchdog (auto-heal): flip the per-server toggle; state lives on server.watchdog.
+  let watchdogBusy = $state(false);
+  async function toggleWatchdog() {
+    watchdogBusy = true;
+    try {
+      const next = !server.watchdog;
+      await api.put(`/servers/${id}/watchdog`, { enabled: next });
+      server.watchdog = next;
+      toast(next ? "Watchdog on — auto-restart if it stops responding" : "Watchdog off", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      watchdogBusy = false;
+    }
+  }
+
+  // Players tab (live roster + kick / broadcast / lock over RCON)
+  let playersData = $state({ supported: true, online: false, players: [], can_kick: false, can_broadcast: false, can_lock: false });
+  let playersBusy = $state(false);
+  let broadcastMsg = $state("");
+  let serverLocked = $state(false);
+  let playersTimer = null;
+
+  async function loadPlayers() {
+    try {
+      playersData = await api.get(`/servers/${id}/players`);
+    } catch (e) {
+      // leave prior data; a transient RCON hiccup shouldn't blank the tab
+    }
+  }
+
+  async function kickPlayer(p) {
+    const reason = prompt(`Kick ${p.name}? Optional reason:`, "");
+    if (reason === null) return; // cancelled
+    playersBusy = true;
+    try {
+      await api.post(`/servers/${id}/players/kick`, { id: p.id, name: p.name, reason });
+      toast(`Kicked ${p.name}`, "success");
+      setTimeout(loadPlayers, 800);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      playersBusy = false;
+    }
+  }
+
+  async function sendBroadcast() {
+    if (!broadcastMsg.trim()) return;
+    playersBusy = true;
+    try {
+      await api.post(`/servers/${id}/players/broadcast`, { message: broadcastMsg });
+      toast("Broadcast sent", "success");
+      broadcastMsg = "";
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      playersBusy = false;
+    }
+  }
+
+  async function toggleLock() {
+    playersBusy = true;
+    try {
+      const next = !serverLocked;
+      await api.post(`/servers/${id}/players/lock`, { locked: next });
+      serverLocked = next;
+      toast(next ? "Server locked — no new joins" : "Server unlocked", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      playersBusy = false;
+    }
+  }
+
+  // Poll the roster while the Players tab is open; stop when it closes.
+  $effect(() => {
+    if (tab === "players" && server?.players_supported) {
+      loadPlayers();
+      playersTimer = setInterval(loadPlayers, 10000);
+      return () => { clearInterval(playersTimer); playersTimer = null; };
+    }
+  });
+
   // Safe restart (broadcast warnings, optional backup, then restart)
   let showSafe = $state(false);
   let safeBackupFirst = $state(false);
@@ -184,6 +267,7 @@
   let tabs = $derived(
     [
       ...(can("server.console") ? [["console", "Console"]] : []),
+      ...(server?.players_supported && can("server.console") ? [["players", "Players"]] : []),
       ...(can("server.files") ? [["files", "Files"]] : []),
       ...(can("server.backup") ? [["backups", "Backups"]] : []),
       ...(can("server.control") ? [["settings", "Settings"]] : []),
@@ -662,6 +746,15 @@
       <button class="btn-primary" onclick={() => action("start")}>Start</button>
       <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
     {/if}
+    {#if server.installed && server.watchdog_supported && can("server.control")}
+      <button
+        class="btn-ghost {server.watchdog ? 'text-accent' : 'text-muted'}"
+        disabled={watchdogBusy}
+        title="Auto-restart this server if the game stops responding while the container is up"
+        onclick={toggleWatchdog}>
+        🩺 Watchdog: {server.watchdog ? "on" : "off"}
+      </button>
+    {/if}
     {#if server.wipe_supported && can("server.control")}
       <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}>🧹 Wipe</button>
     {/if}
@@ -876,6 +969,64 @@
     {#if (server.status === "running" || server.status === "starting") && (!ws || ws.readyState !== 1)}
       <button class="btn-ghost mt-2" onclick={connectConsole}>Reconnect console</button>
     {/if}
+  {:else if tab === "players"}
+    <div class="space-y-4">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-sm text-muted">
+          {#if !playersData.online}
+            Server unreachable (offline or starting).
+          {:else}
+            {playersData.players.length} online
+          {/if}
+        </span>
+        <button class="btn-ghost text-xs ml-auto" disabled={playersBusy} onclick={loadPlayers}>Refresh</button>
+        {#if playersData.can_lock}
+          <button class="btn-ghost text-xs {serverLocked ? 'text-warn' : ''}" disabled={playersBusy} onclick={toggleLock}>
+            {serverLocked ? "🔒 Unlock joins" : "🔓 Lock joins"}
+          </button>
+        {/if}
+      </div>
+
+      {#if playersData.can_broadcast}
+        <form onsubmit={(e) => { e.preventDefault(); sendBroadcast(); }} class="flex gap-2">
+          <input class="input" bind:value={broadcastMsg} placeholder="Broadcast a message to all players…" disabled={playersBusy || !playersData.online} />
+          <button class="btn-primary" disabled={playersBusy || !playersData.online || !broadcastMsg.trim()}>Broadcast</button>
+        </form>
+      {/if}
+
+      {#if playersData.online && playersData.players.length === 0}
+        <div class="card p-4 text-sm text-muted text-center">No players connected.</div>
+      {:else if playersData.players.length}
+        <div class="card overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-xs text-muted uppercase tracking-wide">
+              <tr class="border-b border-border">
+                <th class="text-left px-3 py-2">#</th>
+                <th class="text-left px-3 py-2">Name</th>
+                <th class="text-left px-3 py-2">Ping</th>
+                <th class="text-left px-3 py-2 hidden sm:table-cell">GUID</th>
+                {#if playersData.can_kick}<th class="px-3 py-2"></th>{/if}
+              </tr>
+            </thead>
+            <tbody>
+              {#each playersData.players as p}
+                <tr class="border-b border-border/50">
+                  <td class="px-3 py-2 font-mono text-muted">{p.id || "—"}</td>
+                  <td class="px-3 py-2 font-medium">{p.name}</td>
+                  <td class="px-3 py-2 text-muted">{p.ping || "—"}</td>
+                  <td class="px-3 py-2 font-mono text-xs text-muted hidden sm:table-cell truncate max-w-[12rem]">{p.guid || "—"}</td>
+                  {#if playersData.can_kick}
+                    <td class="px-3 py-2 text-right">
+                      <button class="btn-ghost text-xs text-warn" disabled={playersBusy} onclick={() => kickPlayer(p)}>Kick</button>
+                    </td>
+                  {/if}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </div>
   {:else if tab === "files"}
     <FileManager serverId={id} />
   {:else if tab === "settings"}

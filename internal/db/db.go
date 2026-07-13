@@ -260,6 +260,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")     // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)
 	addColumnIfMissing(db, "users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0") // last accepted TOTP step; rejects replay within the validity window
 	addColumnIfMissing(db, "schedules", "managed", "TEXT NOT NULL DEFAULT ''")         // non-empty = owned by a per-server convenience toggle (e.g. 'auto-restart'); hidden from the generic schedule list
+	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")        // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
 	return nil
 }
 

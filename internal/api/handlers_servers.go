@@ -56,18 +56,22 @@ type serverRow struct {
 	HostMounts     []hostMount       `json:"host_mounts,omitempty"` // populated on single GET for admins only
 	WipeSupported  bool              `json:"wipe_supported"`        // rune declares a wipe: block (single GET)
 	RestartWarn    bool              `json:"restart_warn"`          // rune declares restart warnings (single GET)
+	Watchdog       bool              `json:"watchdog"`              // auto-heal enabled for this server
+	WatchdogSup    bool              `json:"watchdog_supported"`    // rune has a query the watchdog can health-check (single GET)
+	PlayersSup     bool              `json:"players_supported"`     // rune declares a players: block (Players tab; single GET)
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1)"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0)"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
-	var installed, autoFwd, autostart int
+	var installed, autoFwd, autostart, watchdog int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
 	srv.Autostart = autostart == 1
+	srv.Watchdog = watchdog == 1
 	srv.Ports = map[string]int{}
 	json.Unmarshal([]byte(srv.PortsJSON), &srv.Ports)
 	return srv, err
@@ -159,6 +163,8 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		}
 		srv.WipeSupported = rt.gs.Wipe != nil
 		srv.RestartWarn = rt.gs.Restart != nil && len(rt.gs.Restart.Warnings) > 0
+		srv.WatchdogSup = rt.gs.Query != nil
+		srv.PlayersSup = rt.gs.Players != nil
 	}
 	jsonOK(w, srv)
 }

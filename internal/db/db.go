@@ -212,6 +212,19 @@ CREATE TABLE IF NOT EXISTS steam_account (
 	authorized_at TEXT
 );
 
+-- Optional, admin-configured LLM for advisory AI features (the admin-log
+-- digest). The operator brings their own provider/endpoint/key; the key is
+-- stored encrypted. Advisory only, opt-in (enabled flag). Single row.
+CREATE TABLE IF NOT EXISTS ai_config (
+	id            INTEGER PRIMARY KEY CHECK (id = 1),
+	provider      TEXT NOT NULL DEFAULT 'openai',
+	model         TEXT NOT NULL DEFAULT '',
+	base_url      TEXT NOT NULL DEFAULT '',
+	api_key_enc   TEXT NOT NULL DEFAULT '',
+	enabled       INTEGER NOT NULL DEFAULT 0,
+	updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Violation-driven auto-actions: watch server logs for a pattern and auto
 -- kick/ban a player when it recurs past a threshold within a time window.
 CREATE TABLE IF NOT EXISTS violation_rules (

@@ -206,6 +206,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/dayz/reset", s.handleDayzResetNorn)
 		r.Post("/api/servers/{id}/rcon", s.handleServerRcon)
 		r.Get("/api/servers/{id}/admin-log", s.handleAdminLog)
+		r.Post("/api/servers/{id}/admin-log/digest", s.handleAdminLogDigest)
 		r.Get("/api/servers/{id}/players", s.handleListPlayers)
 		r.Post("/api/servers/{id}/players/kick", s.handleKickPlayer)
 		r.Post("/api/servers/{id}/players/broadcast", s.handleBroadcast)
@@ -250,6 +251,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/steam/send-code", s.requireAdmin(s.handleSteamSendCode))
 		r.Post("/api/steam/authorize", s.requireAdmin(s.handleAuthorizeSteam))
 		r.Delete("/api/steam/account", s.requireAdmin(s.handleDeleteSteamAccount))
+
+		// AI assistant config (admin-only; advisory features are opt-in)
+		r.Get("/api/ai/config", s.requireAdmin(s.handleGetAIConfig))
+		r.Put("/api/ai/config", s.requireAdmin(s.handleSetAIConfig))
+		r.Post("/api/ai/config/test", s.requireAdmin(s.handleTestAIConfig))
 
 		// Notification channels (admin-only)
 		r.Get("/api/notifications", s.requireAdmin(s.handleListNotifications))

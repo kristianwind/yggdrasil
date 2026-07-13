@@ -318,7 +318,11 @@ func (s *Server) maybeAutoUpdate() {
 		return
 	}
 	now := time.Now()
-	if now.Hour() != autoUpdateHour(s.getSetting(ctx, "auto_update_hour")) {
+	// Catch-up window: run at the first check AT OR AFTER the chosen hour that
+	// hasn't run today. Gating on the exact hour (== ) meant that if the panel
+	// wasn't up during that one hour (reboot, host asleep, network), it silently
+	// missed the whole day. The per-day marker still keeps it to once daily.
+	if now.Hour() < autoUpdateHour(s.getSetting(ctx, "auto_update_hour")) {
 		return
 	}
 	today := now.Format("2006-01-02")

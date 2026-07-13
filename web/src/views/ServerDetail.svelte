@@ -36,6 +36,22 @@
   let showWipe = $state(false);
   let wipeBackupFirst = $state(true);
   let wiping = $state(false);
+  // Watchdog (auto-heal): flip the per-server toggle; state lives on server.watchdog.
+  let watchdogBusy = $state(false);
+  async function toggleWatchdog() {
+    watchdogBusy = true;
+    try {
+      const next = !server.watchdog;
+      await api.put(`/servers/${id}/watchdog`, { enabled: next });
+      server.watchdog = next;
+      toast(next ? "Watchdog on — auto-restart if it stops responding" : "Watchdog off", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      watchdogBusy = false;
+    }
+  }
+
   // Safe restart (broadcast warnings, optional backup, then restart)
   let showSafe = $state(false);
   let safeBackupFirst = $state(false);
@@ -628,6 +644,15 @@
     {:else if can("server.control")}
       <button class="btn-primary" onclick={() => action("start")}>Start</button>
       <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
+    {/if}
+    {#if server.installed && server.watchdog_supported && can("server.control")}
+      <button
+        class="btn-ghost {server.watchdog ? 'text-accent' : 'text-muted'}"
+        disabled={watchdogBusy}
+        title="Auto-restart this server if the game stops responding while the container is up"
+        onclick={toggleWatchdog}>
+        🩺 Watchdog: {server.watchdog ? "on" : "off"}
+      </button>
     {/if}
     {#if server.wipe_supported && can("server.control")}
       <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}>🧹 Wipe</button>

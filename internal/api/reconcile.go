@@ -108,6 +108,7 @@ func (s *Server) startStatusReconciler() {
 		defer t.Stop()
 		for range t.C {
 			s.reconcileStatuses()
+			s.runWatchdog()
 		}
 	}()
 }
@@ -132,7 +133,9 @@ func (s *Server) reconcileStatuses() {
 		if err != nil || !running {
 			// Container exited (crash or external stop) — mark stopped and release
 			// any port-forward rules so they don't linger pointing at a dead port.
+			// Drop any watchdog streak so it can't heal a server the user stopped.
 			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
+			s.clearWatchdog(x.id)
 			s.stoppedCleanup(x.id)
 		}
 	}

@@ -32,7 +32,8 @@ type Server struct {
 	cipher  *crypto.Cipher
 	sched   *schedulerState
 	viol    *violationWatcher
-	version string // build version (set via SetVersion)
+	wd      *watchdogState // auto-heal: per-server query health streaks + cooldowns
+	version string         // build version (set via SetVersion)
 
 	extIP   string // cached external IP (detectPublicAddr)
 	extIPAt time.Time
@@ -62,6 +63,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		webFS:   subFS,
 		install: newProgressHub(),
 		cipher:  cipher,
+		wd:      newWatchdogState(),
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()
@@ -186,6 +188,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/stop", s.handleStopServer)
 		r.Post("/api/servers/{id}/restart", s.handleRestartServer)
 		r.Post("/api/servers/{id}/safe-restart", s.handleSafeRestart)
+		r.Put("/api/servers/{id}/watchdog", s.handleSetWatchdog)
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)

@@ -22,6 +22,10 @@
     view = v;
     localStorage.setItem("ygg_servers_view", v);
   }
+  // The compact table is unusable on a phone — force the card grid on narrow
+  // screens regardless of the saved preference (and hide the toggle there).
+  let isMobile = $state(false);
+  const effectiveView = $derived(isMobile ? "grid" : view);
 
   // Create modal state
   let showCreate = $state(false);
@@ -59,6 +63,9 @@
     }
   }
   onMount(async () => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    isMobile = mq.matches;
+    mq.addEventListener("change", (e) => (isMobile = e.matches));
     await load();
     // Opened from a "+ New Server" button (#/servers?new=1) or a rune's "Create
     // server" button (#/servers?new=<runeId>): launch the create modal pre-selected
@@ -182,7 +189,8 @@
   <h1 class="text-2xl font-semibold">Servers</h1>
   <div class="flex items-center gap-2">
     {#if servers.length > 0}
-      <div class="inline-flex rounded-md border border-border overflow-hidden">
+      <!-- The view toggle is desktop-only; phones are always the card grid. -->
+      <div class="hidden sm:inline-flex rounded-md border border-border overflow-hidden">
         <button
           class="px-2.5 py-1.5 text-sm {view === 'grid' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
           title="Grid view"
@@ -215,7 +223,7 @@
 {:else}
   {#each Object.entries(grouped) as [realm, list]}
     <h2 class="text-sm uppercase tracking-wide text-muted mt-6 mb-2">{realm}</h2>
-    {#if view === "table"}
+    {#if effectiveView === "table"}
       <div class="card overflow-x-auto">
         <!-- Fixed layout + identical column widths so every rune group's table aligns. -->
         <table class="w-full text-sm" style="table-layout:fixed">

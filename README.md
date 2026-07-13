@@ -55,6 +55,31 @@ one-liner — it's idempotent).
 - **Reclaims disk on delete** — removing a server frees its full data directory
   (game files, world, configs), and Steam installs **pre-check free space** with a
   clear error instead of a cryptic Steam failure
+- **Graceful stop** — rune-tunable shutdown grace period + an optional pre-stop
+  save command, so games that flush persistence on shutdown (DayZ's Central
+  Economy, Minecraft) aren't `SIGKILL`'d mid-save on a restart
+
+**Live admin & moderation** (rune-declared, generic across games)
+- **Safe restart** — broadcast an in-game **countdown** to players first
+  (rune-declared warnings), with an optional pre-restart backup; manual or scheduled
+- **Auto-restart** — a per-server "restart every N hours" toggle, managed for you
+  (a scheduled restart under the hood, with the same warnings + backup options)
+- **Watchdog / auto-heal** — when a running server stops answering its query for
+  several checks in a row (hung, not merely crashed), the panel auto-restarts it and
+  notifies, with a cooldown so it never restart-loops
+- **Wipe** — reset a game's world / persistence (rune-declared paths) behind a
+  confirm dialog with a **backup-first** option; config, whitelist and mods are kept
+- **Players tab** — a live roster over RCON with **kick**, **broadcast** and
+  **lock joins**, all rune-declared (DayZ via BattlEye BERcon)
+- **Activity feed** — the game's admin log parsed into joins / disconnects /
+  deaths / kills, newest first (rune declares the log path + parse patterns)
+
+**AI assistant** (optional, advisory — bring your own LLM)
+- Wire up **any** provider — OpenAI, Anthropic, OpenRouter, DeepSeek, Mistral,
+  Ollama, or any OpenAI-compatible endpoint — key stored **encrypted**; off by default
+- **Activity digest** — a plain-language *"what happened while I was away"* summary
+  of the admin-log feed with anomaly flags. Strictly **opt-in**, **read-only**, and
+  it never acts on a server by itself; nothing is sent anywhere you didn't configure
 
 **Games & apps (gameskills / "Runes")**
 - Bundled core: **Minecraft Java, Minecraft Bedrock, Rust, DayZ** — DayZ with

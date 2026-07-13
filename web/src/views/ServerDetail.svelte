@@ -19,12 +19,12 @@
   let lines = $state([]);
   let cmd = $state("");
   let ws = $state(null);
-  let termEl;
+  let termEl = $state(null); // bind:this — $state so Svelte 5 tracks the assignment
 
   // Install
   let installLines = $state([]);
   let installWs = $state(null);
-  let installEl;
+  let installEl = $state(null); // bind:this — see termEl
 
   // Backups
   let backups = $state([]);

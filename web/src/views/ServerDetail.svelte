@@ -983,12 +983,12 @@
     </div>
   {/if}
 
-  <!-- Tabs -->
-  <div class="flex gap-1 border-b border-border mb-4">
+  <!-- Tabs — scroll horizontally on narrow screens instead of clipping -->
+  <div class="flex gap-1 border-b border-border mb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
     {#each tabs as [key, label]}
       <button
         title={tabHelp[key] || ""}
-        class="px-4 py-2 text-sm border-b-2 -mb-px {tab === key
+        class="px-4 py-2 text-sm border-b-2 -mb-px shrink-0 whitespace-nowrap {tab === key
           ? 'border-accent text-text'
           : 'border-transparent text-muted hover:text-text'}"
         onclick={() => {

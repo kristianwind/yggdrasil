@@ -29,6 +29,17 @@ type Gameskill struct {
 	Anticheat   *Anticheat `yaml:"anticheat"   json:"anticheat,omitempty"`
 	Bans        *Bans      `yaml:"bans"        json:"bans,omitempty"`
 	Backup      *Backup    `yaml:"backup"      json:"backup,omitempty"`
+	Wipe        *Wipe      `yaml:"wipe"        json:"wipe,omitempty"`
+}
+
+// Wipe declares what "reset the world / persistence" means for this rune: the
+// data-dir globs to delete when wiping (jailed to the server's data dir). A rune
+// with a wipe block gets a manual Wipe button + a schedulable wipe action —
+// e.g. DayZ "mpmissions/*/storage_*", a Minecraft "world" folder. Paths are
+// relative to the server's data dir; "*" globs are allowed, ".." is not.
+type Wipe struct {
+	Paths       []string `yaml:"paths" json:"paths"`
+	BackupFirst bool     `yaml:"backup_first,omitempty" json:"backup_first,omitempty"`
 }
 
 // Bans declares how to ban/unban a player via the game's console/RCON. Commands
@@ -197,6 +208,19 @@ func validate(gs *Gameskill) error {
 		}
 		if p.Protocol != "tcp" && p.Protocol != "udp" {
 			return fmt.Errorf("port %q has invalid protocol %q", p.Name, p.Protocol)
+		}
+	}
+
+	if gs.Wipe != nil {
+		if len(gs.Wipe.Paths) == 0 {
+			return fmt.Errorf("gameskill.wipe.paths is required when wipe is set")
+		}
+		for _, p := range gs.Wipe.Paths {
+			p = strings.TrimSpace(p)
+			// Reject anything that would escape the data dir or nuke it wholesale.
+			if p == "" || p == "/" || p == "." || strings.Contains(p, "..") {
+				return fmt.Errorf("gameskill.wipe.paths entry %q is invalid", p)
+			}
 		}
 	}
 

@@ -32,6 +32,28 @@
   let selectedTarget = $state("");
   let backupBusy = $state(false);
 
+  // Wipe (reset world/persistence — rune-defined)
+  let showWipe = $state(false);
+  let wipeBackupFirst = $state(true);
+  let wiping = $state(false);
+  async function doWipe() {
+    if (wipeBackupFirst && !selectedTarget) return toast("Pick a backup target, or turn off backup-first", "warn");
+    wiping = true;
+    try {
+      await api.post(`/servers/${id}/wipe`, {
+        backup_first: wipeBackupFirst,
+        target_id: wipeBackupFirst ? selectedTarget : "",
+      });
+      toast("Server wiped", "success");
+      showWipe = false;
+      await loadServer();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      wiping = false;
+    }
+  }
+
   async function loadBackups() {
     try {
       [backups, backupTargets] = await Promise.all([
@@ -583,10 +605,45 @@
       <button class="btn-primary" onclick={() => action("start")}>Start</button>
       <button class="btn-ghost" onclick={() => runInstall(true)}>Update / Reinstall</button>
     {/if}
+    {#if server.wipe_supported && can("server.control")}
+      <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}>🧹 Wipe</button>
+    {/if}
     {#if can("server.delete")}
       <button class="btn-danger ml-auto" onclick={del}>Delete</button>
     {/if}
   </div>
+
+  {#if showWipe}
+    <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+      <div class="card p-5 w-full max-w-md space-y-4">
+        <h2 class="text-lg font-semibold text-warn">🧹 Wipe {server.name}?</h2>
+        <p class="text-sm text-muted">
+          This <b>permanently deletes</b> this server's world / persistence (loot, bases, progress) as
+          defined by its rune, then restarts it fresh. Config, whitelist and mods are kept. This cannot
+          be undone{wipeBackupFirst ? " — but a backup is taken first" : ""}.
+        </p>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={wipeBackupFirst} />
+          <span>Back up first (recommended)</span>
+        </label>
+        {#if wipeBackupFirst}
+          <div>
+            <label class="label" for="wipe-target">Backup target</label>
+            <select id="wipe-target" class="input" bind:value={selectedTarget}>
+              {#if backupTargets.length === 0}<option value="">No targets — create one in Settings</option>{/if}
+              {#each backupTargets as t}<option value={t.id}>{t.name}</option>{/each}
+            </select>
+          </div>
+        {/if}
+        <div class="flex gap-2 pt-1">
+          <button class="btn-ghost flex-1" disabled={wiping} onclick={() => (showWipe = false)}>Cancel</button>
+          <button class="btn-danger flex-1" disabled={wiping} onclick={doWipe}>
+            {wiping ? "Wiping…" : "Wipe now"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   {#if !server.installed}
     <div class="card border-warn/40 bg-warn/10 text-warn text-sm px-4 py-2 mb-4">

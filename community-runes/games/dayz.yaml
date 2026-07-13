@@ -217,3 +217,10 @@ gameskill:
 
   backup:
     include: ["mpmissions", "serverDZ.cfg", "battleye", "profiles"]
+
+  # "Wipe" resets persistence (loot, bases, player storage) — delete the mission
+  # storage folders; the world regenerates on the next start. Adjust paths if your
+  # mission stores persistence elsewhere.
+  wipe:
+    paths: ["mpmissions/*/storage_*"]
+    backup_first: true

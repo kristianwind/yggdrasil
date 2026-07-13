@@ -22,9 +22,11 @@ type scheduleView struct {
 }
 
 func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
+	// Managed rows (auto-restart toggle etc.) are owned by a per-server control and
+	// hidden here so they can't be hand-edited into an inconsistent state.
 	rows, err := s.db.QueryContext(r.Context(),
 		`SELECT id, name, COALESCE(server_id,''), COALESCE(realm_id,''), cron_expr, action,
-		        COALESCE(args_json,'{}'), enabled FROM schedules ORDER BY name`)
+		        COALESCE(args_json,'{}'), enabled FROM schedules WHERE COALESCE(managed,'')='' ORDER BY name`)
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return

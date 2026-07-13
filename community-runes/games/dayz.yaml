@@ -215,6 +215,37 @@ gameskill:
     ban_command: "addBan {{player}} 0 {{reason}}"
     unban_command: "removeBan {{player}}"
 
+  # Live Players tab over BattlEye BERcon. `players` returns a table:
+  #   0   45.83.19.12:2304   31   9a8b...(OK) SurvivorName
+  # player_regex parses one row per line (named groups; unmatched header/total
+  # lines are skipped). Kick is by slot id; broadcast is "say -1" (all players);
+  # #lock/#unlock stop/allow new joins. Single-quoted so regex backslashes stay
+  # literal.
+  players:
+    list_command: "players"
+    player_regex: '^(?P<id>\d+)\s+(?P<ip>[0-9.]+):\d+\s+(?P<ping>\d+)\s+(?P<guid>[0-9a-f]+)\s*\((?:OK|\?)\)\s+(?P<name>.+?)\s*$'
+    kick_command: "kick {{id}} {{reason}}"
+    broadcast_command: "say -1 {{message}}"
+    lock_command: "#lock"
+    unlock_command: "#unlock"
+
+  # Admin-log feed (session history). DayZ writes a per-session .ADM log under
+  # profiles/ with timestamped lines like:
+  #   15:04:23 | Player "Bob" is connected (id=abc)
+  #   15:41:07 | Player "Bob"(...) has been disconnected
+  #   16:02:55 | Player "Bob"(...) killed by Player "Bandit"(...) with M4A1
+  #   16:10:31 | Player "Bob"(...) died. Stats>...
+  # The most recent .ADM is tailed and each line classified. Single-quoted so
+  # regex backslashes stay literal.
+  admin_log:
+    path: "profiles/*.ADM"
+    time_regex: '^(?P<time>\d{1,2}:\d{2}:\d{2})'
+    events:
+      - { type: "kill",  regex: 'Player "(?P<name>[^"]+)".*killed by' }
+      - { type: "death", regex: 'Player "(?P<name>[^"]+)".*(died\.|bled out|committed suicide)' }
+      - { type: "join",  regex: 'Player "(?P<name>[^"]+)" is connected' }
+      - { type: "leave", regex: 'Player "(?P<name>[^"]+)".*has been disconnected' }
+
   backup:
     include: ["mpmissions", "serverDZ.cfg", "battleye", "profiles"]
 

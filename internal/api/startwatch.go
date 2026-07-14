@@ -129,6 +129,20 @@ func (s *Server) notifySlowStart(serverID, containerID string) {
 	s.notifyAll(msg)
 }
 
+// notifyStartStalled alerts that a server which was still "starting" when the panel
+// restarted has been found up-but-never-ready and marked stopped (its game process
+// likely failed while the container's wrapper stayed alive). Attaches the log tail.
+func (s *Server) notifyStartStalled(serverID, containerID string) {
+	defer recoverLog("notifyStartStalled")
+	name := s.serverName(serverID)
+	msg := fmt.Sprintf("🛑 %s was still starting and never became ready — its container is up but the game isn't. "+
+		"Marked stopped so you can restart it.", name)
+	if tail := s.startupLogTail(containerID); tail != "" {
+		msg += "\nLast log:\n" + tail
+	}
+	s.notifyAll(msg)
+}
+
 // notifyStartGaveUp sends the single actionable "couldn't start" alert, attaching
 // the container's last log lines (and an optional extra reason) so the admin can act.
 func (s *Server) notifyStartGaveUp(name, logTail, extra string) {

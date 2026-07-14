@@ -301,8 +301,8 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `POST` | `/api/servers/{id}/stop` | `server.control` | Stop the container |
 | `POST` | `/api/servers/{id}/restart` | `server.control` | Restart the container |
 | `POST` | `/api/servers/{id}/safe-restart` | `server.control` | Restart after warning players on a countdown |
-| `GET` | `/api/servers/{id}/auto-restart` | `server.control` | The auto-restart toggle's current state |
-| `PUT` | `/api/servers/{id}/auto-restart` | `server.control` | Create, update, or remove the managed auto-restart schedule |
+| `GET` | `/api/servers/{id}/auto-restart` | `server.control` | The auto-restart toggle's current state: `{enabled, every_hours, anchor_hour, warn, backup_first, target_id}` |
+| `PUT` | `/api/servers/{id}/auto-restart` | `server.control` | Create, update, or remove the managed auto-restart schedule. `every_hours` 1–24, `anchor_hour` 0–23 is the hour the cycle starts from; `backup_first` requires `target_id` |
 | `PUT` | `/api/servers/{id}/watchdog` | `server.control` | Toggle auto-heal for the server |
 | `POST` | `/api/servers/{id}/wipe` | `server.control` | Delete the rune's declared wipe paths, optionally backing up first |
 | `GET` | `/api/servers/{id}/stats` | `server.view` | Live CPU and memory from Docker |

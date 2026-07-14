@@ -27,40 +27,92 @@ const managedAutoRestart = "auto-restart"
 type autoRestartView struct {
 	Enabled     bool   `json:"enabled"`
 	EveryHours  int    `json:"every_hours"`
+	AnchorHour  int    `json:"anchor_hour"`  // 0-23, the hour the cycle starts from
 	Warn        bool   `json:"warn"`         // broadcast the rune's countdown before restarting
 	BackupFirst bool   `json:"backup_first"` // take a safety backup first
 	TargetID    string `json:"target_id"`    // backup target (required if backup_first)
 }
 
-// autoRestartCron builds the cron expression for "every N hours" (minute 0).
-// N is clamped to 1..24; 24 collapses to a plain daily 0 0 * * *.
-func autoRestartCron(everyHours int) string {
+// autoRestartCron builds the cron expression for "every N hours, starting at
+// anchor" (minute 0). N is clamped to 1..24; 24 means once a day, at the anchor.
+//
+// The anchor is what makes the quiet-hours recommendation actionable: "every 6
+// hours" alone always fires at 00/06/12/18, which is no help if your server is
+// busiest at 18:00. `0 3-23/6 * * *` fires at 03/09/15/21 instead.
+//
+// Anchor 0 keeps emitting the plain `*/N` form it always has, so enabling the
+// feature doesn't rewrite every existing server's schedule row.
+//
+// Caveat worth knowing: when N doesn't divide 24 evenly the day wraps early —
+// `0 3-23/5` fires 03/08/13/18/23 and then 03 again, a 4h gap rather than 5. Cron
+// has no notion of a cycle crossing midnight, so this is inherent, not a bug.
+func autoRestartCron(everyHours, anchorHour int) string {
 	if everyHours < 1 {
 		everyHours = 1
 	}
+	anchorHour = clampHour(anchorHour)
 	if everyHours >= 24 {
-		return "0 0 * * *"
+		return fmt.Sprintf("0 %d * * *", anchorHour)
 	}
-	return fmt.Sprintf("0 */%d * * *", everyHours)
+	if anchorHour == 0 {
+		return fmt.Sprintf("0 */%d * * *", everyHours)
+	}
+	return fmt.Sprintf("0 %d-23/%d * * *", anchorHour, everyHours)
 }
 
-// parseAutoRestartHours recovers N from a "0 */N * * *" / "0 0 * * *" cron. Falls
-// back to 6 if the expression was edited into a shape we don't recognize.
-func parseAutoRestartHours(expr string) int {
+func clampHour(h int) int {
+	if h < 0 || h > 23 {
+		return 0
+	}
+	return h
+}
+
+// parseAutoRestart recovers (N, anchor) from the cron shapes autoRestartCron
+// emits. Falls back to (6, 0) for anything we don't recognise, so a hand-edited
+// row degrades to a sane default rather than a confusing one.
+func parseAutoRestart(expr string) (everyHours, anchorHour int) {
 	f := strings.Fields(expr)
 	if len(f) < 2 {
-		return 6
+		return 6, 0
 	}
 	hour := f[1]
-	if hour == "0" {
-		return 24
-	}
-	if strings.HasPrefix(hour, "*/") {
-		if n, err := strconv.Atoi(strings.TrimPrefix(hour, "*/")); err == nil && n > 0 {
-			return n
+
+	// "0 A-23/N * * *" — every N hours from A.
+	if a, rest, ok := strings.Cut(hour, "-"); ok {
+		if _, n, ok := strings.Cut(rest, "/"); ok {
+			ai, err1 := strconv.Atoi(a)
+			ni, err2 := strconv.Atoi(n)
+			if err1 == nil && err2 == nil && ni > 0 {
+				return ni, clampHour(ai)
+			}
 		}
+		return 6, 0
 	}
-	return 6
+	// "0 */N * * *" — every N hours from midnight.
+	if n, ok := strings.CutPrefix(hour, "*/"); ok {
+		if ni, err := strconv.Atoi(n); err == nil && ni > 0 {
+			return ni, 0
+		}
+		return 6, 0
+	}
+	// "0 A * * *" — once a day at A.
+	if ai, err := strconv.Atoi(hour); err == nil {
+		return 24, clampHour(ai)
+	}
+	return 6, 0
+}
+
+// autoRestartName is the schedule row's display name. Managed rows are hidden
+// from the Schedules page, but the name still surfaces in the audit log and in
+// the run history, so it should read like what the operator chose.
+func autoRestartName(everyHours, anchorHour int) string {
+	if everyHours >= 24 {
+		return fmt.Sprintf("Auto-restart daily at %02d:00", clampHour(anchorHour))
+	}
+	if anchorHour == 0 {
+		return fmt.Sprintf("Auto-restart every %dh", everyHours)
+	}
+	return fmt.Sprintf("Auto-restart every %dh from %02d:00", everyHours, clampHour(anchorHour))
 }
 
 // handleGetAutoRestart returns the current auto-restart toggle state, derived
@@ -82,9 +134,11 @@ func (s *Server) handleGetAutoRestart(w http.ResponseWriter, r *http.Request) {
 	}
 	var args map[string]string
 	json.Unmarshal([]byte(argsJSON), &args)
+	every, anchor := parseAutoRestart(cron)
 	jsonOK(w, autoRestartView{
 		Enabled:     enabled == 1,
-		EveryHours:  parseAutoRestartHours(cron),
+		EveryHours:  every,
+		AnchorHour:  anchor,
 		Warn:        argTrue(args["warn"]),
 		BackupFirst: argTrue(args["backup_first"]),
 		TargetID:    args["target_id"],
@@ -130,7 +184,8 @@ func (s *Server) handleSetAutoRestart(w http.ResponseWriter, r *http.Request) {
 	if req.EveryHours < 1 {
 		req.EveryHours = 6
 	}
-	cron := autoRestartCron(req.EveryHours)
+	req.AnchorHour = clampHour(req.AnchorHour)
+	cron := autoRestartCron(req.EveryHours, req.AnchorHour)
 	// Schedule args are "true"/"false" — that's what runAction reads and what the
 	// Schedules page writes. boolStr yields "1"/"0", which is the app_settings
 	// convention and silently means false here.
@@ -141,7 +196,7 @@ func (s *Server) handleSetAutoRestart(w http.ResponseWriter, r *http.Request) {
 	}
 	argsJSONBytes, _ := json.Marshal(args)
 	argsJSON := string(argsJSONBytes)
-	name := fmt.Sprintf("Auto-restart every %dh", req.EveryHours)
+	name := autoRestartName(req.EveryHours, req.AnchorHour)
 
 	if existingID != "" {
 		s.db.ExecContext(r.Context(),
@@ -153,7 +208,8 @@ func (s *Server) handleSetAutoRestart(w http.ResponseWriter, r *http.Request) {
 			VALUES (?,?,?,?,?,?,1,?)`,
 			uuid.New().String(), name, id, cron, string(scheduler.ActionRestart), argsJSON, managedAutoRestart)
 	}
-	s.auditLog(r, "server.auto_restart.on", "server:"+id, map[string]any{"every_hours": req.EveryHours, "warn": req.Warn})
+	s.auditLog(r, "server.auto_restart.on", "server:"+id,
+		map[string]any{"every_hours": req.EveryHours, "anchor_hour": req.AnchorHour, "warn": req.Warn})
 	s.reloadSchedules()
 	req.Enabled = true
 	jsonOK(w, req)

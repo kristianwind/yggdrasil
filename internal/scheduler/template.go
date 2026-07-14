@@ -49,11 +49,21 @@ const (
 	ActionWipe    Action = "wipe"    // reset world/persistence (rune-defined)
 )
 
+// AllActions lists every known action. It is the single source of truth for
+// what a schedule may do: ValidAction is derived from it, and the API's
+// per-action permission table is tested for exhaustiveness against it, so a new
+// action can't be added without deciding what permission it requires.
+var AllActions = []Action{
+	ActionBackup, ActionRestart, ActionStart, ActionStop,
+	ActionCommand, ActionMessage, ActionUpdate, ActionWipe,
+}
+
 // ValidAction reports whether a is a known action.
 func ValidAction(a Action) bool {
-	switch a {
-	case ActionBackup, ActionRestart, ActionStart, ActionStop, ActionCommand, ActionMessage, ActionUpdate, ActionWipe:
-		return true
+	for _, known := range AllActions {
+		if a == known {
+			return true
+		}
 	}
 	return false
 }

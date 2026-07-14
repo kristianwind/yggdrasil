@@ -42,6 +42,7 @@ type serverRow struct {
 	PortsJSON      string            `json:"-"`
 	Ports          map[string]int    `json:"ports"`
 	Env            map[string]string `json:"env,omitempty"` // populated only on single GET
+	Tags           []string          `json:"tags"`          // normalized labels for grouping/filtering
 	CPUPercent     float64           `json:"cpu_percent"`
 	MemoryMB       int64             `json:"memory_mb"`
 	DataDir        string            `json:"data_dir"`
@@ -69,13 +70,15 @@ type serverRow struct {
 	Notes          string            `json:"notes"`                 // free-text admin notes (single GET)
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0)"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0), COALESCE(tags,'')"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
 	var installed, autoFwd, autostart, watchdog, statusPublic int
+	var tags string
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog, &statusPublic, &srv.CPUAlarmPct, &srv.MemAlarmMB, &srv.DiskAlarmMB)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog, &statusPublic, &srv.CPUAlarmPct, &srv.MemAlarmMB, &srv.DiskAlarmMB, &tags)
+	srv.Tags = splitTags(tags)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
 	srv.Autostart = autostart == 1
@@ -84,6 +87,41 @@ func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	srv.Ports = map[string]int{}
 	json.Unmarshal([]byte(srv.PortsJSON), &srv.Ports)
 	return srv, err
+}
+
+// splitTags parses the stored comma-separated tags into a slice (never nil, so it
+// JSON-encodes as [] not null).
+func splitTags(s string) []string {
+	out := []string{}
+	for _, t := range strings.Split(s, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// normalizeTags cleans user-supplied tags — trim, lowercase, drop blanks, dedupe,
+// and cap (20 tags, 30 chars each) — then joins them for storage.
+func normalizeTags(in []string) string {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range in {
+		t = strings.ToLower(strings.TrimSpace(t))
+		t = strings.ReplaceAll(t, ",", " ") // commas are the separator; never inside a tag
+		if t == "" || seen[t] {
+			continue
+		}
+		if len(t) > 30 {
+			t = t[:30]
+		}
+		seen[t] = true
+		out = append(out, t)
+		if len(out) >= 20 {
+			break
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 func (srv serverRow) target() rbac.Target {
@@ -363,6 +401,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		MemAlarmMB   *int         `json:"mem_alarm_mb"`
 		DiskAlarmMB  *int         `json:"disk_alarm_mb"`
 		Notes        *string      `json:"notes"`
+		Tags         *[]string    `json:"tags"`
 		Subdomain    *string      `json:"subdomain"`
 		HostMounts   *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
 	}
@@ -434,6 +473,9 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 			notes = notes[:8000]
 		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET notes=? WHERE id=?", notes, id)
+	}
+	if req.Tags != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET tags=? WHERE id=?", normalizeTags(*req.Tags), id)
 	}
 	if req.Name != nil && *req.Name != "" {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)

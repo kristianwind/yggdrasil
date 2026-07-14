@@ -565,6 +565,7 @@
       cpu_alarm_pct: server.cpu_alarm_pct || 0,
       mem_alarm_mb: server.mem_alarm_mb || 0,
       disk_alarm_mb: server.disk_alarm_mb || 0,
+      tags: (server.tags || []).join(", "),
       subdomain: server.subdomain || "",
     };
     hostMounts = (server.host_mounts || []).map((m) => ({ host: m.host, container: m.container, rw: !!m.rw }));
@@ -588,6 +589,7 @@
         cpu_alarm_pct: Number(edit.cpu_alarm_pct) || 0,
         mem_alarm_mb: Number(edit.mem_alarm_mb) || 0,
         disk_alarm_mb: Number(edit.disk_alarm_mb) || 0,
+        tags: (edit.tags || "").split(","),
         subdomain: edit.subdomain || "",
       };
       // Host mounts are admin-only; only send the field when the caller is an admin
@@ -1479,6 +1481,11 @@
             Off by default. When on, this server's name, game and online/players state appear on the
             public <code>/status</code> page (no login). Enable the page under Settings → Status page.
           </p>
+        </div>
+        <div>
+          <label class="label" for="e-tags">Tags</label>
+          <input id="e-tags" class="input" placeholder="e.g. survival, event, staging" bind:value={edit.tags} />
+          <p class="text-xs text-muted mt-1">Comma-separated labels for grouping and filtering on the Servers page.</p>
         </div>
         <div>
           <div class="label">Resource alarms</div>

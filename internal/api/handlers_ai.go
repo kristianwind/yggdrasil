@@ -129,11 +129,16 @@ func (s *Server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
+	// Give reasoning models (e.g. DeepSeek v4) enough budget to spend on internal
+	// reasoning and still return visible content — a 16-token cap came back empty.
 	out, err := llm.Complete(ctx, llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		[]llm.Message{{Role: "user", Content: "Reply with exactly: OK"}}, 16)
+		[]llm.Message{{Role: "user", Content: "Reply with exactly: OK"}}, 128)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
+	}
+	if strings.TrimSpace(out) == "" {
+		out = "(connected — model returned an empty reply)"
 	}
 	jsonOK(w, map[string]string{"status": "ok", "reply": out})
 }

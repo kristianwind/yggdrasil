@@ -169,9 +169,10 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		srv.WatchdogSup = rt.gs.Query != nil
 		srv.PlayersSup = rt.gs.Players != nil
 		srv.AdminLogSup = rt.gs.AdminLog != nil
-		// Only worth the digest button when there's a log to summarize AND AI is on.
-		srv.AIEnabled = srv.AdminLogSup && s.aiEnabled(r.Context())
 	}
+	// AI features (digest, error-explainer) are available whenever AI is enabled;
+	// the digest button additionally lives inside the admin-log-gated Activity tab.
+	srv.AIEnabled = s.aiEnabled(r.Context())
 	jsonOK(w, srv)
 }
 

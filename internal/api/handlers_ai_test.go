@@ -33,6 +33,23 @@ func TestBuildDigestMessages(t *testing.T) {
 	}
 }
 
+func TestBuildExplainMessages(t *testing.T) {
+	msgs := buildExplainMessages("dayz", "install", "ERROR: not enough disk quota")
+	if len(msgs) != 2 || msgs[0].Role != "system" || msgs[1].Role != "user" {
+		t.Fatalf("expected system+user, got %+v", msgs)
+	}
+	sys := strings.ToLower(msgs[0].Content)
+	// Must ask for cause + fix, and carry the injection guardrail + context hint.
+	for _, want := range []string{"cause", "fix", "untrusted", "install"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("system prompt missing %q:\n%s", want, msgs[0].Content)
+		}
+	}
+	if !strings.Contains(msgs[1].Content, "dayz") || !strings.Contains(msgs[1].Content, "not enough disk quota") {
+		t.Errorf("user prompt missing rune id or log:\n%s", msgs[1].Content)
+	}
+}
+
 func TestBuildDigestMessagesCaps(t *testing.T) {
 	var events []adminLogEvent
 	for i := 0; i < 500; i++ {

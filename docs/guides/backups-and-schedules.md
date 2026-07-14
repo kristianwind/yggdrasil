@@ -257,8 +257,9 @@ the control does not expect.
 | `update` | Re-runs the install/update (SteamCMD and the like). Synchronous, so the run log reports the real outcome. |
 
 The API also accepts a `wipe` action, which resets world/persistence as the rune defines
-it. The schedule editor does not offer it; wiping is done from a server's **Wipe** button,
-which asks for confirmation and runs once, immediately.
+it and needs `server.control` like the Wipe button does. The schedule editor does not offer
+it; wiping is normally done from a server's **Wipe** button, which asks for confirmation and
+runs once, immediately.
 
 A warned restart — optionally back up, broadcast the rune's countdown to players, then
 recreate — is a server's **Safe restart** action rather than something the schedule editor
@@ -353,8 +354,14 @@ delegate does not otherwise have:
 | --- | --- |
 | `command` | `server.console` |
 | `start`, `stop`, `restart`, `update` | `server.control` |
+| `wipe` | `server.control` |
 | `backup` | `server.backup` |
-| `message`, `wipe` | none beyond `server.schedule` |
+| `message` | none beyond `server.schedule` |
+
+Each action's requirement matches the gate on the equivalent direct endpoint, so scheduling
+something never grants more than doing it by hand would. The table is exhaustive and fails
+closed: an action with no entry is rejected rather than waved through, and a test asserts
+every known action appears here — a new action cannot reach the scheduler ungated.
 
 Admins skip this check, as they skip all of them.
 

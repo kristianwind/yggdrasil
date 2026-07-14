@@ -149,9 +149,10 @@ once, disable or delete the user.
 
 `POST /api/schedules` is permission-checked. For a server-scoped schedule it requires
 `server.schedule` on that server, plus the permission the scheduled action would need if you ran it
-by hand: `server.console` for a command, `server.control` for start/stop/restart/update,
-`server.backup` for a backup. A rendered player message needs nothing beyond `server.schedule`.
-Realm- and global-scoped schedules are admin-only.
+by hand: `server.console` for a command, `server.control` for start/stop/restart/update/wipe,
+`server.backup` for a backup. A rendered player message needs nothing beyond `server.schedule`. The
+table is exhaustive and fails closed — an action with no entry is rejected. Realm- and
+global-scoped schedules are admin-only.
 
 The other three mutations are not permission-checked. `PUT /api/schedules/{id}`,
 `DELETE /api/schedules/{id}`, and `POST /api/schedules/{id}/run` are flat admin-only and return

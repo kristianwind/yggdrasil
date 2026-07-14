@@ -12,9 +12,10 @@ same one-click "Runes".
   database, no Redis, no required reverse proxy.
 - **One command to install.** The installer handles Docker and everything else.
 - **Extensible.** A game *or app* = one declarative **gameskill** file (shown as a
-  *Rune* in the UI). Ships with Minecraft Java, Minecraft Bedrock, Rust and DayZ;
-  a growing library of **community runes** (databases + homelab apps) is in
-  [`community-runes/`](community-runes/) to import in one click.
+  *Rune* in the UI). Minecraft Java, Minecraft Bedrock, Uptime Kuma and Vaultwarden
+  are built in; a growing library of **community runes** — DayZ, Rust, Terraria,
+  Factorio, databases and homelab apps — is in [`community-runes/`](community-runes/)
+  to import in one click.
 - **Installable PWA.** Mobile-friendly, dark mode, works as an app on iOS/Android.
 
 > ⚠️ Early development. See [PROGRESS.md](PROGRESS.md) for the phase-by-phase status.
@@ -35,6 +36,22 @@ generated admin password. Re-running it upgrades or repairs an existing install.
 
 Updating later is just: swap the binary + restart the service (or re-run the
 one-liner — it's idempotent).
+
+## Documentation
+
+**[📖 Full documentation](docs/)** — or jump straight to
+**[Getting started](docs/getting-started.md)**, which takes you from a bare box to a
+running game server.
+
+Guides for [servers](docs/guides/servers.md), [runes](docs/guides/runes.md),
+[users & permissions](docs/guides/users-and-permissions.md),
+[backups & schedules](docs/guides/backups-and-schedules.md),
+[networking](docs/guides/networking.md),
+[monitoring & alerts](docs/guides/monitoring-and-alerts.md),
+[notifications](docs/guides/notifications.md), and
+[Kvasir, the AI assistant](docs/guides/kvasir-ai.md).
+Reference: [configuration](docs/reference/configuration.md),
+[HTTP API](docs/reference/api.md), [rune schema](docs/reference/rune-schema.md).
 
 ## Key features
 
@@ -265,8 +282,9 @@ database: { path: "./ygg.db" }
 admin: { username: "admin", password: "changeme" }
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and
-[docs/GAMESKILL_SCHEMA.md](docs/GAMESKILL_SCHEMA.md) for the gameskill format.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the design, the
+[rune schema](docs/reference/rune-schema.md) for the gameskill format, and the
+[API reference](docs/reference/api.md) for the HTTP API.
 
 ## Disclaimer
 

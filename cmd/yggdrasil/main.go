@@ -202,8 +202,10 @@ func loadBuiltinGameskills(database *sql.DB) error {
 
 	// Prune builtin runes that are no longer shipped (e.g. moved to community-runes/)
 	// AND aren't referenced by any server — so slimming the default set actually
-	// removes them, without orphaning existing servers (a rune in use is kept until
-	// its servers are deleted, then cleaned on a later boot).
+	// removes them, without orphaning existing servers. A rune still in use is
+	// demoted to builtin=0 instead; since this query only selects builtin=1, a
+	// demoted rune is never reconsidered here — deleting it is left to an admin
+	// once its servers are gone.
 	rows, err := database.Query("SELECT id FROM gameskills WHERE builtin=1")
 	if err != nil {
 		return nil

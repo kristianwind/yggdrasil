@@ -23,18 +23,54 @@ import (
 // later flip the same toggle or tune the threshold. Only runes that declare a
 // query can be health-checked, so the UI gates the toggle on watchdog_supported.
 const (
-	watchdogFailThreshold = 3               // consecutive failed health checks before an auto-restart
-	watchdogCooldown      = 4 * time.Minute // grace period after a heal before checking again (let it boot)
+	watchdogFailThreshold = 3                // consecutive failed health checks before an auto-restart
+	watchdogCooldown      = 4 * time.Minute  // grace period after a heal before checking again (let it boot)
+	quarantineThreshold   = 5                // heals within the window before we give up (crash-loop guard)
+	quarantineWindow      = 30 * time.Minute // window over which heals are counted
 )
 
 type watchdogState struct {
-	mu       sync.Mutex
-	fails    map[string]int       // serverID -> consecutive failed health checks
-	cooldown map[string]time.Time // serverID -> skip checks until this time
+	mu         sync.Mutex
+	fails      map[string]int         // serverID -> consecutive failed health checks
+	cooldown   map[string]time.Time   // serverID -> skip checks until this time
+	heals      map[string][]time.Time // serverID -> recent heal times (crash-loop detection)
+	quarantine map[string]bool        // serverID -> auto-heal paused (kept failing)
 }
 
 func newWatchdogState() *watchdogState {
-	return &watchdogState{fails: map[string]int{}, cooldown: map[string]time.Time{}}
+	return &watchdogState{
+		fails: map[string]int{}, cooldown: map[string]time.Time{},
+		heals: map[string][]time.Time{}, quarantine: map[string]bool{},
+	}
+}
+
+// recordHeal logs a heal and reports whether this one tips the server into
+// quarantine — too many restarts in the window means auto-heal isn't fixing it, so
+// we stop trying and alert instead of flapping forever. Returns true only on the
+// transition into quarantine (so the caller alerts once).
+func (w *watchdogState) recordHeal(serverID string, now time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	cutoff := now.Add(-quarantineWindow)
+	var kept []time.Time
+	for _, t := range w.heals[serverID] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	kept = append(kept, now)
+	w.heals[serverID] = kept
+	if len(kept) >= quarantineThreshold && !w.quarantine[serverID] {
+		w.quarantine[serverID] = true
+		return true
+	}
+	return false
+}
+
+func (w *watchdogState) isQuarantined(serverID string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.quarantine[serverID]
 }
 
 // inCooldown reports whether a server is still in its post-heal grace period (so
@@ -98,7 +134,8 @@ func (s *Server) runWatchdog() {
 
 	for _, x := range list {
 		now := time.Now()
-		if s.wd.inCooldown(x.id, now) {
+		// A crash-looping server is left alone until an admin starts it manually.
+		if s.wd.isQuarantined(x.id) || s.wd.inCooldown(x.id, now) {
 			continue
 		}
 		// Only servers whose rune declares a query can be health-checked.
@@ -108,7 +145,11 @@ func (s *Server) runWatchdog() {
 		}
 		_, qerr := query.Query(rt.gs.Query.Type, "127.0.0.1", rt.queryPort(), 3*time.Second)
 		if heal, n := s.wd.recordResult(x.id, qerr == nil, now); heal {
-			go s.watchdogHeal(x.id, n)
+			if s.wd.recordHeal(x.id, now) {
+				go s.watchdogQuarantine(x.id)
+			} else {
+				go s.watchdogHeal(x.id, n)
+			}
 		}
 	}
 }
@@ -126,9 +167,18 @@ func (s *Server) watchdogHeal(serverID string, fails int) {
 	s.notifyAll(fmt.Sprintf("✅ Watchdog: %s restarted", name))
 }
 
-// clearWatchdog drops any in-memory streak/cooldown for a server — called when
-// the toggle is turned off or the server is stopped/deleted so stale state can't
-// trigger a spurious heal later.
+// watchdogQuarantine alerts that auto-heal has given up on a crash-looping server.
+func (s *Server) watchdogQuarantine(serverID string) {
+	defer recoverLog("watchdogQuarantine")
+	name := s.serverName(serverID)
+	s.notifyAll(fmt.Sprintf("🛑 Watchdog: giving up on %s — it kept failing after %d auto-restarts within %d min. "+
+		"Auto-heal is paused; fix the server and start it manually to resume.",
+		name, quarantineThreshold, int(quarantineWindow.Minutes())))
+}
+
+// clearWatchdog drops all in-memory watchdog state for a server (streak, cooldown,
+// heal history, quarantine) — called when the toggle is turned off, the server is
+// stopped/deleted, or it's manually (re)started, so a fresh chance is given.
 func (s *Server) clearWatchdog(serverID string) {
 	if s.wd == nil {
 		return
@@ -136,6 +186,8 @@ func (s *Server) clearWatchdog(serverID string) {
 	s.wd.mu.Lock()
 	delete(s.wd.fails, serverID)
 	delete(s.wd.cooldown, serverID)
+	delete(s.wd.heals, serverID)
+	delete(s.wd.quarantine, serverID)
 	s.wd.mu.Unlock()
 }
 

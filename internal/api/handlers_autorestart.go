@@ -85,8 +85,8 @@ func (s *Server) handleGetAutoRestart(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, autoRestartView{
 		Enabled:     enabled == 1,
 		EveryHours:  parseAutoRestartHours(cron),
-		Warn:        args["warn"] == "true",
-		BackupFirst: args["backup_first"] == "true",
+		Warn:        argTrue(args["warn"]),
+		BackupFirst: argTrue(args["backup_first"]),
 		TargetID:    args["target_id"],
 	})
 }
@@ -131,9 +131,12 @@ func (s *Server) handleSetAutoRestart(w http.ResponseWriter, r *http.Request) {
 		req.EveryHours = 6
 	}
 	cron := autoRestartCron(req.EveryHours)
+	// Schedule args are "true"/"false" — that's what runAction reads and what the
+	// Schedules page writes. boolStr yields "1"/"0", which is the app_settings
+	// convention and silently means false here.
 	args := map[string]string{
-		"warn":         boolStr(req.Warn),
-		"backup_first": boolStr(req.BackupFirst),
+		"warn":         strconv.FormatBool(req.Warn),
+		"backup_first": strconv.FormatBool(req.BackupFirst),
 		"target_id":    req.TargetID,
 	}
 	argsJSONBytes, _ := json.Marshal(args)

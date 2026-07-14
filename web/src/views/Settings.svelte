@@ -31,7 +31,7 @@
   let twofaSetup = $state(null); // { secret, uri }
   let twofaCode = $state("");
 
-  // Software update
+  // Panel updates (self-update of the Yggdrasil panel binary)
   let build = $state(null);
   let updating = $state(false);
   let checking = $state(false);
@@ -661,8 +661,8 @@
 </div>
 
 {#if tab === "system"}
-<!-- Software update -->
-<h2 class="text-xl font-semibold mb-2">Software update</h2>
+<!-- Panel updates -->
+<h2 class="text-xl font-semibold mb-2">Panel updates</h2>
 <div class="card p-4 mb-10">
   {#if build}
     <div class="flex items-center gap-3 flex-wrap">

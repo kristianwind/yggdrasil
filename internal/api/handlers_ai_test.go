@@ -77,3 +77,29 @@ func TestBuildHealthDigestMessages(t *testing.T) {
 		t.Errorf("snapshot not carried into user prompt:\n%s", msgs[1].Content)
 	}
 }
+
+func TestWeakSecret(t *testing.T) {
+	for _, w := range []string{"", "change-me", "changeme", "password", "admin", "123456", "abc"} {
+		if !weakSecret(w) {
+			t.Errorf("expected %q to be flagged weak", w)
+		}
+	}
+	for _, ok := range []string{"a-strong-passphrase-123", "Xk9$mQ2vLp"} {
+		if weakSecret(ok) {
+			t.Errorf("expected %q to be OK", ok)
+		}
+	}
+}
+
+func TestBuildConfigAdviceMessages(t *testing.T) {
+	msgs := buildConfigAdviceMessages("Game/app rune: DayZ (dayz)\nSettings:\n- RCON password [RCON_PASSWORD] = (WEAK or default — should be changed)")
+	sys := strings.ToLower(msgs[0].Content)
+	for _, want := range []string{"misconfiguration", "advisory", "untrusted", "do not invent"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("config-advice prompt missing %q:\n%s", want, msgs[0].Content)
+		}
+	}
+	if !strings.Contains(msgs[1].Content, "RCON_PASSWORD") {
+		t.Errorf("snapshot not carried into prompt")
+	}
+}

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discord — questions and help
+    url: https://discord.gg/murNphXV3
+    about: Not sure if it's a bug? Need help getting a rune working? Ask here first.
+  - name: 📖 Documentation
+    url: https://yggdrasilpanel.com/docs/
+    about: Install, backups, networking, permissions, and the rune schema.

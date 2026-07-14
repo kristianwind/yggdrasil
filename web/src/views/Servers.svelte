@@ -78,19 +78,31 @@
   });
 
   // Group servers by realm name for display.
-  // Tag filter: click a tag to show only servers carrying it.
+  // Filters: a tag filter (click a tag) + a free-text search over name/rune/tags.
   let tagFilter = $state("");
+  let search = $state("");
   let allTags = $derived.by(() => {
     const set = new Set();
     for (const s of servers) for (const t of s.tags || []) set.add(t);
     return [...set].sort();
   });
 
+  function matchesFilters(s) {
+    if (tagFilter && !(s.tags || []).includes(tagFilter)) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      s.name.toLowerCase().includes(q) ||
+      (s.gameskill_id || "").toLowerCase().includes(q) ||
+      (s.tags || []).some((t) => t.includes(q))
+    );
+  }
+
   let grouped = $derived.by(() => {
     const byId = Object.fromEntries(realms.map((r) => [r.id, r.name]));
     const g = {};
     for (const s of servers) {
-      if (tagFilter && !(s.tags || []).includes(tagFilter)) continue;
+      if (!matchesFilters(s)) continue;
       const key = byId[s.realm_id] || "Ungrouped";
       (g[key] ||= []).push(s);
     }
@@ -195,7 +207,7 @@
 
   // --- Bulk selection + actions ---
   // Operates on the currently-visible (tag-filtered) servers the caller can control.
-  let visibleServers = $derived(servers.filter((s) => !tagFilter || (s.tags || []).includes(tagFilter)));
+  let visibleServers = $derived(servers.filter(matchesFilters));
   let controllable = $derived(visibleServers.filter((s) => can(s, "server.control")));
   let selected = $state(new Set());
   let bulkBusy = $state(false);
@@ -260,6 +272,15 @@
     {/if}
   </div>
 </div>
+
+{#if servers.length > 3}
+  <div class="mb-4 max-w-sm relative">
+    <input class="input pr-8" placeholder="Search servers by name, rune or tag…" bind:value={search} />
+    {#if search}
+      <button class="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-text" onclick={() => (search = "")} aria-label="Clear search">✕</button>
+    {/if}
+  </div>
+{/if}
 
 {#if allTags.length}
   <div class="flex flex-wrap items-center gap-1.5 mb-4">

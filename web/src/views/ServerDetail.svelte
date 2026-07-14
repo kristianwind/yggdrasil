@@ -340,6 +340,7 @@
       const r = await api.post(`/backups/${b.id}/verify`);
       if (r.ok) toast(`✓ Backup is valid — ${r.files} files, ${fmtSize(r.bytes)} uncompressed`, "success");
       else toast(`✗ Backup looks corrupt: ${r.error}`, "error");
+      await loadBackups(); // refresh the verified badge
     } catch (e) {
       toast(e.message, "error");
     } finally {
@@ -1622,6 +1623,8 @@
                     : "text-warn"}>{b.status}</span
               >
               {#if b.error}— {b.error}{/if}
+              {#if b.verify_ok === 1}<span class="text-accent"> · ✓ verified</span>
+              {:else if b.verify_ok === 0}<span class="text-danger"> · ✗ corrupt</span>{/if}
             </div>
           </div>
           {#if b.status === "done"}

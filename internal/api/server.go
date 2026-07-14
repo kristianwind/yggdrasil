@@ -83,6 +83,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.startMetricsSampler()
 	s.startBeaconLoop()
 	s.startDiscordStatusLoop()
+	s.startBackupVerifyLoop()
 	return s
 }
 
@@ -260,6 +261,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/backup", s.handleRunBackup)
 		r.Post("/api/backups/{id}/restore", s.handleRestoreBackup)
 		r.Post("/api/backups/{id}/verify", s.handleVerifyBackup)
+		r.Get("/api/settings/backup-verify", s.requireAdmin(s.handleGetBackupVerify))
+		r.Put("/api/settings/backup-verify", s.requireAdmin(s.handleSetBackupVerify))
 		r.Delete("/api/backups/{id}", s.handleDeleteBackup)
 
 		// Schedules

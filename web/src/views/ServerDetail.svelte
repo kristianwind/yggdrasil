@@ -333,6 +333,20 @@
     }
   }
 
+  let verifyingId = $state("");
+  async function verifyBackup(b) {
+    verifyingId = b.id;
+    try {
+      const r = await api.post(`/backups/${b.id}/verify`);
+      if (r.ok) toast(`✓ Backup is valid — ${r.files} files, ${fmtSize(r.bytes)} uncompressed`, "success");
+      else toast(`✗ Backup looks corrupt: ${r.error}`, "error");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      verifyingId = "";
+    }
+  }
+
   async function deleteBackup(b) {
     if (!confirm("Delete this backup?")) return;
     try {
@@ -1611,6 +1625,9 @@
             </div>
           </div>
           {#if b.status === "done"}
+            <button class="btn-ghost" disabled={verifyingId === b.id} onclick={() => verifyBackup(b)}
+              title="Download and check this backup decompresses cleanly — confirm it's restorable before you ever need it. Reads the archive but changes nothing.">
+              {verifyingId === b.id ? "Verifying…" : "Verify"}</button>
             <button class="btn-ghost" onclick={() => restoreBackup(b)}
               title="Stop the server and overwrite its files with this backup. Current data is replaced — you'll be asked to confirm.">Restore</button>
           {/if}

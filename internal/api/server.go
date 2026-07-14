@@ -259,6 +259,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/backups", s.handleListBackups)
 		r.Post("/api/servers/{id}/backup", s.handleRunBackup)
 		r.Post("/api/backups/{id}/restore", s.handleRestoreBackup)
+		r.Post("/api/backups/{id}/verify", s.handleVerifyBackup)
 		r.Delete("/api/backups/{id}", s.handleDeleteBackup)
 
 		// Schedules

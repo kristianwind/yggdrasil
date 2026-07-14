@@ -132,3 +132,34 @@ func TestRetention(t *testing.T) {
 		t.Errorf("combined: expected 2 deletions, got %d", len(del))
 	}
 }
+
+func TestVerify(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "server.properties"), "motd=hi")
+	writeFile(t, filepath.Join(src, "world", "level.dat"), "WORLD-DATA")
+
+	var buf bytes.Buffer
+	if err := Archive(src, nil, &buf); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	good := buf.Bytes()
+
+	// A valid archive verifies: 2 files, total bytes = the two file bodies.
+	entries, total, err := Verify(bytes.NewReader(good))
+	if err != nil {
+		t.Fatalf("verify good: %v", err)
+	}
+	if entries != 2 || total != int64(len("motd=hi")+len("WORLD-DATA")) {
+		t.Fatalf("verify good: entries=%d total=%d, want 2/%d", entries, total, len("motd=hi")+len("WORLD-DATA"))
+	}
+
+	// A truncated archive fails (chopped mid-stream → bad gzip CRC / short read).
+	if _, _, err := Verify(bytes.NewReader(good[:len(good)-20])); err == nil {
+		t.Fatal("verify truncated: expected an error, got nil")
+	}
+
+	// Not a gzip at all → clear error.
+	if _, _, err := Verify(bytes.NewReader([]byte("this is not a gzip archive"))); err == nil {
+		t.Fatal("verify garbage: expected an error, got nil")
+	}
+}

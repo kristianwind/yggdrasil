@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/docker"
 	"github.com/kristianwind/yggdrasil/internal/llm"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
@@ -272,20 +274,35 @@ func (s *Server) handleExplainError(w http.ResponseWriter, r *http.Request) {
 		Log     string `json:"log"`
 		Context string `json:"context"` // "install" | "console" (a hint for the prompt)
 	}
-	if err := decodeJSON(r, &req); err != nil || strings.TrimSpace(req.Log) == "" {
-		jsonError(w, "nothing to explain", http.StatusBadRequest)
+	decodeJSON(r, &req)
+	logText := req.Log
+	// Fall back to the server's recent container logs when the client has nothing
+	// to send — so a crash can be explained even after the console cleared / the
+	// container exited (as long as it hasn't been recreated).
+	if strings.TrimSpace(logText) == "" && srv.ContainerID != "" {
+		if rc, e := s.docker.LogsSnapshot(r.Context(), srv.ContainerID, "300"); e == nil {
+			var buf bytes.Buffer
+			docker.DemuxCopy(&buf, rc)
+			rc.Close()
+			logText = buf.String()
+		}
+		if req.Context == "" {
+			req.Context = "console"
+		}
+	}
+	if strings.TrimSpace(logText) == "" {
+		jsonError(w, "no logs to explain yet", http.StatusBadRequest)
 		return
 	}
-	log := req.Log
-	if len(log) > explainMaxChars {
-		log = log[len(log)-explainMaxChars:]
+	if len(logText) > explainMaxChars {
+		logText = logText[len(logText)-explainMaxChars:]
 	}
 	gameskillID := srv.GameskillID
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		buildExplainMessages(gameskillID, req.Context, log), 700)
+		buildExplainMessages(gameskillID, req.Context, logText), 700)
 	if err != nil {
 		jsonError(w, "AI request failed: "+err.Error(), http.StatusBadGateway)
 		return

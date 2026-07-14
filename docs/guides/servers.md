@@ -155,19 +155,42 @@ has nothing to say to players.
 
 ### Auto-restart
 
-**🔁 Auto-restart** schedules a recurring restart every N hours, using the same warned
-restart path. It's a front door onto the scheduler: under the hood it manages one
-schedule row for you, so you never hand-edit cron. The dialog pre-fills **6 hours**,
-warnings on, backup off. N is clamped to 1–24; picking 24 gives you a plain daily
-restart at midnight.
+**🔁 Auto-restart** schedules a recurring restart, using the same warned restart path.
+It's a front door onto the scheduler: under the hood it manages one schedule row for you,
+so you never hand-edit cron. The dialog pre-fills **6 hours**, warnings on, backup off.
 
-The dialog also shows a **quiet-hours** hint when there's data for it: Yggdrasil buckets
-the last 14 days of sampled player counts by local hour and tells you the calmest one —
-"Quietest around 05:00 (avg 0.4 players, last 14 days)". Line your restarts up with that
-hour and almost nobody notices them. A brand-new server, or a game whose rune has no
-query, has no data, and the hint stays hidden rather than guess.
+Two fields decide the timing:
 
-See [Backups and schedules](backups-and-schedules.md) for the general scheduler.
+- **Restart every** — the interval, 1 to 24 hours. 24 means once a day.
+- **Starting at** — the hour the cycle is anchored to.
+
+The anchor is what makes the interval useful. "Every 6 hours" on its own always lands on
+00:00, 06:00, 12:00 and 18:00 — which is no help if 18:00 is your busiest hour. Anchor it
+at 03:00 and it fires at 03:00, 09:00, 15:00 and 21:00 instead. The dialog spells out the
+exact times below the fields, so you can see what you picked.
+
+### Restarting when nobody's on
+
+The dialog shows a **quiet-hours** hint when there's data for it: Yggdrasil buckets the
+last 14 days of sampled player counts by local hour and names the calmest one — "Quietest
+around 05:00 (avg 0.4 players, last 14 days)". Next to it is a **Start there** link that
+sets the anchor to that hour, so the recommendation is one click rather than arithmetic.
+
+A brand-new server, or a game whose rune declares no query, has no player data. The hint
+stays hidden rather than guess.
+
+Both the hint and the schedule use the panel host's local time, so they agree with each
+other. If your players are in a different timezone than your box, the "quietest hour" is
+still the right hour — it's measured from real player counts, not from a clock.
+
+One wrinkle when the interval doesn't divide 24 evenly: the cycle restarts at the anchor
+each day rather than rolling past midnight. Every 5 hours from 03:00 fires at 03:00,
+08:00, 13:00, 18:00 and 23:00 — then 03:00 again, a four-hour gap instead of five. Intervals
+that divide 24 (1, 2, 3, 4, 6, 8, 12, 24) don't have this, which is why those are the ones
+the dialog offers.
+
+See [Backups and schedules](backups-and-schedules.md) for the general scheduler, and
+[Monitoring and alerts](monitoring-and-alerts.md) for where the quiet-hours data comes from.
 
 ## Keeping servers alive
 

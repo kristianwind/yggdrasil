@@ -40,8 +40,12 @@ by **server-local hour** (0–23), and returns the average players per hour alon
 hour and its average.
 
 The server page shows the result as a hint next to auto-restart — "Quietest around 05:00 (avg 0.4
-players, last 14 days) — a good time to restart" — so you anchor a disruptive job on evidence rather
-than a guess.
+players, last 14 days)" — with a **Start there** link that anchors auto-restart to that hour. So the
+recommendation is actionable, not just informative: you schedule a disruptive job on evidence rather
+than a guess. See [auto-restart](servers.md#auto-restart).
+
+The bucketing uses the panel host's local time, and so does the scheduler, so the hour the hint names
+is the hour a restart anchored there actually fires.
 
 When there is no usable data — a brand-new server, or a game with no query protocol — the response
 says `has_data: false` and the UI stays silent rather than recommending an hour it invented.

@@ -224,7 +224,7 @@
   // Auto-restart toggle (a managed schedule under the hood — restart every N hours)
   let showAuto = $state(false);
   let autoBusy = $state(false);
-  let autoRestart = $state({ enabled: false, every_hours: 6, warn: true, backup_first: false, target_id: "" });
+  let autoRestart = $state({ enabled: false, every_hours: 6, anchor_hour: 0, warn: true, backup_first: false, target_id: "" });
   const autoHourOptions = [1, 2, 3, 4, 6, 8, 12, 24];
 
   // Quiet-hours suggestion (mined from sampled player counts) — hints the calmest
@@ -238,6 +238,19 @@
     }
   }
   const hh = (h) => String(h).padStart(2, "0") + ":00";
+
+  // Spell out the hours the restart will actually land on. The cron behind this
+  // is `0 <anchor>-23/<N>`, which stops at 23 rather than wrapping past midnight
+  // — so when N doesn't divide 24 the last gap of the day is short. Better to
+  // show the real times than to let someone infer an even cycle that isn't.
+  const autoRestartTimes = $derived.by(() => {
+    const n = autoRestart.every_hours,
+      a = autoRestart.anchor_hour ?? 0;
+    if (n >= 24) return hh(a) + " daily";
+    const times = [];
+    for (let h = a; h <= 23; h += n) times.push(hh(h));
+    return times.join(", ");
+  });
 
   async function loadAutoRestart() {
     try {
@@ -253,7 +266,12 @@
     autoBusy = true;
     try {
       autoRestart = await api.put(`/servers/${id}/auto-restart`, { ...autoRestart, enabled });
-      toast(enabled ? `Auto-restart on — every ${autoRestart.every_hours}h` : "Auto-restart off", "success");
+      toast(
+        enabled
+          ? `Auto-restart on — ${autoRestart.every_hours >= 24 ? `daily at ${hh(autoRestart.anchor_hour)}` : `every ${autoRestart.every_hours}h from ${hh(autoRestart.anchor_hour)}`}`
+          : "Auto-restart off",
+        "success",
+      );
       showAuto = false;
     } catch (e) {
       toast(e.message, "error");
@@ -935,8 +953,12 @@
           Safe restart{server.restart_warn ? " ⏱" : ""}
         </button>
         <button class="btn-ghost" onclick={() => { showAuto = true; loadQuietHours(); if (!backupTargets.length) loadBackups(); }}
-          title="Schedule automatic restarts every N hours (a managed schedule). Opens a dialog to configure hours, player warning and backup.">
-          🔁 Auto-restart{autoRestart.enabled ? ` · ${autoRestart.every_hours}h` : ""}
+          title="Schedule automatic restarts (a managed schedule). Opens a dialog to configure the interval, the hour they start from, player warning and backup.">
+          🔁 Auto-restart{autoRestart.enabled
+            ? autoRestart.every_hours >= 24
+              ? ` · ${hh(autoRestart.anchor_hour)}`
+              : ` · ${autoRestart.every_hours}h`
+            : ""}
         </button>
         <button class="btn-ghost" onclick={() => action("stop")}
           title="Stop the server now (graceful shutdown). Players are disconnected.">Stop</button>
@@ -1046,15 +1068,33 @@
           Restarts the server on a schedule to keep it fresh (clears memory leaks, applies pending
           changes). Runs through the same safe-restart path{server.restart_warn ? ", so players get the rune's in-game countdown first" : ""}.
         </p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="auto-hours">Restart every</label>
+            <select id="auto-hours" class="input" bind:value={autoRestart.every_hours}>
+              {#each autoHourOptions as h}<option value={h}>{h === 24 ? "24 hours (daily)" : `${h} hours`}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="auto-anchor">{autoRestart.every_hours === 24 ? "At" : "Starting at"}</label>
+            <select id="auto-anchor" class="input" bind:value={autoRestart.anchor_hour}>
+              {#each Array.from({ length: 24 }, (_, i) => i) as h}<option value={h}>{hh(h)}</option>{/each}
+            </select>
+          </div>
+        </div>
         <div>
-          <label class="label" for="auto-hours">Restart every</label>
-          <select id="auto-hours" class="input" bind:value={autoRestart.every_hours}>
-            {#each autoHourOptions as h}<option value={h}>{h === 24 ? "24 hours (daily)" : `${h} hours`}</option>{/each}
-          </select>
-          <p class="text-xs text-muted mt-1">Fires at the top of the hour, every {autoRestart.every_hours}h (server local time).</p>
+          <p class="text-xs text-muted">Fires at {autoRestartTimes} (server local time).</p>
           {#if quietHours?.has_data}
             <p class="text-xs text-accent mt-1">
-              💡 Quietest around {hh(quietHours.recommended_hour)} (avg {quietHours.recommended_avg} players, last 14 days) — a good time to restart.
+              💡 Quietest around {hh(quietHours.recommended_hour)} (avg {quietHours.recommended_avg} players, last 14 days).
+              {#if autoRestart.anchor_hour !== quietHours.recommended_hour}
+                <button type="button" class="underline hover:no-underline"
+                        onclick={() => (autoRestart.anchor_hour = quietHours.recommended_hour)}>
+                  Start there
+                </button>
+              {:else}
+                Restarts start there.
+              {/if}
             </p>
           {/if}
         </div>

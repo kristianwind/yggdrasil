@@ -66,6 +66,37 @@ jobs:
             dist/checksums.txt
           generate_release_notes: true
 
+  # Announce the release in Discord. Deliberately a webhook and not a bot: nothing
+  # to host, no gateway to keep alive, no token with server-wide reach — the same
+  # call the panel's own status board makes.
+  #
+  # Skips cleanly when the secret isn't configured, so forks and a not-yet-set-up
+  # repo don't get a red X on every release.
+  announce:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # we want the tag's annotation, not just the commit
+
+      - name: Post the release to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "No DISCORD_RELEASE_WEBHOOK secret set — skipping the announcement."
+            exit 0
+          fi
+          git fetch --force --tags --quiet
+          # The tag annotation is a hand-written summary of what shipped, which is
+          # what a reader wants — better than a generated list of merge commits.
+          git tag -l --format='%(contents)' "$TAG" > /tmp/notes.txt
+          python3 .github/scripts/discord_release.py < /tmp/notes.txt
+
   test:
     runs-on: ubuntu-latest
     steps:

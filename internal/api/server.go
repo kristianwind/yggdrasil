@@ -207,6 +207,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/rcon", s.handleServerRcon)
 		r.Get("/api/servers/{id}/admin-log", s.handleAdminLog)
 		r.Post("/api/servers/{id}/admin-log/digest", s.handleAdminLogDigest)
+		r.Post("/api/servers/{id}/explain", s.handleExplainError)
 		r.Get("/api/servers/{id}/players", s.handleListPlayers)
 		r.Post("/api/servers/{id}/players/kick", s.handleKickPlayer)
 		r.Post("/api/servers/{id}/players/broadcast", s.handleBroadcast)

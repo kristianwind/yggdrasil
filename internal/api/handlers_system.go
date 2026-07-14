@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -76,6 +78,39 @@ type auditEntry struct {
 	TS       string `json:"ts"`
 }
 
+// auditWhere builds the filter clause + args shared by the JSON list and CSV
+// export: username (exact), action (contains), q (free text across username/
+// action/resource/detail) and a from/to date range on ts.
+func auditWhere(q url.Values) (string, []any) {
+	var conds []string
+	var args []any
+	if u := strings.TrimSpace(q.Get("user")); u != "" {
+		conds = append(conds, "username = ?")
+		args = append(args, u)
+	}
+	if a := strings.TrimSpace(q.Get("action")); a != "" {
+		conds = append(conds, "action LIKE ?")
+		args = append(args, "%"+a+"%")
+	}
+	if text := strings.TrimSpace(q.Get("q")); text != "" {
+		conds = append(conds, "(username LIKE ? OR action LIKE ? OR resource LIKE ? OR detail_json LIKE ?)")
+		like := "%" + text + "%"
+		args = append(args, like, like, like, like)
+	}
+	if from := strings.TrimSpace(q.Get("from")); from != "" {
+		conds = append(conds, "ts >= ?")
+		args = append(args, from)
+	}
+	if to := strings.TrimSpace(q.Get("to")); to != "" {
+		conds = append(conds, "ts <= ?")
+		args = append(args, to+" 23:59:59")
+	}
+	if len(conds) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args
+}
+
 func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
 	limit := 100
 	if l := r.URL.Query().Get("limit"); l != "" {
@@ -83,10 +118,11 @@ func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	where, args := auditWhere(r.URL.Query())
 	rows, err := s.db.QueryContext(r.Context(),
 		`SELECT id, COALESCE(username,''), action, COALESCE(resource,''),
 		        COALESCE(detail_json,''), COALESCE(ip,''), ts
-		 FROM audit_log ORDER BY ts DESC LIMIT ?`, limit)
+		 FROM audit_log`+where+` ORDER BY ts DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -102,6 +138,32 @@ func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
 		list = append(list, e)
 	}
 	jsonOK(w, list)
+}
+
+// handleAuditExport streams the (filtered) audit log as CSV for offline review /
+// compliance. Same filters as the list; capped generously.
+func (s *Server) handleAuditExport(w http.ResponseWriter, r *http.Request) {
+	where, args := auditWhere(r.URL.Query())
+	rows, err := s.db.QueryContext(r.Context(),
+		`SELECT ts, COALESCE(username,''), action, COALESCE(resource,''), COALESCE(ip,''), COALESCE(detail_json,'')
+		 FROM audit_log`+where+` ORDER BY ts DESC LIMIT 100000`, args...)
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="yggdrasil-audit.csv"`)
+	cw := csv.NewWriter(w)
+	cw.Write([]string{"timestamp", "user", "action", "resource", "ip", "detail"})
+	for rows.Next() {
+		var ts, user, action, resource, ip, detail string
+		if rows.Scan(&ts, &user, &action, &resource, &ip, &detail) == nil {
+			cw.Write([]string{ts, user, action, resource, ip, detail})
+		}
+	}
+	cw.Flush()
 }
 
 // handleVersion reports the build version + repo URL, and whether a newer

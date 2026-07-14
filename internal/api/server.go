@@ -364,6 +364,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// Audit log
 		r.Get("/api/audit", s.requireAdmin(s.handleAuditLog))
+		r.Get("/api/audit/export", s.requireAdmin(s.handleAuditExport))
 
 		// System info
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))

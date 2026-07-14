@@ -142,6 +142,19 @@
   let activity = $state({ supported: true, file: "", events: [] });
   let activityBusy = $state(false);
   const activityIcons = { join: "🟢", leave: "⚪", death: "💀", kill: "🔫" };
+  // Activity view: raw feed vs. a per-player leaderboard tallied from the events.
+  let activityView = $state("feed");
+  const leaderboard = $derived.by(() => {
+    const by = {};
+    for (const ev of activity.events || []) {
+      if (!ev.player) continue;
+      const p = (by[ev.player] ??= { name: ev.player, kill: 0, death: 0, join: 0 });
+      if (ev.type in p) p[ev.type]++;
+    }
+    return Object.values(by)
+      .map((p) => ({ ...p, kd: p.death ? p.kill / p.death : p.kill }))
+      .sort((a, b) => b.kill - a.kill || b.kd - a.kd || b.death - a.death);
+  });
   async function loadActivity() {
     activityBusy = true;
     try {
@@ -1195,9 +1208,13 @@
   {:else if tab === "activity"}
     <div class="space-y-3">
       <div class="flex items-center gap-2">
-        <span class="text-sm text-muted" title="Parsed from the game's admin log — joins, disconnects, deaths and kills, newest first.">
-          Recent server activity{activity.file ? ` · ${activity.file}` : ""}
+        <span class="text-sm text-muted hidden sm:inline" title="Parsed from the game's admin log — joins, disconnects, deaths and kills, newest first.">
+          Activity{activity.file ? ` · ${activity.file}` : ""}
         </span>
+        <div class="inline-flex rounded-md border border-border overflow-hidden text-xs">
+          <button class="px-2 py-1 {activityView === 'feed' ? 'bg-panel2 text-text' : 'text-muted hover:bg-panel2/50'}" onclick={() => (activityView = 'feed')}>Feed</button>
+          <button class="px-2 py-1 border-l border-border {activityView === 'board' ? 'bg-panel2 text-text' : 'text-muted hover:bg-panel2/50'}" onclick={() => (activityView = 'board')} title="Per-player kills / deaths / K·D tallied from the recent log">🏆 Leaderboard</button>
+        </div>
         {#if server.ai_enabled}
           <button class="btn-primary text-xs ml-auto" disabled={digestBusy}
             title="Ask the configured AI assistant for a plain-language summary of the recent activity (advisory — sends the log events to the LLM your admin set up)."
@@ -1223,6 +1240,38 @@
         <div class="card p-4 text-sm text-muted text-center">
           {activityBusy ? "Loading…" : "No activity logged yet (the server writes its admin log while running)."}
         </div>
+      {:else if activityView === "board"}
+        {#if !leaderboard.length}
+          <div class="card p-4 text-sm text-muted text-center">No player kills/deaths in the recent log yet.</div>
+        {:else}
+          <div class="card overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="text-xs text-muted uppercase tracking-wide">
+                <tr class="border-b border-border">
+                  <th class="text-left px-3 py-2">#</th>
+                  <th class="text-left px-3 py-2">Player</th>
+                  <th class="text-right px-3 py-2">🔫 Kills</th>
+                  <th class="text-right px-3 py-2">💀 Deaths</th>
+                  <th class="text-right px-3 py-2">K·D</th>
+                  <th class="text-right px-3 py-2 hidden sm:table-cell">🟢 Joins</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each leaderboard as p, i}
+                  <tr class="border-b border-border/50">
+                    <td class="px-3 py-2 text-muted">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}</td>
+                    <td class="px-3 py-2 font-medium">{p.name}</td>
+                    <td class="px-3 py-2 text-right">{p.kill}</td>
+                    <td class="px-3 py-2 text-right text-muted">{p.death}</td>
+                    <td class="px-3 py-2 text-right font-mono">{p.kd.toFixed(2)}</td>
+                    <td class="px-3 py-2 text-right text-muted hidden sm:table-cell">{p.join}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <div class="text-[10px] text-muted">Tallied from the {activity.events.length} most recent log events.</div>
+        {/if}
       {:else}
         <div class="card divide-y divide-border/50">
           {#each activity.events as ev}

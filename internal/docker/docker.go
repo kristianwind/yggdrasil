@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -402,6 +403,19 @@ func calcCPUPercent(s *container.StatsResponse) float64 {
 
 func (c *Client) Inspect(ctx context.Context, id string) (container.InspectResponse, error) {
 	return c.dc.ContainerInspect(ctx, id)
+}
+
+// StartedAt returns when the container's current run began (zero time if unknown),
+// so callers can tell a freshly-started container from one that's been up a while.
+func (c *Client) StartedAt(ctx context.Context, id string) (time.Time, error) {
+	info, err := c.dc.ContainerInspect(ctx, id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if info.State == nil || info.State.StartedAt == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339Nano, info.State.StartedAt)
 }
 
 // State returns the high-level running/exited state and exit code.

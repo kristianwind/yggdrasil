@@ -100,6 +100,18 @@ endpoints are filtered to what the caller may see.
 | POST | `/api/templates` | admin; `{id?, name, body}` |
 | DELETE | `/api/templates/{id}` | admin |
 
+Creating a server-scoped schedule needs `server.schedule` **plus** the permission
+the action itself requires, so a schedule can't run something the user couldn't
+trigger directly. Admins skip this check; an unrecognised action is rejected.
+
+| Action | Extra permission beyond `server.schedule` |
+|--------|-------------------------------------------|
+| `message` | — (rendered player broadcast) |
+| `command` | `server.console` |
+| `start`, `stop`, `restart`, `update` | `server.control` |
+| `wipe` | `server.control` |
+| `backup` | `server.backup` |
+
 Schedule actions: `backup`, `restart`, `start`, `stop`, `command`, `message`,
 `update`. Cron is 5 or 6 fields. `args` may include `target_id`, `command`,
 `template_id`, `minutes`, `seconds`, `skip_if_players`.

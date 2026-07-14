@@ -79,24 +79,48 @@ func TestSanitizeConsoleArg(t *testing.T) {
 	}
 }
 
+// TestScheduleActionPerm pins the extra permission each schedule action requires
+// beyond server.schedule. A schedule must never be a way to run something the
+// delegate can't trigger directly — scheduling a wipe requires server.control
+// just like POST /api/servers/{id}/wipe does.
 func TestScheduleActionPerm(t *testing.T) {
-	cases := map[scheduler.Action]struct {
-		perm rbac.Permission
-		need bool
-	}{
-		scheduler.ActionCommand: {rbac.ServerConsole, true},
-		scheduler.ActionStart:   {rbac.ServerControl, true},
-		scheduler.ActionStop:    {rbac.ServerControl, true},
-		scheduler.ActionRestart: {rbac.ServerControl, true},
-		scheduler.ActionUpdate:  {rbac.ServerControl, true},
-		scheduler.ActionBackup:  {rbac.ServerBackup, true},
-		scheduler.ActionMessage: {"", false},
+	// want[""] means "no extra permission beyond server.schedule".
+	want := map[scheduler.Action]rbac.Permission{
+		scheduler.ActionCommand: rbac.ServerConsole,
+		scheduler.ActionStart:   rbac.ServerControl,
+		scheduler.ActionStop:    rbac.ServerControl,
+		scheduler.ActionRestart: rbac.ServerControl,
+		scheduler.ActionUpdate:  rbac.ServerControl,
+		scheduler.ActionWipe:    rbac.ServerControl,
+		scheduler.ActionBackup:  rbac.ServerBackup,
+		scheduler.ActionMessage: "",
 	}
-	for a, want := range cases {
-		p, need := scheduleActionPerm(a)
-		if need != want.need || p != want.perm {
-			t.Errorf("action %q: got (%q,%v) want (%q,%v)", a, p, need, want.perm, want.need)
+	// Exhaustive over AllActions: a newly-added action fails here until someone
+	// decides what permission it needs, rather than silently requiring none.
+	for _, a := range scheduler.AllActions {
+		wp, ok := want[a]
+		if !ok {
+			t.Errorf("action %q has no expected permission — add it here and to scheduleActionPerms", a)
+			continue
 		}
+		p, known := scheduleActionPerm(a)
+		if !known || p != wp {
+			t.Errorf("action %q: got (%q,known=%v) want (%q,known=true)", a, p, known, wp)
+		}
+	}
+	for a := range want {
+		if !scheduler.ValidAction(a) {
+			t.Errorf("expectation names %q, which is not a valid action", a)
+		}
+	}
+}
+
+// TestScheduleActionPermFailsClosed covers the default: an action with no entry
+// in the table must report known=false so the handler denies it, rather than
+// reporting "no permission needed".
+func TestScheduleActionPermFailsClosed(t *testing.T) {
+	if p, known := scheduleActionPerm(scheduler.Action("nuke-from-orbit")); known {
+		t.Errorf("unknown action reported known with perm %q; must fail closed", p)
 	}
 }
 

@@ -72,21 +72,32 @@ func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, list)
 }
 
-// scheduleActionPerm maps a schedule action to the extra permission it requires
-// beyond ServerSchedule, so a Schedule grant can't be escalated into Console,
-// Control, or Backup capabilities. ActionMessage (a rendered player broadcast)
-// needs nothing beyond Schedule.
-func scheduleActionPerm(a scheduler.Action) (rbac.Permission, bool) {
-	switch a {
-	case scheduler.ActionCommand:
-		return rbac.ServerConsole, true
-	case scheduler.ActionStart, scheduler.ActionStop, scheduler.ActionRestart, scheduler.ActionUpdate:
-		return rbac.ServerControl, true
-	case scheduler.ActionBackup:
-		return rbac.ServerBackup, true
-	default:
-		return "", false
-	}
+// scheduleActionPerms maps each schedule action to the extra permission it
+// requires beyond ServerSchedule, so a Schedule grant can't be escalated into
+// Console, Control, or Backup capabilities. Each action's permission matches the
+// gate on the equivalent direct endpoint. ActionMessage (a rendered player
+// broadcast) maps to "" — it needs nothing beyond Schedule.
+//
+// Every action in scheduler.AllActions must appear here; TestScheduleActionPerm
+// enforces that, so a new action can't reach the scheduler ungated.
+var scheduleActionPerms = map[scheduler.Action]rbac.Permission{
+	scheduler.ActionCommand: rbac.ServerConsole,
+	scheduler.ActionStart:   rbac.ServerControl,
+	scheduler.ActionStop:    rbac.ServerControl,
+	scheduler.ActionRestart: rbac.ServerControl,
+	scheduler.ActionUpdate:  rbac.ServerControl,
+	scheduler.ActionWipe:    rbac.ServerControl, // matches the direct wipe endpoint
+	scheduler.ActionBackup:  rbac.ServerBackup,
+	scheduler.ActionMessage: "",
+}
+
+// scheduleActionPerm returns the extra permission action a requires beyond
+// ServerSchedule. known is false for an action with no entry in the table;
+// callers must deny in that case rather than allow, so an unmapped action fails
+// closed instead of silently requiring nothing.
+func scheduleActionPerm(a scheduler.Action) (perm rbac.Permission, known bool) {
+	p, ok := scheduleActionPerms[a]
+	return p, ok
 }
 
 func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
@@ -110,10 +121,14 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 		// A schedule must not let a Schedule-only delegate run actions they can't
 		// trigger directly: require the action's own permission too (Command =>
-		// Console, start/stop/restart/update => Control, backup => Backup).
+		// Console, start/stop/restart/update/wipe => Control, backup => Backup).
 		if !isAdmin(r) {
-			if p, need := scheduleActionPerm(scheduler.Action(req.Action)); need &&
-				!s.can(w, r, p, s.serverTarget(r.Context(), req.ServerID)) {
+			p, known := scheduleActionPerm(scheduler.Action(req.Action))
+			if !known {
+				jsonError(w, "action not permitted: "+req.Action, http.StatusForbidden)
+				return
+			}
+			if p != "" && !s.can(w, r, p, s.serverTarget(r.Context(), req.ServerID)) {
 				return
 			}
 		}

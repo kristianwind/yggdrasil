@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -407,6 +408,29 @@ func slugName(s string) string {
 	return out
 }
 
+// dbTimeLayouts are the timestamp formats that can appear in a TEXT datetime
+// column, newest-written first. `datetime('now')` — the schema default on every
+// created_at — writes "2006-01-02 15:04:05" in UTC, NOT RFC3339.
+var dbTimeLayouts = []string{
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04:05.999999999",
+	time.RFC3339,
+	time.RFC3339Nano,
+}
+
+// parseDBTime parses a timestamp written by SQLite (or by Go, if it ever is).
+// It returns an error rather than a zero time so callers can fail closed: a zero
+// time silently reads as "infinitely old", which is a destructive default for
+// anything doing age comparisons.
+func parseDBTime(s string) (time.Time, error) {
+	for _, layout := range dbTimeLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognised timestamp %q", s)
+}
+
 // applyRetention deletes backups beyond the target's keep-N / keep-days policy.
 func (s *Server) applyRetention(ctx context.Context, serverID, targetID string, tgt backup.Target) {
 	var keepN, keepDays int
@@ -431,7 +455,15 @@ func (s *Server) applyRetention(ctx context.Context, serverID, targetID string, 
 		if rows.Scan(&id, &path, &created) != nil {
 			continue
 		}
-		t, _ := time.Parse(time.RFC3339, created)
+		t, err := parseDBTime(created)
+		if err != nil {
+			// Fail closed. An undateable backup is never a deletion candidate:
+			// both retention rules are age-based, so feeding them a zero time
+			// would mark it as ancient and delete it — including one taken
+			// seconds ago.
+			log.Printf("backup retention: keeping %s, cannot read created_at: %v", id, err)
+			continue
+		}
 		o := backup.Object{Name: path, ModTime: t}
 		recs = append(recs, rec{id, path, o})
 		objs = append(objs, o)

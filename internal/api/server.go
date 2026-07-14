@@ -86,6 +86,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.startBeaconLoop()
 	s.startDiscordStatusLoop()
 	s.startBackupVerifyLoop()
+	s.startDiskAlarmLoop()
 	return s
 }
 

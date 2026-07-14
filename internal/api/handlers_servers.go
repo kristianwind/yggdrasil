@@ -65,15 +65,16 @@ type serverRow struct {
 	AIEnabled      bool              `json:"ai_enabled"`            // advisory AI features are on (digest button; single GET)
 	CPUAlarmPct    int               `json:"cpu_alarm_pct"`         // alert when CPU% sustained at/above this (0 = off)
 	MemAlarmMB     int               `json:"mem_alarm_mb"`          // alert when memory MB sustained at/above this (0 = off)
+	DiskAlarmMB    int               `json:"disk_alarm_mb"`         // alert when the data dir grows to/above this many MB (0 = off)
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0)"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0)"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
 	var installed, autoFwd, autostart, watchdog, statusPublic int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog, &statusPublic, &srv.CPUAlarmPct, &srv.MemAlarmMB)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog, &statusPublic, &srv.CPUAlarmPct, &srv.MemAlarmMB, &srv.DiskAlarmMB)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
 	srv.Autostart = autostart == 1
@@ -359,6 +360,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		StatusPublic *bool        `json:"status_public"`
 		CPUAlarmPct  *int         `json:"cpu_alarm_pct"`
 		MemAlarmMB   *int         `json:"mem_alarm_mb"`
+		DiskAlarmMB  *int         `json:"disk_alarm_mb"`
 		Subdomain    *string      `json:"subdomain"`
 		HostMounts   *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
 	}
@@ -416,6 +418,13 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 			v = 0
 		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET mem_alarm_mb=? WHERE id=?", v, id)
+	}
+	if req.DiskAlarmMB != nil {
+		v := *req.DiskAlarmMB
+		if v < 0 {
+			v = 0
+		}
+		s.db.ExecContext(r.Context(), "UPDATE servers SET disk_alarm_mb=? WHERE id=?", v, id)
 	}
 	if req.Name != nil && *req.Name != "" {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)

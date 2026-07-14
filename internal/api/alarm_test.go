@@ -1,6 +1,10 @@
 package api
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestAlarmStepEdges(t *testing.T) {
 	over := map[string]int{}
@@ -45,5 +49,44 @@ func TestAlarmStepDisabled(t *testing.T) {
 	}
 	if over["s1"] != 0 || firing["s1"] {
 		t.Fatalf("disabled threshold left state: over=%d firing=%v", over["s1"], firing["s1"])
+	}
+}
+
+func TestDiskAlarmEdge(t *testing.T) {
+	s := testServer(t)
+	s.alarms = newAlarmState()
+	const id = "d1"
+
+	s.evalDiskAlarm(id, 5000, 4000) // over → fire
+	if !s.alarms.diskFiring[id] {
+		t.Fatal("expected firing after crossing threshold")
+	}
+	s.evalDiskAlarm(id, 6000, 4000) // still over → stays firing (no re-eval side effects)
+	if !s.alarms.diskFiring[id] {
+		t.Fatal("should still be firing")
+	}
+	s.evalDiskAlarm(id, 1000, 4000) // under → clear
+	if s.alarms.diskFiring[id] {
+		t.Fatal("expected cleared after dropping below threshold")
+	}
+	// A disabled (0) threshold never fires.
+	s.evalDiskAlarm(id, 9999, 0)
+	if s.alarms.diskFiring[id] {
+		t.Fatal("disabled threshold must not fire")
+	}
+}
+
+func TestDirSizeMB(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "big"), make([]byte, 3*1024*1024), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "sub", "small"), make([]byte, 512*1024), 0644)
+	// 3 MB + 0.5 MB → truncates to 3 whole MB.
+	if got := dirSizeMB(dir); got != 3 {
+		t.Fatalf("dirSizeMB = %d, want 3", got)
 	}
 }

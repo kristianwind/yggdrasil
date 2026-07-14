@@ -55,7 +55,7 @@ func (s *Server) handleListBackupTargets(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleCreateBackupTarget(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name     string `json:"name"`
+		Name string `json:"name"`
 		backup.Config
 		KeepN    int `json:"keep_n"`
 		KeepDays int `json:"keep_days"`
@@ -245,6 +245,52 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auditLog(r, "backup.restore", "server:"+serverID, map[string]string{"backup": id})
 	jsonOK(w, map[string]string{"status": "restored"})
+}
+
+// handleVerifyBackup fetches a backup and confirms it decompresses cleanly — a
+// real integrity check so you find out a backup is corrupt now, not at 3am when
+// you actually need to restore it. Reads the whole archive but writes nothing.
+func (s *Server) handleVerifyBackup(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var serverID, targetID, path string
+	var archiveBytes int64
+	err := s.db.QueryRowContext(r.Context(),
+		`SELECT server_id, COALESCE(target_id,''), COALESCE(path,''), COALESCE(size_bytes,0) FROM backups WHERE id=?`, id).
+		Scan(&serverID, &targetID, &path, &archiveBytes)
+	if err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerBackup, s.serverTarget(r.Context(), serverID)) {
+		return
+	}
+	cfg, err := s.loadTargetConfig(r.Context(), targetID)
+	if err != nil {
+		jsonError(w, "target unavailable", http.StatusBadGateway)
+		return
+	}
+	tgt, err := backup.Open(*cfg)
+	if err != nil {
+		jsonError(w, "connect: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer tgt.Close()
+	rc, err := tgt.Get(r.Context(), path)
+	if err != nil {
+		jsonError(w, "fetch backup: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer rc.Close()
+
+	entries, total, verr := backup.Verify(rc)
+	if verr != nil {
+		// A bad archive isn't a server error — report it as a clean "not ok" result
+		// the UI can surface, with the reason.
+		jsonOK(w, map[string]any{"ok": false, "error": verr.Error(), "files": entries})
+		return
+	}
+	s.auditLog(r, "backup.verify", "server:"+serverID, map[string]string{"backup": id})
+	jsonOK(w, map[string]any{"ok": true, "files": entries, "bytes": total, "archive_bytes": archiveBytes})
 }
 
 // ---- Manager ----

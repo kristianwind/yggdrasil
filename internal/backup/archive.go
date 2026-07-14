@@ -98,6 +98,35 @@ func addFile(tw *tar.Writer, dataDir, path string) error {
 
 // Restore extracts a gzip-tar archive from r into destDir, guarding against
 // path-traversal entries.
+// Verify streams a backup archive and confirms it is a well-formed gzip+tar that
+// decompresses in full — a cheap integrity check (a truncated or corrupt archive
+// fails at the gzip CRC or a short tar entry) that reads everything but writes
+// nothing to disk. Returns the file count and total uncompressed size.
+func Verify(r io.Reader) (entries int, total int64, err error) {
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return 0, 0, fmt.Errorf("not a valid gzip archive: %w", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return entries, total, fmt.Errorf("corrupt tar stream: %w", err)
+		}
+		n, err := io.Copy(io.Discard, tr) // reading the body validates the gzip CRC as we go
+		if err != nil {
+			return entries, total, fmt.Errorf("truncated entry %q: %w", hdr.Name, err)
+		}
+		entries++
+		total += n
+	}
+	return entries, total, nil
+}
+
 func Restore(r io.Reader, destDir string) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {

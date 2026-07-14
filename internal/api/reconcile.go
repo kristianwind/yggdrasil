@@ -26,12 +26,18 @@ func (s *Server) watchStartupReady(serverID, containerID, doneRegex string) {
 		time.Sleep(3 * time.Second)
 		running, _, err := s.docker.State(context.Background(), containerID)
 		if err != nil || !running {
-			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=? AND status='starting'", serverID)
+			// The container exited before it ever became ready. Only treat this as a
+			// start-failure if WE are the ones flipping starting→stopped (RowsAffected>0):
+			// a 0-row update means a newer start/stop already superseded this attempt.
+			res, _ := s.db.Exec("UPDATE servers SET status='stopped' WHERE id=? AND status='starting'", serverID)
+			if n, _ := res.RowsAffected(); n > 0 {
+				s.onStartFailed(serverID, containerID)
+			}
 			return
 		}
 		if re == nil {
 			// No readiness signal — the container is up, call it running.
-			s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+			s.markStarted(serverID)
 			return
 		}
 		if rc, err := s.docker.LogsSnapshot(context.Background(), containerID, "500"); err == nil {
@@ -39,15 +45,22 @@ func (s *Server) watchStartupReady(serverID, containerID, doneRegex string) {
 			_ = docker.DemuxCopy(&buf, rc)
 			rc.Close()
 			if re.Match(buf.Bytes()) {
-				s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+				s.markStarted(serverID)
 				return
 			}
 		}
 	}
 	// Took too long to signal readiness but it's still up — show it as running.
 	if running, _, _ := s.docker.State(context.Background(), containerID); running {
-		s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+		s.markStarted(serverID)
 	}
+}
+
+// markStarted promotes a server that reached readiness to "running" and clears its
+// failed-start streak (a clean start earns back the full retry budget).
+func (s *Server) markStarted(serverID string) {
+	s.db.Exec("UPDATE servers SET status='running' WHERE id=? AND status='starting'", serverID)
+	s.clearStartWatch(serverID)
 }
 
 // startAutostartServers brings autostart-enabled servers back up after a panel

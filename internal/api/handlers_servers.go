@@ -471,6 +471,8 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	}
 	s.db.ExecContext(r.Context(), "DELETE FROM port_allocations WHERE server_id=?", id)
 	s.db.ExecContext(r.Context(), "DELETE FROM servers WHERE id=?", id)
+	s.clearWatchdog(id)
+	s.clearStartWatch(id)
 	// Reclaim the disk: remove the server's data directory (game files, world,
 	// configs). Without this, deleted servers leave multi-GB dirs behind and the
 	// disk fills up. Guard against an empty/relative path so we never rm /data.
@@ -716,8 +718,10 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// A manual start clears any watchdog quarantine — give auto-heal a fresh chance.
+	// A manual start clears any watchdog quarantine — give auto-heal a fresh chance —
+	// and resets the failed-start streak so this attempt gets the full retry budget.
 	s.clearWatchdog(id)
+	s.clearStartWatch(id)
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
 	s.notifyAll("▶️ " + srv.Name + " started")
@@ -748,6 +752,8 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", id)
+	// A deliberate stop cancels any pending start-retry chain / streak.
+	s.clearStartWatch(id)
 	go s.upnpRemoveServer(id)
 	go s.unifiRemoveServer(id)
 	go s.npmRemoveServer(id)

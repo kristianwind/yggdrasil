@@ -72,7 +72,9 @@
 {:else if !$user}
   <Login />
 {:else}
-  <div class="min-h-screen flex">
+  <!-- Desktop: lock to the viewport so only <main> scrolls (no stray page scroll).
+       Mobile keeps min-h-screen to avoid the iOS 100vh/URL-bar cutoff. -->
+  <div class="min-h-screen md:h-screen md:overflow-hidden flex">
     <!-- Sidebar -->
     <aside
       class="fixed md:sticky md:top-0 z-40 inset-y-0 md:inset-y-auto left-0 w-52 md:h-screen bg-panel border-r border-border

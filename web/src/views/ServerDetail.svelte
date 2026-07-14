@@ -1145,7 +1145,7 @@
       <div class="flex items-center gap-2 flex-wrap">
         <span class="text-sm text-muted">
           {#if !playersData.online}
-            Server unreachable (offline or starting).
+            {playersData.reason || "Server offline or still starting."}
           {:else}
             {playersData.players.length} online
           {/if}

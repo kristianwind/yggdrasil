@@ -89,6 +89,7 @@ type playersResponse struct {
 	CanKick      bool         `json:"can_kick"`
 	CanBroadcast bool         `json:"can_broadcast"`
 	CanLock      bool         `json:"can_lock"`
+	Reason       string       `json:"reason,omitempty"` // why the list is unavailable (offline vs. RCON down)
 }
 
 func (s *Server) handleListPlayers(w http.ResponseWriter, r *http.Request) {
@@ -115,8 +116,14 @@ func (s *Server) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.rconExec(r.Context(), id, pl.ListCommand)
 	if err != nil {
-		// RCON unreachable almost always just means the server is down/starting;
-		// report offline rather than erroring so the tab renders cleanly.
+		// Distinguish "server is down" from "server is up but RCON isn't reachable"
+		// (a common DayZ gotcha: BattlEye RConPassword not set/matching), so the tab
+		// gives an actionable message instead of a misleading "offline".
+		if s.playersOnline(id) >= 0 {
+			resp.Reason = "The server is up, but its RCON didn't respond. For DayZ, set a BattlEye RConPassword in battleye/beserver_x64.cfg that matches the panel's RCON password, then restart."
+		} else {
+			resp.Reason = "Server is offline or still starting."
+		}
 		jsonOK(w, resp)
 		return
 	}

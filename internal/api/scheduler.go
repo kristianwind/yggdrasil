@@ -195,6 +195,19 @@ func (s *Server) scopeServers(serverID, realmID string) []string {
 	return ids
 }
 
+// argTrue reads a boolean schedule arg.
+//
+// Args are stored as strings in args_json. The canonical form is "true"/"false"
+// — what the Schedules page writes and what this file has always compared
+// against. The auto-restart toggle used to write "1"/"0" (the app_settings
+// convention) instead, which read as false and silently disabled the player
+// warning and backup-first it claimed to have enabled. That write is fixed, but
+// rows created before the fix are still on disk, so accept both rather than
+// require a migration.
+func argTrue(v string) bool {
+	return v == "true" || v == "1"
+}
+
 // runAction executes one scheduled action against one server and returns a
 // (status, detail) pair for the run log: status is "ok", "skipped" or "error".
 func (s *Server) runAction(action scheduler.Action, serverID string, args map[string]string) (status, detail string) {
@@ -212,20 +225,20 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		return "ok", "backup started"
 
 	case scheduler.ActionWipe:
-		if err := s.wipeServer(ctx, serverID, args["backup_first"] == "true", args["target_id"]); err != nil {
+		if err := s.wipeServer(ctx, serverID, argTrue(args["backup_first"]), args["target_id"]); err != nil {
 			return "error", err.Error()
 		}
 		return "ok", "wiped"
 
 	case scheduler.ActionRestart:
-		if args["skip_if_players"] == "true" && s.playersOnline(serverID) > 0 {
+		if argTrue(args["skip_if_players"]) && s.playersOnline(serverID) > 0 {
 			return "skipped", "players online"
 		}
 		// Warned "safe" restart: broadcast the rune's countdown to players (and
 		// optionally back up) before recreating. Runs asynchronously since the
 		// countdown blocks for minutes.
-		if args["warn"] == "true" {
-			go s.warnedRestart(serverID, args["backup_first"] == "true", args["target_id"])
+		if argTrue(args["warn"]) {
+			go s.warnedRestart(serverID, argTrue(args["backup_first"]), args["target_id"])
 			return "ok", "warned restart initiated"
 		}
 		// Recreate the container (not a plain docker-restart) so a scheduled restart
@@ -288,7 +301,7 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		return "ok", "message sent: " + rendered
 
 	case scheduler.ActionUpdate:
-		if args["skip_if_players"] == "true" && s.playersOnline(serverID) > 0 {
+		if argTrue(args["skip_if_players"]) && s.playersOnline(serverID) > 0 {
 			return "skipped", "players online"
 		}
 		// runInstall is synchronous here, so by the time it returns the (re)install

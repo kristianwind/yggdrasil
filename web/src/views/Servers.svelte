@@ -78,10 +78,19 @@
   });
 
   // Group servers by realm name for display.
+  // Tag filter: click a tag to show only servers carrying it.
+  let tagFilter = $state("");
+  let allTags = $derived.by(() => {
+    const set = new Set();
+    for (const s of servers) for (const t of s.tags || []) set.add(t);
+    return [...set].sort();
+  });
+
   let grouped = $derived.by(() => {
     const byId = Object.fromEntries(realms.map((r) => [r.id, r.name]));
     const g = {};
     for (const s of servers) {
+      if (tagFilter && !(s.tags || []).includes(tagFilter)) continue;
       const key = byId[s.realm_id] || "Ungrouped";
       (g[key] ||= []).push(s);
     }
@@ -214,6 +223,20 @@
   </div>
 </div>
 
+{#if allTags.length}
+  <div class="flex flex-wrap items-center gap-1.5 mb-4">
+    <span class="text-xs text-muted mr-1">Filter:</span>
+    <button
+      class="badge {tagFilter === '' ? 'bg-accent2/20 text-accent' : 'bg-panel2 border border-border text-muted hover:text-text'}"
+      onclick={() => (tagFilter = "")}>All</button>
+    {#each allTags as t}
+      <button
+        class="badge {tagFilter === t ? 'bg-accent2/20 text-accent' : 'bg-panel2 border border-border text-muted hover:text-text'}"
+        onclick={() => (tagFilter = tagFilter === t ? "" : t)}>{t}</button>
+    {/each}
+  </div>
+{/if}
+
 {#if loading}
   <div class="text-muted">Loading…</div>
 {:else if servers.length === 0}
@@ -241,6 +264,13 @@
               <tr class="hover:bg-panel2/40">
                 <td class="px-4 py-2 truncate">
                   <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
+                  {#if s.tags?.length}
+                    <div class="flex flex-wrap gap-1 mt-0.5">
+                      {#each s.tags as t}
+                        <button class="badge bg-panel2 border border-border text-muted text-[10px] hover:text-text" onclick={() => (tagFilter = t)}>{t}</button>
+                      {/each}
+                    </div>
+                  {/if}
                 </td>
                 <td class="px-4 py-2 text-muted truncate">{s.gameskill_id}</td>
                 <td class="px-4 py-2 whitespace-nowrap">
@@ -310,6 +340,13 @@
               </div>
             </div>
             <div class="text-xs text-muted mt-1">{s.gameskill_id}</div>
+            {#if s.tags?.length}
+              <div class="flex flex-wrap gap-1 mt-2">
+                {#each s.tags as t}
+                  <button class="badge bg-panel2 border border-border text-muted text-[10px] hover:text-text" onclick={() => (tagFilter = t)}>{t}</button>
+                {/each}
+              </div>
+            {/if}
             {#if s.ports && Object.keys(s.ports).length}
               <div class="flex flex-wrap gap-1 mt-2">
                 {#each Object.entries(s.ports) as [name, port]}

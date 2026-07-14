@@ -324,6 +324,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "servers", "mem_alarm_mb", "INTEGER NOT NULL DEFAULT 0")      // alert when memory MB stays at/above this (0 = off)
 	addColumnIfMissing(db, "servers", "disk_alarm_mb", "INTEGER NOT NULL DEFAULT 0")     // alert when the data dir grows to/above this many MB (0 = off)
 	addColumnIfMissing(db, "servers", "notes", "TEXT NOT NULL DEFAULT ''")               // free-text admin notes shared across the team
+	addColumnIfMissing(db, "servers", "tags", "TEXT NOT NULL DEFAULT ''")                // normalized comma-separated labels for grouping/filtering
 	return nil
 }
 

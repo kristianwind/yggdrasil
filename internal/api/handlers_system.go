@@ -402,5 +402,6 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		"mem_used_bytes":   memUsed,
 		"disk_free_bytes":  free,
 		"disk_total_bytes": total,
+		"ai_enabled":       s.aiEnabled(r.Context()), // advisory ops-digest button on the dashboard
 	})
 }

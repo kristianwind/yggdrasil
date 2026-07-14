@@ -16,6 +16,24 @@
     return (id) => m[id] || id;
   });
 
+  // The most connect-relevant published port for a server (game > query > web > any).
+  function primaryPort(s) {
+    const p = s.ports || {};
+    return p.game || p.query || p.web || Object.values(p)[0] || 0;
+  }
+  // Compact "added X ago" from an SQLite UTC timestamp ("YYYY-MM-DD HH:MM:SS").
+  function relTime(iso) {
+    if (!iso) return "";
+    const t = new Date(iso.replace(" ", "T") + (iso.endsWith("Z") ? "" : "Z")).getTime();
+    if (isNaN(t)) return "";
+    const s = (Date.now() - t) / 1000;
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    if (s < 2592000) return `${Math.floor(s / 86400)}d ago`;
+    return `${Math.floor(s / 2592000)}mo ago`;
+  }
+
   onMount(async () => {
     try {
       [servers, gameskills] = await Promise.all([
@@ -284,14 +302,36 @@
   {/if}
   {#each servers.slice(0, 8) as s}
     <a href={`#/servers/${s.id}`} class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-panel2/50">
-      <div class="min-w-0">
-        <div class="font-medium truncate">{s.name}</div>
-        <div class="text-xs text-muted truncate">{skillName(s.gameskill_id)}</div>
+      <div class="flex items-center gap-3 min-w-0">
+        <span
+          class="w-2 h-2 rounded-full shrink-0 {s.status === 'running'
+            ? 'bg-accent'
+            : s.status === 'starting'
+              ? 'bg-warn animate-pulse'
+              : 'bg-muted/40'}"
+          aria-hidden="true"
+        ></span>
+        <div class="min-w-0">
+          <div class="font-medium truncate">{s.name}</div>
+          <div class="text-xs text-muted truncate">
+            {skillName(s.gameskill_id)}{#if primaryPort(s)} ·
+              <span class="font-mono">:{primaryPort(s)}</span>{/if}{#if s.subdomain} ·
+              {s.subdomain}{/if} · added {relTime(s.created_at)}
+          </div>
+        </div>
       </div>
-      <span
-        class="badge shrink-0 {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
-        >{s.status}</span
-      >
+      <div class="flex items-center gap-2 shrink-0">
+        {#if !s.installed}
+          <span class="badge bg-warn/20 text-warn">needs install</span>
+        {/if}
+        <span
+          class="badge {s.status === 'running'
+            ? 'bg-accent2/20 text-accent'
+            : s.status === 'starting'
+              ? 'bg-warn/20 text-warn'
+              : 'bg-border text-muted'}">{s.status}</span
+        >
+      </div>
     </a>
   {/each}
 </div>

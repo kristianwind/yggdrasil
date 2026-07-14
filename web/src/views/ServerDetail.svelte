@@ -562,6 +562,8 @@
       auto_forward: server.auto_forward !== false,
       autostart: server.autostart !== false,
       status_public: !!server.status_public,
+      cpu_alarm_pct: server.cpu_alarm_pct || 0,
+      mem_alarm_mb: server.mem_alarm_mb || 0,
       subdomain: server.subdomain || "",
     };
     hostMounts = (server.host_mounts || []).map((m) => ({ host: m.host, container: m.container, rw: !!m.rw }));
@@ -582,6 +584,8 @@
         auto_forward: !!edit.auto_forward,
         autostart: !!edit.autostart,
         status_public: !!edit.status_public,
+        cpu_alarm_pct: Number(edit.cpu_alarm_pct) || 0,
+        mem_alarm_mb: Number(edit.mem_alarm_mb) || 0,
         subdomain: edit.subdomain || "",
       };
       // Host mounts are admin-only; only send the field when the caller is an admin
@@ -1419,6 +1423,23 @@
           <p class="text-xs text-muted mt-1">
             Off by default. When on, this server's name, game and online/players state appear on the
             public <code>/status</code> page (no login). Enable the page under Settings → Status page.
+          </p>
+        </div>
+        <div>
+          <div class="label">Resource alarms</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-muted" for="cpu-alarm">CPU alarm (%)</label>
+              <input id="cpu-alarm" class="input" type="number" min="0" max="100" bind:value={edit.cpu_alarm_pct} placeholder="0 = off" />
+            </div>
+            <div>
+              <label class="text-xs text-muted" for="mem-alarm">Memory alarm (MB)</label>
+              <input id="mem-alarm" class="input" type="number" min="0" bind:value={edit.mem_alarm_mb} placeholder="0 = off" />
+            </div>
+          </div>
+          <p class="text-xs text-muted mt-1">
+            Get a notification when this server's CPU% or memory stays at/above the threshold for ~10 minutes
+            (and an all-clear when it recovers). 0 = off. Uses the metrics the panel already samples.
           </p>
         </div>
         {#if server.ports?.web}

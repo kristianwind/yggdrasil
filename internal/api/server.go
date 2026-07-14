@@ -34,6 +34,7 @@ type Server struct {
 	viol    *violationWatcher
 	wd      *watchdogState // auto-heal: per-server query health streaks + cooldowns
 	startWD *startState    // start-failure detection: per-server failed-start streaks
+	alarms  *alarmState    // per-server CPU/memory threshold alarms
 	version string         // build version (set via SetVersion)
 
 	extIP   string // cached external IP (detectPublicAddr)
@@ -70,6 +71,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		cipher:  cipher,
 		wd:      newWatchdogState(),
 		startWD: newStartState(),
+		alarms:  newAlarmState(),
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()

@@ -63,6 +63,7 @@ func (s *Server) sampleMetrics() {
 		cancel()
 		players := s.playersOnline(x.id) // -1 when the game has no query / is unreachable
 		s.db.Exec("INSERT INTO metrics (server_id, cpu, mem_mb, players) VALUES (?,?,?,?)", x.id, cpu, mem, players)
+		s.checkResourceAlarms(x.id, cpu, mem) // fire/clear per-server CPU/mem alarms
 	}
 }
 

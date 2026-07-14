@@ -253,6 +253,7 @@ func (s *Server) reconcileStatuses() {
 			// Drop any watchdog streak so it can't heal a server the user stopped.
 			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
 			s.clearWatchdog(x.id)
+			s.clearResourceAlarms(x.id)
 			s.stoppedCleanup(x.id)
 		}
 	}

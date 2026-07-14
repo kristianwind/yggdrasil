@@ -145,6 +145,18 @@ CREATE TABLE IF NOT EXISTS schedule_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_runs_sid ON schedule_runs(schedule_id, ran_at);
 
+-- Time-series resource samples per server (CPU%, memory MB, player count),
+-- taken every few minutes by the sampler and pruned to a rolling window. Powers
+-- the history charts + lets the AI ops digest reason about trends.
+CREATE TABLE IF NOT EXISTS metrics (
+	server_id   TEXT NOT NULL,
+	ts          TEXT NOT NULL DEFAULT (datetime('now')),
+	cpu         REAL NOT NULL DEFAULT 0,
+	mem_mb      REAL NOT NULL DEFAULT 0,
+	players     INTEGER NOT NULL DEFAULT -1
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_srv ON metrics(server_id, ts);
+
 CREATE TABLE IF NOT EXISTS audit_log (
 	id          TEXT PRIMARY KEY,
 	user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,

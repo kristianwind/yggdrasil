@@ -74,6 +74,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	go s.startAutostartServers()
 	go s.autoUpdateLoop()
 	s.startOpsDigestLoop()
+	s.startMetricsSampler()
 	return s
 }
 
@@ -194,6 +195,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/servers/{id}/watchdog", s.handleSetWatchdog)
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
+		r.Get("/api/servers/{id}/metrics", s.handleServerMetrics)
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)
 		r.Get("/api/servers/{id}/battlemetrics", s.handleServerBattleMetrics)
 		r.Get("/api/servers/{id}/reachability", s.handleServerReachability)

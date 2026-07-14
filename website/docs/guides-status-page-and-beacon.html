@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Status page, Discord board, and beacon — Yggdrasil Panel docs</title>
+<meta name="description" content="Three ways Yggdrasil Panel talks to the outside world: a public up/down page for your players, a self-updating status embed in Discord, and a voluntary install ping to the project." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html" class="on">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Status page, Discord board, and beacon</h1>
+    <p>Three ways Yggdrasil Panel talks to the outside world: a public up/down page for your players, a
+self-updating status embed in Discord, and a voluntary install ping to the project. All three are off
+until you turn them on.</p>
+<h2 id="the-public-status-page">The public status page</h2>
+<p><code>/status</code> is a read-only board showing whether your servers are online. No login, no panel account —
+the thing players ask about most, answered without giving them access to anything.</p>
+<h3 id="double-opt-in">Double opt-in</h3>
+<p>Nothing is exposed until <strong>both</strong> switches are on:</p>
+<ol>
+<li>The master switch, <strong>Settings → Network → Status page → Enable the public status page</strong>
+(the <code>status_page_enabled</code> setting).</li>
+<li><strong>Show on the public status page</strong> on each individual server&rsquo;s Settings tab (the per-server
+<code>status_public</code> flag, off by default).</li>
+</ol>
+<p>With the master switch off, both <code>/status</code> and <code>/api/status</code> return <strong>404</strong> — not an empty page, not
+&ldquo;disabled&rdquo;, a plain not-found, so the panel&rsquo;s existence isn&rsquo;t advertised to anyone scanning. With the
+master switch on but no server opted in, the page loads and says nothing is being shared.</p>
+<p>Neither switch implies the other. Enabling the page shares no servers; opting a server in while the
+page is off shares nothing.</p>
+<h3 id="exactly-what-it-exposes">Exactly what it exposes</h3>
+<p>Per opted-in server, the JSON at <code>/api/status</code> carries four fields and no more:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>the server&rsquo;s display name</td>
+</tr>
+<tr>
+<td><code>game</code></td>
+<td>the rune&rsquo;s name, omitted when empty</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>online</code>, <code>starting</code>, or <code>offline</code></td>
+</tr>
+<tr>
+<td><code>players</code></td>
+<td>current player count, omitted when unknown</td>
+</tr>
+</tbody>
+</table>
+<p>The response also carries the page <code>title</code> (from <strong>Page title</strong>, defaulting to &ldquo;Server Status&rdquo;) and
+an <code>updated_at</code> timestamp.</p>
+<p>There is no id, no port, no address, no environment, no rune configuration, no operational detail.
+<code>status</code> is <code>online</code> only for an installed server the panel has running, <code>starting</code> for one mid-start,
+and <code>offline</code> for everything else, so a server you have opted in but never installed reads offline
+rather than leaking that it exists in a half-built state.</p>
+<h3 id="player-counts-come-from-the-sampler">Player counts come from the sampler</h3>
+<p>The <code>players</code> value is <strong>not</strong> a live query. It is the most recent count the metrics sampler already
+recorded, and only when that sample is <strong>less than 15 minutes old</strong> — older than that, or no sample at
+all (a game with no query protocol), and the field is omitted entirely rather than showing a stale or
+invented number.</p>
+<p>That means rendering the page never touches a game server, no matter how many people load it. The
+sampler runs every 5 minutes, so a count can be up to five minutes behind reality. See
+<a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a> for the sampler.</p>
+<p>On top of that, the assembled JSON is cached for <strong>15 seconds</strong> and served with
+<code>Cache-Control: public, max-age=15</code> — a cheap abuse guard on an unauthenticated endpoint. Changing the
+master switch or the title drops the cache immediately, so those edits show up without waiting out the
+TTL. A server&rsquo;s own opt-in does not: it writes the flag and leaves the cache alone, so adding a server
+to the board — or taking one off it — can take up to 15 seconds to land. A server you just un-shared
+can still appear on <code>/status</code> until the TTL expires.</p>
+<h3 id="the-statusjs-split">The <code>/status.js</code> split</h3>
+<p>The page itself is a single self-contained HTML document with no framework and no external assets. Its
+JavaScript is served separately from <code>/status.js</code> rather than inlined, because the panel sends a
+strict Content-Security-Policy with <code>script-src 'self'</code> — an inline <code>&lt;script&gt;</code> would be blocked by the
+browser. Both <code>/status</code> and <code>/status.js</code> 404 when the master switch is off.</p>
+<p>The script fetches <code>/api/status</code> and re-renders every 30 seconds. The page carries
+<code>&lt;meta name=&quot;robots&quot; content=&quot;noindex&quot;&gt;</code>.</p>
+<h2 id="the-discord-status-board">The Discord status board</h2>
+<p>The same set of servers, as a live embed in a Discord channel. It needs <strong>no bot to host</strong> — an
+incoming webhook is enough.</p>
+<p>Create the webhook in Discord under <strong>Server Settings → Integrations → Webhooks → New Webhook</strong>, pick
+a channel, copy the URL, and paste it into <strong>Settings → Integrations → Discord status board</strong>. The URL
+must start with <code>https://</code> and is <strong>encrypted at rest</strong>, like every other secret the panel stores.</p>
+<p>The board shows the servers with <code>status_public</code> on — the exact set the <code>/status</code> page shows — so a
+server you share appears in both places. The per-server opt-in governs both; the status page&rsquo;s master
+switch does not gate Discord.</p>
+<h3 id="one-message-edited-in-place">One message, edited in place</h3>
+<p>Yggdrasil posts the embed once, records the message id, and from then on <strong>edits that same message</strong>.
+Your channel gets one status board, not a running log of them.</p>
+<p>If the edit comes back <strong>404</strong> — someone deleted the message in Discord — Yggdrasil clears the stored
+id and posts a fresh one, which becomes the new board. Any other error is reported rather than
+silently reposting. Changing or clearing the webhook also clears the stored id, so the next refresh
+starts a new message in the new channel.</p>
+<p>The board refreshes every <strong>3 minutes</strong>. Saving the settings pushes an immediate update, and <strong>Post
+now</strong> forces a refresh on demand and surfaces any error rather than hiding it in the log.</p>
+<h3 id="what-the-embed-looks-like">What the embed looks like</h3>
+<p>Each server becomes one inline field: a 🟢 / 🟡 / 🔴 dot with the server name, and the game plus its
+player count, <code>starting…</code>, or <code>offline</code>. The embed&rsquo;s description is <code>**N of M online**</code>, and its colour
+is green when everything shared is up, amber when some are, grey when none are.</p>
+<p>Discord caps an embed at <strong>25 fields</strong>, so if you share more than 25 servers the board shows the first
+25 by name and stops there. The rest are on <code>/status</code>. Past that cap the colour can no longer reach
+green: the online tally counts only the servers that made it into the embed, while green requires it
+to match the full shared count. Share more than 25 and expect amber even when everything is up.</p>
+<h2 id="the-beacon">The beacon</h2>
+<p>Yggdrasil Panel ships <strong>no telemetry</strong>. Nothing phones home, nothing tracks you, and the download
+count on GitHub is the only number the project gets for free. The beacon is the single deliberate
+exception, and it is <strong>off by default</strong>.</p>
+<p>When you switch it on under <strong>Settings → System → Beacon</strong>, the panel sends one small ping a day so
+the project can gauge how many installs exist.</p>
+<h3 id="the-literal-payload">The literal payload</h3>
+<pre><code class="language-json">{ &quot;instance_id&quot;: &quot;…&quot;, &quot;version&quot;: &quot;…&quot; }
+</code></pre>
+<p>That is the whole thing. Two fields. <code>instance_id</code> is a random UUID generated on first use and stored
+locally — it identifies nothing about you, it exists only so the collector can de-duplicate repeat
+pings into a unique-install count. <code>version</code> is the panel build.</p>
+<p>No IP address is stored. No server names, no addresses, no player counts, no configuration, no usage
+data. The settings page shows you the exact payload your install would send, filled in with your real
+values, so there is nothing to take on trust.</p>
+<h3 id="how-it-behaves">How it behaves</h3>
+<p>The loop wakes 30 seconds after startup and every 30 minutes after that, but sends at most <strong>one ping
+per calendar day (UTC)</strong>, and only records the day as done when the collector actually accepts it. A
+panel that isn&rsquo;t up around the clock still pings roughly daily. Opting in sends a ping right away
+rather than waiting. The settings page shows the date of the last successful ping.</p>
+<h3 id="collector-url-and-test">Collector URL and Test</h3>
+<p>The ping goes to <code>https://beacon.yggdrasilpanel.com/api/beacon</code> unless you change the <strong>Collector
+URL</strong> setting. Any value must start with <code>http://</code> or <code>https://</code>; clearing it restores the default.</p>
+<p><strong>Test</strong> sends a one-off ping to whatever URL is in the box — not the saved one — and tells you
+whether it was accepted, so you can check a collector before committing to it. A 404 gets a specific
+message, because that is what an unrouted or disabled collector looks like.</p>
+<h3 id="running-your-own-collector">Running your own collector</h3>
+<p>The same binary can be the collector. Turn on the <code>beacon_receiver_enabled</code> setting on the instance
+that should gather counts (<code>PUT /api/settings/beacon</code> with <code>receiver_enabled</code>, admin only), and point
+other installs&rsquo; Collector URL at its <code>/api/beacon</code>. The receiver is off by default and, while off, the
+endpoint returns <strong>404</strong> so it isn&rsquo;t advertised.</p>
+<p>A receiving instance upserts by instance id — the first ping inserts, repeats bump <code>last_seen</code> and the
+ping count and refresh the version — and stores no IP or other request metadata. When an instance is
+acting as a collector, its Beacon settings card shows the tallies: total instances ever seen, active in
+the last 7 and 30 days, and a version breakdown across the last 30 days (<code>GET /api/beacon/stats</code>,
+admin only).</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-servers.html">Servers</a></li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a></li>
+<li><a href="guides-notifications.html">Notifications</a></li>
+<li><a href="guides-networking.html">Networking and public access</a></li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/status-page-and-beacon.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-public-status-page">The public status page</a><a class="t3" href="#double-opt-in">Double opt-in</a><a class="t3" href="#exactly-what-it-exposes">Exactly what it exposes</a><a class="t3" href="#player-counts-come-from-the-sampler">Player counts come from the sampler</a><a class="t3" href="#the-statusjs-split">The /status.js split</a><a class="t2" href="#the-discord-status-board">The Discord status board</a><a class="t3" href="#one-message-edited-in-place">One message, edited in place</a><a class="t3" href="#what-the-embed-looks-like">What the embed looks like</a><a class="t2" href="#the-beacon">The beacon</a><a class="t3" href="#the-literal-payload">The literal payload</a><a class="t3" href="#how-it-behaves">How it behaves</a><a class="t3" href="#collector-url-and-test">Collector URL and Test</a><a class="t3" href="#running-your-own-collector">Running your own collector</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

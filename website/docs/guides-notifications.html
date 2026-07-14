@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notifications — Yggdrasil Panel docs</title>
+<meta name="description" content="Yggdrasil pushes events — backups, crashes, alarms, auto-bans — to Telegram, Discord, a generic webhook, or email." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html" class="on">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Notifications</h1>
+    <p>Yggdrasil pushes events — backups, crashes, alarms, auto-bans — to Telegram, Discord, a generic
+webhook, or email. This covers the channel types, how to add and test one, and exactly which events
+produce a message.</p>
+<h2 id="channels">Channels</h2>
+<p>A channel is a global admin setting, not a per-server one: every enabled channel receives every
+event the panel emits. Add them under <strong>Settings → Integrations → Notifications → + Add channel</strong>.
+Credentials are encrypted at rest and are never returned by the API — the channel list shows only
+the type and whether it is enabled.</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>What you provide</th>
+<th>How it delivers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telegram</code></td>
+<td>Bot token, chat ID</td>
+<td><code>sendMessage</code> to the Telegram bot API</td>
+</tr>
+<tr>
+<td><code>discord</code></td>
+<td>Webhook URL</td>
+<td><code>POST {&quot;content&quot;: &quot;…&quot;}</code></td>
+</tr>
+<tr>
+<td><code>webhook</code></td>
+<td>Any URL</td>
+<td><code>POST {&quot;text&quot;: &quot;…&quot;}</code></td>
+</tr>
+<tr>
+<td><code>email</code></td>
+<td>SMTP host, port, username, password, from, to</td>
+<td><code>smtp.SendMail</code>, subject <code>Yggdrasil notification</code></td>
+</tr>
+</tbody>
+</table>
+<p>For email, the port defaults to <code>587</code> when you leave it blank, and PLAIN auth is used when you set a
+username (leave it empty for a relay that doesn&rsquo;t authenticate). One <code>from</code> and one <code>to</code> per
+channel — add a second channel if you want a second recipient.</p>
+<p>Telegram, Discord and webhook sends get a 10-second timeout. Email does not: <code>smtp.SendMail</code> carries
+no deadline, so an SMTP server that accepts the connection and then stalls holds that send open.
+Sends happen in the background, so a dead channel never blocks a backup or a restart; failures are
+written to the panel log rather than retried.</p>
+<h3 id="testing">Testing</h3>
+<p><strong>Test</strong> on a channel sends &ldquo;🌳 Yggdrasil test notification — channels are working.&rdquo; through the
+stored config and reports the transport error verbatim if it fails. Do this once when you add a
+channel — a wrong Telegram chat ID or an expired Discord webhook looks identical to &ldquo;no events
+happened&rdquo; otherwise.</p>
+<h2 id="what-actually-notifies">What actually notifies</h2>
+<h3 id="backups">Backups</h3>
+<ul>
+<li>Backup finished, with the archive size.</li>
+<li>Backup failed, with the reason (server not found, target config, connect, upload).</li>
+</ul>
+<p>Both fire for every backup, whether you started it by hand or a schedule did.</p>
+<h3 id="server-lifecycle">Server lifecycle</h3>
+<ul>
+<li>A server started, stopped, or restarted <strong>from the panel or the API</strong>.</li>
+<li>A server was wiped.</li>
+</ul>
+<p>These come from the manual endpoints. A restart that a <em>schedule</em> performs does not send its own
+message — see the schedule summary below.</p>
+<h3 id="watchdog-and-start-failures">Watchdog and start failures</h3>
+<p>The watchdog (per-server, off unless you enable it) health-checks running servers whose rune
+declares a query, and notifies on each step:</p>
+<ul>
+<li>The server stopped responding — the message carries the number of failed checks — and is being
+auto-restarted.</li>
+<li>The auto-restart itself failed.</li>
+<li>The auto-restart succeeded.</li>
+<li>Auto-heal gave up: five heals inside 30 minutes puts the server in quarantine, auto-heal pauses,
+and you get one message telling you to fix it and start it manually.</li>
+</ul>
+<p>Separately, the start watchdog watches a server that was just started:</p>
+<ul>
+<li>It is taking longer than usual — still not ready after 5 minutes. Sent at most once per start
+attempt, with the latest log lines attached.</li>
+<li>It was still &ldquo;starting&rdquo; when the panel restarted and never became ready; it has been marked
+stopped. Includes the last log lines.</li>
+<li>It failed to start after 3 attempts and has been left stopped. Includes the last log lines.</li>
+</ul>
+<h3 id="resource-and-disk-alarms">Resource and disk alarms</h3>
+<p>Per-server CPU and memory alarms fire only when you set a threshold above zero on that server. The
+metrics sampler runs every 5 minutes, and an alarm needs two consecutive over-threshold samples
+(roughly 10 minutes) before it speaks.</p>
+<p>The per-server disk alarm compares the data directory&rsquo;s size against its threshold. Both alarms send
+an all-clear message when the value comes back under the threshold.</p>
+<p>The host also has a low-disk monitor that is always on: when the filesystem holding the Yggdrasil
+database drops below 10% free, you get one message.</p>
+<h3 id="auto-moderation">Auto-moderation</h3>
+<p>When a violation rule crosses its threshold, Yggdrasil notifies the action it took: an auto-kick
+(with the rule name and server) or an auto-ban.</p>
+<h3 id="scheduled-runs">Scheduled runs</h3>
+<p>Each firing of a schedule produces one summary: how many servers succeeded, were skipped, and
+failed, with the names under each heading. The icon reflects the worst outcome — ✅ if everything
+worked, ❌ if anything failed, ⏰ if nothing ran.</p>
+<h3 id="nightly-backup-verification">Nightly backup verification</h3>
+<p>When backup verification is enabled, the nightly pass notifies only when it finds a corrupt latest
+backup, listing the affected servers. A transport problem reaching the target is not a corruption
+verdict and is skipped quietly. A clean run says nothing.</p>
+<h3 id="daily-ai-digest">Daily AI digest</h3>
+<p>With Kvasir and its daily digest both switched on, the ops briefing arrives once a day at your
+chosen hour. See <a href="guides-kvasir-ai.html">Kvasir</a>.</p>
+<h2 id="which-events-are-gated">Which events are gated</h2>
+<p>Nothing per-event is toggleable — a channel gets everything the panel emits. What varies is whether
+the <em>source</em> of the event is switched on for that server.</p>
+<p>Always on once you have a channel:</p>
+<ul>
+<li>Backup done and failed</li>
+<li>Manual start / stop / restart / wipe</li>
+<li>Slow start, stalled start, and start-gave-up alerts</li>
+<li>Schedule run summaries</li>
+<li>Host low disk (under 10% free)</li>
+</ul>
+<p>Only when you&rsquo;ve configured the feature:</p>
+<ul>
+<li>Watchdog heal, heal-failed, and quarantine — per-server watchdog toggle</li>
+<li>CPU and memory alarms and all-clears — per-server threshold above 0</li>
+<li>Disk alarm and all-clear — per-server threshold above 0</li>
+<li>Auto-kick / auto-ban — you have a violation rule with that action</li>
+<li>Backup-verify failures — the nightly verification setting</li>
+<li>Daily ops digest — Kvasir enabled and the digest toggle on</li>
+</ul>
+<h2 id="the-anti-noise-design">The anti-noise design</h2>
+<p>The volume is kept down on purpose, and it&rsquo;s worth knowing the rules so silence doesn&rsquo;t read as
+breakage:</p>
+<ul>
+<li><strong>One message per schedule firing</strong>, not one per server. Only state-changing schedule actions —
+start, stop, restart, update — produce it. Scheduled backups are excluded because a backup already
+emits its own ✅/❌, and scheduled message and command actions are excluded because they only ever
+act in-game, where the players already saw them.</li>
+<li><strong>A scheduled restart does not double-notify.</strong> The individual &ldquo;restarted&rdquo; message comes from the
+manual restart endpoint only; a scheduled one is represented in the summary.</li>
+<li><strong>Alarms are edge-triggered.</strong> An alarm fires once when it crosses, then stays quiet no matter how
+many samples stay over the threshold, and sends exactly one all-clear when it drops back. You get
+two messages per episode, not one every 5 minutes. The same applies to the host low-disk monitor,
+which re-arms only once free space recovers to 15%.</li>
+<li><strong>CPU and memory alarm state resets when a server stops</strong>, so its next run is evaluated fresh.
+Disk alarm state deliberately persists: a stopped server&rsquo;s data directory still occupies the disk.</li>
+<li><strong>The start watchdog says &ldquo;taking a long time&rdquo; at most once per start attempt</strong>, and the
+&ldquo;gave up&rdquo; alert is a single message after the retry budget is spent, not one per attempt.</li>
+<li><strong>Backup verification only speaks on bad news.</strong></li>
+</ul>
+<h2 id="the-discord-status-board-is-a-different-thing">The Discord status board is a different thing</h2>
+<p>A Discord notification channel posts a new message for every event. The <strong>Discord status board</strong>
+(<strong>Settings → Integrations → Discord status board</strong>) is separate: it keeps one embed in a channel
+and edits it in place every 3 minutes with the up/down state and player counts of the servers you&rsquo;ve
+shared publicly. It&rsquo;s a live board for your community, not an event feed, and it has its own webhook
+URL and enable switch. See <a href="guides-status-page-and-beacon.html">Status page and beacon</a>.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a> — where thresholds, the watchdog and verification are configured</li>
+<li><a href="guides-kvasir-ai.html">Kvasir</a> — the daily ops digest</li>
+<li><a href="guides-status-page-and-beacon.html">Status page and beacon</a> — the Discord status board</li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/notifications.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#channels">Channels</a><a class="t3" href="#testing">Testing</a><a class="t2" href="#what-actually-notifies">What actually notifies</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#server-lifecycle">Server lifecycle</a><a class="t3" href="#watchdog-and-start-failures">Watchdog and start failures</a><a class="t3" href="#resource-and-disk-alarms">Resource and disk alarms</a><a class="t3" href="#auto-moderation">Auto-moderation</a><a class="t3" href="#scheduled-runs">Scheduled runs</a><a class="t3" href="#nightly-backup-verification">Nightly backup verification</a><a class="t3" href="#daily-ai-digest">Daily AI digest</a><a class="t2" href="#which-events-are-gated">Which events are gated</a><a class="t2" href="#the-anti-noise-design">The anti-noise design</a><a class="t2" href="#the-discord-status-board-is-a-different-thing">The Discord status board is a different thing</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

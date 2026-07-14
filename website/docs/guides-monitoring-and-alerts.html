@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Monitoring and alerts — Yggdrasil Panel docs</title>
+<meta name="description" content="What Yggdrasil Panel measures, what it keeps, and what it will wake you up about." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html" class="on">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Monitoring and alerts</h1>
+    <p>What Yggdrasil Panel measures, what it keeps, and what it will wake you up about. Read this before
+you set your first alarm threshold, and again when you want to know why a number looks the way it
+does.</p>
+<h2 id="live-cpu-and-memory">Live CPU and memory</h2>
+<p>A running server&rsquo;s page shows current CPU and memory read straight from Docker
+(<code>GET /api/servers/{id}/stats</code>): CPU percent, memory used, and the container&rsquo;s memory limit.</p>
+<p>The CPU number needs one sentence of explanation, because it is not the number <code>docker stats</code> prints.
+Yggdrasil reports a server&rsquo;s CPU as <strong>a share of the whole host, from 0 to 100</strong>, and caps it at 100.
+Docker&rsquo;s usual formula multiplies by the core count, so a container burning 1.2 of your 8 cores reads
+<code>120%</code>. On a per-server gauge that looks alarming and means nothing. Yggdrasil divides the container&rsquo;s
+CPU delta by the system-wide delta, which already spans every core, so the same container reads <code>15%</code>
+— fifteen percent of the machine. That is the same scale as the host CPU figure on the dashboard, so
+the two can be compared directly, and a server&rsquo;s CPU can never exceed 100.</p>
+<p>The consequence for thresholds: a CPU alarm at <code>80</code> means &ldquo;this one server is using 80% of the entire
+host&rdquo;, not &ldquo;80% of one core&rdquo;. Set them accordingly.</p>
+<h2 id="metrics-history">Metrics history</h2>
+<p>A sampler runs every <strong>5 minutes</strong>. For each running server it records one row — CPU percent, memory
+in MB, and player count — into the metrics table. Player count comes from the rune&rsquo;s query protocol,
+polled on <code>127.0.0.1</code>; a game with no query, or one that doesn&rsquo;t answer, records <code>-1</code>.</p>
+<p>Samples are pruned to a rolling <strong>7-day</strong> window, swept roughly hourly.</p>
+<p><code>GET /api/servers/{id}/metrics</code> returns the samples for the last N hours — default 24, maximum 168
+(7 days). The server page&rsquo;s <strong>History</strong> section draws the three series as sparklines with 24h / 3d /
+7d range buttons. Every sample also feeds the resource alarms below.</p>
+<h2 id="quiet-hours">Quiet hours</h2>
+<p><code>GET /api/servers/{id}/quiet-hours</code> mines the sampled player counts to answer &ldquo;when is nobody
+playing?&rdquo;. It takes the last <strong>14 days</strong> of samples, ignores the <code>-1</code> no-data rows, buckets the rest
+by <strong>server-local hour</strong> (0–23), and returns the average players per hour along with the quietest
+hour and its average.</p>
+<p>The server page shows the result as a hint next to auto-restart — &ldquo;Quietest around 05:00 (avg 0.4
+players, last 14 days) — a good time to restart&rdquo; — so you anchor a disruptive job on evidence rather
+than a guess.</p>
+<p>When there is no usable data — a brand-new server, or a game with no query protocol — the response
+says <code>has_data: false</code> and the UI stays silent rather than recommending an hour it invented.</p>
+<p>Auto-restart itself is a per-server &ldquo;restart every N hours&rdquo; toggle backed by an ordinary managed
+schedule row, so the restart runs through the same machinery as any other scheduled job, including
+the rune&rsquo;s countdown warnings and an optional backup first. See
+<a href="guides-backups-and-schedules.html">Backups and schedules</a>.</p>
+<h2 id="resource-alarms">Resource alarms</h2>
+<p>Each server has three optional thresholds, all <strong>off until you set them</strong> (zero or blank disables):</p>
+<table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th>Field</th>
+<th>Unit</th>
+<th>Measured</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td><code>cpu_alarm_pct</code></td>
+<td>percent of the whole host</td>
+<td>every metrics sample (5 min)</td>
+</tr>
+<tr>
+<td>Memory</td>
+<td><code>mem_alarm_mb</code></td>
+<td>megabytes</td>
+<td>every metrics sample (5 min)</td>
+</tr>
+<tr>
+<td>Disk</td>
+<td><code>disk_alarm_mb</code></td>
+<td>megabytes of the data directory</td>
+<td>hourly</td>
+</tr>
+</tbody>
+</table>
+<p>All three are <strong>edge-triggered</strong>. Crossing into breach fires exactly one notification. Nothing
+repeats while the alarm stays up. When the metric recovers, you get one all-clear. There is no
+reminder loop and no alert spam, which means an alarm you dismiss is an alarm you will not hear about
+again until it clears and re-fires.</p>
+<p>CPU and memory require a <strong>sustained</strong> breach: the value has to sit at or above the threshold for
+<strong>2 consecutive samples</strong> before the alarm fires. With a 5-minute sampler, that is roughly 10 minutes
+— long enough to ignore a one-off spike during world generation, short enough to catch a real leak.
+A single sample below the threshold resets the streak. The notification text spells the arithmetic
+out, for example <code>⚠️ Skyrealm CPU high: 91% (≥ 85% for ~10 min)</code>.</p>
+<p>Disk is different in two ways. It&rsquo;s checked on its own <strong>hourly</strong> timer, because measuring means
+walking the whole data directory, and the first sweep waits 2 minutes after the panel starts so boot
+isn&rsquo;t competing with a tree walk. It also fires on a <strong>single</strong> measurement at or above the threshold
+— no sustained-breach requirement, since a directory doesn&rsquo;t spike.</p>
+<h3 id="what-clears-when-a-server-stops">What clears when a server stops</h3>
+<p>CPU and memory alarm state is <strong>dropped when a server stops</strong>. A fresh run starts from zero rather
+than staying latched on a value from the last one.</p>
+<p>Disk alarm state <strong>persists</strong>. This is deliberate and it is the behaviour that surprises people: a
+stopped server&rsquo;s data directory still occupies exactly as much disk as it did while running. Worlds,
+in-place backups and logs don&rsquo;t shrink because you pressed Stop. So stopping a server does not silence
+its disk alarm and does not produce an all-clear — you get the all-clear when the directory actually
+falls back under the threshold, which means deleting something.</p>
+<p>Alarms go out through your configured notification channels — see <a href="guides-notifications.html">Notifications</a>.</p>
+<h2 id="watchdog">Watchdog</h2>
+<p>The <strong>watchdog</strong> is per-server auto-heal, off by default, and available only on runes that declare a
+query protocol (there&rsquo;s nothing to health-check otherwise, so the UI gates the toggle).</p>
+<p>The reconciler&rsquo;s 20-second tick health-checks every watchdog-enabled running server by speaking its
+query protocol on <code>127.0.0.1</code> with a 3-second timeout. This catches a specific and nasty failure: the
+container is up, Docker is happy, and the game inside is hung. A container-liveness check sees nothing
+wrong; the watchdog sees no answer.</p>
+<ul>
+<li><strong>3 consecutive failed checks</strong> trigger a heal. Yggdrasil recreates and restarts the server and
+notifies you before and after.</li>
+<li>After a heal, a <strong>4-minute cooldown</strong> suspends checks so the server has room to boot without being
+restarted again mid-start.</li>
+<li>Any successful check resets the failure streak.</li>
+</ul>
+<p>If a server needs <strong>5 heals within 30 minutes</strong>, it is crash-looping and restarting it is not helping.
+The watchdog <strong>quarantines</strong> it: auto-heal pauses, you get one alert saying so, and Yggdrasil leaves
+it alone. Starting the server manually clears the quarantine and gives it a fresh chance. Turning the
+toggle off, or stopping or deleting the server, also clears its state.</p>
+<h2 id="start-failure-detection">Start-failure detection</h2>
+<p>The watchdog only heals servers the panel already believes are <em>running</em>. A container that comes up
+and whose game process crashes straight back out is a different failure, and it has its own handling.</p>
+<p>When a start attempt fails — the container exits before it ever signals readiness — Yggdrasil grabs
+the container&rsquo;s log tail immediately, while the crashed container still exists, then retries. There
+are <strong>3 total attempts</strong> (the original plus two automatic retries), each after a <strong>15-second</strong> backoff
+so a slow image pull or a dependency still coming up can settle. Retries are logged, not notified,
+which keeps a transient blip quiet.</p>
+<p>After the third failure Yggdrasil gives up, leaves the server stopped, and sends <strong>one</strong> actionable
+alert with the last <strong>40 log lines</strong> attached (trimmed to 1500 characters so the notification stays
+sendable). That is the whole point of the feature: the alert tells you <em>why</em>, not just <em>that</em>.</p>
+<p>The failure count resets the moment a start succeeds, or whenever you start or stop the server
+yourself — a fresh intent gets a fresh retry budget. If you take over during a backoff, the retry
+stands down.</p>
+<p>Two adjacent cases are covered by the same machinery:</p>
+<ul>
+<li><strong>Slow start.</strong> A server that is still <code>starting</code> after <strong>5 minutes</strong> without crashing gets one
+heads-up with its latest log tail, then Yggdrasil keeps waiting. The readiness window is 10 minutes;
+a server still up at the end of it is marked running regardless.</li>
+<li><strong>Stalled start across a panel restart.</strong> If the panel restarts while a server is <code>starting</code>,
+Yggdrasil re-attaches to it. A container that has been up well past the readiness window and never
+signalled ready — the game process died but its wrapper stayed alive — is marked stopped, and you
+get an alert with the log tail.</li>
+</ul>
+<h2 id="host-system-info">Host system info</h2>
+<p><code>GET /api/system/info</code> backs the dashboard&rsquo;s host panel (admin only):</p>
+<ul>
+<li>Docker reachability</li>
+<li>server count, running count, user count, rune count</li>
+<li>Go version, architecture, CPU count</li>
+<li>host CPU percent, sampled from <code>/proc/stat</code> over a 150 ms window (<code>-1</code> when unavailable, such as on
+a non-Linux dev box)</li>
+<li>total and used RAM, read from <code>/proc/meminfo</code> (<code>MemTotal</code> minus <code>MemAvailable</code>); zero on a host
+without <code>/proc</code>, and the dashboard omits the card</li>
+<li>free and total bytes on the filesystem holding the Yggdrasil data directory</li>
+</ul>
+<h3 id="low-disk-alert">Low-disk alert</h3>
+<p>Separately from the per-server disk alarms, Yggdrasil watches free space on the data filesystem every
+<strong>5 minutes</strong>. When free space drops <strong>below 10%</strong> it sends one notification and stops. It re-arms
+once free space recovers to <strong>15% or more</strong>, so a filesystem hovering at the line doesn&rsquo;t produce a
+stream of alerts.</p>
+<h2 id="updates">Updates</h2>
+<p><code>GET /api/version</code> reports the running build, the latest GitHub release tag, whether an update is
+available, and whether the panel can update itself. The GitHub release lookup is cached for <strong>6 hours</strong>
+so the version endpoint — hit on every page load — doesn&rsquo;t hammer the API. <strong>Check now</strong>
+(<code>POST /api/system/check-update</code>) invalidates that cache and refetches, so a just-published release
+shows up immediately.</p>
+<p>Self-update works only for a released <code>vX.Y.Z</code> build with the updater installed by <code>install.sh</code>. The
+panel runs sandboxed and cannot escalate its own privileges: instead it writes the target tag to a
+request file in its state directory, and a systemd path unit picks that up and runs a root oneshot
+updater. If the helper isn&rsquo;t present, the panel says so and points you at the manual steps rather than
+failing obscurely. <code>GET /api/system/update-status</code> surfaces the last result the helper wrote, which is
+where a checksum or download failure shows up after a restart poll times out.</p>
+<p><strong>Auto-update</strong> is opt-in, with a chosen hour (default <strong>4</strong>, server-local). A loop wakes every 20
+minutes and acts at most once a day: it runs at the first check at or after your chosen hour that
+hasn&rsquo;t run today. The catch-up window matters — gating on the exact hour meant a panel that was
+rebooting, asleep or offline during that one hour silently skipped the whole day. A self-update
+restarts only the panel binary; your game and app containers keep running, so the impact is a few
+seconds of UI downtime.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-servers.html">Servers</a></li>
+<li><a href="guides-notifications.html">Notifications</a></li>
+<li><a href="guides-backups-and-schedules.html">Backups and schedules</a></li>
+<li><a href="guides-networking.html">Networking and public access</a></li>
+<li><a href="guides-status-page-and-beacon.html">Status page and beacon</a></li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/monitoring-and-alerts.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

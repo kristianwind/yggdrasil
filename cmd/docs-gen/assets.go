@@ -1,0 +1,357 @@
+package main
+
+// css intentionally reuses the landing page's design tokens verbatim (see
+// website/index.html) so the docs read as the same site rather than a bolted-on
+// subdomain. Keep the :root block in sync if the landing page's palette moves.
+const css = `:root{
+  --bg:#0b0f14; --bg2:#10161e; --panel:#141b24; --panel2:#1b2530;
+  --border:#243040; --fg:#e6edf3; --muted:#9aa7b4;
+  --accent:#22c55e; --accent2:#34d399;
+  --side:260px; --toc:210px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);color:var(--fg);line-height:1.65;-webkit-font-smoothing:antialiased}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+/* The sidebar and TOC scroll independently; a default light scrollbar track cuts
+   a bright stripe through the dark chrome. */
+.side,.toc,.res,.doc pre,.doc table{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.side::-webkit-scrollbar,.toc::-webkit-scrollbar,.res::-webkit-scrollbar,
+.doc pre::-webkit-scrollbar,.doc table::-webkit-scrollbar{width:8px;height:8px}
+.side::-webkit-scrollbar-track,.toc::-webkit-scrollbar-track,.res::-webkit-scrollbar-track,
+.doc pre::-webkit-scrollbar-track,.doc table::-webkit-scrollbar-track{background:transparent}
+.side::-webkit-scrollbar-thumb,.toc::-webkit-scrollbar-thumb,.res::-webkit-scrollbar-thumb,
+.doc pre::-webkit-scrollbar-thumb,.doc table::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.side::-webkit-scrollbar-thumb:hover,.toc::-webkit-scrollbar-thumb:hover{background:#31415a}
+
+/* ---- top nav (mirrors the landing page) ---- */
+header.nav{position:sticky;top:0;z-index:30;background:rgba(11,15,20,.85);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border)}
+.navwrap{max-width:1400px;margin:0 auto;padding:0 1.25rem;display:flex;align-items:center;gap:1rem;height:60px}
+.brand{font-weight:700;font-size:1.15rem;display:flex;align-items:center;gap:.5rem;color:var(--fg)}
+a.brand:hover{text-decoration:none;opacity:.85}
+.nav nav{margin-left:auto;display:flex;gap:1.25rem;align-items:center}
+.nav nav a{color:var(--muted);font-size:.95rem}
+.nav nav a:hover,.nav nav a.on{color:var(--fg);text-decoration:none}
+.btn{display:inline-block;background:var(--accent);color:#04210f;font-weight:600;
+  padding:.6rem 1rem;border-radius:.6rem;border:0;cursor:pointer}
+.btn:hover{text-decoration:none;filter:brightness(1.05)}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--border)}
+.hamburger{display:none;margin-left:auto;font-size:1.6rem;line-height:1;cursor:pointer;
+  color:var(--fg);padding:.2rem .5rem;user-select:none}
+.navtoggle,.sidetoggle{position:absolute;opacity:0;pointer-events:none}
+.sidebtn{display:none}
+
+/* ---- three-column shell ---- */
+.shell{max-width:1400px;margin:0 auto;padding:0 1.25rem;display:grid;
+  grid-template-columns:var(--side) minmax(0,1fr) var(--toc);gap:2.5rem;align-items:start}
+
+/* ---- sidebar ---- */
+.side{position:sticky;top:60px;max-height:calc(100vh - 60px);overflow-y:auto;
+  padding:1.75rem 0 3rem;display:flex;flex-direction:column;gap:.1rem}
+.side a{color:var(--muted);font-size:.92rem;padding:.4rem .7rem;border-radius:.45rem;
+  border-left:2px solid transparent;display:flex;align-items:center;gap:.4rem}
+.side a:hover{color:var(--fg);background:var(--panel);text-decoration:none}
+.side a.on{color:var(--accent2);background:var(--panel);border-left-color:var(--accent);font-weight:600}
+.side .sec{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  opacity:.65;margin:1.4rem 0 .4rem;padding:0 .7rem;font-weight:700}
+.side a.ext{justify-content:space-between}
+.gh{font-size:.68rem;color:var(--muted);border:1px solid var(--border);border-radius:999px;
+  padding:.05rem .45rem;white-space:nowrap;opacity:.8}
+
+/* ---- search ---- */
+.search{position:relative;margin:1.75rem 0 .5rem}
+.search input{width:100%;background:var(--panel);border:1px solid var(--border);color:var(--fg);
+  border-radius:.6rem;padding:.6rem .9rem;font-size:.95rem;font-family:inherit}
+.search input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(34,197,94,.12)}
+.search input::placeholder{color:var(--muted)}
+.res{position:absolute;top:calc(100% + .4rem);left:0;right:0;z-index:20;background:var(--panel2);
+  border:1px solid var(--border);border-radius:.6rem;overflow:hidden;
+  box-shadow:0 24px 60px -20px rgba(0,0,0,.8);max-height:60vh;overflow-y:auto}
+.res a{display:block;padding:.6rem .9rem;border-bottom:1px solid var(--border);color:var(--fg)}
+.res a:last-child{border-bottom:0}
+.res a:hover,.res a.sel{background:var(--panel);text-decoration:none}
+.res .rt{font-weight:600;font-size:.92rem}
+.res .rs{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.res .rb{font-size:.82rem;color:var(--muted);margin-top:.15rem;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.res mark{background:rgba(34,197,94,.25);color:var(--fg);border-radius:2px}
+.res .none{padding:.8rem .9rem;color:var(--muted);font-size:.9rem}
+
+/* ---- article ---- */
+main{min-width:0;padding-bottom:5rem}
+.doc{min-width:0}
+.doc h1{font-size:clamp(1.9rem,4vw,2.5rem);letter-spacing:-.02em;margin:.6rem 0 1.2rem}
+.doc h2{font-size:1.45rem;letter-spacing:-.01em;margin:2.6rem 0 .8rem;padding-top:.6rem;
+  border-top:1px solid var(--border)}
+.doc h3{font-size:1.12rem;margin:1.8rem 0 .5rem}
+.doc h2:first-of-type{border-top:0;padding-top:0}
+/* The nav is sticky, so an anchored heading would land underneath it. */
+.doc h1,.doc h2,.doc h3,.doc h4{scroll-margin-top:5rem}
+.doc p,.doc li{color:#cdd7e1}
+.doc strong{color:var(--fg)}
+/* Underline links in prose only. Cards, the index and the edit row are
+   navigation, not references, and underlining them reads as noise. */
+.doc p a,.doc li a,.doc td a,.doc blockquote a{text-decoration:underline;text-underline-offset:2px;
+  text-decoration-color:rgba(52,211,153,.4)}
+.doc p a:hover,.doc li a:hover,.doc td a:hover{text-decoration-color:var(--accent2)}
+.idx a,.idx a:hover{text-decoration:none}
+.doc ul,.doc ol{padding-left:1.3rem}
+.doc li{margin:.3rem 0}
+.doc :not(pre)>code{background:var(--panel2);border:1px solid var(--border);border-radius:.35rem;
+  padding:.1rem .35rem;font-size:.87em;color:var(--accent2)}
+.doc pre{background:var(--panel);border:1px solid var(--border);border-radius:.7rem;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:.87rem;line-height:1.55;position:relative}
+.doc pre code{color:#cdd7e1;background:none;border:0;padding:0}
+.doc pre .copy{position:absolute;top:.5rem;right:.5rem;background:var(--panel2);border:1px solid var(--border);
+  color:var(--muted);border-radius:.4rem;padding:.25rem .55rem;cursor:pointer;font-size:.75rem;
+  font-family:inherit;opacity:0;transition:opacity .12s,color .12s}
+.doc pre:hover .copy,.doc pre .copy:focus{opacity:1}
+.doc pre .copy:hover{color:var(--fg);border-color:var(--muted)}
+.doc pre .copy.ok{color:var(--accent);border-color:var(--accent);opacity:1}
+@media (hover:none){.doc pre .copy{opacity:1}}
+.doc blockquote{margin:1.2rem 0;padding:.1rem 1rem;border-left:3px solid var(--accent);
+  background:var(--panel);border-radius:0 .5rem .5rem 0;color:var(--muted)}
+.doc table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.9rem;display:block;overflow-x:auto}
+.doc th,.doc td{border:1px solid var(--border);padding:.5rem .7rem;text-align:left;vertical-align:top}
+.doc th{background:var(--panel2);font-weight:600;white-space:nowrap}
+.doc td{color:#cdd7e1}
+.doc tr:nth-child(even) td{background:rgba(255,255,255,.012)}
+.doc img{max-width:100%;border:1px solid var(--border);border-radius:.7rem;display:block;
+  margin:1.2rem 0;cursor:zoom-in;box-shadow:0 20px 50px -25px rgba(0,0,0,.7)}
+.doc hr{border:0;border-top:1px solid var(--border);margin:2.5rem 0}
+.doc h2 a.anchor,.doc h3 a.anchor{opacity:0;margin-left:.4rem;font-weight:400;text-decoration:none}
+.doc h2:hover a.anchor,.doc h3:hover a.anchor{opacity:.5}
+
+.editrow{margin-top:4rem;padding-top:1.2rem;border-top:1px solid var(--border);font-size:.88rem}
+.editrow a{color:var(--muted)}
+
+/* ---- on-page TOC ---- */
+.toc{position:sticky;top:60px;max-height:calc(100vh - 60px);overflow-y:auto;
+  padding:6.2rem 0 3rem;display:flex;flex-direction:column;gap:.05rem}
+.toch{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  opacity:.65;font-weight:700;margin-bottom:.5rem}
+.toc a{color:var(--muted);font-size:.83rem;padding:.25rem 0 .25rem .7rem;
+  border-left:2px solid var(--border);line-height:1.4}
+.toc a:hover{color:var(--fg);text-decoration:none;border-left-color:var(--muted)}
+.toc a.on{color:var(--accent2);border-left-color:var(--accent)}
+.toc a.t3{padding-left:1.4rem;font-size:.79rem;opacity:.85}
+
+/* ---- docs index ---- */
+.idx .hero-doc{text-align:center;padding:2.5rem 0 1rem;
+  background:radial-gradient(50rem 22rem at 50% -20%, rgba(34,197,94,.11), transparent 70%)}
+.idx .tree{font-size:3rem}
+.idx .hero-doc h1{margin:.2rem 0 .5rem}
+.idx .tag{color:var(--muted);max-width:34rem;margin:0 auto;font-size:1.05rem}
+.startbox{margin:2rem 0 1rem}
+.startcard{display:block;background:linear-gradient(180deg,var(--panel),var(--panel2));
+  border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:.8rem;
+  padding:1.4rem 1.5rem;transition:transform .12s,border-color .12s}
+.startcard:hover{text-decoration:none;transform:translateY(-2px);border-color:var(--accent)}
+.startcard .k{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:700}
+.startcard h2{margin:.35rem 0 .3rem;font-size:1.4rem;border:0;padding:0;color:var(--fg)}
+.startcard p{margin:0;color:var(--muted)}
+.startcard .go{display:inline-block;margin-top:.7rem;color:var(--accent2);font-size:.9rem;font-weight:600}
+.sech{font-size:1.3rem;margin:2.6rem 0 .3rem;border:0;padding:0}
+.secsub{color:var(--muted);margin:0 0 1rem;font-size:.93rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem}
+a.card{background:var(--panel);border:1px solid var(--border);border-radius:.8rem;padding:1rem 1.1rem;
+  transition:transform .12s,border-color .12s;color:var(--fg)}
+a.card:hover{text-decoration:none;transform:translateY(-2px);border-color:var(--accent)}
+a.card h3{margin:0 0 .25rem;font-size:1rem;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+a.card p{margin:0;color:var(--muted);font-size:.87rem;line-height:1.5}
+
+/* ---- lightbox ---- */
+#lb{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.92);display:none;
+  place-items:center;padding:2rem;cursor:zoom-out}
+#lb.open{display:grid}
+#lb img{max-width:96vw;max-height:92vh;border-radius:.6rem;border:1px solid var(--border)}
+#lb .x{position:fixed;top:1rem;right:1.4rem;color:#fff;font-size:2.2rem;line-height:1;
+  background:none;border:0;cursor:pointer;opacity:.85}
+
+/* ---- responsive ---- */
+@media (max-width:1150px){
+  .shell{grid-template-columns:var(--side) minmax(0,1fr)}
+  .toc{display:none}
+}
+@media (max-width:860px){
+  .shell{grid-template-columns:1fr;gap:0}
+  .sidebtn{display:block;margin:.9rem 0 0;padding:.55rem .9rem;background:var(--panel);
+    border:1px solid var(--border);border-radius:.6rem;color:var(--fg);font-size:.9rem;
+    font-weight:600;cursor:pointer;user-select:none}
+  .sidebtn:active{background:var(--panel2)}
+  .side{display:none;position:static;max-height:none;overflow:visible;flex-direction:row;flex-wrap:wrap;
+    gap:.3rem;padding:.7rem 0 .5rem;border-bottom:1px solid var(--border);margin-bottom:.5rem}
+  .sidetoggle:checked ~ .side{display:flex}
+  .side a{border-left:0;border:1px solid var(--border);font-size:.85rem;padding:.3rem .6rem}
+  .side a.on{border-color:var(--accent)}
+  .side .sec{width:100%;margin:.7rem 0 .1rem;padding:0}
+  .side .gh{display:none}
+  .nav nav{position:absolute;top:60px;left:0;right:0;margin-left:0;flex-direction:column;
+    align-items:stretch;gap:0;background:rgba(11,15,20,.98);border-bottom:1px solid var(--border);
+    padding:.25rem 1.25rem .75rem;display:none}
+  .navtoggle:checked ~ nav{display:flex}
+  .hamburger{display:block}
+  .nav nav a{padding:.7rem 0;font-size:1rem}
+  .nav nav a.btn{margin-top:.4rem;text-align:center}
+  .doc table{font-size:.84rem}
+}
+`
+
+// js is the whole client: search over a small local index, a screenshot
+// lightbox, and TOC scroll-spy. No framework, no network calls at runtime —
+// the site ships nothing that phones home.
+const js = `(function () {
+  // ---- search ----
+  var q = document.getElementById("q"), res = document.getElementById("res"), idx = null, sel = -1;
+
+  function load() {
+    if (idx) return Promise.resolve(idx);
+    return fetch("search.json").then(function (r) { return r.json(); }).then(function (j) { idx = j; return j; });
+  }
+  function esc(s) { return s.replace(/[&<>"]/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+  function mark(text, term) {
+    var i = text.toLowerCase().indexOf(term);
+    if (i < 0) return esc(text.slice(0, 140));
+    var from = Math.max(0, i - 45), s = (from ? "…" : "") + text.slice(from, i);
+    return esc(s) + "<mark>" + esc(text.substr(i, term.length)) + "</mark>" + esc(text.substr(i + term.length, 90)) + "…";
+  }
+  function render(hits, term) {
+    if (!hits.length) { res.innerHTML = '<div class="none">Nothing matches “' + esc(term) + '”.</div>'; res.hidden = false; return; }
+    res.innerHTML = hits.map(function (h) {
+      // Show the section as the headline and the page as the breadcrumb, since
+      // the section is what the reader actually wants to land on.
+      var parts = h.t.split(" › "), page = parts[0], section = parts[1] || "";
+      return '<a href="' + h.u + '"><div class="rs">' + esc(h.s) + " · " + esc(page) + '</div>' +
+             '<div class="rt">' + esc(section || page) + '</div>' +
+             '<div class="rb">' + mark(h.b, term) + '</div></a>';
+    }).join("");
+    res.hidden = false; sel = -1;
+  }
+  function search(term) {
+    term = term.trim().toLowerCase();
+    if (term.length < 2) { res.hidden = true; return; }
+    load().then(function (all) {
+      var hits = [];
+      all.forEach(function (p) {
+        // The record's title is "Page › Section"; a match in the section name is
+        // a much stronger signal than one buried in its prose, and a whole-word
+        // hit beats a substring ("ports" shouldn't rank on "passports").
+        var t = p.t.toLowerCase(), b = p.b.toLowerCase(), score = 0;
+        var word = new RegExp("\\b" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        if (t.indexOf(term) >= 0) score += word.test(t) ? 24 : 12;
+        if (b.indexOf(term) >= 0) score += word.test(b) ? 4 : 1;
+        // A short section that mentions the term is usually more on-topic than a
+        // long one that mentions it once in passing.
+        if (score && b.length < 900) score += 1;
+        if (score) hits.push({ p: p, score: score });
+      });
+      hits.sort(function (a, b) { return b.score - a.score; });
+      render(hits.slice(0, 8).map(function (h) { return h.p; }), term);
+    });
+  }
+  if (q) {
+    q.addEventListener("input", function () { search(q.value); });
+    q.addEventListener("keydown", function (e) {
+      var items = res.querySelectorAll("a");
+      if (e.key === "Escape") { res.hidden = true; q.blur(); return; }
+      if (!items.length) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        sel += e.key === "ArrowDown" ? 1 : -1;
+        if (sel < 0) sel = items.length - 1;
+        if (sel >= items.length) sel = 0;
+        items.forEach(function (a) { a.classList.remove("sel"); });
+        items[sel].classList.add("sel");
+        items[sel].scrollIntoView({ block: "nearest" });
+      }
+      if (e.key === "Enter" && sel >= 0) { e.preventDefault(); items[sel].click(); }
+    });
+    document.addEventListener("click", function (e) {
+      if (!res.contains(e.target) && e.target !== q) res.hidden = true;
+    });
+    // "/" focuses search, the way every docs site the reader already uses does.
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "/" && document.activeElement !== q && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) {
+        e.preventDefault(); q.focus();
+      }
+    });
+  }
+
+  // ---- copy button on code blocks ----
+  // The install one-liner is the most important line on the site and it scrolls
+  // out of view on a narrow screen; copying beats selecting it by hand.
+  document.querySelectorAll(".doc pre").forEach(function (pre) {
+    var b = document.createElement("button");
+    b.className = "copy"; b.type = "button"; b.textContent = "Copy";
+    b.setAttribute("aria-label", "Copy code to clipboard");
+    b.addEventListener("click", function () {
+      var code = pre.querySelector("code");
+      var text = (code ? code.innerText : pre.innerText).replace(/\s+$/, "");
+      function done() { b.textContent = "Copied!"; b.classList.add("ok"); setTimeout(function () { b.textContent = "Copy"; b.classList.remove("ok"); }, 1400); }
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done);
+      } else {
+        // The panel is commonly reached over plain http on a LAN, where the
+        // async clipboard API is unavailable; fall back rather than do nothing.
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); } catch (e) { /* nothing sensible left */ }
+        document.body.removeChild(ta);
+      }
+    });
+    pre.appendChild(b);
+  });
+
+  // ---- screenshot lightbox ----
+  var imgs = document.querySelectorAll(".doc img");
+  if (imgs.length) {
+    var lb = document.createElement("div");
+    lb.id = "lb"; lb.innerHTML = '<button class="x" aria-label="Close">×</button><img alt="" />';
+    document.body.appendChild(lb);
+    var big = lb.querySelector("img");
+    imgs.forEach(function (el) {
+      el.addEventListener("click", function () {
+        big.src = el.currentSrc || el.src; big.alt = el.alt || "";
+        lb.classList.add("open");
+      });
+    });
+    lb.addEventListener("click", function () { lb.classList.remove("open"); big.removeAttribute("src"); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") lb.classList.remove("open"); });
+  }
+
+  // ---- TOC scroll-spy ----
+  var links = document.querySelectorAll(".toc a");
+  if (links.length && "IntersectionObserver" in window) {
+    var map = {};
+    links.forEach(function (a) { map[a.getAttribute("href").slice(1)] = a; });
+    var seen = [];
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        var i = seen.indexOf(en.target.id);
+        if (en.isIntersecting && i < 0) seen.push(en.target.id);
+        if (!en.isIntersecting && i >= 0) seen.splice(i, 1);
+      });
+      if (!seen.length) return;
+      links.forEach(function (a) { a.classList.remove("on"); });
+      var top = seen[0];
+      if (map[top]) map[top].classList.add("on");
+    }, { rootMargin: "-60px 0px -70% 0px" });
+    Object.keys(map).forEach(function (id) {
+      var h = document.getElementById(id);
+      if (h) io.observe(h);
+    });
+  }
+
+  // ---- close the mobile menu after tapping a link ----
+  var nt = document.getElementById("navtoggle");
+  document.querySelectorAll(".nav nav a").forEach(function (a) {
+    a.addEventListener("click", function () { if (nt) nt.checked = false; });
+  });
+})();
+`

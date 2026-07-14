@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Users and permissions — Yggdrasil Panel docs</title>
+<meta name="description" content="How Yggdrasil decides who may do what: admins, delegated users, realms, the eight permission bits, and the four scopes a grant can live at." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html" class="on">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Users and permissions</h1>
+    <p>How Yggdrasil decides who may do what: admins, delegated users, realms, the eight
+permission bits, and the four scopes a grant can live at. Read this before you hand
+anyone else a login.</p>
+<h2 id="admins-and-delegates">Admins and delegates</h2>
+<p>Every account has one of two roles: <code>admin</code> or <code>user</code>. The installer creates the first
+admin. Creating an account with any other role value coerces it to <code>user</code>; updating an
+existing account with an unrecognised role leaves the role as it was, and the rest of the
+update still applies.</p>
+<p>A <strong>global admin bypasses every permission check</strong>. There is no scope you can put an
+admin in and no grant that limits one — the check returns &ldquo;allowed&rdquo; before it ever
+looks at the grants table. Treat the admin role as full control of the host: runes
+define the Docker runtime (image, command, user, capabilities, devices, mounts), so
+rune management, backup targets, users, realms and panel settings are all admin-only.</p>
+<p>Everyone else is a <strong>delegate</strong>: a <code>user</code> account that holds zero or more <em>grants</em>.
+A grant is a set of permissions attached to a scope. With no grants, a delegate can log
+in and sees nothing.</p>
+<p>The sidebar reflects this: <strong>Bans</strong>, <strong>Users</strong>, <strong>Audit log</strong> and <strong>Settings</strong> are shown
+to admins only. A delegate gets Dashboard, Servers, Runes, Schedules and Domains.</p>
+<p>You manage accounts under <strong>Users</strong>. From there you create a user, reset a password, flip
+the role, disable the account, or delete it. Two guards apply: you cannot delete your own
+account, and you cannot delete the last enabled admin.</p>
+<p><strong>Disable</strong> blocks sign-in without destroying the account, and ends the user&rsquo;s active
+sessions on their next request. It is the reversible version of Delete.</p>
+<p><img src="screenshots/users.png" alt="Users page"></p>
+<h2 id="realms">Realms</h2>
+<p>A <strong>realm</strong> is a server group — a name and a description, nothing more. Realms exist so
+you can talk about &ldquo;the Nordic cluster&rdquo; or &ldquo;the test box&rdquo; as one thing: a server belongs
+to at most one realm, and a grant can target a realm instead of naming servers one by
+one. The <strong>Servers</strong> page groups the list by realm.</p>
+<p>Realms are created through the API rather than a panel screen. As an admin:</p>
+<pre><code class="language-bash">curl -X POST -H &quot;Authorization: Bearer $YGG_TOKEN&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;name&quot;:&quot;nordic&quot;,&quot;description&quot;:&quot;EU cluster&quot;}' \
+  https://panel.example.com/api/realms
+</code></pre>
+<p>After that the realm appears in the create-server dialog, the permission editor and the
+schedule editor. A server&rsquo;s realm is picked when you create it, and an admin can move it
+later — moving a server between realms changes which delegates can reach it, so that
+change is admin-only even though the rest of the server settings are not.</p>
+<p>Deleting a realm does not delete its servers. Yggdrasil detaches them and leaves them
+realm-less.</p>
+<h2 id="the-eight-permissions">The eight permissions</h2>
+<p>These are the only assignable permissions. The names in the first column are what the
+API stores and returns; the second column is what the permission editor calls them.</p>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>UI label</th>
+<th>What it unlocks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.view</code></td>
+<td>View status</td>
+<td>The server appears in the list at all. Status, metrics, install log, query/reachability results, activity (admin log), domains.</td>
+</tr>
+<tr>
+<td><code>server.control</code></td>
+<td>Start / stop / restart</td>
+<td>Start, stop, restart. Install, update and reinstall. Auto-restart and watchdog settings. Wipe.</td>
+</tr>
+<tr>
+<td><code>server.console</code></td>
+<td>Console &amp; RCON</td>
+<td>The live console stream, sending commands, RCON execute, and the Players tab actions (kick, broadcast, lock joins).</td>
+</tr>
+<tr>
+<td><code>server.files</code></td>
+<td>Edit files</td>
+<td>The Files tab: browse, read, write, upload, download, delete, and file versions.</td>
+</tr>
+<tr>
+<td><code>server.create</code></td>
+<td>Create servers</td>
+<td>Creating a new server in the scope, and cloning an existing one into it.</td>
+</tr>
+<tr>
+<td><code>server.delete</code></td>
+<td>Delete servers</td>
+<td>Deleting a server.</td>
+</tr>
+<tr>
+<td><code>server.backup</code></td>
+<td>Backups</td>
+<td>The Backups tab: list, run, verify, restore and delete backups.</td>
+</tr>
+<tr>
+<td><code>server.schedule</code></td>
+<td>Schedules</td>
+<td>Seeing and creating schedules for the server.</td>
+</tr>
+</tbody>
+</table>
+<p><code>server.view</code> is the gate on visibility. List endpoints filter on it, so a grant that
+carries <code>server.console</code> but not <code>server.view</code> leaves the server hidden — the delegate
+has nowhere to click. Pair <code>server.view</code> with whatever else you grant.</p>
+<p>The API attaches the caller&rsquo;s effective permissions to each server it returns, and the
+UI uses that to hide tabs and buttons a delegate cannot use. Admins always receive the
+full list.</p>
+<h2 id="scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</h2>
+<p>A grant lives at one of four scopes:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th><code>scope_id</code></th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>global</code></td>
+<td>empty</td>
+<td>Every server, present and future.</td>
+</tr>
+<tr>
+<td><code>realm</code></td>
+<td>a realm ID</td>
+<td>Every server in that realm.</td>
+</tr>
+<tr>
+<td><code>gameskill</code></td>
+<td>a rune ID</td>
+<td>Every server built from that rune, in any realm.</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td>a server ID</td>
+<td>That one server.</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>gameskill</code> spelling is the code and API name for what the UI calls a <strong>rune</strong>.</p>
+<p>Matching is a straight OR across grants. For an action on a target, Yggdrasil walks the
+user&rsquo;s grants and allows the action the moment it finds one that both contains the
+permission <em>and</em> whose scope covers the target: a <code>global</code> grant always covers; a
+<code>realm</code> grant covers when the server&rsquo;s realm matches; a <code>gameskill</code> grant covers when
+the server&rsquo;s rune matches; a <code>server</code> grant covers when the server ID matches. If no
+grant matches, the request gets a 403.</p>
+<p>Grants stack and never subtract. There is no deny rule — you cannot grant
+<code>server.control</code> on a realm and then carve one server out of it. Grant narrowly instead.</p>
+<p>Realm- and rune-scoped grants apply to servers created later. That is the point of them,
+and also the thing to watch: a <code>server.delete</code> grant on a realm covers servers that do
+not exist yet.</p>
+<p><code>server.create</code> is checked against a realm/rune pair rather than a server, since there is
+no server yet. A global create grant offers every realm and rune in the create dialog; a
+realm grant offers any rune in that realm; a rune grant offers that rune in any realm.</p>
+<h2 id="the-permission-editor">The permission editor</h2>
+<p>Open <strong>Users</strong>, then <strong>Permissions</strong> next to an account. The button only appears for
+non-admin accounts, since an admin already has everything.</p>
+<p>The editor lists the user&rsquo;s grants; each card is one scope plus a row of permission
+checkboxes. <strong>+ Add grant</strong> appends a card, and the scope dropdown swaps the target
+picker between realms, runes and servers. Grants with no permissions checked are dropped
+on save, and a non-global grant without a target refuses to save.</p>
+<p>Saving <strong>replaces</strong> the user&rsquo;s whole grant set with what is on screen — this is not a
+merge. Load the editor, change what you mean to change, and save the whole picture.</p>
+<h2 id="per-server-delegates">Per-server delegates</h2>
+<p>The same data, from the other end. Open a server, go to the <strong>Settings</strong> tab, and find
+<strong>Delegated users</strong>: add a user, tick the permissions they get <em>on this server</em>, and
+save. New rows start with <code>server.view</code> ticked.</p>
+<p>This panel writes <code>server</code>-scoped grants for that one server, and touches nothing else —
+a user&rsquo;s global, realm and rune grants survive untouched. Within the panel&rsquo;s own scope
+it is still a replace: saving sets the complete list of server-scoped grants for that
+server, so removing a row removes that person&rsquo;s access to it.</p>
+<p>The panel offers seven of the eight permissions; <code>server.create</code> is absent, since
+creating a server is scoped to a realm or rune rather than to an existing server.</p>
+<p>Both the delegates panel and the permission editor are admin-only.</p>
+<h3 id="worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</h3>
+<p>Your friend should be able to watch the console and type commands on <code>mc-survival</code>, and
+do nothing else anywhere.</p>
+<ol>
+<li><strong>Users → + New user.</strong> Username <code>bjorn</code>, a password, role <code>user</code>. Leave it there —
+do not make them an admin.</li>
+<li>Open <strong>Servers → mc-survival → Settings</strong>, scroll to <strong>Delegated users</strong>.</li>
+<li><strong>+ Add user… → bjorn.</strong> Tick <strong>View</strong> and <strong>Console / RCON</strong>. Leave Start / Stop,
+Files, Backups, Schedules and Delete unticked.</li>
+<li><strong>Save delegated access.</strong></li>
+</ol>
+<p>Bjorn now logs in and sees exactly one server. The Console tab works. The Files and
+Backups tabs are not offered, start/stop is not offered, and the API refuses those calls
+with a 403 even if he crafts them by hand. He cannot see any other server, because
+<code>server.view</code> on <code>mc-survival</code> is his only visibility.</p>
+<p>Note what console access means in practice: on most games the console is the admin
+interface. Whoever has <code>server.console</code> can run whatever that game&rsquo;s console allows.</p>
+<h2 id="two-factor-authentication-totp">Two-factor authentication (TOTP)</h2>
+<p>Under <strong>Settings → Security → Two-factor authentication</strong>, choose <strong>Enable 2FA</strong>.
+Yggdrasil generates a secret, stores it encrypted and pending, and shows you the secret
+plus an <code>otpauth://</code> URI for your authenticator app. Enter a current code and
+<strong>Confirm &amp; enable</strong> — 2FA is only switched on once a code verifies against the pending
+secret. Disabling it also requires a current code; a session that has been hijacked
+cannot strip the second factor without the authenticator.</p>
+<p>The implementation is RFC 6238: HMAC-SHA1, 6 digits, a 30-second step, and a ±1-step
+window for clock skew. That works with Google Authenticator, Authy and the rest.</p>
+<p><strong>Replay protection.</strong> A code stays valid for about 90 seconds thanks to the skew window,
+which is long enough for someone watching your screen to reuse it. Yggdrasil records the
+step counter of every accepted code and rejects any code at or below the last accepted
+one — the second use of a code fails with &ldquo;2FA code already used; wait for the next one&rdquo;,
+and counts as a failed login attempt.</p>
+<p>There are no recovery codes. If you lose the authenticator, another admin has to reset
+you, so keep a second admin account or a passkey.</p>
+<h2 id="passkeys-webauthn">Passkeys (WebAuthn)</h2>
+<p>Under <strong>Settings → Security → Passkeys</strong>, choose <strong>Add a passkey</strong> and name it. On the
+login page, <strong>Sign in with a passkey</strong> then signs you in with no password and no TOTP
+code — a passkey is already two factors (the device, plus the biometric or PIN that
+unlocks it). Yggdrasil requires user verification and a resident (discoverable) key, so
+you do not type a username first.</p>
+<p>You can register several, rename them, and remove them. Each passkey shows when it was
+added and last used. Passkeys are per-account and self-service: you manage your own, and
+an admin cannot add one for you.</p>
+<p>The relying party is derived from the host the request arrived on — the RP ID is the
+bare hostname and the origin is the scheme and host, honouring <code>X-Forwarded-Proto</code> from a
+reverse proxy. Browsers only allow WebAuthn in a secure context, so passkeys need HTTPS
+(or localhost). Reaching the panel over plain HTTP on a LAN address will not offer them,
+which is exactly why password and TOTP remain as a fallback.</p>
+<p>A registration or login ceremony must finish within 5 minutes of starting, or you get
+&ldquo;session expired — try again&rdquo;.</p>
+<h2 id="api-tokens">API tokens</h2>
+<p>For automation — a script, a home assistant, a cron job on another box. <strong>Settings →
+Integrations → API tokens</strong>: give the token a name and choose <strong>Create</strong>.</p>
+<p>A token is the string <code>ygg_</code> followed by 24 random bytes in base64url. <strong>It is shown
+exactly once</strong>, in the panel, right after creation. Only its SHA-256 hash goes to the
+database, so nobody — including you, including an admin — can read it back. Lose it and
+you delete the token and mint another.</p>
+<p>Send it as a bearer token:</p>
+<pre><code class="language-bash">curl -H &quot;Authorization: Bearer ygg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&quot; \
+  https://panel.example.com/api/servers
+</code></pre>
+<p>Three properties of API tokens deserve to be stated plainly, because the intuitive
+assumption is wrong in each case:</p>
+<ul>
+<li><strong>A token inherits its owner&rsquo;s full role and grants. It has no scope of its own.</strong>
+There is no way to mint a read-only token or a token limited to one server. A token
+created by an admin is an admin credential with no expiry. If you want a narrow token,
+create a narrow <em>user</em>, grant it what you want, and mint the token as that user.</li>
+<li><strong>Logging out does not revoke API tokens.</strong> Logout works by bumping the owner&rsquo;s
+<code>token_version</code>, which invalidates their JWT sessions. API tokens are looked up by hash
+and never consult <code>token_version</code>, so they keep working. The same goes for a password
+reset or a role change. To revoke a token, <strong>delete the token</strong>.</li>
+<li>Disabling or deleting the owning user <em>does</em> stop its tokens — the lookup joins the
+users table and requires the account to be enabled.</li>
+</ul>
+<p>You only ever see and delete your own tokens; the list is filtered by owner. Each row
+shows when it was created and when it was last used, which is the cheapest way to spot a
+token nothing needs any more.</p>
+<h2 id="login-protection">Login protection</h2>
+<p>Two independent limits sit in front of the login endpoints.</p>
+<p><strong>Per-source rate limit.</strong> At most 5 attempts per source address per rolling minute, on
+<code>/api/auth/login</code> and on both passkey login steps. Over that, the request gets a 429
+(&ldquo;too many login attempts&rdquo;).</p>
+<p><strong>Per-account lockout.</strong> Because a source address can be spoofed via <code>X-Forwarded-For</code>,
+there is also a limit keyed on the username itself: 10 failed attempts within 15 minutes
+locks that username for 15 minutes, regardless of where the attempts come from. A
+successful login clears the counter. Failures counted include an unknown or disabled
+username, a wrong password, a wrong TOTP code, and a replayed TOTP code.</p>
+<p>Passwords are hashed with Argon2id. Login never distinguishes &ldquo;no such user&rdquo; from &ldquo;wrong
+password&rdquo; — both return &ldquo;invalid credentials&rdquo;.</p>
+<h2 id="sessions-and-revocation">Sessions and revocation</h2>
+<p>Login mints a JWT (HS256) and sets it as the <code>ygg_token</code> cookie: HttpOnly, <code>SameSite=Strict</code>,
+<code>Path=/</code>. The same token is also returned in the response body for clients that prefer
+<code>Authorization: Bearer</code>. Lifetime comes from <code>session_ttl_hours</code> in the panel config,
+default <code>168</code> (seven days). WebSocket handshakes, which cannot set headers, pass the
+token as a <code>?token=</code> query parameter; the request logger redacts it so it never lands in
+journald.</p>
+<p><strong>Every authenticated request is re-validated against the database.</strong> The middleware
+re-reads the user&rsquo;s role, disabled flag and <code>token_version</code> on each call, and uses the
+<em>live</em> role rather than the one baked into the token. The consequences are worth knowing:</p>
+<ul>
+<li>Disable an account, and its sessions stop on the next request.</li>
+<li>Demote an admin to <code>user</code>, and they lose admin powers immediately — no waiting for the
+JWT to expire.</li>
+<li>Logout, a password reset, a role change, or toggling disabled all bump <code>token_version</code>,
+which invalidates every JWT that user holds, everywhere.</li>
+</ul>
+<p>Rejected sessions get a 401 with &ldquo;session expired&rdquo;.</p>
+<p>Grants themselves are not cached: the permissions table is read per request, so a
+permission change takes effect on the delegate&rsquo;s next click.</p>
+<p>As defence in depth against CSRF, state-changing requests (POST/PUT/PATCH/DELETE) that
+carry an <code>Origin</code> header not matching the panel&rsquo;s own host are refused. Automation
+sending a bearer token sends no <code>Origin</code> and passes. The check runs inside the
+authentication middleware, so it covers the authenticated API and nothing else — the
+public endpoints that sit outside it (login, passkey login, and the beacon receiver) are
+not screened this way.</p>
+<p>Admin actions are written to the audit log — user creation, permission changes, delegate
+changes, token minting and deletion, 2FA and passkey changes. It is under <strong>Audit log</strong>
+in the sidebar.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-servers.html">Servers</a></li>
+<li><a href="guides-backups-and-schedules.html">Backups and schedules</a></li>
+<li><a href="guides-notifications.html">Notifications</a></li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a></li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/users-and-permissions.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#admins-and-delegates">Admins and delegates</a><a class="t2" href="#realms">Realms</a><a class="t2" href="#the-eight-permissions">The eight permissions</a><a class="t2" href="#scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</a><a class="t2" href="#the-permission-editor">The permission editor</a><a class="t2" href="#per-server-delegates">Per-server delegates</a><a class="t3" href="#worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</a><a class="t2" href="#two-factor-authentication-totp">Two-factor authentication (TOTP)</a><a class="t2" href="#passkeys-webauthn">Passkeys (WebAuthn)</a><a class="t2" href="#api-tokens">API tokens</a><a class="t2" href="#login-protection">Login protection</a><a class="t2" href="#sessions-and-revocation">Sessions and revocation</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

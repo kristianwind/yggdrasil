@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Networking and public access — Yggdrasil Panel docs</title>
+<meta name="description" content="How Yggdrasil Panel gives a server a port, works out the address players connect to, and — if you want it — opens that address to the internet." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html" class="on">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Networking and public access</h1>
+    <p>How Yggdrasil Panel gives a server a port, works out the address players connect to, and — if you
+want it — opens that address to the internet. Read this when a server runs fine locally but nobody
+outside can reach it.</p>
+<h2 id="port-allocation">Port allocation</h2>
+<p>Every rune declares the ports its game or app needs, each with a name (<code>game</code>, <code>query</code>, <code>rcon</code>,
+<code>web</code>, …). When you create a server, Yggdrasil allocates one host port per declared port and stores
+the mapping on the server row.</p>
+<p>Ports come sequentially from a configured range — <code>ports.range_min</code> to <code>ports.range_max</code> in the
+panel&rsquo;s config file, defaulting to <strong>25000–30000</strong>. The game&rsquo;s well-known default port (2302, 25565,
+27016, …) is deliberately <em>not</em> used, even when the rune names it: distinctive ports attract less
+scanning, and every server on the host gets a port of its own with no collisions.</p>
+<p>A port is only handed out when all three of these hold:</p>
+<ul>
+<li>it isn&rsquo;t recorded in the panel&rsquo;s <code>port_allocations</code> table,</li>
+<li>Docker isn&rsquo;t already publishing it (including containers Yggdrasil didn&rsquo;t create), and</li>
+<li>Yggdrasil can bind it right now — each candidate is test-bound on <code>0.0.0.0</code> before it&rsquo;s accepted.</li>
+</ul>
+<p>The per-server connect address is the <strong>effective public host</strong> (below) joined to the allocated port.
+The server page lists one <code>host:port</code> line per named port, which is what you hand to players.</p>
+<h2 id="public-hostname-and-the-external-ip-fallback">Public hostname and the external-IP fallback</h2>
+<p><strong>Settings → Network</strong> has a <strong>Public hostname</strong> field, stored as the <code>public_hostname</code> setting. Put
+your domain or static IP there. If you paste a full URL, Yggdrasil strips the scheme and any trailing
+slash — it wants a bare host.</p>
+<p>Leave it blank and Yggdrasil falls back to a detected external IP: it fetches your public address
+from <code>https://api.ipify.org</code> with a 3-second timeout and caches the result for one hour. If that
+lookup fails, the cached (possibly stale) value is used. If there has never been one, the effective
+host is empty and a server&rsquo;s <strong>Connect address</strong> falls back to the literal placeholder <code>your-host</code> —
+<code>your-host:25565</code> — with a prompt to go and set a hostname. The address is always shown; only the host
+part is missing.</p>
+<p><code>GET /api/settings/network</code> returns all three values, which is the clearest way to see what&rsquo;s
+happening: <code>public_hostname</code> (what you set), <code>detected</code> (the external-IP fallback), and <code>effective</code>
+(the one actually used — your hostname if set, otherwise the detected IP).</p>
+<p>Set a real hostname if you have one. The fallback re-detects on a dynamic IP, but anything you have
+already told players stays stale.</p>
+<h2 id="online-from-outside-reachability">&ldquo;Online from outside&rdquo; reachability</h2>
+<p>A running server&rsquo;s page carries a reachability badge — <strong>reachable</strong> or <strong>not from outside</strong>. This is
+a genuine external probe, not a container health check: Yggdrasil connects to the <em>effective public
+host</em>, never to <code>127.0.0.1</code>. A success proves both that the game is answering and that the port
+reaches it from the outside world.</p>
+<p>How it probes depends on the rune:</p>
+<ul>
+<li>If the rune declares a query protocol, Yggdrasil speaks that protocol (A2S, Minecraft SLP, Bedrock
+ping, …) against the query port.</li>
+<li>Otherwise it opens a plain TCP connection to the <code>game</code> port.</li>
+</ul>
+<p>Either way the timeout is 4 seconds, and the result is cached for 30 seconds per server
+(<code>GET /api/servers/{id}/reachability</code>). The badge only appears while a server is running or starting.</p>
+<p>One caveat worth internalising: the probe leaves the panel host and comes back in through your
+router, so it depends on <strong>NAT loopback</strong> (hairpinning). Routers that don&rsquo;t support it will make the
+badge read &ldquo;not from outside&rdquo; for a server that players can reach perfectly well. If the badge
+disagrees with reality, test from a phone on mobile data before you go changing port forwards.</p>
+<h2 id="per-server-auto-forward">Per-server auto-forward</h2>
+<p>Each server has an <strong>auto_forward</strong> flag, <strong>on by default</strong>. When a server with auto-forward on
+starts, Yggdrasil asks UPnP and UniFi (whichever you have enabled) to open its ports; when it stops
+or is deleted, the mappings and rules come back down. Turn auto-forward off for a server that should
+stay LAN-only, or one whose ports you forward by hand.</p>
+<p>The <strong>RCON port is never forwarded</strong>, regardless of the setting. An admin console on the open
+internet is not something Yggdrasil will do for you.</p>
+<p>Auto-forward covers firewall/NAT forwarding only. The two subdomain integrations — Nginx Proxy
+Manager and Cloudflare Tunnel — run independently of it and gate themselves on their own settings
+plus a per-server subdomain.</p>
+<h2 id="four-ways-to-expose-a-server">Four ways to expose a server</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Needs a port forward</th>
+<th>Carries</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UPnP</td>
+<td>Router opens it for you</td>
+<td>Any TCP/UDP port</td>
+<td>A home router you control, quick setup</td>
+</tr>
+<tr>
+<td>UniFi</td>
+<td>Rules created for you</td>
+<td>Any TCP/UDP port</td>
+<td>A UniFi gateway, game servers, reproducible rules</td>
+</tr>
+<tr>
+<td>Nginx Proxy Manager</td>
+<td>Yes (ports 80/443 to NPM)</td>
+<td>HTTP(S) only</td>
+<td>Web apps on a subdomain, with certificates</td>
+</tr>
+<tr>
+<td>Cloudflare Tunnel</td>
+<td>No</td>
+<td>HTTP(S) only</td>
+<td>No public IP, CGNAT, or no wish to open ports</td>
+</tr>
+</tbody>
+</table>
+<p>Game servers need UPnP or UniFi (or a manual forward). Web apps can use any of the four; the two
+subdomain options give them a name instead of a port number.</p>
+<h3 id="upnp">UPnP</h3>
+<p><strong>Off by default.</strong> Enable it under <strong>Settings → Network</strong>. Yggdrasil discovers an Internet Gateway
+Device on the LAN and asks it to map each of a server&rsquo;s non-admin ports to the same port on the panel
+host, described as <code>Yggdrasil: &lt;server name&gt;</code>. The lease is permanent — mappings are removed when the
+server stops rather than expiring on a timer.</p>
+<p><code>GET /api/upnp/status</code> reports whether a gateway answered, and if so the panel&rsquo;s LAN IP and the
+gateway&rsquo;s WAN IP. If no gateway is found (no UPnP, or it&rsquo;s switched off in the router), discovery
+returns an error and nothing else happens — you forward manually instead.</p>
+<p>UPnP is convenient and blunt. Any device on your LAN can open ports through it. If you have a UniFi
+gateway, prefer the UniFi integration: same result, explicit rules you can audit.</p>
+<h3 id="unifi">UniFi</h3>
+<p><strong>Settings → Network → UniFi</strong> takes the controller URL, a local username and password, and a site
+(default <code>default</code>). The password is encrypted at rest. <strong>Test connection</strong> logs in and lists your
+existing port-forward rules, which confirms both credentials and site.</p>
+<p>UniFi OS speaks HTTPS only on its local API, and it presents a self-signed certificate — Yggdrasil
+skips verification for that host and assumes <code>https://</code> when you omit the scheme from the URL. The
+controller lives at your gateway&rsquo;s address (<code>https://192.168.1.1</code>), not the cloud portal.</p>
+<p>When a server with auto-forward starts, Yggdrasil creates one WAN port-forward rule per non-admin
+port, named:</p>
+<pre><code class="language-text">Yggdrasil: &lt;server name&gt; [ygg:&lt;id8&gt;]
+</code></pre>
+<p>The <code>[ygg:&lt;id8&gt;]</code> tag — the first 8 characters of the server&rsquo;s id — is how Yggdrasil finds its own
+rules again. Every rule carrying a server&rsquo;s tag is deleted when that server stops, is deleted, or
+starts again (stale rules are cleared before fresh ones go in). Leave the tag alone in the rule name
+if you edit rules in the UniFi UI, or Yggdrasil will orphan them.</p>
+<h3 id="nginx-proxy-manager-subdomains">Nginx Proxy Manager (subdomains)</h3>
+<p>For <strong>HTTP apps only</strong>. NPM terminates TLS and proxies a subdomain to an app&rsquo;s published port, so
+<code>notes.example.com</code> reaches the app instead of <code>example.com:25004</code>.</p>
+<p>Configure <strong>Settings → Domains → Nginx Proxy Manager</strong> with the NPM admin URL (assumed <code>http://</code> when
+you omit the scheme), the admin email and password (encrypted at rest), a <strong>base domain</strong>, an optional
+<strong>internal host</strong> (defaults to the panel host&rsquo;s LAN IP), and a Let&rsquo;s Encrypt account email. Then set a
+<strong>Subdomain</strong> on each server you want exposed.</p>
+<p>The per-server <code>subdomain</code> field takes a bare label (<code>notes</code>), which is joined to the base domain, or
+a value containing a dot, which is treated as a complete custom domain and used verbatim. Empty means
+the feature is off for that server.</p>
+<p>Yggdrasil proxies to the host port named <code>web</code>, or the first TCP port if the rune doesn&rsquo;t name one.
+A server with no TCP port — a UDP-only game — has nothing to proxy and is skipped entirely.</p>
+<p>On start, Yggdrasil creates a proxy host routing the domain to <code>&lt;internal host&gt;:&lt;port&gt;</code> over plain
+HTTP, requesting a fresh Let&rsquo;s Encrypt certificate with forced SSL, HTTP/2, websocket upgrades and
+NPM&rsquo;s exploit blocking. If certificate issuance fails — HTTP-01 needs port 80 reachable for that
+domain — it cleans up the partial host and retries <strong>without SSL</strong>, so routing works and you can
+attach a wildcard certificate later. Changing a server&rsquo;s subdomain drops the old proxy host; the next
+start creates one for the new domain.</p>
+<p>You still need ports 80 and 443 forwarded to NPM, and a wildcard DNS record (<code>*.your-domain</code> → your
+public IP) so each new subdomain resolves without another DNS edit. NPM is the right choice when you
+already run it; Cloudflare Tunnel is the right choice when you would rather not open anything.</p>
+<h3 id="cloudflare-tunnel-subdomains">Cloudflare Tunnel (subdomains)</h3>
+<p>Also <strong>HTTP apps only</strong>, and the option that needs <strong>no port forward at all</strong>. The <code>cloudflared</code>
+connector makes an outbound connection to Cloudflare&rsquo;s edge, and traffic for your hostname comes back
+down it.</p>
+<p>Three pieces have to be in place:</p>
+<ol>
+<li>A tunnel created in the Cloudflare dashboard under <strong>Zero Trust → Networks → Tunnels</strong>.</li>
+<li>The <code>cloudflared</code> connector running against that tunnel. Yggdrasil ships a <strong>cloudflared</strong> rune for
+exactly this: create a server from it, paste the tunnel&rsquo;s connector token as <code>TUNNEL_TOKEN</code>, and
+start it. The connector is outbound-only and publishes no ports of its own.</li>
+<li><strong>Settings → Domains → Cloudflare Tunnel</strong>: an API token (encrypted at rest), your account ID,
+the tunnel ID, a base domain, an optional zone ID, and an optional internal host (defaults to the
+panel host&rsquo;s LAN IP).</li>
+</ol>
+<p>Leave the zone ID blank and Yggdrasil resolves it from the base domain on first use and caches it.
+<strong>Test connection</strong> always reads the tunnel&rsquo;s configuration, proving tunnel access. It resolves the
+zone first — proving DNS access — only when no zone ID is set yet; once one is saved, or cached from
+an earlier resolve, the test goes straight to the tunnel and stops exercising DNS. Either way it
+tells you which half failed.</p>
+<p>When a server with a subdomain starts, Yggdrasil adds a tunnel ingress rule mapping the hostname to
+<code>http://&lt;internal host&gt;:&lt;port&gt;</code>, keeping every other rule and re-appending the mandatory trailing
+<code>http_status:404</code> catch-all, then creates or updates a proxied <code>CNAME</code> from the hostname to
+<code>&lt;tunnel-id&gt;.cfargotunnel.com</code>. The ingress rule is the critical half — if it fails, nothing is
+recorded. A DNS failure is tolerated, since you may manage the record yourself.</p>
+<p>Servers use the same per-server <strong>Subdomain</strong> field as NPM, and the same &ldquo;port named <code>web</code>, else first
+TCP port&rdquo; rule applies.</p>
+<h2 id="the-domains-page">The Domains page</h2>
+<p><strong>Domains</strong> is one flat list of every hostname the panel routes — one row per server per provider —
+filtered by your permissions the same way the server list is. Each row shows the domain, the provider,
+the internal port it routes to, and whether it is <strong>provisioned</strong> (a proxy host or ingress rule is
+actually recorded). &ldquo;Not provisioned&rdquo; is normal for a server that hasn&rsquo;t started since you gave it a
+subdomain.</p>
+<p>Each row also carries a live check. Yggdrasil requests <code>https://&lt;domain&gt;/</code>, falling back to
+<code>http://</code>, with a 6-second timeout, and reports whether anything answered and with what status.
+Redirects are not followed — a 301 from the proxy already proves the route works — and a self-signed
+certificate is retried without verification and flagged, since the route works either way. A 5xx gets
+its own warning badge: the proxy answered, so routing is fine, but the app behind it may be down.
+Results are cached for 30 seconds per server/provider/domain.</p>
+<p>The domain is always recomputed server-side from the stored subdomain and never taken from the
+request, and the probe refuses to connect to anything that resolves to a loopback, private,
+link-local or metadata address.</p>
+<h2 id="two-things-that-will-catch-you-out">Two things that will catch you out</h2>
+<h3 id="a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</h3>
+<p>Cloudflare&rsquo;s <strong>proxied</strong> records — the orange cloud — carry HTTP(S) traffic and nothing else. They
+are exactly right for tunnel-routed web apps, which is why Yggdrasil always creates its tunnel <code>CNAME</code>
+proxied.</p>
+<p>They are exactly wrong for a game. Point a proxied record at a Minecraft or DayZ hostname and players
+cannot connect, no matter that the server is healthy, the port is forwarded, and every panel badge is
+green — the raw TCP or UDP port never reaches your host. This one wastes hours because nothing is
+broken; the traffic is being dropped at the edge by design.</p>
+<p>For any hostname players use to join a game, use a <strong>DNS-only</strong> record (grey cloud), or hand out the
+IP and port. Keep game hostnames and web-app hostnames separate so you never have to change one
+record&rsquo;s mode back and forth.</p>
+<h3 id="the-cloudflare-token-permission-is-called-argo-tunnel-legacy">The Cloudflare token permission is called &ldquo;Argo Tunnel (Legacy)&rdquo;</h3>
+<p>Cloudflare&rsquo;s token UI does not offer a permission labelled &ldquo;Cloudflare Tunnel&rdquo;. The permission
+Yggdrasil needs is listed as <strong>Argo Tunnel (Legacy) → Edit</strong>, scoped to the whole <strong>account</strong> — that
+is the tunnel API permission under its old name. Add <strong>Zone → DNS: Edit</strong> for the zone holding your
+base domain and the token is complete.</p>
+<p>Account-scoped tokens cannot call Cloudflare&rsquo;s <code>/user/tokens/verify</code> endpoint — it returns a
+misleading &ldquo;Invalid API Token&rdquo; for a token that is entirely valid. Yggdrasil&rsquo;s <strong>Test connection</strong>
+therefore never calls it, and reads the tunnel&rsquo;s configuration instead. If Test reports the tunnel
+isn&rsquo;t reachable, check the account ID and tunnel ID first, then the Argo Tunnel permission.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-servers.html">Servers</a></li>
+<li><a href="guides-backups-and-schedules.html">Backups and schedules</a></li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a></li>
+<li><a href="guides-status-page-and-beacon.html">Status page and beacon</a></li>
+<li><a href="guides-notifications.html">Notifications</a></li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/networking.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#port-allocation">Port allocation</a><a class="t2" href="#public-hostname-and-the-external-ip-fallback">Public hostname and the external-IP fallback</a><a class="t2" href="#online-from-outside-reachability">&amp;ldquo;Online from outside&amp;rdquo; reachability</a><a class="t2" href="#per-server-auto-forward">Per-server auto-forward</a><a class="t2" href="#four-ways-to-expose-a-server">Four ways to expose a server</a><a class="t3" href="#upnp">UPnP</a><a class="t3" href="#unifi">UniFi</a><a class="t3" href="#nginx-proxy-manager-subdomains">Nginx Proxy Manager (subdomains)</a><a class="t3" href="#cloudflare-tunnel-subdomains">Cloudflare Tunnel (subdomains)</a><a class="t2" href="#the-domains-page">The Domains page</a><a class="t2" href="#two-things-that-will-catch-you-out">Two things that will catch you out</a><a class="t3" href="#a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</a><a class="t3" href="#the-cloudflare-token-permission-is-called-argo-tunnel-legacy">The Cloudflare token permission is called &amp;ldquo;Argo Tunnel (Legacy)&amp;rdquo;</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

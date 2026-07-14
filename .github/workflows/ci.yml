@@ -29,6 +29,19 @@ jobs:
           go vet ./...
           go test ./...
 
+      # website/docs/ is generated from docs/*.md and committed, so the static
+      # site needs no build step to deploy. That only holds if the two stay in
+      # sync — regenerate and fail if the working tree moves.
+      - name: Docs site is up to date with docs/
+        run: |
+          go run ./cmd/docs-gen
+          if ! git diff --quiet -- website/docs; then
+            echo "::error::website/docs/ is stale. Run 'go run ./cmd/docs-gen' and commit the result."
+            git diff --stat -- website/docs
+            exit 1
+          fi
+          echo "website/docs/ matches docs/."
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:

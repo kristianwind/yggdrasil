@@ -516,6 +516,28 @@
     }
   }
 
+  // Nightly backup verification
+  let backupVerify = $state({ enabled: false, last_run: "" });
+  let savingBackupVerify = $state(false);
+  async function loadBackupVerify() {
+    try {
+      backupVerify = await api.get("/settings/backup-verify");
+    } catch {
+      /* non-fatal */
+    }
+  }
+  async function saveBackupVerify() {
+    savingBackupVerify = true;
+    try {
+      backupVerify = await api.put("/settings/backup-verify", { enabled: !!backupVerify.enabled });
+      toast("Backup verification settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingBackupVerify = false;
+    }
+  }
+
   // Discord status board (auto-updating embed via webhook)
   let discord = $state({ enabled: false, configured: false });
   let discordWebhook = $state("");
@@ -723,6 +745,7 @@
     loadStatusPage();
     loadBeacon();
     loadDiscord();
+    loadBackupVerify();
     loadUnifi();
     loadNpm();
     loadCf();
@@ -1390,6 +1413,23 @@
       <button class="btn-danger" onclick={() => del(t)}>Delete</button>
     </div>
   {/each}
+</div>
+
+<!-- Nightly backup verification -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Backup verification</h2>
+<p class="text-muted mb-4 text-sm">
+  Once a day, check each server's most recent backup actually decompresses — so a corrupt backup is caught
+  proactively and you get a notification, instead of finding out mid-restore. Off by default: it downloads
+  each latest archive from its target (bandwidth on remote SFTP/SMB stores).
+</p>
+<div class="card p-4 mb-4 max-w-xl">
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={backupVerify.enabled} onchange={saveBackupVerify} disabled={savingBackupVerify} />
+    Verify the latest backup of each server nightly
+  </label>
+  {#if backupVerify.last_run}
+    <p class="text-xs text-muted mt-2">Last run: {backupVerify.last_run}</p>
+  {/if}
 </div>
 
 <!-- Notifications -->

@@ -121,7 +121,8 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.db.QueryContext(r.Context(),
 		`SELECT id, COALESCE(target_id,''), COALESCE(path,''), COALESCE(size_bytes,0),
-		        status, COALESCE(error_msg,''), created_at, COALESCE(completed_at,'')
+		        status, COALESCE(error_msg,''), created_at, COALESCE(completed_at,''),
+		        COALESCE(verified_at,''), COALESCE(verify_ok,-1)
 		 FROM backups WHERE server_id=? ORDER BY created_at DESC`, id)
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
@@ -137,11 +138,13 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 		Error       string `json:"error,omitempty"`
 		CreatedAt   string `json:"created_at"`
 		CompletedAt string `json:"completed_at,omitempty"`
+		VerifiedAt  string `json:"verified_at,omitempty"`
+		VerifyOK    int    `json:"verify_ok"` // -1 unknown, 0 corrupt, 1 ok
 	}
 	list := []bk{}
 	for rows.Next() {
 		var b bk
-		if err := rows.Scan(&b.ID, &b.TargetID, &b.Path, &b.Size, &b.Status, &b.Error, &b.CreatedAt, &b.CompletedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.TargetID, &b.Path, &b.Size, &b.Status, &b.Error, &b.CreatedAt, &b.CompletedAt, &b.VerifiedAt, &b.VerifyOK); err != nil {
 			continue
 		}
 		list = append(list, b)
@@ -247,50 +250,70 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"status": "restored"})
 }
 
-// handleVerifyBackup fetches a backup and confirms it decompresses cleanly — a
-// real integrity check so you find out a backup is corrupt now, not at 3am when
-// you actually need to restore it. Reads the whole archive but writes nothing.
+type verifyResult struct {
+	OK      bool   `json:"ok"`
+	Files   int    `json:"files"`
+	Bytes   int64  `json:"bytes"`
+	Archive int64  `json:"archive_bytes"`
+	Error   string `json:"error,omitempty"`
+}
+
+// verifyBackupByID fetches a backup, streams it through gzip+tar to confirm it
+// decompresses in full, and persists the outcome (verify_ok + verified_at). Shared
+// by the manual "Verify" button and the nightly auto-verify loop. A corrupt archive
+// yields ok=false (not a transport error); err is only for fetch/target failures.
+func (s *Server) verifyBackupByID(ctx context.Context, id string) (verifyResult, error) {
+	var targetID, path string
+	var archiveBytes int64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(target_id,''), COALESCE(path,''), COALESCE(size_bytes,0) FROM backups WHERE id=?`, id).
+		Scan(&targetID, &path, &archiveBytes); err != nil {
+		return verifyResult{}, fmt.Errorf("not found")
+	}
+	cfg, err := s.loadTargetConfig(ctx, targetID)
+	if err != nil {
+		return verifyResult{}, fmt.Errorf("target unavailable")
+	}
+	tgt, err := backup.Open(*cfg)
+	if err != nil {
+		return verifyResult{}, fmt.Errorf("connect: %w", err)
+	}
+	defer tgt.Close()
+	rc, err := tgt.Get(ctx, path)
+	if err != nil {
+		return verifyResult{}, fmt.Errorf("fetch backup: %w", err)
+	}
+	defer rc.Close()
+
+	entries, total, verr := backup.Verify(rc)
+	res := verifyResult{OK: verr == nil, Files: entries, Bytes: total, Archive: archiveBytes}
+	okInt := 1
+	if verr != nil {
+		res.Error = verr.Error()
+		okInt = 0
+	}
+	s.db.ExecContext(ctx, "UPDATE backups SET verified_at=datetime('now'), verify_ok=? WHERE id=?", okInt, id)
+	return res, nil
+}
+
+// handleVerifyBackup checks one backup's integrity on demand.
 func (s *Server) handleVerifyBackup(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	var serverID, targetID, path string
-	var archiveBytes int64
-	err := s.db.QueryRowContext(r.Context(),
-		`SELECT server_id, COALESCE(target_id,''), COALESCE(path,''), COALESCE(size_bytes,0) FROM backups WHERE id=?`, id).
-		Scan(&serverID, &targetID, &path, &archiveBytes)
-	if err != nil {
+	var serverID string
+	if err := s.db.QueryRowContext(r.Context(), "SELECT server_id FROM backups WHERE id=?", id).Scan(&serverID); err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
 	if !s.can(w, r, rbac.ServerBackup, s.serverTarget(r.Context(), serverID)) {
 		return
 	}
-	cfg, err := s.loadTargetConfig(r.Context(), targetID)
+	res, err := s.verifyBackupByID(r.Context(), id)
 	if err != nil {
-		jsonError(w, "target unavailable", http.StatusBadGateway)
+		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	tgt, err := backup.Open(*cfg)
-	if err != nil {
-		jsonError(w, "connect: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-	defer tgt.Close()
-	rc, err := tgt.Get(r.Context(), path)
-	if err != nil {
-		jsonError(w, "fetch backup: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-	defer rc.Close()
-
-	entries, total, verr := backup.Verify(rc)
-	if verr != nil {
-		// A bad archive isn't a server error — report it as a clean "not ok" result
-		// the UI can surface, with the reason.
-		jsonOK(w, map[string]any{"ok": false, "error": verr.Error(), "files": entries})
-		return
-	}
-	s.auditLog(r, "backup.verify", "server:"+serverID, map[string]string{"backup": id})
-	jsonOK(w, map[string]any{"ok": true, "files": entries, "bytes": total, "archive_bytes": archiveBytes})
+	s.auditLog(r, "backup.verify", "server:"+serverID, map[string]any{"backup": id, "ok": res.OK})
+	jsonOK(w, res)
 }
 
 // ---- Manager ----

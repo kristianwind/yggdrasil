@@ -3,6 +3,7 @@
   import { api } from "../lib/api.js";
   import { user } from "../lib/auth.js";
   import { navigate } from "../lib/router.js";
+  import { toast } from "../lib/toast.js";
 
   let info = $state(null);
   let servers = $state([]);
@@ -21,11 +22,43 @@
         api.get("/servers"),
         api.get("/gameskills").catch(() => []),
       ]);
-      if ($user.role === "admin") info = await api.get("/system/info");
+      if ($user.role === "admin") {
+        info = await api.get("/system/info");
+        beacon = await api.get("/settings/beacon").catch(() => null);
+      }
     } catch (e) {
       error = e.message;
     }
   });
+
+  // Beacon teaser: a gentle, dismissible nudge to opt into the anonymous install
+  // ping. Shows only to admins, only while the beacon is off and not dismissed —
+  // so it invites once and then gets out of the way (enabling or dismissing hides it).
+  let beacon = $state(null);
+  let beaconDismissed = $state(localStorage.getItem("ygg_beacon_teaser_dismissed") === "1");
+  let enablingBeacon = $state(false);
+  let showBeaconTeaser = $derived(
+    $user.role === "admin" && beacon && !beacon.enabled && !beaconDismissed,
+  );
+  async function enableBeacon() {
+    enablingBeacon = true;
+    try {
+      beacon = await api.put("/settings/beacon", { enabled: true });
+      toast("Beacon on — thanks for counting yourself in 🌳", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      enablingBeacon = false;
+    }
+  }
+  function dismissBeacon() {
+    beaconDismissed = true;
+    try {
+      localStorage.setItem("ygg_beacon_teaser_dismissed", "1");
+    } catch {
+      /* ignore */
+    }
+  }
 
   // AI ops digest (advisory, admin — cross-server health briefing)
   let opsDigest = $state("");
@@ -146,6 +179,34 @@
     </svelte:element>
   {/each}
 </div>
+
+{#if showBeaconTeaser}
+  <div class="card p-4 mb-8 relative border-l-4 border-accent">
+    <button
+      class="absolute top-2.5 right-3 text-muted hover:text-text text-sm leading-none"
+      title="Dismiss"
+      aria-label="Dismiss"
+      onclick={dismissBeacon}>✕</button>
+    <div class="flex items-start gap-4">
+      <div class="text-3xl shrink-0 leading-none" aria-hidden="true">📡</div>
+      <div class="min-w-0 pr-4">
+        <h2 class="text-base font-semibold">Count yourself in</h2>
+        <p class="text-sm text-muted mt-1 max-w-2xl">
+          Curious how many Yggdrasil panels are out there? So are we. Turn on the beacon to be counted —
+          it's off by default and fully anonymous: one daily ping with
+          <span class="text-text">only a random ID and the version</span>, nothing else. No IP, no server
+          names, no usage data.
+        </p>
+        <div class="flex items-center gap-4 mt-3">
+          <button class="btn-primary text-sm" disabled={enablingBeacon} onclick={enableBeacon}>
+            {enablingBeacon ? "Enabling…" : "Enable beacon"}
+          </button>
+          <a class="text-sm text-accent hover:underline" href="#/settings">See exactly what's sent →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if info?.ai_enabled}
   <div class="card p-4 mb-8">

@@ -157,6 +157,19 @@ CREATE TABLE IF NOT EXISTS metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_srv ON metrics(server_id, ts);
 
+-- Config-file version history: the previous contents of a text file are snapshot
+-- here right before it's overwritten via the file editor, so a change that breaks
+-- a server can be rolled back. Kept to the last few versions per file.
+CREATE TABLE IF NOT EXISTS file_versions (
+	id         TEXT PRIMARY KEY,
+	server_id  TEXT NOT NULL,
+	path       TEXT NOT NULL,
+	content    TEXT NOT NULL,
+	size       INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_file_versions ON file_versions(server_id, path, created_at);
+
 CREATE TABLE IF NOT EXISTS audit_log (
 	id          TEXT PRIMARY KEY,
 	user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,

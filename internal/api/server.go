@@ -227,6 +227,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/files", s.handleListFiles)
 		r.Get("/api/servers/{id}/files/content", s.handleReadFile)
 		r.Put("/api/servers/{id}/files/content", s.handleWriteFile)
+		r.Get("/api/servers/{id}/files/versions", s.handleListFileVersions)
+		r.Get("/api/servers/{id}/files/versions/{vid}", s.handleGetFileVersion)
 		r.Delete("/api/servers/{id}/files", s.handleDeleteFile)
 		r.Post("/api/servers/{id}/files/upload", s.handleUploadFile)
 		r.Get("/api/servers/{id}/files/download", s.handleDownloadFile)

@@ -190,6 +190,8 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Snapshot the current contents before overwriting, so edits can be rolled back.
+	s.snapshotFileVersion(chi.URLParam(r, "id"), req.Path, full)
 	err := os.WriteFile(full, []byte(req.Content), 0644)
 	if err != nil && errors.Is(err, os.ErrPermission) {
 		// Likely a root-owned file left by a SteamCMD install. Repair ownership

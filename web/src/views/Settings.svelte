@@ -516,6 +516,44 @@
     }
   }
 
+  // Discord status board (auto-updating embed via webhook)
+  let discord = $state({ enabled: false, configured: false });
+  let discordWebhook = $state("");
+  let savingDiscord = $state(false);
+  let postingDiscord = $state(false);
+  async function loadDiscord() {
+    try {
+      discord = await api.get("/settings/discord-status");
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function saveDiscord() {
+    savingDiscord = true;
+    try {
+      const body = { enabled: !!discord.enabled };
+      if (discordWebhook.trim()) body.webhook = discordWebhook.trim();
+      discord = await api.put("/settings/discord-status", body);
+      discordWebhook = "";
+      toast("Discord status board saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingDiscord = false;
+    }
+  }
+  async function postDiscord() {
+    postingDiscord = true;
+    try {
+      await api.post("/settings/discord-status/post", {});
+      toast("Posted to Discord", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      postingDiscord = false;
+    }
+  }
+
   let upnpStatus = $state(null);
   let checkingUpnp = $state(false);
   async function checkUpnp() {
@@ -684,6 +722,7 @@
     loadNetwork();
     loadStatusPage();
     loadBeacon();
+    loadDiscord();
     loadUnifi();
     loadNpm();
     loadCf();
@@ -1157,6 +1196,42 @@
 {/if}
 
 {#if tab === "integrations"}
+<!-- Discord status board -->
+<h2 class="text-xl font-semibold mb-2">Discord status board</h2>
+<p class="text-muted mb-4 text-sm">
+  Keep a live, auto-updating status embed in a Discord channel — up/down and player counts for the same
+  servers you share on the <a class="text-accent" href="/status" target="_blank" rel="noopener">public status page</a>.
+  No bot to host: it uses an <b>incoming webhook</b> and edits the same message in place (never spams the channel).
+  In Discord: Server Settings → Integrations → Webhooks → New Webhook → pick a channel → Copy URL.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div>
+    <label class="label" for="discord-wh">Webhook URL</label>
+    <input
+      id="discord-wh"
+      class="input"
+      type="password"
+      bind:value={discordWebhook}
+      placeholder={discord.configured ? "•••••••• (saved — paste to replace)" : "https://discord.com/api/webhooks/…"}
+      autocomplete="off"
+    />
+  </div>
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={discord.enabled} />
+    Keep the status board updated (every few minutes)
+  </label>
+  <div class="flex items-center gap-3">
+    <button class="btn-primary" onclick={saveDiscord} disabled={savingDiscord}>
+      {savingDiscord ? "Saving…" : "Save"}
+    </button>
+    {#if discord.configured}
+      <button class="btn-ghost" onclick={postDiscord} disabled={postingDiscord}>
+        {postingDiscord ? "Posting…" : "Post now"}
+      </button>
+    {/if}
+  </div>
+</div>
+
 <!-- Kvasir — AI assistant (advisory) -->
 <h2 class="text-xl font-semibold mb-2">Kvasir <span class="text-muted font-normal text-base">· AI assistant</span></h2>
 <p class="text-muted mb-4 text-sm">

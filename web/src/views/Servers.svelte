@@ -192,6 +192,44 @@
       toast(e.message, "error");
     }
   }
+
+  // --- Bulk selection + actions ---
+  // Operates on the currently-visible (tag-filtered) servers the caller can control.
+  let visibleServers = $derived(servers.filter((s) => !tagFilter || (s.tags || []).includes(tagFilter)));
+  let controllable = $derived(visibleServers.filter((s) => can(s, "server.control")));
+  let selected = $state(new Set());
+  let bulkBusy = $state(false);
+  function toggleSel(id) {
+    const n = new Set(selected);
+    n.has(id) ? n.delete(id) : n.add(id);
+    selected = n;
+  }
+  function selectAll() {
+    selected = new Set(controllable.map((s) => s.id));
+  }
+  function clearSel() {
+    selected = new Set();
+  }
+  async function bulkAction(verb) {
+    const targets = controllable.filter((s) => selected.has(s.id));
+    // Only act where it makes sense: start stopped servers; stop/restart running ones.
+    const eligible = targets.filter((s) => {
+      const up = s.status === "running" || s.status === "starting";
+      return verb === "start" ? !up : up;
+    });
+    if (!eligible.length) return toast(`No selected servers to ${verb}`, "warn");
+    bulkBusy = true;
+    try {
+      const results = await Promise.allSettled(eligible.map((s) => api.post(`/servers/${s.id}/${verb}`)));
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const fail = results.length - ok;
+      toast(`${verb}: ${ok} ok${fail ? `, ${fail} failed` : ""}`, fail ? "warn" : "success");
+      clearSel();
+      await load();
+    } finally {
+      bulkBusy = false;
+    }
+  }
 </script>
 
 <div class="flex items-center justify-between mb-6">
@@ -237,6 +275,20 @@
   </div>
 {/if}
 
+{#if controllable.length}
+  <div class="flex items-center gap-2 flex-wrap mb-4 text-sm">
+    {#if selected.size}
+      <span class="font-medium">{selected.size} selected</span>
+      <button class="btn-primary px-2.5 py-1" disabled={bulkBusy} onclick={() => bulkAction("start")}>Start</button>
+      <button class="btn-ghost px-2.5 py-1" disabled={bulkBusy} onclick={() => bulkAction("restart")}>Restart</button>
+      <button class="btn-ghost px-2.5 py-1" disabled={bulkBusy} onclick={() => bulkAction("stop")}>Stop</button>
+      <button class="btn-ghost px-2.5 py-1 ml-auto" onclick={clearSel}>Clear</button>
+    {:else}
+      <button class="text-muted hover:text-text" onclick={selectAll}>☑ Select all{tagFilter ? " filtered" : ""}</button>
+    {/if}
+  </div>
+{/if}
+
 {#if loading}
   <div class="text-muted">Loading…</div>
 {:else if servers.length === 0}
@@ -263,7 +315,12 @@
             {#each list as s}
               <tr class="hover:bg-panel2/40">
                 <td class="px-4 py-2 truncate">
-                  <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
+                  <div class="flex items-center gap-2">
+                    {#if can(s, "server.control")}
+                      <input type="checkbox" class="shrink-0" checked={selected.has(s.id)} onchange={() => toggleSel(s.id)} aria-label="Select {s.name}" />
+                    {/if}
+                    <a href={`#/servers/${s.id}`} class="font-medium hover:underline truncate">{s.name}</a>
+                  </div>
                   {#if s.tags?.length}
                     <div class="flex flex-wrap gap-1 mt-0.5">
                       {#each s.tags as t}
@@ -323,7 +380,12 @@
         {#each list as s}
           <div class="card p-4">
             <div class="flex items-start justify-between">
-              <a href={`#/servers/${s.id}`} class="font-medium hover:underline">{s.name}</a>
+              <div class="flex items-center gap-2 min-w-0">
+                {#if can(s, "server.control")}
+                  <input type="checkbox" class="shrink-0" checked={selected.has(s.id)} onchange={() => toggleSel(s.id)} aria-label="Select {s.name}" />
+                {/if}
+                <a href={`#/servers/${s.id}`} class="font-medium hover:underline truncate">{s.name}</a>
+              </div>
               <div class="flex items-center gap-1 shrink-0">
                 <span
                   class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"

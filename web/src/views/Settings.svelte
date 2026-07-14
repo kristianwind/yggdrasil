@@ -489,7 +489,7 @@
   }
 
   // AI assistant (advisory features — admin brings their own LLM)
-  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false });
+  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false, digest_enabled: false, digest_hour: 8 });
   let savingAi = $state(false);
   let testingAi = $state(false);
   const aiProviders = ["openai", "anthropic", "openrouter", "deepseek", "mistral", "ollama", "custom"];
@@ -1022,6 +1022,20 @@
     <input type="checkbox" bind:checked={ai.enabled} />
     Enable advisory AI features
   </label>
+  <div class="flex flex-wrap items-center gap-2 text-sm">
+    <label class="inline-flex items-center gap-2 cursor-pointer"
+      title="Send a daily 'anything need attention?' ops digest to your notification channels (Telegram/Discord/webhook/email).">
+      <input type="checkbox" bind:checked={ai.digest_enabled} disabled={!ai.enabled} />
+      Daily ops digest to notifications
+    </label>
+    {#if ai.digest_enabled}
+      <span class="text-muted">at</span>
+      <select class="input w-auto" bind:value={ai.digest_hour}>
+        {#each Array(24) as _, h}<option value={h}>{String(h).padStart(2, "0")}:00</option>{/each}
+      </select>
+      <span class="text-muted">server time</span>
+    {/if}
+  </div>
   <div class="flex gap-2">
     <button class="btn-primary" onclick={saveAi} disabled={savingAi}>{savingAi ? "Saving…" : "Save"}</button>
     <button class="btn-ghost" onclick={testAi} disabled={testingAi}

@@ -73,6 +73,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.startStatusReconciler()
 	go s.startAutostartServers()
 	go s.autoUpdateLoop()
+	s.startOpsDigestLoop()
 	return s
 }
 

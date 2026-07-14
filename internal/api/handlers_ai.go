@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -21,11 +22,13 @@ import (
 // and nothing here acts on a server automatically.
 
 type aiConfig struct {
-	Provider string
-	Model    string
-	BaseURL  string
-	APIKey   string
-	Enabled  bool
+	Provider      string
+	Model         string
+	BaseURL       string
+	APIKey        string
+	Enabled       bool
+	DigestEnabled bool
+	DigestHour    int
 }
 
 // loadAIConfig reads the single ai_config row and decrypts the API key. Returns a
@@ -33,14 +36,15 @@ type aiConfig struct {
 func (s *Server) loadAIConfig(ctx context.Context) aiConfig {
 	var c aiConfig
 	var enc string
-	var enabled int
+	var enabled, digestEnabled int
 	err := s.db.QueryRowContext(ctx,
-		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled FROM ai_config WHERE id=1").
-		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled)
+		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled, COALESCE(digest_enabled,0), COALESCE(digest_hour,8) FROM ai_config WHERE id=1").
+		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled, &digestEnabled, &c.DigestHour)
 	if err != nil {
 		return aiConfig{}
 	}
 	c.Enabled = enabled == 1
+	c.DigestEnabled = digestEnabled == 1
 	if enc != "" {
 		if plain, derr := s.cipher.Decrypt(enc); derr == nil {
 			c.APIKey = plain
@@ -58,17 +62,20 @@ func (s *Server) aiEnabled(ctx context.Context) bool {
 }
 
 type aiConfigView struct {
-	Provider   string `json:"provider"`
-	Model      string `json:"model"`
-	BaseURL    string `json:"base_url"`
-	APIKey     string `json:"api_key"` // masked on GET; secretMask means "keep existing" on PUT
-	Enabled    bool   `json:"enabled"`
-	Configured bool   `json:"configured"` // an API key is stored
+	Provider      string `json:"provider"`
+	Model         string `json:"model"`
+	BaseURL       string `json:"base_url"`
+	APIKey        string `json:"api_key"` // masked on GET; secretMask means "keep existing" on PUT
+	Enabled       bool   `json:"enabled"`
+	Configured    bool   `json:"configured"`     // an API key is stored
+	DigestEnabled bool   `json:"digest_enabled"` // send a daily ops digest to notification channels
+	DigestHour    int    `json:"digest_hour"`    // 0-23
 }
 
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	c := s.loadAIConfig(r.Context())
-	v := aiConfigView{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, Enabled: c.Enabled, Configured: c.APIKey != ""}
+	v := aiConfigView{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, Enabled: c.Enabled,
+		Configured: c.APIKey != "", DigestEnabled: c.DigestEnabled, DigestHour: c.DigestHour}
 	if c.Provider == "" {
 		v.Provider = "openai"
 	}
@@ -104,14 +111,19 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 		keyEnc = enc
 	}
 
+	hour := req.DigestHour
+	if hour < 0 || hour > 23 {
+		hour = 8
+	}
 	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, updated_at)
-		VALUES (1,?,?,?,?,?,datetime('now'))
+		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, digest_enabled, digest_hour, updated_at)
+		VALUES (1,?,?,?,?,?,?,?,datetime('now'))
 		ON CONFLICT(id) DO UPDATE SET
 			provider=excluded.provider, model=excluded.model, base_url=excluded.base_url,
-			api_key_enc=excluded.api_key_enc, enabled=excluded.enabled, updated_at=excluded.updated_at`,
+			api_key_enc=excluded.api_key_enc, enabled=excluded.enabled,
+			digest_enabled=excluded.digest_enabled, digest_hour=excluded.digest_hour, updated_at=excluded.updated_at`,
 		strings.TrimSpace(req.Provider), strings.TrimSpace(req.Model), strings.TrimSpace(req.BaseURL),
-		keyEnc, boolToInt(req.Enabled))
+		keyEnc, boolToInt(req.Enabled), boolToInt(req.DigestEnabled), hour)
 	if err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -481,4 +493,53 @@ func (s *Server) handleConfigAdvice(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auditLog(r, "ai.config_advice", "server:"+id, nil)
 	jsonOK(w, map[string]string{"advice": out})
+}
+
+// ---- Phase 5: scheduled daily ops digest → notifications ----
+
+// startOpsDigestLoop sends the daily AI ops digest to the configured notification
+// channels once per day at the admin's chosen hour. A 10-minute ticker with a
+// per-day guard means a panel that wasn't up exactly on the hour still catches up
+// later that day (same pattern as auto-update).
+func (s *Server) startOpsDigestLoop() {
+	go func() {
+		defer recoverLog("opsDigestLoop")
+		t := time.NewTicker(10 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			s.maybeSendOpsDigest()
+		}
+	}()
+}
+
+func (s *Server) maybeSendOpsDigest() {
+	defer recoverLog("maybeSendOpsDigest")
+	c := s.loadAIConfig(context.Background())
+	if !c.Enabled || !c.DigestEnabled {
+		return
+	}
+	now := time.Now()
+	if now.Hour() < c.DigestHour {
+		return
+	}
+	today := now.Format("2006-01-02")
+	var last string
+	s.db.QueryRow("SELECT COALESCE(digest_last_day,'') FROM ai_config WHERE id=1").Scan(&last)
+	if last == today {
+		return
+	}
+	// Mark sent up-front so a slow LLM call can't double-fire on the next tick.
+	s.db.Exec("UPDATE ai_config SET digest_last_day=? WHERE id=1", today)
+
+	snapshot := s.gatherHealthSnapshot(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	out, err := llm.Complete(ctx,
+		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
+		buildHealthDigestMessages(snapshot), 700)
+	if err != nil {
+		log.Printf("ops digest: LLM request failed: %v", err)
+		return
+	}
+	s.notifyAll("🤖 Daily ops digest\n\n" + out)
 }

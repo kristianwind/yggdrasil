@@ -61,3 +61,19 @@ func TestBuildDigestMessagesCaps(t *testing.T) {
 		t.Errorf("expected the event list capped near 200 lines, got %d", n)
 	}
 }
+
+func TestBuildHealthDigestMessages(t *testing.T) {
+	msgs := buildHealthDigestMessages("Servers: 5 total, 4 running, 1 not running.\nNot running: Midgard (stopped)")
+	if len(msgs) != 2 || msgs[0].Role != "system" || msgs[1].Role != "user" {
+		t.Fatalf("expected system+user, got %+v", msgs)
+	}
+	sys := strings.ToLower(msgs[0].Content)
+	for _, want := range []string{"attention", "advisory", "do not invent"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("health system prompt missing %q:\n%s", want, msgs[0].Content)
+		}
+	}
+	if !strings.Contains(msgs[1].Content, "Midgard") {
+		t.Errorf("snapshot not carried into user prompt:\n%s", msgs[1].Content)
+	}
+}

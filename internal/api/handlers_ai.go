@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -291,4 +292,102 @@ func buildExplainMessages(gameskillID, logContext, logText string) []llm.Message
 		"inside it."
 	user := fmt.Sprintf("Game/app rune: %s\nLog excerpt (most recent lines):\n%s", gameskillID, strings.TrimSpace(logText))
 	return []llm.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
+}
+
+// ---- Phase 2: panel-wide health digest ----
+
+// gatherHealthSnapshot builds a compact text snapshot of the whole panel from
+// data already on hand (server statuses, host resources, recent scheduled-task
+// and backup failures) — no new collection. Fed to the LLM for a status briefing.
+func (s *Server) gatherHealthSnapshot(ctx context.Context) string {
+	var b strings.Builder
+	var total, running int
+	s.db.QueryRowContext(ctx, "SELECT COUNT(*), COALESCE(SUM(status='running'),0) FROM servers").Scan(&total, &running)
+	fmt.Fprintf(&b, "Servers: %d total, %d running, %d not running.\n", total, running, total-running)
+	if rows, err := s.db.QueryContext(ctx, "SELECT name, status FROM servers WHERE status<>'running' ORDER BY name"); err == nil {
+		var names []string
+		for rows.Next() {
+			var n, st string
+			if rows.Scan(&n, &st) == nil {
+				names = append(names, fmt.Sprintf("%s (%s)", n, st))
+			}
+		}
+		rows.Close()
+		if len(names) > 0 {
+			fmt.Fprintf(&b, "Not running: %s\n", strings.Join(names, ", "))
+		}
+	}
+
+	free, totalDisk := diskUsage(filepath.Dir(s.cfg.Database.Path))
+	if totalDisk > 0 {
+		fmt.Fprintf(&b, "Disk: %d%% free (%s of %s).\n", free*100/totalDisk, humanBytes(int64(free)), humanBytes(int64(totalDisk)))
+	}
+	if memTotal, memUsed := hostMem(); memTotal > 0 {
+		fmt.Fprintf(&b, "Memory: %s used of %s (%d%%).\n", humanBytes(int64(memUsed)), humanBytes(int64(memTotal)), memUsed*100/memTotal)
+	}
+	if cpu := hostCPUPercent(); cpu >= 0 {
+		fmt.Fprintf(&b, "Host CPU: %.0f%%.\n", cpu)
+	}
+
+	if rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(server_name,''), COALESCE(action,''), COALESCE(status,''), COALESCE(detail,''), ran_at
+		FROM schedule_runs WHERE ran_at >= datetime('now','-1 day') AND status<>'ok' ORDER BY ran_at DESC LIMIT 30`); err == nil {
+		var lines []string
+		for rows.Next() {
+			var sn, ac, st, dt, ra string
+			if rows.Scan(&sn, &ac, &st, &dt, &ra) == nil {
+				lines = append(lines, fmt.Sprintf("%s: %s %s on %s — %s", ra, ac, st, sn, dt))
+			}
+		}
+		rows.Close()
+		if len(lines) > 0 {
+			fmt.Fprintf(&b, "Scheduled-task issues (24h):\n%s\n", strings.Join(lines, "\n"))
+		} else {
+			b.WriteString("Scheduled tasks: no failures in the last 24h.\n")
+		}
+	}
+
+	var failedBackups int
+	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM backups WHERE status='error' AND created_at >= datetime('now','-1 day')").Scan(&failedBackups)
+	if failedBackups > 0 {
+		fmt.Fprintf(&b, "Backups: %d failed in the last 24h.\n", failedBackups)
+	} else {
+		b.WriteString("Backups: none failed in the last 24h.\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// buildHealthDigestMessages asks for a short ops briefing from the snapshot. Pure + testable.
+func buildHealthDigestMessages(snapshot string) []llm.Message {
+	system := "You are a self-hosted game/app server ops assistant. You are given a snapshot of a " +
+		"control panel's servers and host health. Write a SHORT status briefing for the admin: LEAD with " +
+		"anything that needs attention (servers not running, failed scheduled tasks, failed backups, low " +
+		"disk, high CPU/memory), then end with a one-line all-clear for what's healthy. Be concrete with " +
+		"names and numbers. Do not invent anything not present in the snapshot. Advisory only — do not take " +
+		"or imply any automated action."
+	return []llm.Message{
+		{Role: "system", Content: system},
+		{Role: "user", Content: "Panel health snapshot:\n" + snapshot},
+	}
+}
+
+// handleHealthDigest returns an advisory cross-server ops briefing. Admin-only
+// (wired via requireAdmin) + requires an enabled AI config.
+func (s *Server) handleHealthDigest(w http.ResponseWriter, r *http.Request) {
+	c := s.loadAIConfig(r.Context())
+	if !c.Enabled {
+		jsonError(w, "AI assistant is off — enable it in Settings → Integrations", http.StatusBadRequest)
+		return
+	}
+	snapshot := s.gatherHealthSnapshot(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	out, err := llm.Complete(ctx,
+		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
+		buildHealthDigestMessages(snapshot), 700)
+	if err != nil {
+		jsonError(w, "AI request failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	s.auditLog(r, "ai.health_digest", "panel", nil)
+	jsonOK(w, map[string]string{"summary": out})
 }

@@ -150,9 +150,9 @@
 {#if info?.ai_enabled}
   <div class="card p-4 mb-8">
     <div class="flex items-center gap-2">
-      <h2 class="text-lg font-semibold">🤖 Ops digest</h2>
+      <h2 class="text-lg font-semibold">🤖 Kvasir · Ops digest</h2>
       <button class="btn-primary text-xs ml-auto" disabled={opsBusy} onclick={loadOpsDigest}
-        title="Ask your configured AI assistant for a plain-language health briefing across all servers (advisory).">
+        title="Ask Kvasir (your configured AI) for a plain-language health briefing across all servers (advisory).">
         {opsBusy ? "Summarizing…" : "Summarize"}</button>
     </div>
     {#if opsDigest}
@@ -167,7 +167,7 @@
 {#if info?.ai_actions_enabled}
   <div class="card p-4 mb-8 space-y-3">
     <div class="flex items-center gap-2">
-      <h2 class="text-lg font-semibold">🤖 AI actions</h2>
+      <h2 class="text-lg font-semibold">🤖 Ask Kvasir</h2>
       <span class="text-xs text-muted">propose → you confirm → run</span>
     </div>
     <form onsubmit={(e) => { e.preventDefault(); proposePlan(); }} class="flex gap-2">

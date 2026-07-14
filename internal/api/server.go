@@ -33,6 +33,7 @@ type Server struct {
 	sched   *schedulerState
 	viol    *violationWatcher
 	wd      *watchdogState // auto-heal: per-server query health streaks + cooldowns
+	startWD *startState    // start-failure detection: per-server failed-start streaks
 	version string         // build version (set via SetVersion)
 
 	extIP   string // cached external IP (detectPublicAddr)
@@ -64,6 +65,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		install: newProgressHub(),
 		cipher:  cipher,
 		wd:      newWatchdogState(),
+		startWD: newStartState(),
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()

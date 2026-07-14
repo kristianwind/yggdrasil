@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Runes: the server catalog — Yggdrasil Panel docs</title>
+<meta name="description" content="A rune tells Yggdrasil Panel how to run one game or app." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html" class="on">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Runes: the server catalog</h1>
+    <p>A rune tells Yggdrasil Panel how to run one game or app. Everything you can deploy comes
+from one, so this is where you look when the game you want isn&rsquo;t in the list yet. For
+authoring your own, see the <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md">rune schema</a>.</p>
+<h2 id="what-a-rune-is">What a rune is</h2>
+<p>A rune is a single declarative YAML file: which Docker image to use, how to install the
+game, the command that starts it, the ports it needs, the variables an operator gets to
+fill in, and the optional extras that light up features in the panel — a query protocol,
+RCON, restart warnings, a wipe definition, a players list, an admin log.</p>
+<p>The model exists so that adding a game is a <em>data</em> change, not a code change. Yggdrasil
+has no per-game logic compiled into it. When you create a server, the panel reads that
+YAML and nothing else: it templates the image name and command with your variable
+values, allocates the ports the rune declares, and runs the install script in a
+throwaway container. When you press <strong>Wipe</strong>, the paths it deletes come from the rune.
+When the watchdog health-checks a server, it uses the query protocol the rune named.
+Which is also why a rune with no <code>query</code> block gets no watchdog toggle, and one with no
+<code>wipe</code> block gets no Wipe button — the panel offers exactly what the rune declares.</p>
+<p>The code and the API call this a <code>gameskill</code>. You&rsquo;ll meet that spelling in API paths
+(<code>/api/gameskills</code>), in the YAML&rsquo;s top-level <code>gameskill:</code> key, and in the <code>gameskill_id</code>
+field on a server. In the panel it&rsquo;s a rune.</p>
+<p>Runes are versioned by an integer <code>version</code> field, shown in the list. It&rsquo;s metadata for
+you, not a dependency system.</p>
+<h2 id="built-in-runes">Built-in runes</h2>
+<p>Five runes are embedded in the Yggdrasil binary and seeded into the catalog on every
+boot:</p>
+<table>
+<thead>
+<tr>
+<th>Rune</th>
+<th>id</th>
+<th>Category</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Minecraft (Java)</td>
+<td><code>minecraft-java</code></td>
+<td>Minecraft</td>
+</tr>
+<tr>
+<td>Minecraft (Bedrock)</td>
+<td><code>minecraft-bedrock</code></td>
+<td>Minecraft</td>
+</tr>
+<tr>
+<td>Uptime Kuma</td>
+<td><code>uptime-kuma</code></td>
+<td>Apps</td>
+</tr>
+<tr>
+<td>Vaultwarden</td>
+<td><code>vaultwarden</code></td>
+<td>Apps</td>
+</tr>
+<tr>
+<td>Cloudflare Tunnel (cloudflared)</td>
+<td><code>cloudflared</code></td>
+<td>Apps</td>
+</tr>
+</tbody>
+</table>
+<p>They carry a <strong>built-in</strong> badge in the panel. Seeding is an upsert, so an upgraded
+Yggdrasil ships you the newer definitions without disturbing the servers already built
+from them.</p>
+<p>Everything else — including DayZ and Rust — lives in the community catalog and is one
+click away.</p>
+<h2 id="the-community-catalog">The community catalog</h2>
+<p>The <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/../community-runes"><code>community-runes/</code></a> directory in this repository holds runes
+that aren&rsquo;t bundled, so the default set stays lean. They&rsquo;re grouped into three folders,
+and the panel&rsquo;s GitHub browser descends into all of them automatically.</p>
+<p><code>databases/</code> — backing stores for the app runes:
+<code>mariadb</code>, <code>mongodb</code>, <code>postgresql</code>.</p>
+<p><code>games/</code>:
+<code>dayz</code>, <code>factorio</code>, <code>genshin-impact</code>, <code>luanti</code>, <code>rust</code>, <code>terraria</code>.</p>
+<p><code>apps/</code>:
+<code>adminer</code>, <code>cyberchef</code>, <code>excalidraw</code>, <code>freshrss</code>, <code>gitea</code>, <code>grafana</code>, <code>headplane</code>,
+<code>headscale</code>, <code>hermes-agent</code>, <code>homepage</code>, <code>it-tools</code>, <code>jellyfin</code>, <code>linkding</code>, <code>mealie</code>,
+<code>memos</code>, <code>n8n</code>, <code>nextcloud</code>, <code>nginx-proxy-manager</code>, <code>phpmyadmin</code>, <code>pihole</code>, <code>portainer</code>,
+<code>static-site</code>, <code>stirling-pdf</code>, <code>wordpress</code>.</p>
+<p>These are community-maintained and provided as-is. The app runes run their images much
+like a plain <code>docker run</code>, so you may need to tune ports or variables for your setup, and
+some have prerequisites — WordPress and Nextcloud want a MariaDB rune to point at; the
+catalog&rsquo;s own <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/../community-runes/README.md">README</a> has the per-rune notes.</p>
+<h2 id="adding-a-rune">Adding a rune</h2>
+<p>Four routes, all on the <strong>Runes</strong> page.</p>
+<h3 id="browse-github">Browse GitHub</h3>
+<p><strong>Runes → Browse GitHub</strong> lists the YAML files in a GitHub repository folder and installs
+any of them with one click. It defaults to this project&rsquo;s <code>community-runes</code> folder on
+<code>main</code>, but the repo and path are editable — point it at your own fork or a private
+collection of runes and it works the same.</p>
+<p>The browser reads each file&rsquo;s id, name, category, and description, flags the ones you
+already have installed, and lets you filter the list. It descends one level into
+subfolders, which is how <code>databases/</code>, <code>games/</code>, and <code>apps/</code> show up together. Listings
+are cached for 10 minutes; <strong>Reload</strong> forces a refresh.</p>
+<p>Installing an already-installed rune <strong>updates it</strong> to the repository&rsquo;s latest version.
+Existing servers built from that rune pick the change up the next time their container is
+recreated — a restart is enough, no recreating the server.</p>
+<p>Fetches are restricted to GitHub&rsquo;s own hosts, so this endpoint can&rsquo;t be turned into a
+fetch-anything proxy, and each file is capped at 512 KB.</p>
+<h3 id="upload-a-yaml">Upload a YAML</h3>
+<p><strong>Carve a rune (upload)</strong> takes a <code>.yaml</code> file directly — the same thing the GitHub
+browser does, when you already have the file. Also capped at 512 KB.</p>
+<h3 id="import-a-pterodactyl-egg">Import a Pterodactyl egg</h3>
+<p><strong>Import egg</strong> converts a Pterodactyl egg <code>.json</code> into a rune, mapping the subset that
+translates cleanly: image, startup command, readiness signal, install script, and
+variables. That makes the large existing egg library reusable. Up to 1 MB. Expect to
+review the result — an egg&rsquo;s conventions don&rsquo;t line up with Yggdrasil&rsquo;s on every field.</p>
+<h3 id="import-xml">Import XML</h3>
+<p><strong>Import XML</strong> takes a rune expressed as XML, with elements mirroring the YAML keys. Up
+to 1 MB.</p>
+<p>Whichever route you use, the YAML is parsed and validated before it&rsquo;s stored. An invalid
+rune is rejected with the reason, not saved and left to fail at runtime.</p>
+<h2 id="rune-management-is-admin-only">Rune management is admin-only</h2>
+<p>Listing runes and reading one is open to anyone who can log in. <strong>Every route that adds,
+imports, or deletes a rune requires an admin.</strong> This is deliberate, and it&rsquo;s a security
+boundary rather than a formality.</p>
+<p>A rune fully controls the Docker runtime: the image, the command, the user it runs as,
+Linux capabilities, device access, and mount targets. Anyone who can install a rune can
+therefore choose what code runs on your host and with which privileges — a
+privilege-escalation path straight out of the panel. So a delegate can create servers
+from the runes you&rsquo;ve approved, and cannot add new ones.</p>
+<p>Runes are still only semi-trusted after that, so the parser enforces allowlists on the
+privilege-bearing fields at import <em>and</em> at load time. Capabilities are limited to
+<code>NET_ADMIN</code>, <code>NET_RAW</code>, <code>NET_BIND_SERVICE</code>, and <code>SYS_NICE</code>; devices to <code>/dev/net/tun</code>,
+<code>/dev/dri</code>, and <code>/dev/fuse</code>; sysctls to the three forwarding-related keys a VPN rune
+needs. Extra mount targets that would shadow system paths are refused. A rune cannot
+bind a host path at all — host mounts are set per server, by an admin, in the panel.</p>
+<h3 id="the-built-in-overwrite-guard">The built-in overwrite guard</h3>
+<p>No import path may overwrite a built-in rune. Upload, egg, XML, and GitHub install all
+refuse with a conflict if the incoming id matches a rune marked built-in — otherwise
+anyone with admin could backdoor a definition that running servers already depend on.
+Use a different id if you want your own variant.</p>
+<h2 id="deleting-runes">Deleting runes</h2>
+<p>Any rune can be deleted, including a built-in one — but not while servers still use it.
+Yggdrasil refuses and tells you how many are in the way; delete those servers first, and
+the rune goes.</p>
+<p>Deleting a built-in rune sticks. Yggdrasil records the deletion, and the boot-time seeder
+respects it rather than re-adding the rune on the next restart.</p>
+<h2 id="what-the-seeder-does-on-boot">What the seeder does on boot</h2>
+<p>Beyond upserting the embedded runes, the seeder prunes. Any rune still marked built-in in
+your database that is no longer shipped with this version gets cleaned up — this is what
+makes slimming the bundled set actually take effect:</p>
+<ul>
+<li><strong>not used by any server</strong> → removed entirely. It&rsquo;s still installable from the
+community catalog.</li>
+<li><strong>still used by a server</strong> → demoted to a normal community rune (it loses the built-in
+badge) so your servers keep working. The prune only ever considers runes that are still
+marked built-in, so a demoted one is never picked up again — deleting it once those
+servers are gone is a manual job.</li>
+</ul>
+<p>Nothing is ever orphaned, and nothing you deleted comes back.</p>
+<h2 id="editing-a-runes-yaml-does-not-change-the-panels-copy">Editing a rune&rsquo;s YAML does not change the panel&rsquo;s copy</h2>
+<p>The one that catches people out.</p>
+<p>When a rune is imported, Yggdrasil stores the YAML <strong>in its database</strong>. That stored copy
+is the only thing servers ever read. Editing the file you uploaded, or the file in a
+checkout of <code>community-runes/</code>, changes nothing at all — there&rsquo;s no watched directory
+and no reload.</p>
+<p>To apply a change: <strong>re-import the rune</strong>. Upload the edited YAML again, or reinstall it
+from <strong>Browse GitHub</strong> after pushing. Either overwrites the stored copy in place, keeping
+the same id, so existing servers stay attached to it. They then pick up the new
+definition the next time their container is recreated — press <strong>Restart</strong>, which rebuilds
+the container from the rune as it is right now. Changes to the install script need
+<strong>Update / Reinstall</strong> instead, since that&rsquo;s what re-runs it.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-servers.html">Managing servers</a> — creating servers from runes, and the features runes light up</li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md">Rune schema</a> — every field, for writing your own</li>
+<li><a href="guides-networking.html">Networking</a> — ports, subdomains, and reverse proxies for app runes</li>
+<li><a href="guides-backups-and-schedules.html">Backups and schedules</a></li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a></li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a> — the <code>/api/gameskills</code> routes</li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/runes.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-a-rune-is">What a rune is</a><a class="t2" href="#built-in-runes">Built-in runes</a><a class="t2" href="#the-community-catalog">The community catalog</a><a class="t2" href="#adding-a-rune">Adding a rune</a><a class="t3" href="#browse-github">Browse GitHub</a><a class="t3" href="#upload-a-yaml">Upload a YAML</a><a class="t3" href="#import-a-pterodactyl-egg">Import a Pterodactyl egg</a><a class="t3" href="#import-xml">Import XML</a><a class="t2" href="#rune-management-is-admin-only">Rune management is admin-only</a><a class="t3" href="#the-built-in-overwrite-guard">The built-in overwrite guard</a><a class="t2" href="#deleting-runes">Deleting runes</a><a class="t2" href="#what-the-seeder-does-on-boot">What the seeder does on boot</a><a class="t2" href="#editing-a-runes-yaml-does-not-change-the-panels-copy">Editing a rune&amp;rsquo;s YAML does not change the panel&amp;rsquo;s copy</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

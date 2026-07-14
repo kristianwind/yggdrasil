@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Getting started — Yggdrasil Panel docs</title>
+<meta name="description" content="From a bare Debian or Ubuntu box to a running game server." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html" class="on">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Getting started</h1>
+    <p>From a bare Debian or Ubuntu box to a running game server. Budget about fifteen minutes, most of it
+spent waiting for a download.</p>
+<h2 id="before-you-start">Before you start</h2>
+<p>You need:</p>
+<ul>
+<li>A <strong>Debian or Ubuntu</strong> host, <code>amd64</code> or <code>arm64</code>. The installer refuses other distributions.</li>
+<li><strong>Root</strong> access.</li>
+<li>Enough disk for the games you plan to run. A Minecraft server is a few hundred MB; DayZ and Rust
+are several GB each, and Steam needs room to stage a download on top of that.</li>
+<li><strong>Docker</strong> — the installer installs it if it&rsquo;s missing.</li>
+</ul>
+<p>Yggdrasil Panel does not need a database server, a reverse proxy, or a message queue. It&rsquo;s one
+static binary with the web UI embedded and SQLite for storage.</p>
+<h2 id="install">Install</h2>
+<pre><code class="language-bash">curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash
+</code></pre>
+<p>The installer detects your distribution, installs Docker if needed, creates a dedicated <code>yggdrasil</code>
+system user, writes <code>/etc/yggdrasil/config.yaml</code> with a generated secret key and admin password,
+drops a systemd unit, and starts the service.</p>
+<p>It&rsquo;s idempotent. Re-running it upgrades the binary and repairs a broken install, and it leaves an
+existing config file untouched.</p>
+<p>When it finishes it prints your login details:</p>
+<pre><code class="language-text">   URL:   http://192.168.1.50:8080
+   Login: admin / &lt;generated password&gt;
+</code></pre>
+<p>If you missed them, the password is in <code>/etc/yggdrasil/config.yaml</code> under <code>admin.password</code>.</p>
+<h2 id="first-login">First login</h2>
+<p>Open the URL and log in.</p>
+<p><a href="screenshots/login.png"><img src="screenshots/login.png" alt="The login screen"></a></p>
+<p><strong>Change the admin password now</strong>, then remove the <code>admin:</code> block from
+<code>/etc/yggdrasil/config.yaml</code> so a plaintext password isn&rsquo;t left on disk. The block only bootstraps
+the first admin account — once an admin exists, Yggdrasil ignores it entirely, so deleting it is
+safe and won&rsquo;t lock you out.</p>
+<pre><code class="language-bash">sudo nano /etc/yggdrasil/config.yaml   # delete the admin: block
+sudo systemctl restart yggdrasil
+</code></pre>
+<p>While you&rsquo;re here, consider adding a second factor under <strong>Settings</strong> — Yggdrasil supports both TOTP
+apps and passkeys. See <a href="guides-users-and-permissions.html">Users and permissions</a>.</p>
+<h2 id="the-layout">The layout</h2>
+<p>Nine things in the sidebar, four of them admin-only:</p>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What it&rsquo;s for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Dashboard</strong></td>
+<td>Fleet overview, host CPU/RAM/disk, recent servers</td>
+</tr>
+<tr>
+<td><strong>Servers</strong></td>
+<td>Everything you run, and where you create more</td>
+</tr>
+<tr>
+<td><strong>Runes</strong></td>
+<td>The catalog of things you <em>can</em> run</td>
+</tr>
+<tr>
+<td><strong>Schedules</strong></td>
+<td>Cron jobs — backups, restarts, messages</td>
+</tr>
+<tr>
+<td><strong>Domains</strong></td>
+<td>Subdomains mapped to servers</td>
+</tr>
+<tr>
+<td><strong>Bans</strong></td>
+<td>Cross-server ban list</td>
+</tr>
+<tr>
+<td><strong>Users</strong></td>
+<td>Accounts and permissions</td>
+</tr>
+<tr>
+<td><strong>Audit log</strong></td>
+<td>Who did what</td>
+</tr>
+<tr>
+<td><strong>Settings</strong></td>
+<td>Integrations, backups, AI, network</td>
+</tr>
+</tbody>
+</table>
+<h2 id="pick-a-rune">Pick a rune</h2>
+<p>A <strong>rune</strong> is a recipe: one declarative YAML file that teaches Yggdrasil how to install, run, query
+and manage one game or app. The panel ships with a handful embedded — Minecraft Java, Minecraft
+Bedrock, Uptime Kuma, Vaultwarden, and a Cloudflare Tunnel connector — and a much larger catalog
+lives in the repository.</p>
+<p>Open <strong>Runes</strong>. To pull in the rest, click <strong>Browse GitHub</strong>, which lists the runes in
+<code>community-runes/</code> and imports one with a click:</p>
+<p><a href="screenshots/runes.png"><img src="screenshots/runes.png" alt="The Runes page"></a></p>
+<ul>
+<li><strong>games/</strong> — DayZ, Rust, Terraria, Factorio, Luanti, and an experimental Genshin Impact
+(Grasscutter) rune</li>
+<li><strong>databases/</strong> — MariaDB, PostgreSQL, MongoDB</li>
+<li><strong>apps/</strong> — Gitea, Jellyfin, Grafana, n8n, Nextcloud, WordPress, Pi-hole, and more</li>
+</ul>
+<p>Importing a rune only adds it to the catalog. Nothing runs yet.</p>
+<p>Adding and removing runes is <strong>admin-only</strong>, deliberately: a rune chooses the container image, the
+command, and the user it runs as, so being able to add one is effectively root on the host.</p>
+<h2 id="create-your-first-server">Create your first server</h2>
+<p>Go to <strong>Servers → New server</strong>. Pick a <strong>Rune</strong>, give the server a <strong>Name</strong>, and optionally put it
+in a <strong>Realm</strong> (a group — useful later for granting someone access to a set of servers at once).</p>
+<p>The rest of the form is generated from the rune&rsquo;s variables, so it differs per game: Minecraft asks
+for a Java version and a server type, DayZ asks for a mission. Set <strong>CPU limit</strong> and <strong>RAM limit</strong>
+if you want them; <code>0</code> means unlimited.</p>
+<p>You don&rsquo;t choose ports. Yggdrasil allocates free ones from its configured range (25000–30000 by
+default) and deliberately does <em>not</em> use the game&rsquo;s well-known port — your Minecraft server will not
+be on 25565. Off-default ports get scanned and hammered less. The server&rsquo;s page shows the real
+connect address.</p>
+<h2 id="install-it">Install it</h2>
+<p>A new server starts in the <code>installing</code> state. Yggdrasil runs the rune&rsquo;s install step in a
+throwaway container — downloading the Paper jar, or running SteamCMD — and streams the output live.
+Watch it; this is where a bad Steam credential or a full disk shows up.</p>
+<p>Steam games take a while. A DayZ install is several GB.</p>
+<h2 id="start-it">Start it</h2>
+<p>When the install finishes, hit <strong>Start</strong>. The status goes <code>starting</code> → <code>running</code>.</p>
+<p>That intermediate state is real, not cosmetic: Yggdrasil watches the container log for the rune&rsquo;s
+readiness pattern and only reports <code>running</code> once the game says it&rsquo;s accepting players. A server
+sitting in <code>starting</code> forever usually means the process died or never printed the expected line —
+open the console and look.</p>
+<p><a href="screenshots/server-console.png"><img src="screenshots/server-console.png" alt="The server console"></a></p>
+<p>The console is interactive where the game supports it, and every server also has live log streaming,
+a file browser, and RCON where the game offers it.</p>
+<h2 id="connect">Connect</h2>
+<p>The server page shows a <strong>connect address</strong>. On your LAN, that&rsquo;s it — you&rsquo;re done.</p>
+<p>Getting players in from the internet needs one more step, because the panel can&rsquo;t open your router
+for you unless you tell it how. The options, roughly in order of how much they&rsquo;ll annoy you:</p>
+<ul>
+<li><strong>UniFi</strong> — if you run a UniFi gateway, give Yggdrasil its URL and credentials under
+<strong>Settings → Network</strong> and it creates and removes WAN port-forward rules as servers start and stop.</li>
+<li><strong>UPnP</strong> — off by default, and off on most routers. Cheap to try.</li>
+<li><strong>Manual port forwarding</strong> — forward the server&rsquo;s ports on your router yourself.</li>
+<li><strong>Cloudflare Tunnel</strong> — no port forwarding at all, but HTTP(S) only, so it&rsquo;s for web apps, not games.</li>
+</ul>
+<p>The server page has an <strong>online from outside</strong> check that probes your <em>public</em> address, so you can
+tell &ldquo;the game is up&rdquo; apart from &ldquo;the game is reachable&rdquo;.</p>
+<p>One trap worth knowing before you hit it: a Cloudflare <strong>proxied</strong> (orange-cloud) DNS record only
+carries HTTP and HTTPS. Point a Minecraft hostname at a proxied record and players cannot connect,
+even though the server is perfectly healthy. Game hostnames need DNS-only (grey cloud).</p>
+<p>The full picture is in <a href="guides-networking.html">Networking</a>.</p>
+<h2 id="what-next">What next</h2>
+<p>You have a server. The things most people set up next:</p>
+<ul>
+<li><strong><a href="guides-backups-and-schedules.html">Backups</a></strong> — add a target, then a nightly schedule. The
+dashboard nags you about servers without a recent backup.</li>
+<li><strong><a href="guides-notifications.html">Notifications</a></strong> — Telegram, Discord, or a webhook, so you hear about
+a crash without watching the panel.</li>
+<li><strong><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a></strong> — CPU/RAM/disk alarms, the crash
+watchdog, and auto-restart.</li>
+<li><strong><a href="guides-users-and-permissions.html">Users and permissions</a></strong> — let a friend restart one server
+without handing over your admin account.</li>
+</ul>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong>The panel won&rsquo;t start.</strong></p>
+<pre><code class="language-bash">sudo journalctl -u yggdrasil -f
+</code></pre>
+<p><strong>A server won&rsquo;t leave <code>starting</code>.</strong> The process is up but hasn&rsquo;t printed its readiness line. Open
+the console and read the log — a crash loop, a bad config, or a game that failed to bind its port.</p>
+<p><strong>A server won&rsquo;t start at all.</strong> Read the console output. For Minecraft specifically, the usual
+cause is the EULA: the rune writes <code>eula.txt</code> from the <code>EULA</code> environment variable on every boot, so
+editing the file by hand achieves nothing. Set <code>EULA</code> to <code>true</code> in the server&rsquo;s settings instead.</p>
+<p><strong>Players can&rsquo;t connect but the server is healthy.</strong> Check the <em>outside</em> reachability badge, not the
+status dot. Then check your port forwarding, then check whether the hostname is behind a proxied
+Cloudflare record.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="reference-configuration.html">Configuration</a> — every key in <code>config.yaml</code></li>
+<li><a href="guides-runes.html">Runes</a> — the catalog in depth</li>
+<li><a href="guides-servers.html">Servers</a> — lifecycle, files, console, cloning</li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/getting-started.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#before-you-start">Before you start</a><a class="t2" href="#install">Install</a><a class="t2" href="#first-login">First login</a><a class="t2" href="#the-layout">The layout</a><a class="t2" href="#pick-a-rune">Pick a rune</a><a class="t2" href="#create-your-first-server">Create your first server</a><a class="t2" href="#install-it">Install it</a><a class="t2" href="#start-it">Start it</a><a class="t2" href="#connect">Connect</a><a class="t2" href="#what-next">What next</a><a class="t2" href="#troubleshooting">Troubleshooting</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

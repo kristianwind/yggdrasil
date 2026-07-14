@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Managing servers — Yggdrasil Panel docs</title>
+<meta name="description" content="Everything about a single game or app instance in Yggdrasil Panel: creating it, the states it moves through, keeping it alive, and the tools on its detail page." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html" class="on">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Managing servers</h1>
+    <p>Everything about a single game or app instance in Yggdrasil Panel: creating it, the
+states it moves through, keeping it alive, and the tools on its detail page. Read
+<a href="guides-runes.html">Runes</a> first if you don&rsquo;t yet know what a rune is.</p>
+<h2 id="creating-a-server">Creating a server</h2>
+<p>A server is one Docker container plus one data directory on the host. You need three
+things to make one:</p>
+<ul>
+<li>a <strong>rune</strong> — the definition of the game or app (see <a href="guides-runes.html">Runes</a>),</li>
+<li>a <strong>realm</strong> — the group it belongs to,</li>
+<li>values for the rune&rsquo;s <strong>variables</strong> — RAM, world seed, RCON password, and so on.</li>
+</ul>
+<p>Open <strong>Servers → + New server</strong>. Pick the realm, pick the rune, name the server, and
+fill in the variables the rune declares. Anything you leave alone takes the rune&rsquo;s
+default. If you leave the realm empty, Yggdrasil files the server under a realm named
+after the rune&rsquo;s category, creating that realm if it doesn&rsquo;t exist yet (or <code>Default</code>
+when the rune declares no category).</p>
+<p>Two more fields sit at the bottom of the dialog:</p>
+<ul>
+<li><strong>CPU limit (%)</strong> and <strong>RAM limit (MB)</strong> — <code>0</code> means unlimited. See
+<a href="#resource-limits">Resource limits</a>.</li>
+<li><strong>Start automatically after a reboot</strong> — on by default.</li>
+</ul>
+<p>A <strong>Subdomain</strong> field appears only for runes that declare a port named <code>web</code>; it hands
+the server to Nginx Proxy Manager or Cloudflare Tunnel. That&rsquo;s covered in
+<a href="guides-networking.html">Networking</a>.</p>
+<p>Yggdrasil allocates the host ports, creates the data directory, saves the server, and
+starts the install immediately — you land on the server&rsquo;s detail page with the install
+log already streaming.</p>
+<h3 id="port-allocation">Port allocation</h3>
+<p>Yggdrasil ignores the game&rsquo;s well-known port (2302, 25565, …) and allocates
+sequentially from the configured range instead — <code>ports.range_min</code> to
+<code>ports.range_max</code> in your config file, which default to <strong>25000–30000</strong>. Distinctive
+ports get scanned and abused less, and every server ends up with its own.</p>
+<p>A port is only handed out if it is free three ways over: not already in Yggdrasil&rsquo;s
+allocation table, not published by any container Docker knows about (including
+orphans), and bindable right now on the host. Each rune port becomes an environment
+variable in two forms — <code>PORT_&lt;name&gt;</code> and <code>&lt;NAME&gt;_PORT</code> (so <code>GAME_PORT</code>,
+<code>QUERY_PORT</code>) — which is how a rune&rsquo;s command line learns the real external port.</p>
+<p>For Steam games the container publishes each port <strong>1:1</strong>: the bound port inside the
+container equals the published host port. Steam servers register their bind port with
+the Steam master server, so it has to match what the outside world connects to.
+Non-Steam runes bind the rune&rsquo;s fixed default port inside the container and publish it
+on the allocated host port.</p>
+<h2 id="the-lifecycle">The lifecycle</h2>
+<p>Yggdrasil tracks two things separately: whether the server is <strong>installed</strong>, and what
+its container is doing.</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>install_status: installing</code></td>
+<td>the rune&rsquo;s install script is running right now</td>
+</tr>
+<tr>
+<td><code>install_status: done</code></td>
+<td>files are on disk; the server can start</td>
+</tr>
+<tr>
+<td><code>install_status: error</code></td>
+<td>the install script failed; press <strong>Retry install</strong></td>
+</tr>
+<tr>
+<td><code>status: starting</code></td>
+<td>the container is up; Yggdrasil is waiting for a readiness signal</td>
+</tr>
+<tr>
+<td><code>status: running</code></td>
+<td>the game answered — it&rsquo;s ready</td>
+</tr>
+<tr>
+<td><code>status: stopped</code></td>
+<td>no container, or the container exited</td>
+</tr>
+</tbody>
+</table>
+<p>A new server sits at <code>stopped</code> while its install runs, and cannot be started until the
+install finishes. Start it and the status goes to <code>starting</code>. What promotes it to
+<code>running</code> is the rune&rsquo;s <code>done_regex</code> — a regular expression matched against the
+container&rsquo;s log output.</p>
+<p>The watcher behind this polls every 3 seconds for up to <strong>10 minutes</strong>, scanning the
+last 2000 log lines each pass (games are noisy while they load). Then:</p>
+<ul>
+<li>the regex matches → <code>running</code>,</li>
+<li>the rune declares no <code>done_regex</code> → the container being up is the only signal
+available, so it becomes <code>running</code> as soon as it&rsquo;s confirmed up,</li>
+<li>the container exits first → back to <code>stopped</code>, and start-failure detection takes
+over,</li>
+<li>10 minutes pass and it&rsquo;s still up but silent → Yggdrasil shows it as <code>running</code>
+rather than leave you staring at <code>starting</code> forever.</li>
+</ul>
+<p>If a rune has a <code>done_regex</code> and the server hasn&rsquo;t signalled after <strong>5 minutes</strong>, you
+get a one-time &ldquo;taking longer than usual&rdquo; notification with the latest log lines
+attached. It keeps waiting; that&rsquo;s a heads-up, not a failure.</p>
+<p>Separately, a reconciler sweeps every <strong>20 seconds</strong> and flips any server whose
+container has died to <code>stopped</code>, so a crash shows up in the UI without you refreshing.</p>
+<h2 id="installing-updating-reinstalling">Installing, updating, reinstalling</h2>
+<p>The install runs the rune&rsquo;s install script inside an <strong>ephemeral container</strong> — pulled
+fresh, run as root, removed when it exits — with the server&rsquo;s data directory mounted at
+<code>/data</code>. Output streams live to the <strong>Install log</strong> tab over a WebSocket, and the last
+500 lines are replayed if you open the tab late or reconnect. When the script succeeds,
+Yggdrasil hands <code>/data</code> back to the panel&rsquo;s own user so both the server process and the
+file manager can write there, and marks the server installed. A rune with no install
+block is installed the moment it&rsquo;s created.</p>
+<p>Steam games get some extra handling. The install container makes <code>/data</code> writable
+before SteamCMD runs, and mounts a persistent SteamCMD cache so Steam Guard isn&rsquo;t
+re-triggered on every update. Games that need a real Steam account (rather than
+anonymous login) fail with a clear message until you authorize one under
+<strong>Settings → Steam</strong>.</p>
+<p><strong>Update / Reinstall</strong> on the server page re-runs that same script. That&rsquo;s how you
+update the game to the latest version and re-download mods. It regenerates whatever the
+script writes, so config files can be overwritten — back up first. If the server was
+running when you pressed it, Yggdrasil recreates the container afterwards so the new
+files are actually in use.</p>
+<h2 id="start-stop-restart">Start, stop, restart</h2>
+<p><strong>Start</strong> and <strong>Restart</strong> both recreate the container from scratch: the old one is
+removed and a new one is created from the rune, variables, and ports as they are <em>right
+now</em>. This matters. A container bakes in its command and environment at creation time,
+so changing a variable or a mod list and calling a plain <code>docker restart</code> would change
+nothing. Restart in Yggdrasil is a recreate, so <strong>env, mod, and rune changes apply on
+restart</strong> — no stop/start dance required. Restart does not update the game version;
+that&rsquo;s <strong>Update / Reinstall</strong>.</p>
+<p>Recreating also reconciles ports. If one of your allocated host ports has been taken by
+something else while the server was down, Yggdrasil allocates a new one and records it
+rather than failing to bind.</p>
+<h3 id="graceful-stop">Graceful stop</h3>
+<p>Stopping is not a kill. Yggdrasil asks the rune how to shut this game down cleanly:</p>
+<ol>
+<li>send the rune&rsquo;s <code>save_command</code> over the console (Minecraft&rsquo;s <code>save-all</code>), wait 2
+seconds for the flush,</li>
+<li>send the rune&rsquo;s <code>stop</code> command, wait 2 seconds,</li>
+<li><code>docker stop</code> with the rune&rsquo;s <code>stop_timeout</code> as the SIGTERM→SIGKILL grace period.</li>
+</ol>
+<p><code>stop_timeout</code> defaults to <strong>30 seconds</strong> and a rune may raise it to at most <strong>300</strong>.
+The generous default exists because some games flush a lot of state on shutdown — DayZ
+writes its entire Central Economy and sets <code>stop_timeout: 90</code>. A rune that declares
+neither command still gets the full grace period.</p>
+<p>The same graceful stop runs before every recreate, so a restart doesn&rsquo;t cut a save in
+half either.</p>
+<h3 id="safe-restart">Safe restart</h3>
+<p><strong>Safe restart</strong> is the one to use on a populated server. It broadcasts the rune&rsquo;s
+restart countdown in-game — each warning fires at its declared time before the restart,
+largest first, so a <code>[15m, 5m, 1m]</code> set warns at fifteen, five, and one minute — then
+restarts. Tick <strong>Back up before each restart</strong> and a backup runs first.</p>
+<p>The API call returns immediately; the countdown runs in the background. A rune with no
+warnings declared backs up (if asked) and restarts promptly — the button still works, it
+has nothing to say to players.</p>
+<h3 id="auto-restart">Auto-restart</h3>
+<p><strong>🔁 Auto-restart</strong> schedules a recurring restart every N hours, using the same warned
+restart path. It&rsquo;s a front door onto the scheduler: under the hood it manages one
+schedule row for you, so you never hand-edit cron. The dialog pre-fills <strong>6 hours</strong>,
+warnings on, backup off. N is clamped to 1–24; picking 24 gives you a plain daily
+restart at midnight.</p>
+<p>The dialog also shows a <strong>quiet-hours</strong> hint when there&rsquo;s data for it: Yggdrasil buckets
+the last 14 days of sampled player counts by local hour and tells you the calmest one —
+&ldquo;Quietest around 05:00 (avg 0.4 players, last 14 days)&rdquo;. Line your restarts up with that
+hour and almost nobody notices them. A brand-new server, or a game whose rune has no
+query, has no data, and the hint stays hidden rather than guess.</p>
+<p>See <a href="guides-backups-and-schedules.html">Backups and schedules</a> for the general scheduler.</p>
+<h2 id="keeping-servers-alive">Keeping servers alive</h2>
+<h3 id="watchdog-auto-heal">Watchdog (auto-heal)</h3>
+<p>A container can be up while the game inside it is hung — a plain liveness check misses
+that entirely. The <strong>🩺 Watchdog</strong> toggle catches it by health-checking the game through
+its own query protocol, which is why the toggle only appears for runes that declare a
+<code>query</code> block.</p>
+<p>Every 20-second tick, each watchdog-enabled <code>running</code> server gets a query with a
+3-second timeout. <strong>3 consecutive failures</strong> trigger an auto-restart and a
+notification; any success resets the streak. After a heal, a <strong>4-minute cooldown</strong>
+holds off further checks so the server has room to boot.</p>
+<p>Auto-heal knows when to stop. If a server needs <strong>5 heals within 30 minutes</strong>, restarting
+clearly isn&rsquo;t fixing it, so Yggdrasil <strong>quarantines</strong> it: auto-heal pauses, and you get
+one alert saying so instead of an endless flapping loop. Starting the server manually
+clears the quarantine and gives the watchdog a fresh chance.</p>
+<h3 id="start-failure-detection">Start-failure detection</h3>
+<p>The watchdog only heals servers Yggdrasil already believes are running. A server whose
+container comes up and then exits during startup is a different failure, and it gets its
+own handling: Yggdrasil retries, <strong>3 attempts total</strong>, with a <strong>15-second</strong> backoff
+between them. A transient blip — a slow image pull, a dependency still coming up — heals
+itself and never bothers you; retries are logged, not notified.</p>
+<p>When the budget runs out, the server is left stopped and you get exactly <strong>one</strong>
+actionable alert, with the crashed container&rsquo;s last <strong>40 log lines</strong> attached (trimmed
+to 1500 characters) so you can see why without opening the panel. Manually starting or
+stopping the server resets the streak — a fresh intent earns a fresh retry budget.</p>
+<p>If you take over during a backoff (start it yourself, or an install begins), the retry
+chain bows out and leaves the server to you.</p>
+<h3 id="autostart">Autostart</h3>
+<p><strong>Start automatically after a reboot</strong> brings a server back up when the panel or host
+restarts — but only if it was actually running when things went down. A server you
+deliberately stopped stays stopped, and a plain panel restart or deploy is a no-op
+because the game containers keep running through it.</p>
+<h2 id="clone">Clone</h2>
+<p><strong>⧉ Clone</strong> stands up &ldquo;another one like this&rdquo;: same rune, variables, resource limits,
+host mounts, autostart, port-forward, and watchdog settings, with a fresh set of ports
+and an empty data directory. It then installs.</p>
+<p>It clones <strong>configuration, not data</strong> — no copying a live multi-gigabyte world. The
+identity fields are deliberately left behind too: the clone gets no subdomain, no
+BattleMetrics id, and is not published on the status page. Default name is the source
+plus <code>(copy)</code>.</p>
+<h2 id="wipe">Wipe</h2>
+<p><strong>🧹 Wipe</strong> resets a server&rsquo;s persistence — loot, bases, progress — as the rune defines
+it. The button only appears for runes with a <code>wipe</code> block, because only the rune knows
+which paths mean &ldquo;the world&rdquo; for that game. Config, allowlist, and mods survive.</p>
+<p>The order is: safety backup (if ticked), then a graceful stop and container removal,
+then deletion of the rune&rsquo;s declared paths, then bring the server back up if it was
+running. <strong>The backup gates the wipe</strong> — if it doesn&rsquo;t complete, the wipe aborts and
+nothing is deleted. Path deletion is jailed to the data directory; anything resolving
+outside it, or to the data directory itself, is refused.</p>
+<p>Wipe runs as soon as you confirm. To wipe on a timer, use a scheduled wipe action in
+<a href="guides-backups-and-schedules.html">Backups and schedules</a>.</p>
+<h2 id="resource-limits">Resource limits</h2>
+<p>Per-server <strong>CPU limit (%)</strong> and <strong>RAM limit (MB)</strong> are set at create time and editable
+under <strong>Settings</strong> on the server page. <code>0</code> means unlimited for either.</p>
+<p>The CPU number is a share of <strong>one core</strong>: <code>100</code> = one full core, <code>200</code> = two, <code>50</code> =
+half. Note that the live CPU figure on the server page is measured differently — it&rsquo;s a
+share of the whole host, matching the dashboard&rsquo;s host-CPU card.</p>
+<p>Every container also gets a process cap of 8192 regardless of your settings, so one
+runaway server can&rsquo;t fork-bomb the host&rsquo;s PID table and take the panel down with it.</p>
+<h2 id="console-logs-and-rcon">Console, logs, and RCON</h2>
+<p>The <strong>Console</strong> tab attaches to the container: you read its output live and type
+commands straight into its stdin. It needs the <code>server.console</code> permission.</p>
+<p>When the container isn&rsquo;t running, the console doesn&rsquo;t leave you with a blank &ldquo;press
+Start&rdquo; — it prints the container&rsquo;s last 300 lines so a crash-on-start (a bad mod, a
+missing jar) is right there. Same when the container dies between the check and the
+attach.</p>
+<p>The separate log stream replays the last 200 lines and then follows live.</p>
+<p><strong>RCON</strong> is available through <code>POST /api/servers/{id}/rcon</code> for automation and scripts,
+for runes that declare an enabled <code>rcon</code> block; it needs <code>server.console</code> too. RCON
+also powers the <strong>Players</strong> tab — the live roster, kick, broadcast, and lock — for runes
+that declare a <code>players</code> block. Yggdrasil dials the server&rsquo;s allocated <code>rcon</code> port, or
+the <code>game</code> port for games where the protocol shares it (BattlEye).</p>
+<p>See <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">the API reference</a> for request shapes.</p>
+<h2 id="files">Files</h2>
+<p>The <strong>Files</strong> tab is a full file manager over the server&rsquo;s data directory: browse, open
+a text file in the editor, save, delete, upload, download.</p>
+<ul>
+<li>Drag and drop files — or a whole folder, recursively — anywhere over the listing to
+upload into the current directory.</li>
+<li>Files above 5 MB won&rsquo;t open in the editor. Download them instead.</li>
+<li>Every path is resolved and checked to stay inside the server&rsquo;s data directory,
+including through symlinks. There is no route out of it.</li>
+<li>If a file is owned by root because a SteamCMD install put it there, saving repairs
+ownership through a root container and retries once, rather than throwing a
+permission error at you.</li>
+</ul>
+<h3 id="config-version-history">Config version history</h3>
+<p>Each time you save a text file, Yggdrasil snapshots the <strong>previous</strong> contents first. Hit
+<strong>⏱ History</strong> in the editor to see the saved versions of that file, <strong>Load into editor</strong>
+to pull one back, then <strong>Save</strong> to restore it. It keeps the last <strong>10 versions per
+file</strong>; binaries and anything over 256 KB are skipped.</p>
+<p>That&rsquo;s the undo for &ldquo;I edited server.properties and now it won&rsquo;t boot&rdquo;.</p>
+<h2 id="organizing-the-servers-page">Organizing the Servers page</h2>
+<p><strong>Notes</strong> live at the top of each server page — free text shared with the whole admin
+team, for what the server is for, event schedules, gotchas. Up to 8000 characters, and
+editing needs <code>server.control</code>.</p>
+<p><strong>Tags</strong> are comma-separated labels set under <strong>Settings</strong> on the server page
+(&ldquo;survival, event, staging&rdquo;). They&rsquo;re normalized to lowercase, deduplicated, and capped
+at 20 tags of 30 characters. Tagged servers show their tags as chips on the Servers
+page; click a chip — or one in the filter row — to narrow the list to that tag.</p>
+<p><strong>Search</strong> appears once you have more than three servers and matches on name, rune id,
+and tags.</p>
+<p><strong>Bulk actions</strong>: tick servers, or <strong>☑ Select all</strong> (which respects an active tag
+filter), and Start / Restart / Stop / Back up them together. Yggdrasil only acts where
+it makes sense — Start applies to stopped servers, Stop and Restart to running ones —
+and reports how many succeeded. Bulk backup asks for one target, and skips servers still
+installing. You only ever see selection controls for servers you actually hold
+<code>server.control</code> on.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-runes.html">Runes</a> — the catalog servers are created from</li>
+<li><a href="guides-networking.html">Networking</a> — port forwarding, subdomains, reverse proxies</li>
+<li><a href="guides-backups-and-schedules.html">Backups and schedules</a> — backup targets, scheduled restarts and wipes</li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a> — notifications, resource alarms, the status page</li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md">Rune schema</a> — the fields quoted above (<code>done_regex</code>, <code>stop_timeout</code>, <code>wipe</code>, …)</li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/servers.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t2" href="#files">Files</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

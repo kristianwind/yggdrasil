@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DayZ loot economy (Norn) — Yggdrasil Panel docs</title>
+<meta name="description" content="Norn is Yggdrasil’s DayZ loot-economy helper: it reads your mission’s economy files, raises item lifetimes so modded loot stops vanishing, tunes the cleanup" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html" class="on">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>DayZ loot economy (Norn)</h1>
+    <p>Norn is Yggdrasil&rsquo;s DayZ loot-economy helper: it reads your mission&rsquo;s economy files, raises item
+lifetimes so modded loot stops vanishing, tunes the cleanup timers, and pulls mod loot into the
+economy. It appears as a <strong>Norn (loot)</strong> tab on DayZ servers, next to a DayZ <strong>Mods</strong> tab.</p>
+<p>Both tabs show up only when the server runs the <code>dayz</code> rune and you hold <code>server.control</code> on it.
+The read endpoints behind them need <code>server.view</code>; anything that writes needs <code>server.control</code>.</p>
+<h2 id="what-norn-edits">What Norn edits</h2>
+<p>Everything Norn touches is a file in the server&rsquo;s data directory, under the mission named by the
+server&rsquo;s <code>MISSION</code> variable (default <code>dayzOffline.chernarusplus</code>):</p>
+<ul>
+<li><code>mpmissions/&lt;MISSION&gt;/db/types.xml</code> — each item&rsquo;s <code>&lt;lifetime&gt;</code>, in seconds. This is what decides
+how long a dropped item stays in the world.</li>
+<li><code>mpmissions/&lt;MISSION&gt;/db/globals.xml</code> — the <code>CleanupLifetime*</code> fallback timers.</li>
+<li><code>mpmissions/&lt;MISSION&gt;/cfgeconomycore.xml</code> — the <code>&lt;ce folder=&quot;…&quot;&gt;&lt;file name=&quot;…&quot; type=&quot;types&quot; /&gt;&lt;/ce&gt;</code>
+registrations that tell DayZ which extra types files belong to the economy.</li>
+</ul>
+<p>Norn also writes the modded types files it imports into <code>mpmissions/&lt;MISSION&gt;/&lt;ModName&gt;/</code>.</p>
+<p><strong>Changes apply on the next server restart.</strong> DayZ reads the economy at mission start.</p>
+<h2 id="reading-the-economy-summary">Reading the economy summary</h2>
+<p>Open the Norn tab and it summarizes the whole economy: the mission name, every types file currently
+in play, the total number of item types across them, and the shortest lifetime it found. Each file is
+listed with its item count, its own shortest lifetime, and a <strong>modded</strong> badge for anything that
+isn&rsquo;t <code>db/types.xml</code>.</p>
+<p>&ldquo;Every types file currently in play&rdquo; means exactly the set DayZ itself uses: <code>db/types.xml</code> plus each
+file registered through a <code>&lt;ce&gt;</code> block in <code>cfgeconomycore.xml</code> that exists on disk. A types file that
+isn&rsquo;t registered contributes nothing — and Norn calls that out separately (see below).</p>
+<p>The shortest-lifetime figures ignore <code>0</code>. In DayZ a <code>&lt;lifetime&gt;</code> of <code>0</code> means the entry is unmanaged
+(special or non-spawning), so counting it would make every mission report a minimum of zero. The
+summary shows the shortest <em>real</em> loot lifetime instead, and warns when it is under an hour.</p>
+<h2 id="the-minimum-lifetime-floor">The minimum lifetime floor</h2>
+<p>This is the fix for &ldquo;modded items despawn too fast&rdquo;. Enter a number of hours under <strong>Minimum
+lifetime floor</strong> and apply it: Norn walks every registered types file and raises every <code>&lt;lifetime&gt;</code>
+that is above zero and below the floor up to the floor. Anything already above it is left alone, and
+<code>0</code> entries are skipped so unmanaged items stay unmanaged.</p>
+<p>It is a targeted numeric edit — only the numbers inside <code>&lt;lifetime&gt;</code> tags change. Comments,
+indentation, ordering and everything else in the file survive untouched, so a hand-tuned types.xml
+stays readable and diffable.</p>
+<p>The response tells you how many lifetimes changed. Because the floor runs over the <em>registered</em> set,
+register or import a mod&rsquo;s loot first if you want the floor to cover it.</p>
+<h2 id="cleanup-timers-globalsxml">Cleanup timers (globals.xml)</h2>
+<p><strong>Cleanup timers</strong> edits the <code>CleanupLifetime*</code> variables in <code>db/globals.xml</code>, in seconds. The one
+that matters most is <code>CleanupLifetimeDefault</code>: it applies to items with no explicit lifetime, so
+raise it if loot still disappears after you&rsquo;ve set a floor.</p>
+<p>Norn writes seven allow-listed variables and ignores anything else you send:
+<code>CleanupLifetimeDefault</code>, <code>CleanupLifetimeRuined</code>, <code>CleanupLifetimeDeployed</code>,
+<code>CleanupLifetimeDeadPlayer</code>, <code>CleanupLifetimeLimit</code>, <code>CleanupLifetimeDeadAnimal</code>,
+<code>CleanupLifetimeDeadInfected</code>. Negative values are rejected. As with the floor, only the <code>value=&quot;…&quot;</code>
+number changes.</p>
+<h2 id="registering-unregistered-typesxml">Registering unregistered types.xml</h2>
+<p>Mission packs and mod install guides routinely drop a <code>types.xml</code> somewhere under the mission and
+leave the <code>cfgeconomycore.xml</code> edit to you. Until it is registered, its items never spawn and no
+floor covers them.</p>
+<p>Norn scans the mission for exactly this case and lists what it finds under <strong>modded loot file(s) not
+in the economy</strong>. <strong>Register all in economy</strong> adds a <code>&lt;ce&gt;</code> block for each, inserted before the
+closing <code>&lt;/economycore&gt;</code> tag, skipping any that are already registered.</p>
+<p>The scan is deliberately narrow, to avoid registering a file that would break the economy:</p>
+<ul>
+<li>It looks at <code>.xml</code> files under the mission, skipping any directory whose name starts with
+<code>storage</code> (that&rsquo;s persistence, not config).</li>
+<li>A file qualifies only if it contains both <code>&lt;type name=</code> and <code>&lt;lifetime&gt;</code>, which is what separates
+a loot table from <code>events.xml</code> or <code>cfgspawnabletypes.xml</code>, and it must have a <code>&lt;types&gt;</code> root so it
+can be registered as-is.</li>
+<li><code>db/types.xml</code> and anything already registered are ignored.</li>
+<li>A file must sit in a subfolder — a <code>&lt;ce folder=&quot;…&quot;&gt;</code> entry needs one, so a stray types file in the
+mission root is listed but not registrable this way.</li>
+</ul>
+<p>Both <code>cfgeconomycore.xml</code> and <code>cfgEconomyCore.xml</code> spellings are read.</p>
+<h2 id="mod-loot">Mod loot</h2>
+<p><strong>Loot from installed mods</strong> looks inside the <code>@&lt;id&gt;</code> folders in the data directory — the mods
+SteamCMD downloaded — and lists the loot files each one ships, with an item count per file.</p>
+<ul>
+<li><strong>Mod names</strong> come from <code>meta.cpp</code> inside the mod folder, falling back to the folder name, so the
+list reads &ldquo;CodeLock&rdquo; instead of <code>@1591180492</code>.</li>
+<li><strong>Fragments count.</strong> Many mods ship a paste-into-your-types.xml snippet with no <code>&lt;types&gt;</code> root
+rather than a complete file. Norn detects those too: anything containing <code>&lt;type name=</code> and
+<code>&lt;lifetime&gt;</code> is treated as importable loot, root or no root.</li>
+<li><strong>DayZ-Expansion mods are flagged.</strong> Anything whose name or folder mentions &ldquo;expansion&rdquo; gets a
+<em>manages own economy</em> badge, because Expansion injects its loot itself — importing its types
+usually isn&rsquo;t needed.</li>
+<li><strong>Already-imported files</strong> are badged rather than offered again.</li>
+</ul>
+<p><strong>Import + register</strong> does three things in one step: copies the file into
+<code>mpmissions/&lt;MISSION&gt;/&lt;ModName&gt;/</code>, wrapping it in a <code>&lt;types&gt;</code> root first if it was a fragment, and
+then registers it in <code>cfgeconomycore.xml</code>. The destination folder name is the mod&rsquo;s display name with
+everything but letters, digits, <code>-</code> and <code>_</code> stripped. After the import the floor covers it like any
+other registered file.</p>
+<p>Imports are contained to the data directory and must come from an <code>@…</code> mod folder — a path pointing
+anywhere else is rejected.</p>
+<h3 id="an-empty-scan-is-usually-correct">An empty scan is usually correct</h3>
+<p>Most DayZ mods pack their configs into a <code>.pbo</code>. There is no loose <code>types.xml</code> on disk to find, and
+Norn finding nothing for such a mod is the honest answer, not a failure. Those mods either register
+their loot themselves at runtime or expect you to paste values from the Workshop page into the
+mission by hand — in which case add the file under the mission yourself and use <strong>Register all in
+economy</strong>.</p>
+<h2 id="persistence-surviving-a-reinstall">Persistence: surviving a reinstall</h2>
+<p>Norn saves every change you make against the server: the floor in hours, the globals values, and each
+registration (with the mod file it came from, when it came from a mod). The Norn tab shows a
+<strong>Saved &amp; auto-re-applied after updates</strong> banner summarizing what is stored.</p>
+<p>This matters because of how DayZ updates work. Update/Reinstall runs SteamCMD with <code>validate</code>, which
+regenerates the vanilla mission files — and would silently throw away every lifetime you raised.
+So at the end of every successful install, Yggdrasil re-applies the saved Norn config in order:
+re-copy any missing registered file from its mod source (wrapping fragments again), re-register
+everything in <code>cfgeconomycore.xml</code>, write the globals, then apply the lifetime floor last so it
+covers the freshly registered files. The install log records that it happened.</p>
+<p>Restarting a server does not touch these files. Only an install/reinstall regenerates them, and only
+that path triggers the re-apply.</p>
+<h2 id="going-back-to-vanilla">Going back to vanilla</h2>
+<p><strong>Reset</strong> clears the saved Norn config. It does not revert the files that are on disk right now —
+it removes the instruction to re-apply. Run <strong>Update/Reinstall</strong> afterwards and SteamCMD regenerates
+the vanilla mission economy with nothing re-applied on top.</p>
+<h2 id="the-mods-tab">The Mods tab</h2>
+<p>The Mods tab exists because of a specific DayZ failure mode: when a Workshop item can&rsquo;t be
+downloaded — removed upstream, made private, banned, or a typo&rsquo;d id — the install logs a warning and
+the server starts anyway with a <em>partial</em> mod list. Players then can&rsquo;t join, and the cause is buried
+in an install log.</p>
+<p>The tab reads the server&rsquo;s <code>MODS</code> variable (semicolon-, comma- or whitespace-separated Workshop ids,
+in load order), and for each id shows two independent facts:</p>
+<ul>
+<li><strong>On disk / not downloaded</strong> — whether an <code>@&lt;id&gt;</code> folder exists in the data directory.</li>
+<li><strong>Workshop ✓ / removed from Workshop / Workshop ?</strong> — from one batch call to Steam&rsquo;s public
+Workshop API. No API key is needed. The call has a 6-second timeout, and if Steam is unreachable
+or the response won&rsquo;t parse, every id comes back as <code>?</code> (unknown) rather than being reported as
+removed.</li>
+</ul>
+<p>A count of problem mods is shown at the top, and <strong>Remove broken</strong> strips them from the list.
+Mod names come from the on-disk <code>meta.cpp</code> where available, otherwise the Workshop title, otherwise
+the bare id.</p>
+<p><strong>Orphans</strong> are the other direction: <code>@&lt;id&gt;</code> folders on disk that aren&rsquo;t in <code>MODS</code>, so the server
+doesn&rsquo;t load them. <strong>Add to list</strong> appends one to the load order.</p>
+<p>Editing the mod list only writes the <code>MODS</code> variable — press <strong>Update/Reinstall</strong> to actually
+download and apply it.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-servers.html">Servers</a> — variables, install/update, and restarts</li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a></li>
+<li><a href="guides-kvasir-ai.html">Kvasir</a> — the config advisor and the log explainer</li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/dayz-norn.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-norn-edits">What Norn edits</a><a class="t2" href="#reading-the-economy-summary">Reading the economy summary</a><a class="t2" href="#the-minimum-lifetime-floor">The minimum lifetime floor</a><a class="t2" href="#cleanup-timers-globalsxml">Cleanup timers (globals.xml)</a><a class="t2" href="#registering-unregistered-typesxml">Registering unregistered types.xml</a><a class="t2" href="#mod-loot">Mod loot</a><a class="t3" href="#an-empty-scan-is-usually-correct">An empty scan is usually correct</a><a class="t2" href="#persistence-surviving-a-reinstall">Persistence: surviving a reinstall</a><a class="t2" href="#going-back-to-vanilla">Going back to vanilla</a><a class="t2" href="#the-mods-tab">The Mods tab</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

@@ -121,6 +121,7 @@
     <nav>
       <a href="#features">Features</a>
       <a href="#screens">Screenshots</a>
+      <a href="/docs/">Docs</a>
       <a href="#install">Install</a>
       <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
@@ -135,8 +136,8 @@
       AMP + Pterodactyl, but radically easier to install, update and maintain. And not just for games:
       run databases and homelab apps from the same one-click <b>Runes</b>.</p>
     <div class="cta">
-      <a class="btn" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">View on GitHub</a>
-      <a class="btn ghost" href="#features">Explore features</a>
+      <a class="btn" href="/docs/getting-started.html">Get started →</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">View on GitHub</a>
     </div>
     <div class="install">
       <code id="cmd">curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash</code>
@@ -212,6 +213,51 @@
   </div>
 </section>
 
+
+<!-- Docs: three ways in — the starter path, the guides, and the deep reference on GitHub. -->
+<section id="docs" style="background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="wrap">
+    <h2>Documentation</h2>
+    <p class="sub">Written from the code, not from memory. Start with the install path; the reference
+      material lives on GitHub next to the source it describes.</p>
+    <div class="grid">
+      <a class="card" href="/docs/getting-started.html" style="border-left:3px solid var(--accent)">
+        <div class="ic">🚀</div>
+        <h3 style="color:var(--fg)">Getting started</h3>
+        <p>Bare Debian box to a running game server in about fifteen minutes.</p>
+      </a>
+      <a class="card" href="/docs/guides-backups-and-schedules.html">
+        <div class="ic">💾</div>
+        <h3 style="color:var(--fg)">Backups &amp; schedules</h3>
+        <p>Targets, restore, verification, retention, and cron-driven actions.</p>
+      </a>
+      <a class="card" href="/docs/guides-networking.html">
+        <div class="ic">🌐</div>
+        <h3 style="color:var(--fg)">Networking</h3>
+        <p>Ports, reachability, UniFi, Nginx Proxy Manager, Cloudflare Tunnel.</p>
+      </a>
+      <a class="card" href="/docs/guides-users-and-permissions.html">
+        <div class="ic">🔑</div>
+        <h3 style="color:var(--fg)">Users &amp; permissions</h3>
+        <p>Realms, permission bits, delegates, 2FA, passkeys and API tokens.</p>
+      </a>
+      <a class="card" href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" target="_blank" rel="noopener">
+        <div class="ic">🔌</div>
+        <h3 style="color:var(--fg)">HTTP API <span style="font-size:.7rem;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:.05rem .45rem">GitHub ↗</span></h3>
+        <p>Every route the panel serves, with its authentication and permission gate.</p>
+      </a>
+      <a class="card" href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" target="_blank" rel="noopener">
+        <div class="ic">ᚱ</div>
+        <h3 style="color:var(--fg)">Rune schema <span style="font-size:.7rem;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:.05rem .45rem">GitHub ↗</span></h3>
+        <p>The YAML format for teaching Yggdrasil a game or app it doesn't know yet.</p>
+      </a>
+    </div>
+    <div style="text-align:center;margin-top:1.5rem">
+      <a class="btn ghost" href="/docs/">Browse all documentation →</a>
+    </div>
+  </div>
+</section>
+
 <section id="install">
   <div class="wrap" style="text-align:center">
     <h2>Get started</h2>
@@ -221,8 +267,9 @@
       <code id="cmd2">curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash</code>
       <button class="copy" onclick="navigator.clipboard.writeText(document.getElementById('cmd2').textContent);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button>
     </div>
-    <div style="margin-top:1.5rem">
-      <a class="btn" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">Read the docs on GitHub →</a>
+    <div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
+      <a class="btn" href="/docs/getting-started.html">Read the getting-started guide →</a>
+      <a class="btn ghost" href="/docs/">All documentation</a>
     </div>
     <div class="warn">⚠️ Early development &amp; built with Claude Code. Provided <b>as-is</b>, with no warranty
       and no liability whatsoever — you use it entirely at your own risk.</div>
@@ -232,7 +279,10 @@
 <footer>
   <div class="wrap">
     <span>🌳 Yggdrasil Panel — self-hosted game &amp; app server control panel.</span>
-    <a href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">github.com/kristianwind/yggdrasil ↗</a>
+    <span>
+      <a href="/docs/">Documentation</a> ·
+      <a href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">github.com/kristianwind/yggdrasil ↗</a>
+    </span>
   </div>
 </footer>
 

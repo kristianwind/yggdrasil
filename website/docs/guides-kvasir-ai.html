@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kvasir — the AI assistant — Yggdrasil Panel docs</title>
+<meta name="description" content="Kvasir is Yggdrasil’s optional AI layer: plain-language digests, an error explainer, a config review, and a propose-then-confirm way to restart servers by des" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html" class="on">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Kvasir — the AI assistant</h1>
+    <p>Kvasir is Yggdrasil&rsquo;s optional AI layer: plain-language digests, an error explainer, a config
+review, and a propose-then-confirm way to restart servers by describing what you want. It is off
+until you configure a provider, and it uses your key and your endpoint.</p>
+<h2 id="it-is-off-by-default">It is off by default</h2>
+<p>A fresh install has no AI at all. The <code>ai_config</code> row starts with <code>enabled = 0</code>, no model and no
+API key, so every AI feature is hidden and nothing is ever sent off the host. To switch it on you
+need two things: a provider with a working key, and the tier switches under
+<strong>Settings → Integrations → Kvasir</strong>.</p>
+<p>Only an admin can see or change the Kvasir settings — the config endpoints are admin-only.</p>
+<h2 id="choosing-a-provider">Choosing a provider</h2>
+<p>Kvasir speaks two wire formats: Anthropic&rsquo;s Messages API, and the OpenAI <code>/chat/completions</code> shape
+that most other gateways implement. Pick a provider, enter the exact model id for it, and paste
+your key. The key is encrypted at rest and never echoed back — reopening the page shows a mask, and
+saving with the mask in place keeps the stored key.</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Wire format</th>
+<th>Default base URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>anthropic</code></td>
+<td>Anthropic Messages</td>
+<td><code>https://api.anthropic.com</code></td>
+</tr>
+<tr>
+<td><code>openai</code></td>
+<td>OpenAI chat completions</td>
+<td><code>https://api.openai.com/v1</code></td>
+</tr>
+<tr>
+<td><code>openrouter</code></td>
+<td>OpenAI chat completions</td>
+<td><code>https://openrouter.ai/api/v1</code></td>
+</tr>
+<tr>
+<td><code>deepseek</code></td>
+<td>OpenAI chat completions</td>
+<td><code>https://api.deepseek.com/v1</code></td>
+</tr>
+<tr>
+<td><code>mistral</code></td>
+<td>OpenAI chat completions</td>
+<td><code>https://api.mistral.ai/v1</code></td>
+</tr>
+<tr>
+<td><code>ollama</code></td>
+<td>OpenAI chat completions</td>
+<td><code>http://127.0.0.1:11434/v1</code></td>
+</tr>
+<tr>
+<td><code>custom</code></td>
+<td>OpenAI chat completions</td>
+<td>none — you must supply one</td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>Base URL</strong> field overrides the default for any provider, which is what makes the
+OpenAI-compatible list open-ended: anything that serves <code>/chat/completions</code> works. Use <code>custom</code>
+with a base URL for a self-hosted gateway, or point <code>ollama</code> at a LAN box (<code>http://192.168.1.x:11434/v1</code>)
+rather than <code>127.0.0.1</code> when Yggdrasil runs in Docker and Ollama runs on the host. A <code>custom</code>
+provider with no base URL is rejected.</p>
+<p>An API key is required for every provider except <code>ollama</code>, which may be left blank.</p>
+<p>After <strong>Save</strong>, use <strong>Test connection</strong>. It sends a one-line prompt with the stored config and shows
+the model&rsquo;s reply, so you find out about a bad key or an unreachable endpoint here rather than
+halfway through a digest.</p>
+<h2 id="the-two-tiers">The two tiers</h2>
+<p>Kvasir enables in two steps, and the second one never turns itself on.</p>
+<p><strong>Advisory</strong> (<code>enabled</code>) is the master switch. With it on, Kvasir reads panel data and writes text.
+It unlocks the ops digest, the error explainer, the config advisor, the activity digest, and the
+optional daily digest to your notification channels. Nothing in this tier changes a server.</p>
+<p><strong>Actions</strong> (<code>actions_enabled</code>, default off, and selectable only once Advisory is on) unlocks the
+natural-language ops card on the dashboard: Kvasir may <em>propose</em> a short list of server actions that
+you review and confirm. It cannot execute anything on its own, and it cannot propose anything
+outside the allow-list below.</p>
+<p>Turning Advisory off hides everything, including actions.</p>
+<h2 id="what-shipped">What shipped</h2>
+<h3 id="ops-digest">Ops digest</h3>
+<p>The dashboard&rsquo;s <strong>Kvasir · Ops digest</strong> card asks for a cross-server briefing built from data the
+panel already holds: how many servers are running, which ones aren&rsquo;t and their status, free disk on
+the data filesystem, host memory and CPU, scheduled-task failures in the last 24 hours, failed
+backups in the last 24 hours, and a 24-hour average/peak of CPU, memory and player counts per
+server. No new collection happens for the digest — it is a query over existing rows.</p>
+<p>Admin-only: <code>POST /api/ai/health-digest</code>.</p>
+<h3 id="error-explainer">Error explainer</h3>
+<p>On the console and the install log, <strong>Kvasir explains</strong> sends the visible log text and gets back a
+likely cause plus numbered fix steps. The tail is capped at 8000 characters — the most recent
+lines, which is where the error normally is.</p>
+<p>When the client has no log text to send (the console was cleared, or the container already exited
+after a crash) and the server still has a container, Kvasir falls back to a snapshot of that
+container&rsquo;s last 300 log lines. This is what lets you explain a crash after the fact. If neither
+source has anything, it tells you there are no logs to explain.</p>
+<p>Requires <code>server.view</code>: <code>POST /api/servers/{id}/explain</code>.</p>
+<h3 id="config-advisor">Config advisor</h3>
+<p>A review of one server&rsquo;s rune settings against their current values, looking for footguns: default
+or weak passwords, memory too low for the player count, options that cost performance or lose data.</p>
+<p>Values the rune declares as secrets stay on the host. Yggdrasil masks every variable the rune marks
+<code>secret: true</code>, plus the one named by its <code>rcon.password_var</code>, and decides locally whether the value
+is weak — empty, shorter than six characters, or one of the obvious defaults like <code>change-me</code>,
+<code>password</code>, <code>admin</code>, <code>123456</code> — sending the model only <code>(WEAK or default — should be changed)</code> or
+<code>(set, strong)</code> in place of the value. The advisor can therefore flag a <code>change-me</code> RCON password
+without the plaintext ever being transmitted.</p>
+<p>The masking is only as good as the rune&rsquo;s declarations. A variable that holds a secret but was never
+flagged <code>secret: true</code> is sent verbatim, like any other setting. If you write or import a rune, check
+that its password fields carry the flag — see the <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md">rune schema</a>.</p>
+<p>Requires <code>server.control</code>: <code>POST /api/servers/{id}/config-advice</code>.</p>
+<h3 id="activity-digest">Activity digest</h3>
+<p>On the <strong>Activity</strong> tab of any server whose rune declares an <code>admin_log:</code> block, <strong>Kvasir digest</strong>
+summarizes &ldquo;what happened while I was away&rdquo; from the parsed event feed — joins, leaves, deaths,
+kills — and calls out anomalies like kill streaks or players who joined and left immediately.</p>
+<p>Yggdrasil parses the log first and sends only the structured result: at most 200 events, each one a
+timestamp, an event type and a player name. The raw log lines are not sent.</p>
+<p>Requires <code>server.view</code>: <code>POST /api/servers/{id}/admin-log/digest</code>.</p>
+<h3 id="daily-digest-to-notifications">Daily digest to notifications</h3>
+<p><strong>Daily ops digest to notifications</strong> sends the same ops briefing to every enabled notification
+channel once a day, at the hour you pick (default <code>08:00</code>, server time). A ten-minute ticker checks
+whether today&rsquo;s digest has gone out, so a panel that was down at the chosen hour still catches up
+later that day, and a per-day marker written before the LLM call prevents a slow request from
+double-firing.</p>
+<p>See <a href="guides-notifications.html">Notifications</a> for the channels it delivers through.</p>
+<h3 id="natural-language-ops">Natural-language ops</h3>
+<p>With the Actions tier on, the dashboard shows <strong>Ask Kvasir</strong>. You describe an outcome (&ldquo;safely
+restart all Minecraft servers; players may be online&rdquo;), and Kvasir returns a plan you review line by
+line before anything runs.</p>
+<p>The flow is two endpoints, deliberately:</p>
+<ol>
+<li><code>POST /api/ai/plan</code> — Yggdrasil sends your request plus the list of servers you can control
+(name, rune id, status) and gets back proposed actions. Each one is checked against the
+allow-list and resolved to a real server; rejected rows come back marked with why
+(<code>action not allowed</code>, <code>unknown or not-controllable server</code>) and are shown greyed out.
+<strong>This endpoint never executes anything.</strong></li>
+<li><code>POST /api/ai/plan/execute</code> — runs only the actions you confirmed.</li>
+</ol>
+<h2 id="the-safety-model">The safety model</h2>
+<p>Each of these is enforced in the panel, not in the prompt:</p>
+<ul>
+<li><strong>Planning never executes.</strong> <code>/api/ai/plan</code> builds and validates a preview and returns it. There
+is no execution path in it at all.</li>
+<li><strong>Execution is a separate, confirmed call.</strong> <code>/api/ai/plan/execute</code> takes the actions you
+confirmed and re-derives the set of servers you may control from scratch. It does not trust the
+client&rsquo;s list: an action whose server id isn&rsquo;t in your freshly computed controllable set comes
+back <code>rejected / not permitted</code>.</li>
+<li><strong><code>server.control</code> is re-checked per server.</strong> Both the plan and the execute step build their
+server list from your grants (admins get all servers; everyone else gets exactly the servers where
+<code>server.control</code> is allowed). Kvasir can never propose or run an action on a server you couldn&rsquo;t
+act on yourself by hand.</li>
+<li><strong>The allow-list is four actions.</strong> <code>restart</code>, <code>safe_restart</code>, <code>stop</code>, <code>start</code> — nothing else is
+executable. Wipe, delete, reconfigure, backup and arbitrary console commands are not in the
+vocabulary, and the allow-list is re-checked at execution, not only at planning time.
+<code>safe_restart</code> maps to the warned restart, which broadcasts the rune&rsquo;s in-game countdown first.</li>
+<li><strong>Both tiers are re-read on every call.</strong> If Advisory or Actions is off when you confirm, the
+execute call refuses.</li>
+</ul>
+<p>Most AI calls are written to the audit log (<code>ai.digest</code>, <code>ai.explain</code>, <code>ai.config_advice</code>,
+<code>ai.health_digest</code>, <code>ai.action</code>, <code>ai.config</code>), so there is a record of who asked and what ran. Two
+paths are not logged: <strong>Test connection</strong>, and the daily digest, which fires on a ticker rather than
+a request. The entries record the endpoint and the target, not the conversation — no prompt text and
+no model reply is stored.</p>
+<p>Because game logs and player names are attacker-controlled, the prompts that carry them mark the
+data as untrusted and tell the model to treat it strictly as data. Treat that as one layer among
+several — the allow-list and the RBAC re-check are what actually constrain the outcome.</p>
+<h2 id="what-leaves-your-host">What leaves your host</h2>
+<p>With Kvasir off, one thing: <strong>Test connection</strong>. It checks that a model and a key are configured, not
+that Advisory is on, so pressing it sends its one-line prompt to your provider even with both tiers
+switched off. Nothing else makes an AI request while Kvasir is off. There is no other endpoint
+involved either — Yggdrasil talks only to the base URL you configured.</p>
+<p>When you turn it on, each feature sends a bounded, purpose-built excerpt to that endpoint:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>What is sent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ops digest, daily digest</td>
+<td>Server names and statuses, disk/memory/CPU figures, 24h scheduled-task failure lines, a failed-backup count, per-server 24h CPU/memory/player averages and peaks</td>
+</tr>
+<tr>
+<td>Error explainer</td>
+<td>The rune id and the last 8000 characters of the log you&rsquo;re viewing (or the container&rsquo;s last 300 lines on the crash fallback)</td>
+</tr>
+<tr>
+<td>Config advisor</td>
+<td>The rune name and id, and each setting&rsquo;s name, key and value — with rune-declared secrets replaced by &ldquo;(set, strong)&rdquo; or &ldquo;(WEAK …)&rdquo;</td>
+</tr>
+<tr>
+<td>Activity digest</td>
+<td>The server name and up to 200 parsed events: time, type, player name</td>
+</tr>
+<tr>
+<td>Natural-language ops</td>
+<td>Your request text, plus the name, rune id and status of each server you can control</td>
+</tr>
+</tbody>
+</table>
+<p>Nothing else is shipped: not your backups, not your config files, not your API keys, not host
+identity. Whatever your provider does with a prompt is between you and them — a local Ollama keeps
+the whole loop on your own hardware.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-notifications.html">Notifications</a> — where the daily digest is delivered</li>
+<li><a href="guides-servers.html">Servers</a> — the actions Kvasir is allowed to propose</li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a> — the signals the ops digest reads</li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/kvasir-ai.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#it-is-off-by-default">It is off by default</a><a class="t2" href="#choosing-a-provider">Choosing a provider</a><a class="t2" href="#the-two-tiers">The two tiers</a><a class="t2" href="#what-shipped">What shipped</a><a class="t3" href="#ops-digest">Ops digest</a><a class="t3" href="#error-explainer">Error explainer</a><a class="t3" href="#config-advisor">Config advisor</a><a class="t3" href="#activity-digest">Activity digest</a><a class="t3" href="#daily-digest-to-notifications">Daily digest to notifications</a><a class="t3" href="#natural-language-ops">Natural-language ops</a><a class="t2" href="#the-safety-model">The safety model</a><a class="t2" href="#what-leaves-your-host">What leaves your host</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

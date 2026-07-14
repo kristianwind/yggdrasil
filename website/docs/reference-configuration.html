@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Configuration — Yggdrasil Panel docs</title>
+<meta name="description" content="Yggdrasil Panel reads one YAML file at startup, /etc/yggdrasil/config." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html" class="on">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Configuration</h1>
+    <p>Yggdrasil Panel reads one YAML file at startup, <code>/etc/yggdrasil/config.yaml</code>. The installer
+generates it on first install and never touches it again on re-runs. Everything else — servers,
+users, integrations, backup targets — lives in the database and is configured in the web UI.</p>
+<p>Restart the service after editing the file:</p>
+<pre><code class="language-bash">sudo systemctl restart yggdrasil
+</code></pre>
+<h2 id="full-file">Full file</h2>
+<p>This is what the installer writes, with the generated values replaced:</p>
+<pre><code class="language-yaml">server:
+  host: &quot;0.0.0.0&quot;
+  port: 8080
+database:
+  path: &quot;/var/lib/yggdrasil/yggdrasil.db&quot;
+auth:
+  secret_key: &quot;&lt;44-char random base64&gt;&quot;
+  session_ttl_hours: 168
+docker:
+  socket: &quot;unix:///var/run/docker.sock&quot;
+ports:
+  range_min: 25000
+  range_max: 30000
+admin:
+  username: &quot;admin&quot;
+  password: &quot;&lt;generated on first install&gt;&quot;
+</code></pre>
+<p>Every key is optional — a missing file or a missing key falls back to the defaults below. The file
+is written <code>chmod 640</code>, owned <code>root:yggdrasil</code>, because it holds <code>auth.secret_key</code>.</p>
+<h2 id="keys">Keys</h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.host</code></td>
+<td><code>0.0.0.0</code></td>
+<td>Listen address. Set to <code>127.0.0.1</code> if a reverse proxy on the same host is the only thing that should reach the panel.</td>
+</tr>
+<tr>
+<td><code>server.port</code></td>
+<td><code>8080</code></td>
+<td>Listen port. Must be 1–65535.</td>
+</tr>
+<tr>
+<td><code>database.path</code></td>
+<td><code>/var/lib/yggdrasil/yggdrasil.db</code></td>
+<td>SQLite file. Created on first boot.</td>
+</tr>
+<tr>
+<td><code>auth.secret_key</code></td>
+<td><em>(none)</em></td>
+<td>Signs JWTs and derives the encryption key for secrets at rest. See below.</td>
+</tr>
+<tr>
+<td><code>auth.session_ttl_hours</code></td>
+<td><code>168</code></td>
+<td>Login session lifetime (7 days). Also sets the <code>ygg_token</code> cookie&rsquo;s max age.</td>
+</tr>
+<tr>
+<td><code>docker.socket</code></td>
+<td><code>unix:///var/run/docker.sock</code></td>
+<td>Docker endpoint. The panel talks to Docker over this; it does <strong>not</strong> mount it into any container.</td>
+</tr>
+<tr>
+<td><code>ports.range_min</code></td>
+<td><code>25000</code></td>
+<td>Low end of the automatic port-allocation range.</td>
+</tr>
+<tr>
+<td><code>ports.range_max</code></td>
+<td><code>30000</code></td>
+<td>High end. Must be greater than <code>range_min</code>.</td>
+</tr>
+<tr>
+<td><code>admin.username</code></td>
+<td><em>(none)</em></td>
+<td>Bootstrap admin. See below.</td>
+</tr>
+<tr>
+<td><code>admin.password</code></td>
+<td><em>(none)</em></td>
+<td>Bootstrap admin password. See below.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="authsecret-key"><code>auth.secret_key</code></h2>
+<p>This one key protects everything. It signs session tokens and derives the AES-GCM key that encrypts
+stored secrets — UniFi and Nginx Proxy Manager credentials, Cloudflare and BattleMetrics tokens, the
+Discord webhook, and backup-target credentials.</p>
+<p>It must be <strong>at least 16 characters</strong>; the panel fails closed and refuses to encrypt with a shorter
+one rather than silently weakening it. The installer generates 44 characters of base64 from
+<code>/dev/urandom</code>.</p>
+<p>Changing it invalidates every existing session and makes every already-encrypted secret
+undecryptable — you would have to re-enter each integration&rsquo;s credentials. Back it up with the
+database; a restored database is useless without the matching key.</p>
+<h2 id="adminusername--adminpassword"><code>admin.username</code> / <code>admin.password</code></h2>
+<p>These bootstrap the first admin account, and only that. On boot, if a user with the <code>admin</code> role
+already exists, the block is ignored entirely — it will not reset a password or create a second
+admin.</p>
+<p>If <code>admin.username</code> is set with no password, the panel generates one and prints it to stdout once,
+as a plain banner rather than through the logger (so it doesn&rsquo;t linger in <code>journalctl</code>):</p>
+<pre><code class="language-bash">sudo journalctl -u yggdrasil --since &quot;10 minutes ago&quot; | head -20
+</code></pre>
+<p>Because the account is created once and never re-checked, the right move after first login is to
+change the password in the UI and then delete the whole <code>admin:</code> block from the config, so a
+plaintext password isn&rsquo;t sitting on disk. Recovering a lost admin password means deleting the admin
+user from the database and letting the block re-bootstrap it.</p>
+<h2 id="ports"><code>ports</code></h2>
+<p>Yggdrasil allocates a free host port per server port by walking this range from <code>range_min</code> upward,
+and tracks it so two servers never collide. A port counts as free only if it isn&rsquo;t already
+allocated, isn&rsquo;t claimed earlier in the same request, and can actually be bound right now — which
+also catches ports held by processes Yggdrasil doesn&rsquo;t know about.</p>
+<p>The game&rsquo;s well-known port is <strong>deliberately ignored</strong>. A Minecraft server does not land on 25565
+and DayZ does not land on 2302; both get a port from this range. Off-default ports attract
+noticeably less scanning, and every server still gets a unique one. The rune&rsquo;s declared port is the
+<em>container</em> side of the mapping only.</p>
+<p>The exception is Steam games, which publish 1:1 (host port == container port) because the game binds,
+publishes, and advertises the same number to the Steam master.</p>
+<p>Steam games publish 1:1 (host port == container port) so the game binds, publishes, and advertises
+the same number to the Steam master. See the <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md">rune schema</a> for how ports are
+declared and injected.</p>
+<p>Whatever range you choose has to be reachable from the internet for players to connect — see
+<a href="guides-networking.html">Networking</a>.</p>
+<h2 id="environment-variables">Environment variables</h2>
+<p>The config file has no environment-variable overrides. The installer reads a few for its own
+behavior, not the panel&rsquo;s:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Used by</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>YGG_REPO</code></td>
+<td><code>install.sh</code></td>
+<td>Source repo. Default <code>kristianwind/yggdrasil</code>.</td>
+</tr>
+<tr>
+<td><code>YGG_VERSION</code></td>
+<td><code>install.sh</code></td>
+<td>Release tag to install. Default <code>latest</code>.</td>
+</tr>
+<tr>
+<td><code>YGG_BINARY_URL</code></td>
+<td><code>install.sh</code></td>
+<td>Install a prebuilt binary from a URL instead of a GitHub release.</td>
+</tr>
+<tr>
+<td><code>YGG_BINARY_FILE</code></td>
+<td><code>install.sh</code></td>
+<td>Install a prebuilt binary from a local path.</td>
+</tr>
+</tbody>
+</table>
+<p>The last two exist for testing a build before it&rsquo;s released.</p>
+<h2 id="paths">Paths</h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/usr/local/bin/yggdrasil</code></td>
+<td>The binary. UI and builtin runes are embedded in it.</td>
+</tr>
+<tr>
+<td><code>/etc/yggdrasil/config.yaml</code></td>
+<td>This file.</td>
+</tr>
+<tr>
+<td><code>/var/lib/yggdrasil/yggdrasil.db</code></td>
+<td>SQLite database — everything not in the config file.</td>
+</tr>
+<tr>
+<td><code>/var/lib/yggdrasil/servers/&lt;uuid&gt;/</code></td>
+<td>One server&rsquo;s data directory, bind-mounted into its container.</td>
+</tr>
+<tr>
+<td><code>/var/lib/yggdrasil/steam-cache/</code></td>
+<td>Shared SteamCMD cache across Steam-game servers.</td>
+</tr>
+<tr>
+<td><code>/etc/systemd/system/yggdrasil.service</code></td>
+<td>The unit. Runs as the <code>yggdrasil</code> system user.</td>
+</tr>
+</tbody>
+</table>
+<p>Back up <code>config.yaml</code> and <code>yggdrasil.db</code> together. The server data directories are large and are
+what the panel&rsquo;s own <a href="guides-backups-and-schedules.html">backup system</a> is for.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="getting-started.html">Getting started</a> — installing for the first time</li>
+<li><a href="guides-networking.html">Networking</a> — making servers reachable</li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a> — the HTTP API</li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/configuration.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#full-file">Full file</a><a class="t2" href="#keys">Keys</a><a class="t2" href="#authsecret-key">auth.secret_key</a><a class="t2" href="#adminusername--adminpassword">admin.username / admin.password</a><a class="t2" href="#ports">ports</a><a class="t2" href="#environment-variables">Environment variables</a><a class="t2" href="#paths">Paths</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

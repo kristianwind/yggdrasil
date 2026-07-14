@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Backups and schedules — Yggdrasil Panel docs</title>
+<meta name="description" content="Where backups go, what is actually in them, how to prove one is restorable, and how to put any of it — plus restarts, updates and in-game warnings — on a cron schedule." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html" class="on">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Backups and schedules</h1>
+    <p>Where backups go, what is actually in them, how to prove one is restorable, and how to
+put any of it — plus restarts, updates and in-game warnings — on a cron schedule.</p>
+<h2 id="backup-targets">Backup targets</h2>
+<p>A <strong>target</strong> is a place archives are stored. Admins configure them under
+<strong>Settings → Integrations → Backup targets</strong>; there are three kinds.</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>UI label</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local</code></td>
+<td>Local / NFS / CIFS mount</td>
+<td>A directory on the host. Also the right choice for an NFS or CIFS share you have already mounted — point the path at the mountpoint.</td>
+</tr>
+<tr>
+<td><code>sftp</code></td>
+<td>SFTP</td>
+<td>An SFTP server, reached over SSH with a username and password. Port defaults to 22.</td>
+</tr>
+<tr>
+<td><code>smb</code></td>
+<td>SMB / CIFS (direct)</td>
+<td>An SMB2 share, spoken natively with no host mount. Needs a share name. Port defaults to 445.</td>
+</tr>
+</tbody>
+</table>
+<p>Choose <strong>+ New target</strong>, name it, pick the type, and fill in what it asks for. Local
+wants a directory path (<code>/mnt/backups</code>); Yggdrasil creates it if it does not exist. SFTP
+and SMB want a host, optional port, username and password, plus a remote path — relative
+to the login directory for SFTP, and to the share root for SMB. SMB also wants the share
+name.</p>
+<p>Then use <strong>Test</strong>. It opens the target and lists it, which catches the whole chain —
+DNS, port, credentials, share name, permissions — before a backup depends on it. A
+failure comes back with the underlying error rather than a shrug.</p>
+<p>Target credentials are encrypted at rest with AES-256-GCM, keyed from the panel&rsquo;s secret.
+The target list decrypts only enough to show you the path and host; passwords are never
+sent back to the browser and never logged.</p>
+<p>Two things to know about the SFTP target: it authenticates with a password (not a key),
+and it does not pin the host key. It suits a homelab NAS on your own network.</p>
+<h2 id="what-a-backup-contains">What a backup contains</h2>
+<p>A backup archives the server&rsquo;s data directory — the volume mounted at <code>/data</code> in the
+container.</p>
+<p>Which parts, exactly, is the rune&rsquo;s business. A rune (the code and API call it a
+<code>gameskill</code>) may carry a <code>backup</code> block naming the paths worth keeping, relative to
+<code>/data</code>:</p>
+<pre><code class="language-yaml">backup:
+  include: [&quot;world&quot;, &quot;world_nether&quot;, &quot;world_the_end&quot;, &quot;server.properties&quot;, &quot;plugins&quot;]
+</code></pre>
+<p><strong>When <code>backup.include</code> is absent, the whole data directory is archived.</strong> When it is
+present, only those top-level paths are — an included path that does not exist on disk is
+skipped rather than failing the run. Paths are stored relative to the data directory, so
+an archive restores cleanly into a fresh install.</p>
+<p>Only regular files and symlinks go in. Sockets and device nodes are skipped.</p>
+<p>Backups do not include the server&rsquo;s environment variables, port allocations, mods list or
+any other panel-side state — that lives in Yggdrasil&rsquo;s database, not in <code>/data</code>. A backup
+restores a world; it does not recreate a server.</p>
+<h2 id="the-archive-format-stated-plainly">The archive format, stated plainly</h2>
+<p>A backup is a <strong>plain gzip-compressed tar</strong> — <code>.tar.gz</code>, nothing more. It is streamed
+straight from the data directory to the target through a pipe, so a large world never
+lands on the host as a temporary file.</p>
+<p><strong>The archive itself is not encrypted.</strong> Only <em>target credentials</em> are encrypted at rest.
+Anyone who can read the target directory, share or SFTP account can read your world files,
+your configs, and any secrets those configs contain. Set this expectation now, not during
+an incident:</p>
+<ul>
+<li>Do not treat an untrusted or shared remote as safe for backups.</li>
+<li>If you need encryption at rest, it has to come from underneath — an encrypted
+filesystem, an encrypted volume on the NAS, or a target only you can reach.</li>
+</ul>
+<p>The upside of a boring format is that you are never locked in. Any machine with <code>tar</code> can
+open a Yggdrasil backup, with or without the panel:</p>
+<pre><code class="language-bash">tar -tzf 20260714-031500.tar.gz          # list what's inside
+tar -xzf 20260714-031500.tar.gz -C ./out # extract it anywhere
+</code></pre>
+<h2 id="naming-and-layout">Naming and layout</h2>
+<p>Archives are stored under a readable folder per server rather than a bare UUID, so a
+directory listing on the NAS means something:</p>
+<pre><code class="language-text">&lt;server-name-slug&gt;-&lt;first 8 chars of server id&gt;/&lt;YYYYMMDD-HHMMSS&gt;.tar.gz
+</code></pre>
+<p>For example <code>mc-survival-3f9a1c2b/20260714-031500.tar.gz</code>. The name is lowercased with
+anything that is not a letter or digit collapsed to a single dash; the short ID keeps the
+folder unique if two servers share a name. Timestamps are UTC.</p>
+<p>Retention works off the database, not off directory listings, so this layout is safe to
+browse, and safe to change in future.</p>
+<h2 id="running-a-backup">Running a backup</h2>
+<p>Open a server, go to the <strong>Backups</strong> tab, pick a target and choose <strong>Back up now</strong>. The
+run is asynchronous: a row appears immediately as <code>pending</code>, moves to <code>running</code>, then
+<code>done</code> (with the archive path and size) or <code>error</code> (with the reason). Either outcome
+sends a notification — ✅ with the size, or ❌ with the error.</p>
+<p>Running a backup needs <code>server.backup</code> on that server. See
+<a href="guides-users-and-permissions.html">Users and permissions</a>.</p>
+<p>To cover several servers at once, use the checkboxes on the <strong>Servers</strong> list and the bulk
+backup action: pick one target and it starts a backup for every selected server you have
+<code>server.backup</code> on and that is installed.</p>
+<p><img src="screenshots/server-backups.png" alt="Server backups tab"></p>
+<h2 id="restoring">Restoring</h2>
+<p>On the <strong>Backups</strong> tab, <strong>Restore</strong> on a completed backup. Yggdrasil stops the container
+first (with a 30-second grace period) so files are not swapped under a running game, marks
+the server stopped, streams the archive from the target and extracts it over the data
+directory. You start the server again yourself when you are ready.</p>
+<p>Restore overwrites. Files in the archive replace files on disk; files not in the archive
+are left alone. It is not a rollback to a point in time — it is an extraction on top of
+whatever is there. If the current state matters, back up before restoring.</p>
+<p>Extraction is guarded against archives that try to escape the data directory — worth
+knowing about if you ever restore an archive you did not create:</p>
+<ul>
+<li>Any entry whose resolved path lands outside the destination is rejected outright.</li>
+<li>A symlink entry pointing outside the destination is rejected, so a later entry cannot be
+written <em>through</em> it onto host files.</li>
+<li>Regular files are opened with <code>O_NOFOLLOW</code>, so if the path already exists as a symlink
+the write fails rather than following it.</li>
+</ul>
+<p>Any of these aborts the restore with an error, mid-way. An archive is not trusted on the
+grounds that it came from your own target.</p>
+<h2 id="retention">Retention</h2>
+<p>Retention is per target, set when you create it, and applied after every successful backup
+to that target.</p>
+<ul>
+<li><strong>Keep latest N</strong> — keep the N newest backups. <code>0</code> disables the count rule.</li>
+<li><strong>Keep days</strong> — keep anything newer than this many days. <code>0</code> disables the age rule.</li>
+</ul>
+<p>The rules are OR&rsquo;d: a backup survives if it is within the newest N <strong>or</strong> newer than the
+day cutoff. Setting both is a floor plus a window — &ldquo;keep at least the last 5, and
+anything from the last 30 days&rdquo;. With both at <code>0</code> there is no policy and nothing is ever
+deleted.</p>
+<p>Retention deletes the archive from the target and the row from the panel, and it only ever
+considers completed backups for that one server on that one target.</p>
+<h2 id="verify">Verify</h2>
+<p><strong>Verify</strong> on a completed backup downloads the archive and streams it through gzip and tar
+to <code>io.Discard</code> — reading every byte, writing nothing anywhere. It is a real integrity
+check, not a size or timestamp comparison: a truncated archive, a flipped bit or a
+half-written upload fails at the gzip CRC or on a short tar entry. On success you get the
+file count and total uncompressed size; on failure you get the error that killed it.</p>
+<p>Verify writes nothing to disk and does not touch the server. Nothing stops you running it
+on a live server mid-session.</p>
+<p>The result is stored on the backup, and the list shows a badge next to it:</p>
+<ul>
+<li><strong>✓ verified</strong> — the archive decompressed in full.</li>
+<li><strong>✗ corrupt</strong> — it did not. Take a fresh backup.</li>
+<li>no badge — never verified. Unknown, not good.</li>
+</ul>
+<p>A target that is unreachable is not a corruption verdict; that comes back as a fetch error
+and leaves the badge alone.</p>
+<h3 id="nightly-auto-verify">Nightly auto-verify</h3>
+<p><strong>Settings → Integrations → Backup verification</strong> has one switch: <em>Verify the latest
+backup of each server nightly</em>.</p>
+<p><strong>It is off by default</strong>, and deliberately so — it downloads each archive from its target,
+which costs real bandwidth on a remote SFTP or SMB store. Turn it on if your target is
+local or your link is cheap.</p>
+<p>When on, the pass runs at most once per day and <strong>only checks the newest completed backup
+per server</strong>, which keeps the cost bounded and predictable. A background loop wakes every
+30 minutes and runs the pass if it has not run today, so a panel restart or a box that was
+asleep at 3am catches up rather than skipping the day. The day is stamped before the pass
+starts, so a slow pass cannot re-trigger itself.</p>
+<p>If any of those newest backups is corrupt, you get one notification naming the affected
+servers and their errors. A clean pass is silent. The panel shows the date of the last pass
+it <em>started</em>, not the last one that finished: it reads the same stamp, so the date appears
+the moment the pass begins.</p>
+<p>Verifying only the newest backup is a deliberate trade. It answers &ldquo;if I needed a backup
+right now, would it work?&rdquo; — not &ldquo;is my whole history intact&rdquo;.</p>
+<h2 id="the-backup-coverage-nudge">The backup-coverage nudge</h2>
+<p>The <strong>Dashboard</strong> shows admins a warning when installed servers have no recent backup: <em>&ldquo;N
+servers have no recent backup&rdquo;</em>, listing each one with how long ago its last backup was, or
+<em>never</em>.</p>
+<p>&ldquo;Recent&rdquo; means a successful backup within the last <strong>7 days</strong> by default. Only installed
+servers count, and only backups that reached <code>done</code> — a server whose backups have been
+failing for a week shows up here, which is the point. The card lists the servers by name
+so you can go fix them. It disappears when everything is covered.</p>
+<h2 id="schedules">Schedules</h2>
+<p><strong>Schedules</strong> in the sidebar. A schedule is a cron expression, an action, a scope, and
+some arguments.</p>
+<p><img src="screenshots/schedules.png" alt="Schedules"></p>
+<h3 id="cron">Cron</h3>
+<p>Standard 5-field cron (<code>min hour dom month dow</code>), or 6 fields to get a leading seconds
+field. The editor rejects anything that is not 5 or 6 fields before saving; the full parse
+happens when the schedule is registered. Times are the panel host&rsquo;s local time.</p>
+<pre><code class="language-text">0 4 * * *      every day at 04:00
+0 */6 * * *    every six hours
+30 3 * * 1     Mondays at 03:30
+</code></pre>
+<p>New schedules start enabled. <strong>Disable</strong> keeps the schedule but stops it firing; the cron
+is rebuilt from the enabled schedules whenever anything changes.</p>
+<h3 id="scope">Scope</h3>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Runs against</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server</td>
+<td>That one server.</td>
+</tr>
+<tr>
+<td>Realm</td>
+<td>Every server in that realm, at the time it fires.</td>
+</tr>
+<tr>
+<td>Global</td>
+<td>Every server.</td>
+</tr>
+</tbody>
+</table>
+<p>Realm and global schedules pick up servers added later — that is the point of them, and
+the thing to think twice about before scoping a <code>stop</code> globally.</p>
+<p>Realm and global schedules are admin-only, to create and to see: a delegate&rsquo;s schedule
+list only contains server-scoped schedules for servers they hold <code>server.schedule</code> on.</p>
+<p>Some rows are managed by a per-server control (the auto-restart toggle writes one). Those
+are hidden from the Schedules page on purpose, so they cannot be hand-edited into a state
+the control does not expect.</p>
+<h3 id="actions">Actions</h3>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backup</code></td>
+<td>Backs the server up to the chosen target. Same path as the Backups tab, retention included.</td>
+</tr>
+<tr>
+<td><code>restart</code></td>
+<td>Recreates the container and starts it — not a plain Docker restart, so rune, env and mod changes land too. Falls back to a plain restart if recreation fails.</td>
+</tr>
+<tr>
+<td><code>start</code></td>
+<td>Starts the existing container. Errors if the server has no container yet.</td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td>Stops the container, 30-second grace. Skips if there is no container.</td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td>Sends a raw command over RCON, falling back to the container&rsquo;s stdin for games without it.</td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td>Renders a message template and sends it to players the same way.</td>
+</tr>
+<tr>
+<td><code>update</code></td>
+<td>Re-runs the install/update (SteamCMD and the like). Synchronous, so the run log reports the real outcome.</td>
+</tr>
+</tbody>
+</table>
+<p>The API also accepts a <code>wipe</code> action, which resets world/persistence as the rune defines
+it and needs <code>server.control</code> like the Wipe button does. The schedule editor does not offer
+it; wiping is normally done from a server&rsquo;s <strong>Wipe</strong> button, which asks for confirmation and
+runs once, immediately.</p>
+<p>A warned restart — optionally back up, broadcast the rune&rsquo;s countdown to players, then
+recreate — is a server&rsquo;s <strong>Safe restart</strong> action rather than something the schedule editor
+offers. The backup runs first, before the countdown starts, so the archive captures the
+world as it stood when you pressed the button rather than at the end of the warning window.</p>
+<p>A <code>restart</code> schedule can do the same via the API by passing <code>warn: &quot;true&quot;</code> in its
+arguments; because the countdown blocks for minutes, that variant runs in the background
+and the run log records it as started rather than finished.</p>
+<h3 id="message-templates">Message templates</h3>
+<p><code>message</code> sends a template rather than free text, so the wording lives in one place.
+Templates are edited under <strong>Settings → Integrations → In-game message templates</strong>, and
+Yggdrasil seeds five on first boot: Restart warning, Restart countdown, Backup warning,
+Maintenance notice, Update warning.</p>
+<p>A template body is the full console/RCON command, so it works across game types — you tune
+the syntax per game if you need to:</p>
+<pre><code class="language-text">say Server restarting in {{minutes}} minutes. Please find a safe spot.
+</code></pre>
+<p><code>{{key}}</code> placeholders are substituted at send time. Three keys are substituted:
+<code>{{server_name}}</code>, <code>{{minutes}}</code> and <code>{{seconds}}</code>. The schedule editor supplies the
+server name and a <strong>minutes</strong> value you type next to the template picker, so those are
+the two to build templates around — a <code>message</code> schedule has nothing to put in
+<code>{{seconds}}</code>, and it renders empty.</p>
+<p>Any other placeholder is left in the text untouched, so a typo shows up in-game rather
+than silently vanishing.</p>
+<h3 id="skipping-when-players-are-online">Skipping when players are online</h3>
+<p><code>restart</code> and <code>update</code> offer <strong>skip if players are online</strong>. When it is on, Yggdrasil
+queries the server&rsquo;s player count before acting and skips if anyone is connected; the run
+log records <code>skipped — players online</code>.</p>
+<p>This needs the rune to define a query protocol. If the count cannot be determined the
+action goes ahead — an unanswerable query is not treated as &ldquo;players online&rdquo;. Do not lean
+on this as a safety interlock on a game Yggdrasil cannot query.</p>
+<h3 id="run-history">Run history</h3>
+<p><strong>Log</strong> on a schedule shows its recent runs: when it fired, which server, the action, the
+status and a detail string. The panel keeps the last 100 runs per schedule and shows the
+50 most recent.</p>
+<p>Every firing records <strong>one row per target server</strong>, so a realm-scoped backup across six
+servers writes six rows. Status is one of:</p>
+<ul>
+<li><code>ok</code> — done, with a detail like <code>restarted</code> or <code>backup started</code>.</li>
+<li><code>skipped</code> — deliberately not done: players online, no command configured, already
+stopped.</li>
+<li><code>error</code> — tried and failed, with the reason.</li>
+</ul>
+<p>The <code>backup</code> action is the exception: it records <code>ok</code> / <code>backup started</code> for every server
+it fires against, whatever happens next. A backup that fails still shows as <code>ok</code> here. For
+that action the run log tells you the schedule fired, not that it worked — the real verdict
+is the ❌ notification and the row on the server&rsquo;s <strong>Backups</strong> tab.</p>
+<p>A firing that matches no servers records a single <code>skipped</code> row with <code>no servers in scope</code>.</p>
+<p><strong>Run now</strong> fires a schedule immediately, ignoring its cron time. It is the way to test one
+without waiting for 4am.</p>
+<h3 id="one-notification-per-firing">One notification per firing</h3>
+<p>A firing sends <strong>one</strong> summary notification, not one per server:</p>
+<pre><code class="language-text">✅ Schedule &quot;nightly-restart&quot; (restart): 5 ok, 1 skipped, 0 failed
+  ok: alpha, beta, gamma, delta, epsilon
+  skipped: zeta (players online)
+</code></pre>
+<p>The icon is ✅ when everything worked, ❌ if anything failed, ⏰ if nothing ran.</p>
+<p>Only state-changing actions notify: <code>start</code>, <code>stop</code>, <code>restart</code> and <code>update</code>. Backups stay
+quiet at the schedule level because <code>runBackup</code> already emits its own ✅/❌ per server, and
+<code>message</code> and <code>command</code> are in-game only — announcing them to your phone would be noise.
+See <a href="guides-notifications.html">Notifications</a> for wiring up channels.</p>
+<h2 id="who-can-do-what-with-schedules">Who can do what with schedules</h2>
+<p>Creating a schedule needs <code>server.schedule</code> on the target server, <strong>plus the scheduled
+action&rsquo;s own permission</strong> — so a Schedule grant cannot be escalated into powers the
+delegate does not otherwise have:</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Extra permission needed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>command</code></td>
+<td><code>server.console</code></td>
+</tr>
+<tr>
+<td><code>start</code>, <code>stop</code>, <code>restart</code>, <code>update</code></td>
+<td><code>server.control</code></td>
+</tr>
+<tr>
+<td><code>wipe</code></td>
+<td><code>server.control</code></td>
+</tr>
+<tr>
+<td><code>backup</code></td>
+<td><code>server.backup</code></td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td>none beyond <code>server.schedule</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each action&rsquo;s requirement matches the gate on the equivalent direct endpoint, so scheduling
+something never grants more than doing it by hand would. The table is exhaustive and fails
+closed: an action with no entry is rejected rather than waved through, and a test asserts
+every known action appears here — a new action cannot reach the scheduler ungated.</p>
+<p>Admins skip this check, as they skip all of them.</p>
+<p>There is an asymmetry here worth knowing before you hand out <code>server.schedule</code>:</p>
+<p><strong>Update, delete and run-now are admin-only.</strong> Not permission-checked — admin-only, flatly.
+A delegate with <code>server.schedule</code> on a server can <em>create</em> a schedule there and read its
+run log, but cannot then edit it, disable it, delete it, or trigger it. Once created, it is
+yours to manage.</p>
+<p>The practical consequences:</p>
+<ul>
+<li>A delegate who mistypes a cron expression cannot fix it. They need an admin, or a second
+schedule.</li>
+<li>A delegate cannot turn off a schedule they created — not even their own runaway one.</li>
+<li><code>server.schedule</code> is closer to &ldquo;may propose recurring work&rdquo; than &ldquo;may manage schedules&rdquo;.</li>
+</ul>
+<p>If you want someone to own schedules end to end, they need to be an admin. If you want them
+to have no say, do not grant <code>server.schedule</code>.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="guides-users-and-permissions.html">Users and permissions</a></li>
+<li><a href="guides-servers.html">Servers</a></li>
+<li><a href="guides-notifications.html">Notifications</a></li>
+<li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a></li>
+<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/backups-and-schedules.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

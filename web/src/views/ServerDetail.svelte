@@ -5,6 +5,7 @@
   import { navigate } from "../lib/router.js";
   import { user } from "../lib/auth.js";
   import FileManager from "../components/FileManager.svelte";
+  import Sparkline from "../components/Sparkline.svelte";
   import VarForm from "../components/VarForm.svelte";
 
   let { id } = $props();
@@ -117,6 +118,24 @@
       playersTimer = setInterval(loadPlayers, 10000);
       return () => { clearInterval(playersTimer); playersTimer = null; };
     }
+  });
+
+  // Resource history charts (sampled server-side every ~5 min)
+  let metrics = $state([]);
+  let metricsHours = $state(24);
+  let showHistory = $state(false);
+  async function loadMetrics() {
+    try {
+      metrics = await api.get(`/servers/${id}/metrics?hours=${metricsHours}`);
+    } catch {
+      metrics = [];
+    }
+  }
+  const cpuSeries = $derived(metrics.map((m) => m.cpu));
+  const memSeries = $derived(metrics.map((m) => m.mem_mb));
+  const playerSeries = $derived(metrics.map((m) => (m.players >= 0 ? m.players : 0)));
+  $effect(() => {
+    if (showHistory) { metricsHours; loadMetrics(); }
   });
 
   // Activity feed (parsed admin log — session history)
@@ -1014,6 +1033,30 @@
       </div>
     </div>
   {/if}
+
+  <!-- Resource history -->
+  <div class="mb-4">
+    <div class="flex items-center gap-2">
+      <button class="text-sm text-muted hover:text-text" onclick={() => (showHistory = !showHistory)}>
+        {showHistory ? "▾" : "▸"} 📈 History
+      </button>
+      {#if showHistory}
+        <div class="inline-flex rounded-md border border-border overflow-hidden text-xs ml-2">
+          {#each [[24, "24h"], [72, "3d"], [168, "7d"]] as [h, lbl]}
+            <button class="px-2 py-1 {metricsHours === h ? 'bg-panel2 text-text' : 'text-muted hover:bg-panel2/50'}"
+              onclick={() => (metricsHours = h)}>{lbl}</button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    {#if showHistory}
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+        <Sparkline values={cpuSeries} label="CPU" unit="%" color="rgb(var(--c-accent2))" format={(v) => v.toFixed(0)} />
+        <Sparkline values={memSeries} label="Memory" unit=" MB" color="rgb(var(--c-accent))" format={(v) => v.toFixed(0)} />
+        <Sparkline values={playerSeries} label="Players" unit="" color="rgb(var(--c-warn))" format={(v) => v.toFixed(0)} />
+      </div>
+    {/if}
+  </div>
 
   <!-- Tabs — scroll horizontally on narrow screens instead of clipping -->
   <div class="flex gap-1 border-b border-border mb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">

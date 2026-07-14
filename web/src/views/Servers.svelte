@@ -14,6 +14,7 @@
   let servers = $state([]);
   let realms = $state([]);
   let gameskills = $state([]);
+  let backupTargets = $state([]);
   let loading = $state(true);
 
   // View mode (grid cards vs. compact table), remembered per browser.
@@ -50,10 +51,11 @@
   async function load() {
     loading = true;
     try {
-      [servers, realms, gameskills] = await Promise.all([
+      [servers, realms, gameskills, backupTargets] = await Promise.all([
         api.get("/servers"),
         api.get("/realms"),
         api.get("/gameskills"),
+        api.get("/backup/targets").catch(() => []), // admin-only; [] for delegates
       ]);
       loadReach();
     } catch (e) {
@@ -222,6 +224,32 @@
   function clearSel() {
     selected = new Set();
   }
+  // Bulk backup: back up every selected server the caller can back up, to one target.
+  let showBulkBackup = $state(false);
+  let bulkTargetId = $state("");
+  function openBulkBackup() {
+    bulkTargetId = backupTargets[0]?.id || "";
+    showBulkBackup = true;
+  }
+  async function runBulkBackup() {
+    if (!bulkTargetId) return;
+    const targets = visibleServers.filter((s) => selected.has(s.id) && can(s, "server.backup") && s.installed);
+    if (!targets.length) return toast("No selected servers can be backed up", "warn");
+    bulkBusy = true;
+    try {
+      const results = await Promise.allSettled(
+        targets.map((s) => api.post(`/servers/${s.id}/backup`, { target_id: bulkTargetId })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const fail = results.length - ok;
+      toast(`Backup started for ${ok} server${ok === 1 ? "" : "s"}${fail ? `, ${fail} failed` : ""}`, fail ? "warn" : "success");
+      showBulkBackup = false;
+      clearSel();
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
   async function bulkAction(verb) {
     const targets = controllable.filter((s) => selected.has(s.id));
     // Only act where it makes sense: start stopped servers; stop/restart running ones.
@@ -303,6 +331,9 @@
       <button class="btn-primary px-2.5 py-1" disabled={bulkBusy} onclick={() => bulkAction("start")}>Start</button>
       <button class="btn-ghost px-2.5 py-1" disabled={bulkBusy} onclick={() => bulkAction("restart")}>Restart</button>
       <button class="btn-ghost px-2.5 py-1" disabled={bulkBusy} onclick={() => bulkAction("stop")}>Stop</button>
+      {#if backupTargets.length}
+        <button class="btn-ghost px-2.5 py-1" disabled={bulkBusy} onclick={openBulkBackup}>Back up</button>
+      {/if}
       <button class="btn-ghost px-2.5 py-1 ml-auto" onclick={clearSel}>Clear</button>
     {:else}
       <button class="text-muted hover:text-text" onclick={selectAll}>☑ Select all{tagFilter ? " filtered" : ""}</button>
@@ -454,6 +485,27 @@
       </div>
     {/if}
   {/each}
+{/if}
+
+{#if showBulkBackup}
+  <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+    <div class="card p-5 w-full max-w-sm space-y-4">
+      <h2 class="text-lg font-semibold">Back up {selected.size} server{selected.size === 1 ? "" : "s"}</h2>
+      <p class="text-sm text-muted">Runs a backup now for each selected server you can back up (skips ones still installing).</p>
+      <div>
+        <label class="label" for="bulk-target">Backup target</label>
+        <select id="bulk-target" class="input" bind:value={bulkTargetId}>
+          {#each backupTargets as t}<option value={t.id}>{t.name}</option>{/each}
+        </select>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn-primary flex-1" disabled={bulkBusy || !bulkTargetId} onclick={runBulkBackup}>
+          {bulkBusy ? "Starting…" : "Back up"}
+        </button>
+        <button class="btn-ghost" disabled={bulkBusy} onclick={() => (showBulkBackup = false)}>Cancel</button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 {#if showCreate}

@@ -531,6 +531,7 @@
       bm_server_id: server.bm_server_id || "",
       auto_forward: server.auto_forward !== false,
       autostart: server.autostart !== false,
+      status_public: !!server.status_public,
       subdomain: server.subdomain || "",
     };
     hostMounts = (server.host_mounts || []).map((m) => ({ host: m.host, container: m.container, rw: !!m.rw }));
@@ -550,6 +551,7 @@
         bm_server_id: edit.bm_server_id || "",
         auto_forward: !!edit.auto_forward,
         autostart: !!edit.autostart,
+        status_public: !!edit.status_public,
         subdomain: edit.subdomain || "",
       };
       // Host mounts are admin-only; only send the field when the caller is an admin
@@ -1349,6 +1351,16 @@
           <p class="text-xs text-muted mt-1">
             On by default. If this server was running when the host/panel restarts, it's brought
             back up automatically. Turn off to leave it stopped after a reboot.
+          </p>
+        </div>
+        <div>
+          <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" bind:checked={edit.status_public} />
+            Show on the public status page
+          </label>
+          <p class="text-xs text-muted mt-1">
+            Off by default. When on, this server's name, game and online/players state appear on the
+            public <code>/status</code> page (no login). Enable the page under Settings → Status page.
           </p>
         </div>
         {#if server.ports?.web}

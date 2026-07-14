@@ -43,6 +43,10 @@ type Server struct {
 	latestVer string // cached latest GitHub release tag
 	latestAt  time.Time
 	latestMu  sync.Mutex
+
+	statusCache   []byte // cached public /api/status JSON (short TTL; it's an unauthenticated endpoint)
+	statusCacheAt time.Time
+	statusMu      sync.Mutex
 }
 
 // SetVersion records the build version so it can be surfaced in the UI.
@@ -142,6 +146,10 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Post("/api/auth/passkey/login/begin", s.handleWALoginBegin)
 	r.Post("/api/auth/passkey/login/finish", s.handleWALoginFinish)
 	r.Get("/api/version", s.handleVersion)
+	// Public status page (opt-in; 404s when the master switch is off).
+	r.Get("/api/status", s.handlePublicStatus)
+	r.Get("/status", s.handleStatusPage)
+	r.Get("/status.js", s.handleStatusPageJS)
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
@@ -254,6 +262,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/schedules/{id}", s.handleDeleteSchedule)
 		r.Post("/api/schedules/{id}/run", s.handleRunSchedule)
 		r.Get("/api/schedules/{id}/runs", s.handleScheduleRuns)
+
+		// Public status page config (admin-only)
+		r.Get("/api/settings/status-page", s.requireAdmin(s.handleGetStatusSettings))
+		r.Put("/api/settings/status-page", s.requireAdmin(s.handleSetStatusSettings))
 
 		// Steam authorization (admin-only)
 		r.Get("/api/steam/account", s.requireAdmin(s.handleGetSteamAccount))

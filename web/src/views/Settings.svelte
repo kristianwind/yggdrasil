@@ -440,6 +440,31 @@
       savingNetwork = false;
     }
   }
+  // Public status page (opt-in up/down board at /status)
+  let statusPage = $state({ enabled: false, title: "Server Status" });
+  let savingStatusPage = $state(false);
+  async function loadStatusPage() {
+    try {
+      statusPage = await api.get("/settings/status-page");
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function saveStatusPage() {
+    savingStatusPage = true;
+    try {
+      statusPage = await api.put("/settings/status-page", {
+        enabled: !!statusPage.enabled,
+        title: statusPage.title || "",
+      });
+      toast("Status page settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingStatusPage = false;
+    }
+  }
+
   let upnpStatus = $state(null);
   let checkingUpnp = $state(false);
   async function checkUpnp() {
@@ -606,6 +631,7 @@
     loadBuild();
     loadAutoUpdate();
     loadNetwork();
+    loadStatusPage();
     loadUnifi();
     loadNpm();
     loadCf();
@@ -775,6 +801,34 @@
   <button class="btn-primary" onclick={saveNetwork} disabled={savingNetwork}>
     {savingNetwork ? "Saving…" : "Save"}
   </button>
+</div>
+
+<!-- Public status page -->
+<h2 class="text-xl font-semibold mb-2">Status page</h2>
+<p class="text-muted mb-4 text-sm">
+  A public, read-only up/down board at
+  <a class="text-accent" href="/status" target="_blank" rel="noopener">/status</a>
+  so players can check whether a server is online — no login. Nothing is shown until you enable it here
+  <em>and</em> turn on “Show on the public status page” for each server (its Settings tab). Only name, game
+  and online/players state are exposed — never addresses, ports or config.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={statusPage.enabled} />
+    Enable the public status page
+  </label>
+  <div>
+    <label class="label" for="sptitle">Page title</label>
+    <input id="sptitle" class="input" bind:value={statusPage.title} placeholder="Server Status" />
+  </div>
+  <div class="flex items-center gap-3">
+    <button class="btn-primary" onclick={saveStatusPage} disabled={savingStatusPage}>
+      {savingStatusPage ? "Saving…" : "Save"}
+    </button>
+    {#if statusPage.enabled}
+      <a class="text-sm text-accent" href="/status" target="_blank" rel="noopener">Open status page ↗</a>
+    {/if}
+  </div>
 </div>
 
 <!-- UniFi port forwarding -->

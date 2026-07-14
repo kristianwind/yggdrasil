@@ -50,7 +50,8 @@ type serverRow struct {
 	CreatedAt      string            `json:"created_at"`
 	BMServerID     string            `json:"bm_server_id,omitempty"`
 	AutoForward    bool              `json:"auto_forward"`
-	Autostart      bool              `json:"autostart"` // start on panel/host boot
+	Autostart      bool              `json:"autostart"`     // start on panel/host boot
+	StatusPublic   bool              `json:"status_public"` // listed on the public /status page (opt-in)
 	Subdomain      string            `json:"subdomain,omitempty"`
 	Perms          []string          `json:"perms"`                 // caller's effective permissions on this server
 	HostMountsJSON string            `json:"-"`                     // raw servers.host_mounts (admin host binds)
@@ -64,17 +65,18 @@ type serverRow struct {
 	AIEnabled      bool              `json:"ai_enabled"`            // advisory AI features are on (digest button; single GET)
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0)"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0)"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
-	var installed, autoFwd, autostart, watchdog int
+	var installed, autoFwd, autostart, watchdog, statusPublic int
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog, &statusPublic)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
 	srv.Autostart = autostart == 1
 	srv.Watchdog = watchdog == 1
+	srv.StatusPublic = statusPublic == 1
 	srv.Ports = map[string]int{}
 	json.Unmarshal([]byte(srv.PortsJSON), &srv.Ports)
 	return srv, err
@@ -346,14 +348,15 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		// IDs in load order). The web UI sends mods inside env, but API clients
 		// naturally reach for a top-level "mods" — accept both so it can't silently
 		// no-op.
-		Mods        *string      `json:"mods"`
-		CPUPercent  *float64     `json:"cpu_percent"`
-		MemoryMB    *int64       `json:"memory_mb"`
-		BMServerID  *string      `json:"bm_server_id"`
-		AutoForward *bool        `json:"auto_forward"`
-		Autostart   *bool        `json:"autostart"`
-		Subdomain   *string      `json:"subdomain"`
-		HostMounts  *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
+		Mods         *string      `json:"mods"`
+		CPUPercent   *float64     `json:"cpu_percent"`
+		MemoryMB     *int64       `json:"memory_mb"`
+		BMServerID   *string      `json:"bm_server_id"`
+		AutoForward  *bool        `json:"auto_forward"`
+		Autostart    *bool        `json:"autostart"`
+		StatusPublic *bool        `json:"status_public"`
+		Subdomain    *string      `json:"subdomain"`
+		HostMounts   *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -392,6 +395,9 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Autostart != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET autostart=? WHERE id=?", boolInt(*req.Autostart), id)
+	}
+	if req.StatusPublic != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET status_public=? WHERE id=?", boolInt(*req.StatusPublic), id)
 	}
 	if req.Name != nil && *req.Name != "" {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)

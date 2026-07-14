@@ -436,6 +436,44 @@ func parseSemver(v string) [3]int {
 	return out
 }
 
+// handleBackupCoverage lists installed servers whose most recent SUCCESSFUL backup
+// is older than the window (default 7 days) or which have never been backed up — a
+// dashboard nudge to catch servers with no safety net before it bites.
+func (s *Server) handleBackupCoverage(w http.ResponseWriter, r *http.Request) {
+	days := 7
+	if d := r.URL.Query().Get("days"); d != "" {
+		if n, err := strconv.Atoi(d); err == nil && n > 0 && n <= 365 {
+			days = n
+		}
+	}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT s.id, s.name,
+		       COALESCE(MAX(CASE WHEN b.status='done' THEN b.completed_at END), '') AS last_backup
+		FROM servers s LEFT JOIN backups b ON b.server_id = s.id
+		WHERE s.installed = 1
+		GROUP BY s.id, s.name
+		HAVING last_backup = '' OR last_backup < datetime('now', ?)
+		ORDER BY last_backup`, fmt.Sprintf("-%d days", days))
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	type row struct {
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		LastBackup string `json:"last_backup"` // "" = never
+	}
+	stale := []row{}
+	for rows.Next() {
+		var x row
+		if rows.Scan(&x.ID, &x.Name, &x.LastBackup) == nil {
+			stale = append(stale, x)
+		}
+	}
+	jsonOK(w, map[string]any{"threshold_days": days, "stale": stale})
+}
+
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	dockerOK := s.docker.Ping(r.Context()) == nil
 

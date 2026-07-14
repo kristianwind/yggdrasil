@@ -6,6 +6,7 @@
   import { toast } from "../lib/toast.js";
 
   let info = $state(null);
+  let backupCoverage = $state(null);
   let servers = $state([]);
   let gameskills = $state([]);
   let error = $state("");
@@ -43,6 +44,7 @@
       if ($user.role === "admin") {
         info = await api.get("/system/info");
         beacon = await api.get("/settings/beacon").catch(() => null);
+        backupCoverage = await api.get("/system/backup-coverage").catch(() => null);
       }
     } catch (e) {
       error = e.message;
@@ -197,6 +199,26 @@
     </svelte:element>
   {/each}
 </div>
+
+{#if backupCoverage?.stale?.length}
+  <div class="card p-4 mb-8 border-l-4 border-warn">
+    <h2 class="text-base font-semibold">
+      ⚠️ {backupCoverage.stale.length}
+      {backupCoverage.stale.length === 1 ? "server has" : "servers have"} no recent backup
+    </h2>
+    <p class="text-sm text-muted mt-0.5">
+      No successful backup in the last {backupCoverage.threshold_days} days — set up a backup or a schedule so they're covered.
+    </p>
+    <div class="flex flex-wrap gap-2 mt-3">
+      {#each backupCoverage.stale as s}
+        <a href={`#/servers/${s.id}`} class="badge bg-panel2 border border-border hover:text-text">
+          {s.name}
+          <span class="text-muted ml-1">· {s.last_backup ? relTime(s.last_backup) : "never"}</span>
+        </a>
+      {/each}
+    </div>
+  </div>
+{/if}
 
 {#if showBeaconTeaser}
   <div class="card p-4 mb-8 relative border-l-4 border-accent">

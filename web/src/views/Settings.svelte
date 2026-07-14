@@ -465,6 +465,43 @@
     }
   }
 
+  // Beacon (voluntary, opt-in install ping)
+  let beacon = $state({ enabled: false, url: "", instance_id: "", version: "", receiver_enabled: false });
+  let savingBeacon = $state(false);
+  let beaconStats = $state(null);
+  async function loadBeacon() {
+    try {
+      beacon = await api.get("/settings/beacon");
+      if (beacon.receiver_enabled) loadBeaconStats();
+    } catch (e) {
+      /* non-fatal */
+    }
+  }
+  async function loadBeaconStats() {
+    try {
+      beaconStats = await api.get("/beacon/stats");
+    } catch (e) {
+      beaconStats = null;
+    }
+  }
+  async function saveBeacon() {
+    savingBeacon = true;
+    try {
+      beacon = await api.put("/settings/beacon", {
+        enabled: !!beacon.enabled,
+        url: beacon.url || "",
+        receiver_enabled: !!beacon.receiver_enabled,
+      });
+      toast("Beacon settings saved", "success");
+      if (beacon.receiver_enabled) loadBeaconStats();
+      else beaconStats = null;
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingBeacon = false;
+    }
+  }
+
   let upnpStatus = $state(null);
   let checkingUpnp = $state(false);
   async function checkUpnp() {
@@ -632,6 +669,7 @@
     loadAutoUpdate();
     loadNetwork();
     loadStatusPage();
+    loadBeacon();
     loadUnifi();
     loadNpm();
     loadCf();
@@ -744,6 +782,65 @@
   {:else}
     <p class="text-sm text-muted">Checking for updates…</p>
   {/if}
+</div>
+
+<!-- Beacon (voluntary install ping) -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Beacon</h2>
+<p class="text-muted mb-4 text-sm">
+  Off by default. When on, this panel sends a small daily ping so the project can gauge how many
+  installs are out there. It sends <b>only</b> the two values shown below — a random anonymous ID and the
+  version — and <b>nothing else</b>: no IP, no server names, no addresses, no usage data.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={beacon.enabled} />
+    Send an anonymous daily beacon
+  </label>
+  <div class="rounded-lg bg-panel2/50 border border-border p-3 text-xs font-mono break-all">
+    <div class="text-muted mb-1">Exactly what is sent — nothing more:</div>
+    {'{'} "instance_id": "{beacon.instance_id}", "version": "{beacon.version}" {'}'}
+  </div>
+  <div>
+    <label class="label" for="beacon-url">Collector URL</label>
+    <input id="beacon-url" class="input" bind:value={beacon.url} placeholder="https://yggdrasilpanel.com/api/beacon" />
+    <p class="text-xs text-muted mt-1">Where the ping goes. Leave as the default unless you run your own collector.</p>
+  </div>
+
+  <div class="border-t border-border pt-3">
+    <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+      <input type="checkbox" bind:checked={beacon.receiver_enabled} />
+      Act as the collector (receive other panels' beacons)
+    </label>
+    <p class="text-xs text-muted mt-1">
+      Turn on only on a public instance you want to gather counts on. Stores just the anonymous ID +
+      version per install — never any IP.
+    </p>
+    {#if beacon.receiver_enabled && beaconStats}
+      <div class="grid grid-cols-3 gap-2 mt-3 text-center">
+        <div class="rounded-lg bg-panel2/50 border border-border p-2">
+          <div class="text-lg font-semibold">{beaconStats.total}</div>
+          <div class="text-[10px] text-muted uppercase tracking-wide">Total</div>
+        </div>
+        <div class="rounded-lg bg-panel2/50 border border-border p-2">
+          <div class="text-lg font-semibold">{beaconStats.active_7d}</div>
+          <div class="text-[10px] text-muted uppercase tracking-wide">Active 7d</div>
+        </div>
+        <div class="rounded-lg bg-panel2/50 border border-border p-2">
+          <div class="text-lg font-semibold">{beaconStats.active_30d}</div>
+          <div class="text-[10px] text-muted uppercase tracking-wide">Active 30d</div>
+        </div>
+      </div>
+      {#if beaconStats.versions?.length}
+        <div class="mt-2 text-xs text-muted">
+          By version (30d): {beaconStats.versions.map((v) => `${v.version} ×${v.count}`).join(", ")}
+        </div>
+      {/if}
+    {/if}
+  </div>
+
+  <button class="btn-primary" onclick={saveBeacon} disabled={savingBeacon}>
+    {savingBeacon ? "Saving…" : "Save"}
+  </button>
 </div>
 
 {/if}

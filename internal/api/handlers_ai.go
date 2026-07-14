@@ -24,10 +24,10 @@ import (
 // and nothing here acts on a server automatically.
 
 type aiConfig struct {
-	Provider      string
-	Model         string
-	BaseURL       string
-	APIKey        string
+	Provider       string
+	Model          string
+	BaseURL        string
+	APIKey         string
 	Enabled        bool
 	DigestEnabled  bool
 	DigestHour     int
@@ -66,15 +66,15 @@ func (s *Server) aiEnabled(ctx context.Context) bool {
 }
 
 type aiConfigView struct {
-	Provider      string `json:"provider"`
-	Model         string `json:"model"`
-	BaseURL       string `json:"base_url"`
-	APIKey        string `json:"api_key"` // masked on GET; secretMask means "keep existing" on PUT
-	Enabled       bool   `json:"enabled"`
-	Configured     bool `json:"configured"`      // an API key is stored
-	DigestEnabled  bool `json:"digest_enabled"`  // send a daily ops digest to notification channels
-	DigestHour     int  `json:"digest_hour"`     // 0-23
-	ActionsEnabled bool `json:"actions_enabled"` // AI may propose server actions (always confirmed)
+	Provider       string `json:"provider"`
+	Model          string `json:"model"`
+	BaseURL        string `json:"base_url"`
+	APIKey         string `json:"api_key"` // masked on GET; secretMask means "keep existing" on PUT
+	Enabled        bool   `json:"enabled"`
+	Configured     bool   `json:"configured"`      // an API key is stored
+	DigestEnabled  bool   `json:"digest_enabled"`  // send a daily ops digest to notification channels
+	DigestHour     int    `json:"digest_hour"`     // 0-23
+	ActionsEnabled bool   `json:"actions_enabled"` // AI may propose server actions (always confirmed)
 }
 
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
@@ -390,6 +390,31 @@ func (s *Server) gatherHealthSnapshot(ctx context.Context) string {
 		fmt.Fprintf(&b, "Backups: %d failed in the last 24h.\n", failedBackups)
 	} else {
 		b.WriteString("Backups: none failed in the last 24h.\n")
+	}
+
+	// Resource trends from the metrics history: 24h average + peak so the model can
+	// spot a server whose load is climbing or pinned high.
+	if rows, err := s.db.QueryContext(ctx, `
+		SELECT s.name, ROUND(AVG(m.cpu),1), ROUND(MAX(m.cpu),1), ROUND(AVG(m.mem_mb)), MAX(m.players)
+		FROM metrics m JOIN servers s ON s.id=m.server_id
+		WHERE m.ts >= datetime('now','-1 day') GROUP BY m.server_id ORDER BY MAX(m.cpu) DESC`); err == nil {
+		var lines []string
+		for rows.Next() {
+			var name string
+			var avgCPU, maxCPU, avgMem float64
+			var maxPlayers int
+			if rows.Scan(&name, &avgCPU, &maxCPU, &avgMem, &maxPlayers) == nil {
+				pk := ""
+				if maxPlayers >= 0 {
+					pk = fmt.Sprintf(", peak %d players", maxPlayers)
+				}
+				lines = append(lines, fmt.Sprintf("%s: CPU avg %.0f%% / peak %.0f%%, mem avg %.0f MB%s", name, avgCPU, maxCPU, avgMem, pk))
+			}
+		}
+		rows.Close()
+		if len(lines) > 0 {
+			fmt.Fprintf(&b, "Resource trends (24h):\n%s\n", strings.Join(lines, "\n"))
+		}
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

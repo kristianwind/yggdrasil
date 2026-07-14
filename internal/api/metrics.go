@@ -73,6 +73,54 @@ type metricPoint struct {
 	Players int     `json:"players"`
 }
 
+type quietHour struct {
+	Hour       int     `json:"hour"`        // 0–23, server-local
+	AvgPlayers float64 `json:"avg_players"` // rounded to 1 decimal
+	Samples    int     `json:"samples"`
+}
+
+// handleQuietHours mines the sampled player counts to suggest the calmest time of
+// day to run disruptive jobs (like a scheduled restart). It buckets the last 14
+// days of samples by server-local hour and returns the average players per hour
+// plus the quietest hour. No data (a game with no query, or a brand-new server)
+// yields has_data=false so the UI can stay quiet rather than mislead.
+func (s *Server) handleQuietHours(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerView, s.serverTarget(r.Context(), id)) {
+		return
+	}
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT CAST(strftime('%H', ts, 'localtime') AS INTEGER) AS h, AVG(players), COUNT(*)
+		FROM metrics
+		WHERE server_id=? AND players >= 0 AND ts >= datetime('now','-14 days')
+		GROUP BY h ORDER BY h`, id)
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	byHour := []quietHour{}
+	recHour, recAvg := -1, 0.0
+	for rows.Next() {
+		var qh quietHour
+		var avg float64
+		if rows.Scan(&qh.Hour, &avg, &qh.Samples) != nil {
+			continue
+		}
+		qh.AvgPlayers = float64(int(avg*10+0.5)) / 10
+		byHour = append(byHour, qh)
+		if recHour == -1 || avg < recAvg {
+			recHour, recAvg = qh.Hour, avg
+		}
+	}
+	jsonOK(w, map[string]any{
+		"has_data":         recHour != -1,
+		"recommended_hour": recHour,
+		"recommended_avg":  float64(int(recAvg*10+0.5)) / 10,
+		"by_hour":          byHour,
+	})
+}
+
 // handleServerMetrics returns a server's samples over the last N hours (default
 // 24, max 168 = 7 days).
 func (s *Server) handleServerMetrics(w http.ResponseWriter, r *http.Request) {

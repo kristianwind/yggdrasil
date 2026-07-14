@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in the panel doesn't do what it says it does.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. If you're not sure whether it's a bug, ask in
+        [Discord](https://discord.gg/murNphXV3) first — that's faster for both of us.
+
+        **Never paste secrets.** Logs can contain your `secret_key`, RCON passwords, API
+        tokens and backup-target credentials. Read what you paste.
+
+  - type: input
+    id: version
+    attributes:
+      label: Panel version
+      description: Bottom of the sidebar, or `yggdrasil version` on the host.
+      placeholder: v0.2.147
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: Host
+      description: Distro and architecture.
+      placeholder: Debian 13, amd64
+    validations:
+      required: true
+
+  - type: input
+    id: rune
+    attributes:
+      label: Rune
+      description: Which rune, if it's specific to one. Include the game version if relevant.
+      placeholder: minecraft-java (Paper 1.21)
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        1. Set a backup target with keep-days = 30
+        2. Ran a backup
+        3. Expected: the backup is kept. Actually: it was deleted immediately.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        `sudo journalctl -u yggdrasil -n 100 --no-pager` for the panel, or the server's
+        Console tab for a game. Redact anything secret first.
+      render: shell

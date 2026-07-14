@@ -37,11 +37,12 @@ import (
 )
 
 const (
-	repoURL   = "https://github.com/kristianwind/yggdrasil"
-	docsOnGH  = repoURL + "/blob/main/docs/"
-	outDir    = "website/docs"
-	srcDir    = "docs"
-	siteTitle = "Yggdrasil Panel docs"
+	repoURL    = "https://github.com/kristianwind/yggdrasil"
+	discordURL = "https://discord.gg/murNphXV3"
+	docsOnGH   = repoURL + "/blob/main/docs/"
+	outDir     = "website/docs"
+	srcDir     = "docs"
+	siteTitle  = "Yggdrasil Panel docs"
 )
 
 // Page is one markdown file in docs/.
@@ -545,6 +546,7 @@ func topNav() string {
       <a href="/#screens">Screenshots</a>
       <a href="/docs/" class="on">Docs</a>
       <a href="/#install">Install</a>
+      <a href="` + discordURL + `" target="_blank" rel="noopener">Discord</a>
       <a class="btn ghost" href="` + repoURL + `" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
   </div>

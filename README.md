@@ -6,6 +6,8 @@ install, update and maintain*, and not just for games: run databases and homelab
 apps (Vaultwarden, Gitea, Uptime Kuma, Grafana, WordPress, Nextcloud…) from the
 same one-click "Runes".
 
+[**📖 Documentation**](docs/) · [**🌐 yggdrasilpanel.com**](https://yggdrasilpanel.com) · [**💬 Discord**](https://discord.gg/murNphXV3)
+
 [![Yggdrasil dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
 
 - **One binary.** A single static Go binary with the web UI embedded. No separate
@@ -307,6 +309,15 @@ containers, executes install scripts, opens network ports, and stores credential
 operate it only on systems and data you are willing to lose, keep your own backups,
 and review what it does before running it in production. By installing or using this
 software you accept full responsibility for any consequences.
+
+## Community
+
+[**Join the Discord**](https://discord.gg/murNphXV3) — questions, help getting a rune working,
+and news about releases.
+
+**Found a bug?** Please [open an issue](https://github.com/kristianwind/yggdrasil/issues) rather
+than reporting it in chat. Issues don't scroll away, and they can carry the logs and version
+information a fix actually needs. Discord is the right place to ask whether something *is* a bug.
 
 ## License
 

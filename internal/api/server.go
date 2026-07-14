@@ -82,6 +82,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.startOpsDigestLoop()
 	s.startMetricsSampler()
 	s.startBeaconLoop()
+	s.startDiscordStatusLoop()
 	return s
 }
 
@@ -289,6 +290,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/settings/beacon", s.requireAdmin(s.handleSetBeaconSettings))
 		r.Post("/api/settings/beacon/test", s.requireAdmin(s.handleTestBeacon))
 		r.Get("/api/beacon/stats", s.requireAdmin(s.handleBeaconStats))
+
+		// Discord status board (admin-only)
+		r.Get("/api/settings/discord-status", s.requireAdmin(s.handleGetDiscordStatus))
+		r.Put("/api/settings/discord-status", s.requireAdmin(s.handleSetDiscordStatus))
+		r.Post("/api/settings/discord-status/post", s.requireAdmin(s.handlePostDiscordStatus))
 
 		// Notification channels (admin-only)
 		r.Get("/api/notifications", s.requireAdmin(s.handleListNotifications))

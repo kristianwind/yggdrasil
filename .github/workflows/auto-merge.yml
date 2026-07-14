@@ -1,0 +1,49 @@
+name: Auto-merge
+
+# Merges a pull request once its CI run passes — so the maintainer doesn't have to
+# click merge on every change. GitHub performs the merge (gated by CI), which is
+# why it works without a human in the loop. Safety rails:
+#   - only fires when the CI workflow concluded "success";
+#   - only merges PRs opened by the repo owner (never external contributors);
+#   - skips any PR labelled "hold" or "no-automerge" (the manual-review escape hatch).
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge the PR whose CI just passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          pr=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+                 --json number,author,labels --limit 1)
+          num=$(echo "$pr" | jq -r '.[0].number // empty')
+          if [ -z "$num" ]; then
+            echo "No open PR for branch '$BRANCH' — nothing to merge."
+            exit 0
+          fi
+          author=$(echo "$pr" | jq -r '.[0].author.login')
+          owner="${REPO%%/*}"
+          if [ "$author" != "$owner" ]; then
+            echo "PR #$num is by '$author' (not the owner '$owner') — leaving it for manual review."
+            exit 0
+          fi
+          if echo "$pr" | jq -r '.[0].labels[].name' | grep -qiE '^(hold|no-automerge)$'; then
+            echo "PR #$num carries a hold/no-automerge label — skipping auto-merge."
+            exit 0
+          fi
+          echo "CI is green — auto-merging PR #$num."
+          gh pr merge "$num" --repo "$REPO" --merge --delete-branch

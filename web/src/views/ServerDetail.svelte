@@ -156,11 +156,11 @@
   let explain = $state("");
   let explainBusy = $state(false);
   async function explainError(context, text) {
-    const log = (text || "").trim();
-    if (!log) return toast("Nothing to explain yet", "warn");
+    // Send whatever's visible; if it's empty (e.g. a crashed/stopped server with
+    // no console output), the server falls back to the container's recent logs.
     explainBusy = true;
     try {
-      const r = await api.post(`/servers/${id}/explain`, { log, context });
+      const r = await api.post(`/servers/${id}/explain`, { log: (text || "").trim(), context });
       explain = r.explanation || "(no explanation returned)";
     } catch (e) {
       toast(e.message, "error");

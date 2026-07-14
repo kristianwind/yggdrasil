@@ -260,6 +260,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/ai/config", s.requireAdmin(s.handleSetAIConfig))
 		r.Post("/api/ai/config/test", s.requireAdmin(s.handleTestAIConfig))
 		r.Post("/api/ai/health-digest", s.requireAdmin(s.handleHealthDigest))
+		r.Post("/api/ai/plan", s.handleAIPlan)                // propose actions from natural language (never executes)
+		r.Post("/api/ai/plan/execute", s.handleAIPlanExecute) // run confirmed actions (re-checks RBAC)
 
 		// Notification channels (admin-only)
 		r.Get("/api/notifications", s.requireAdmin(s.handleListNotifications))

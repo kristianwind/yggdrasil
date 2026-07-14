@@ -716,6 +716,8 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// A manual start clears any watchdog quarantine — give auto-heal a fresh chance.
+	s.clearWatchdog(id)
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
 	s.notifyAll("▶️ " + srv.Name + " started")

@@ -54,3 +54,44 @@ func TestWatchdogCooldown(t *testing.T) {
 		t.Fatalf("post-cooldown: heal=%v n=%d, want heal=false n=1", heal, n)
 	}
 }
+
+func TestWatchdogCrashLoopQuarantine(t *testing.T) {
+	w := newWatchdogState()
+	now := time.Now()
+	const id = "loopy"
+	// Heals under the threshold don't quarantine.
+	for i := 1; i < quarantineThreshold; i++ {
+		if w.recordHeal(id, now.Add(time.Duration(i)*time.Minute)) {
+			t.Fatalf("quarantined too early at heal %d", i)
+		}
+		if w.isQuarantined(id) {
+			t.Fatalf("isQuarantined true too early at heal %d", i)
+		}
+	}
+	// The threshold'th heal within the window quarantines (transition returns true once).
+	if !w.recordHeal(id, now.Add(time.Duration(quarantineThreshold)*time.Minute)) {
+		t.Fatal("expected quarantine on the threshold heal")
+	}
+	if !w.isQuarantined(id) {
+		t.Fatal("expected isQuarantined after threshold")
+	}
+	// Subsequent heals don't re-trigger the one-time alert.
+	if w.recordHeal(id, now.Add(60*time.Minute)) {
+		t.Fatal("quarantine transition should only fire once")
+	}
+}
+
+func TestWatchdogHealsAgeOut(t *testing.T) {
+	w := newWatchdogState()
+	base := time.Now()
+	const id = "slowcrash"
+	// Heals spread beyond the window never accumulate to the threshold.
+	for i := 0; i < quarantineThreshold+2; i++ {
+		if w.recordHeal(id, base.Add(time.Duration(i)*(quarantineWindow+time.Minute))) {
+			t.Fatalf("aged-out heals should never quarantine (i=%d)", i)
+		}
+	}
+	if w.isQuarantined(id) {
+		t.Fatal("spaced-out heals must not quarantine")
+	}
+}

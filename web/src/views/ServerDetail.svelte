@@ -706,6 +706,22 @@
     };
   }
 
+  let cloning = $state(false);
+  async function cloneServer() {
+    const name = prompt("Name for the clone:", `${server.name} (copy)`);
+    if (name === null) return; // cancelled
+    cloning = true;
+    try {
+      const r = await api.post(`/servers/${id}/clone`, { name: name.trim() });
+      toast("Cloning — the copy is installing…", "success");
+      navigate(`/servers/${r.id}`);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      cloning = false;
+    }
+  }
+
   async function runInstall(confirmFirst = false) {
     if (confirmFirst &&
       !confirm("Update / reinstall this server? It re-runs the install script to fetch the latest version. Back up your world first — config files may be regenerated."))
@@ -882,6 +898,11 @@
         onclick={toggleWatchdog}>
         🩺 Watchdog: {server.watchdog ? "on" : "off"}
       </button>
+    {/if}
+    {#if $user?.can_create}
+      <button class="btn-ghost" disabled={cloning} onclick={cloneServer}
+        title="Create a new server with this one's setup — same rune, variables, resource limits and mods — with fresh ports and an empty data dir. Clones the configuration, not the world/data; the copy installs fresh.">
+        {cloning ? "Cloning…" : "⧉ Clone"}</button>
     {/if}
     {#if server.wipe_supported && can("server.control")}
       <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}

@@ -217,12 +217,15 @@ CREATE TABLE IF NOT EXISTS steam_account (
 -- stored encrypted. Advisory only, opt-in (enabled flag). Single row.
 CREATE TABLE IF NOT EXISTS ai_config (
 	id            INTEGER PRIMARY KEY CHECK (id = 1),
-	provider      TEXT NOT NULL DEFAULT 'openai',
-	model         TEXT NOT NULL DEFAULT '',
-	base_url      TEXT NOT NULL DEFAULT '',
-	api_key_enc   TEXT NOT NULL DEFAULT '',
-	enabled       INTEGER NOT NULL DEFAULT 0,
-	updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+	provider        TEXT NOT NULL DEFAULT 'openai',
+	model           TEXT NOT NULL DEFAULT '',
+	base_url        TEXT NOT NULL DEFAULT '',
+	api_key_enc     TEXT NOT NULL DEFAULT '',
+	enabled         INTEGER NOT NULL DEFAULT 0,
+	digest_enabled  INTEGER NOT NULL DEFAULT 0,  -- send a daily AI ops digest to notification channels
+	digest_hour     INTEGER NOT NULL DEFAULT 8,  -- local hour (0-23) to send it
+	digest_last_day TEXT NOT NULL DEFAULT '',     -- YYYY-MM-DD of the last send (once-per-day guard)
+	updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Violation-driven auto-actions: watch server logs for a pattern and auto
@@ -273,6 +276,9 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")     // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)
 	addColumnIfMissing(db, "users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0") // last accepted TOTP step; rejects replay within the validity window
 	addColumnIfMissing(db, "schedules", "managed", "TEXT NOT NULL DEFAULT ''")         // non-empty = owned by a per-server convenience toggle (e.g. 'auto-restart'); hidden from the generic schedule list
+	addColumnIfMissing(db, "ai_config", "digest_enabled", "INTEGER NOT NULL DEFAULT 0") // daily AI ops digest to notification channels
+	addColumnIfMissing(db, "ai_config", "digest_hour", "INTEGER NOT NULL DEFAULT 8")    // local hour to send the daily digest
+	addColumnIfMissing(db, "ai_config", "digest_last_day", "TEXT NOT NULL DEFAULT ''")  // once-per-day guard (YYYY-MM-DD)
 	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")        // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
 	return nil
 }

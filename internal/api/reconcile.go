@@ -21,9 +21,18 @@ func (s *Server) watchStartupReady(serverID, containerID, doneRegex string) {
 	if doneRegex != "" {
 		re, _ = regexp.Compile(doneRegex)
 	}
-	deadline := time.Now().Add(10 * time.Minute)
+	start := time.Now()
+	deadline := start.Add(10 * time.Minute)
+	warnedSlow := false
 	for time.Now().Before(deadline) {
 		time.Sleep(3 * time.Second)
+		// A server that stays in "starting" far longer than usual (but hasn't crashed)
+		// is a soft failure the start-watchdog's crash path misses — surface it once so
+		// it's visible (and AI-explainable from the container logs), then keep waiting.
+		if !warnedSlow && re != nil && time.Since(start) >= slowStartWarnAfter {
+			warnedSlow = true
+			go s.notifySlowStart(serverID, containerID)
+		}
 		running, _, err := s.docker.State(context.Background(), containerID)
 		if err != nil || !running {
 			// The container exited before it ever became ready. Only treat this as a

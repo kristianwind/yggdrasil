@@ -392,9 +392,12 @@
   };
 
   // Keep the active tab valid as perms/tabs resolve — if the current tab isn't
-  // available to this user, fall back to the first one they can see.
+  // available to this user, fall back to the first one they can see. Guard on
+  // `server` being loaded: before it is, can() denies everything so `tabs` is just
+  // ["install"], and firing then would wrongly strand the user on the install log
+  // (it stays valid once real tabs appear, so the fallback never corrects back).
   $effect(() => {
-    if (tabs.length && !tabs.some(([k]) => k === tab)) {
+    if (server && tabs.length && !tabs.some(([k]) => k === tab)) {
       tab = tabs[0][0];
     }
   });
@@ -783,10 +786,12 @@
   onMount(async () => {
     loadNetwork();
     await loadServer();
-    if (server && !server.installed) {
+    // Default to the Console tab. Only jump to the install log when an install is
+    // actually running right now — otherwise Console is what you want to see on entry.
+    if (server && !server.installed && server.install_status === "installing") {
       tab = "install";
       connectInstallLog();
-    } else if ((server?.status === "running" || server?.status === "starting")) {
+    } else if (server?.status === "running" || server?.status === "starting") {
       connectConsole();
     }
     pollStats();
@@ -1105,7 +1110,7 @@
       {#if explain}
         <div class="card border-accent2/40 bg-accent2/5 p-3 text-sm space-y-1 mt-2">
           <div class="text-xs uppercase tracking-wide text-accent flex items-center gap-2">
-            <span>🤖 AI explanation</span>
+            <span>🤖 Kvasir explains</span>
             <button class="text-muted hover:text-text ml-auto" title="Dismiss" onclick={() => (explain = "")}>✕</button>
           </div>
           <div class="whitespace-pre-wrap break-words">{explain}</div>
@@ -1229,7 +1234,7 @@
       {#if digest}
         <div class="card border-accent2/40 bg-accent2/5 p-3 text-sm space-y-1">
           <div class="text-xs uppercase tracking-wide text-accent flex items-center gap-2">
-            <span>🤖 AI digest</span>
+            <span>🤖 Kvasir digest</span>
             <button class="text-muted hover:text-text ml-auto" title="Dismiss" onclick={() => (digest = "")}>✕</button>
           </div>
           <div class="whitespace-pre-wrap break-words">{digest}</div>

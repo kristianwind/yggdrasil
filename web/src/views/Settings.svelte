@@ -981,13 +981,14 @@
 {/if}
 
 {#if tab === "integrations"}
-<!-- AI assistant (advisory) -->
-<h2 class="text-xl font-semibold mb-2">AI assistant</h2>
+<!-- Kvasir — AI assistant (advisory) -->
+<h2 class="text-xl font-semibold mb-2">Kvasir <span class="text-muted font-normal text-base">· AI assistant</span></h2>
 <p class="text-muted mb-4 text-sm">
-  Optional, <b>advisory-only</b> AI features (like the Activity tab's “what happened while I was away”
-  digest). Bring your own provider and key — nothing is sent anywhere you don't configure here, and the
-  AI never acts on a server by itself. Log data (player names, events) is sent to the endpoint below when
-  a summary is requested.
+  Kvasir is the panel's optional, <b>advisory-only</b> AI helper (named after the wisest being in Norse
+  myth) — it powers things like the Activity tab's “what happened while I was away” digest, the log
+  explainer and the ops health briefing. Bring your own provider and key — nothing is sent anywhere you
+  don't configure here, and Kvasir never acts on a server by itself. Log data (player names, events) is
+  sent to the endpoint below only when a summary is requested.
 </p>
 <div class="card p-4 mb-10 space-y-3">
   <div class="grid sm:grid-cols-2 gap-3">

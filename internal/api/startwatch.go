@@ -33,6 +33,7 @@ const (
 	startFailRetryDelay  = 15 * time.Second // backoff before an auto-retry, so a dependency has a moment to come up
 	startupLogTailLines  = "40"             // how many container log lines to attach to the give-up alert
 	startupLogTailMaxLen = 1500             // …trimmed to this many characters so notifications stay small
+	slowStartWarnAfter   = 5 * time.Minute  // still "starting" this long (no crash) → one "taking a long time" heads-up
 )
 
 type startState struct {
@@ -110,6 +111,22 @@ func (s *Server) onStartFailed(serverID, containerID string) {
 	// Exhausted the budget — leave it stopped and raise the alarm once.
 	s.startWD.reset(serverID)
 	s.notifyStartGaveUp(name, tail, "")
+}
+
+// notifySlowStart raises a one-time heads-up that a server is taking unusually long
+// to become ready (it hasn't crashed — the start-watchdog's failure path wouldn't
+// fire). The attached log tail lets the AI (and the operator) see what it's stuck
+// on. Called at most once per start attempt.
+func (s *Server) notifySlowStart(serverID, containerID string) {
+	defer recoverLog("notifySlowStart")
+	name := s.serverName(serverID)
+	mins := int(slowStartWarnAfter.Minutes())
+	msg := fmt.Sprintf("⏳ %s is taking longer than usual to start — still not ready after %d min. "+
+		"It's still trying; check the console for what it's doing.", name, mins)
+	if tail := s.startupLogTail(containerID); tail != "" {
+		msg += "\nLatest log:\n" + tail
+	}
+	s.notifyAll(msg)
 }
 
 // notifyStartGaveUp sends the single actionable "couldn't start" alert, attaching

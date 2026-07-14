@@ -1,0 +1,45 @@
+name: CI
+
+# The safety gate for pull requests: build, vet and test the Go backend and
+# compile the Svelte frontend. Auto-merge (auto-merge.yml) only fires when this
+# succeeds, so nothing lands on main without passing here.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Match the release build (pinned for the stdlib security fixes).
+          go-version: "1.26.x"
+
+      - name: Go build / vet / test
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Frontend build (compiles the Svelte app)
+        run: |
+          if [ -f web/package.json ]; then
+            cd web
+            npm ci
+            npm run build
+          else
+            echo "No web/package.json — skipping frontend build."
+          fi

@@ -211,6 +211,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/metrics", s.handleServerMetrics)
+		r.Get("/api/servers/{id}/quiet-hours", s.handleQuietHours)
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)
 		r.Get("/api/servers/{id}/battlemetrics", s.handleServerBattleMetrics)
 		r.Get("/api/servers/{id}/reachability", s.handleServerReachability)

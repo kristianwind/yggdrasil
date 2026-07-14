@@ -227,6 +227,18 @@
   let autoRestart = $state({ enabled: false, every_hours: 6, warn: true, backup_first: false, target_id: "" });
   const autoHourOptions = [1, 2, 3, 4, 6, 8, 12, 24];
 
+  // Quiet-hours suggestion (mined from sampled player counts) — hints the calmest
+  // time of day to schedule restarts.
+  let quietHours = $state(null);
+  async function loadQuietHours() {
+    try {
+      quietHours = await api.get(`/servers/${id}/quiet-hours`);
+    } catch {
+      quietHours = null;
+    }
+  }
+  const hh = (h) => String(h).padStart(2, "0") + ":00";
+
   async function loadAutoRestart() {
     try {
       autoRestart = await api.get(`/servers/${id}/auto-restart`);
@@ -877,7 +889,7 @@
             : "Restart, with an optional backup first. This rune has no player warnings, so it restarts promptly. Opens a dialog first."}>
           Safe restart{server.restart_warn ? " ⏱" : ""}
         </button>
-        <button class="btn-ghost" onclick={() => { showAuto = true; if (!backupTargets.length) loadBackups(); }}
+        <button class="btn-ghost" onclick={() => { showAuto = true; loadQuietHours(); if (!backupTargets.length) loadBackups(); }}
           title="Schedule automatic restarts every N hours (a managed schedule). Opens a dialog to configure hours, player warning and backup.">
           🔁 Auto-restart{autoRestart.enabled ? ` · ${autoRestart.every_hours}h` : ""}
         </button>
@@ -995,6 +1007,11 @@
             {#each autoHourOptions as h}<option value={h}>{h === 24 ? "24 hours (daily)" : `${h} hours`}</option>{/each}
           </select>
           <p class="text-xs text-muted mt-1">Fires at the top of the hour, every {autoRestart.every_hours}h (server local time).</p>
+          {#if quietHours?.has_data}
+            <p class="text-xs text-accent mt-1">
+              💡 Quietest around {hh(quietHours.recommended_hour)} (avg {quietHours.recommended_avg} players, last 14 days) — a good time to restart.
+            </p>
+          {/if}
         </div>
         {#if server.restart_warn}
           <label class="inline-flex items-center gap-2 text-sm">

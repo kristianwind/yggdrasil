@@ -66,6 +66,7 @@ type serverRow struct {
 	CPUAlarmPct    int               `json:"cpu_alarm_pct"`         // alert when CPU% sustained at/above this (0 = off)
 	MemAlarmMB     int               `json:"mem_alarm_mb"`          // alert when memory MB sustained at/above this (0 = off)
 	DiskAlarmMB    int               `json:"disk_alarm_mb"`         // alert when the data dir grows to/above this many MB (0 = off)
+	Notes          string            `json:"notes"`                 // free-text admin notes (single GET)
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0)"
@@ -155,8 +156,8 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	// edit form can be pre-filled.
 	var envJSON string
 	s.db.QueryRowContext(r.Context(),
-		"SELECT env_json, COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0) FROM servers WHERE id=?", id).
-		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB)
+		"SELECT env_json, COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0), COALESCE(notes,'') FROM servers WHERE id=?", id).
+		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB, &srv.Notes)
 	srv.Env = map[string]string{}
 	json.Unmarshal([]byte(envJSON), &srv.Env)
 	// Mask ALL secret env vars (RCON password + password-typed vars) so they're
@@ -361,6 +362,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		CPUAlarmPct  *int         `json:"cpu_alarm_pct"`
 		MemAlarmMB   *int         `json:"mem_alarm_mb"`
 		DiskAlarmMB  *int         `json:"disk_alarm_mb"`
+		Notes        *string      `json:"notes"`
 		Subdomain    *string      `json:"subdomain"`
 		HostMounts   *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
 	}
@@ -425,6 +427,13 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 			v = 0
 		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET disk_alarm_mb=? WHERE id=?", v, id)
+	}
+	if req.Notes != nil {
+		notes := *req.Notes
+		if len(notes) > 8000 { // keep it a note, not a document
+			notes = notes[:8000]
+		}
+		s.db.ExecContext(r.Context(), "UPDATE servers SET notes=? WHERE id=?", notes, id)
 	}
 	if req.Name != nil && *req.Name != "" {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET name=? WHERE id=?", *req.Name, id)

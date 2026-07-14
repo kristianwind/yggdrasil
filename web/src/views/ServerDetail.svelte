@@ -739,6 +739,28 @@
     };
   }
 
+  // Shared free-text notes for the admin team (per server).
+  let editingNotes = $state(false);
+  let notesDraft = $state("");
+  let savingNotes = $state(false);
+  function startEditNotes() {
+    notesDraft = server.notes || "";
+    editingNotes = true;
+  }
+  async function saveNotes() {
+    savingNotes = true;
+    try {
+      await api.put(`/servers/${id}`, { notes: notesDraft });
+      server.notes = notesDraft;
+      editingNotes = false;
+      toast("Notes saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingNotes = false;
+    }
+  }
+
   let cloning = $state(false);
   async function cloneServer() {
     const name = prompt("Name for the clone:", `${server.name} (copy)`);
@@ -1136,6 +1158,37 @@
       </div>
     {/if}
   </div>
+
+  <!-- Shared admin notes -->
+  {#if server.notes || editingNotes || can("server.control")}
+    <div class="card p-3 mb-4">
+      {#if editingNotes}
+        <textarea
+          class="input w-full min-h-24 font-mono text-sm"
+          bind:value={notesDraft}
+          placeholder="Shared notes for the admin team — e.g. what this server is for, event schedule, gotchas…"
+        ></textarea>
+        <div class="flex gap-2 mt-2">
+          <button class="btn-primary" disabled={savingNotes} onclick={saveNotes}>{savingNotes ? "Saving…" : "Save"}</button>
+          <button class="btn-ghost" onclick={() => (editingNotes = false)}>Cancel</button>
+        </div>
+      {:else}
+        <div class="flex items-start gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-muted mb-1">📝 Notes</div>
+            {#if server.notes}
+              <div class="text-sm whitespace-pre-wrap break-words">{server.notes}</div>
+            {:else}
+              <div class="text-sm text-muted italic">No notes yet.</div>
+            {/if}
+          </div>
+          {#if can("server.control")}
+            <button class="btn-ghost shrink-0" onclick={startEditNotes}>Edit</button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <!-- Tabs — scroll horizontally on narrow screens instead of clipping -->
   <div class="flex gap-1 border-b border-border mb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">

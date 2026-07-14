@@ -1065,9 +1065,10 @@ func (s *Server) showRecentLogs(ctx context.Context, conn *websocket.Conn, conta
 }
 
 // Port allocation
-// allocatePort returns a free host port, preferring `preferred`. A port is free
+// allocatePort returns a free host port from the configured range. A port is free
 // only if it is not in the port_allocations table, not in `taken` (already
 // chosen earlier in this request), and not actually bound on the host.
+// `preferred` is accepted but ignored — see the comment in the body.
 func (s *Server) allocatePort(ctx context.Context, preferred int, taken map[int]bool) (int, error) {
 	free := func(port int) bool {
 		if taken[port] {

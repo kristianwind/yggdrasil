@@ -35,19 +35,22 @@ yggdrasil/
 ├── web/                    # Svelte SPA (embedded via go:embed)
 │   ├── src/
 │   └── dist/               # built output (gitignored; built in CI)
-├── builtin-runes/          # the 4 built-in runes (gameskills), embedded
+├── builtin-runes/          # runes (gameskills) embedded in the binary
 │   ├── minecraft-java.yaml
 │   ├── minecraft-bedrock.yaml
-│   ├── rust.yaml
-│   └── dayz.yaml
+│   ├── uptime-kuma.yaml
+│   ├── vaultwarden.yaml
+│   └── cloudflared.yaml    # Cloudflare Tunnel connector
 ├── community-runes/        # importable runes (databases/ apps/ games/), not embedded
 ├── deploy/
 │   ├── yggdrasil.service   # systemd unit
 │   └── config.yaml.example
 ├── install.sh              # single-command installer
 ├── docs/
-│   ├── API.md
-│   └── GAMESKILL_SCHEMA.md
+│   ├── README.md            # documentation index
+│   ├── getting-started.md
+│   ├── guides/              # operator guides
+│   └── reference/           # api.md, rune-schema.md, configuration.md
 ├── ARCHITECTURE.md         # this file
 ├── PROGRESS.md             # phase checklist
 ├── go.mod

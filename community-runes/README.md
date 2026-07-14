@@ -1,7 +1,8 @@
 # Community Runes
 
-Extra Runes that are **not bundled** with Yggdrasil. The four core games (DayZ,
-Rust, Minecraft Java/Bedrock) ship built-in; everything else — databases and
+Extra Runes that are **not bundled** with Yggdrasil. Only a small default set
+ships built-in (Minecraft Java/Bedrock, Uptime Kuma, Vaultwarden and the
+Cloudflare Tunnel connector); everything else — the other games, databases and
 homelab apps — lives here so the default set stays lean.
 
 Runes are grouped into folders: [`databases/`](databases/), [`apps/`](apps/),
@@ -20,7 +21,10 @@ creating a server.
 Backing stores for other runes/apps (e.g. WordPress/Nextcloud → MariaDB). All
 verified live on a real VM (init + auth).
 
-- **`mongodb.yaml`** — MongoDB 7 (root user via `MONGO_INITDB_ROOT_*`).
+- **`mongodb.yaml`** — MongoDB 4.4 (root user via `MONGO_INITDB_ROOT_*`). Pinned to
+  4.4 deliberately: Mongo 5+ requires the AVX CPU instruction, which the default
+  Proxmox/QEMU virtual CPU doesn't expose — 5+ dies with `Illegal instruction`.
+  For a newer Mongo, set the VM's CPU type to `host` and bump the image.
 - **`mariadb.yaml`** — MariaDB 11 (MySQL-compatible; root + app user/db).
 - **`postgresql.yaml`** — PostgreSQL 16 (`POSTGRES_*`).
 
@@ -31,8 +35,6 @@ forward it / reverse-proxy it as you like.
 
 | Rune | Image | Port | Notes |
 |------|-------|------|-------|
-| `uptime-kuma.yaml` | louislam/uptime-kuma | 3001 | uptime monitoring + status pages |
-| `vaultwarden.yaml` | vaultwarden/server | 8080 | Bitwarden-compatible password manager |
 | `gitea.yaml` | gitea/gitea | 3000 + 2222 | self-hosted Git (set SSH port to the published one) |
 | `n8n.yaml` | n8nio/n8n | 5678 | workflow automation |
 | `grafana.yaml` | grafana/grafana | 3000 | dashboards (admin pw via env) |
@@ -50,9 +52,13 @@ forward it / reverse-proxy it as you like.
 | `cyberchef.yaml` | ghcr.io/gchq/cyberchef | 80 | the "cyber swiss-army knife" data tool (static) |
 | `linkding.yaml` | sissbruecker/linkding | 9090 | minimal bookmark manager (SQLite) |
 | `stirling-pdf.yaml` | stirlingtools/stirling-pdf | 8080 | local PDF toolbox (merge/split/OCR/convert) |
-| `dozzle.yaml` | amir20/dozzle | 8080 | live Docker log viewer — **needs the Docker socket** (not auto-mounted) |
 | `freshrss.yaml` | lscr.io/linuxserver/freshrss | 80 | RSS/Atom aggregator (SQLite; PUID/PGID) |
 | `mealie.yaml` | ghcr.io/mealie-recipes/mealie | 9000 | recipe manager + meal planner (SQLite) |
+| `static-site.yaml` | nginx:alpine | 80 | serve a folder of static files; upload via the Files tab |
+| `nginx-proxy-manager.yaml` | jc21/nginx-proxy-manager | 81 + 80 + 443 | reverse proxy w/ UI (default `admin@example.com` / `changeme`). For real proxying, forward router 80/443 to the published ports |
+| `headscale.yaml` | headscale/headscale:0.26.1 | 8080 | self-hosted Tailscale control server. Headless — no web signup; register nodes via CLI. Set `SERVER_URL` to the public address |
+| `headplane.yaml` | ghcr.io/tale/headplane:0.6.1 | 3000 | web UI for Headscale; log in with a Headscale API key. Pin as a matched pair: headplane 0.6.x ↔ headscale 0.26.x |
+| `hermes-agent.yaml` | nousresearch/hermes-agent | 9119 | **experimental** — self-improving AI agent; needs an LLM key + dashboard password. Not runtime-tested |
 
 WordPress/Nextcloud: create a **MariaDB** rune first, then point the app's
 `*_DB_HOST` at that server's connect address (`host:port`).

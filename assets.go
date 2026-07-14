@@ -11,7 +11,7 @@ import "embed"
 //go:embed all:web/dist
 var WebFS embed.FS
 
-// GameskillsFS contains the four built-in rune (gameskill) definitions, embedded
+// GameskillsFS contains the built-in rune (gameskill) definitions, embedded
 // from the builtin-runes/ folder (community runes live in community-runes/ and
 // are imported, not embedded).
 //

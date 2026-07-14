@@ -320,6 +320,8 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "servers", "status_public", "INTEGER NOT NULL DEFAULT 0")     // show this server on the public /status page (opt-in, default off)
 	addColumnIfMissing(db, "backups", "verified_at", "TEXT NOT NULL DEFAULT ''")         // when this backup's archive was last integrity-checked
 	addColumnIfMissing(db, "backups", "verify_ok", "INTEGER NOT NULL DEFAULT -1")        // -1 unknown, 0 corrupt, 1 decompresses cleanly
+	addColumnIfMissing(db, "servers", "cpu_alarm_pct", "INTEGER NOT NULL DEFAULT 0")     // alert when CPU% stays at/above this (0 = off)
+	addColumnIfMissing(db, "servers", "mem_alarm_mb", "INTEGER NOT NULL DEFAULT 0")      // alert when memory MB stays at/above this (0 = off)
 	return nil
 }
 

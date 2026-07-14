@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ import (
 // it. Counting is just DISTINCT instance ids over a recent window.
 
 const (
-	defaultBeaconURL = "https://yggdrasilpanel.com/api/beacon"
+	// The official collector. Overridable per-install via the beacon_url setting.
+	defaultBeaconURL = "https://panel.nolimit.dk/api/beacon"
 	beaconInterval   = 24 * time.Hour
 	beaconMaxIDLen   = 64
 	beaconMaxVerLen  = 32
@@ -182,7 +184,51 @@ func (s *Server) handleGetBeaconSettings(w http.ResponseWriter, r *http.Request)
 		"instance_id":      s.beaconInstanceID(),
 		"version":          s.version,
 		"receiver_enabled": s.beaconReceiverEnabled(ctx),
+		"last_sent":        s.getSetting(ctx, "beacon_last_day"), // YYYY-MM-DD of the last successful ping ("" = never)
 	})
+}
+
+// handleTestBeacon sends a one-off ping to a collector URL and reports whether it
+// was accepted — so an admin can verify their collector is reachable before (or
+// after) enabling the beacon. Uses the posted URL if given, else the saved one.
+func (s *Server) handleTestBeacon(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL string `json:"url"`
+	}
+	decodeJSON(r, &req)
+	target := strings.TrimSpace(req.URL)
+	if target == "" {
+		target = s.beaconURL()
+	}
+	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		jsonError(w, "collector URL must start with http:// or https://", http.StatusBadRequest)
+		return
+	}
+	body, _ := json.Marshal(beaconPayload{InstanceID: s.beaconInstanceID(), Version: s.version})
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", target, bytes.NewReader(body))
+	if err != nil {
+		jsonError(w, "bad URL", http.StatusBadRequest)
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		jsonOK(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	ok := resp.StatusCode >= 200 && resp.StatusCode < 300
+	out := map[string]any{"ok": ok, "status": resp.StatusCode}
+	if !ok {
+		if resp.StatusCode == http.StatusNotFound {
+			out["error"] = "404 — nothing is collecting at that URL (is the collector enabled + routed there?)"
+		} else {
+			out["error"] = fmt.Sprintf("collector returned HTTP %d", resp.StatusCode)
+		}
+	}
+	jsonOK(w, out)
 }
 
 func (s *Server) handleSetBeaconSettings(w http.ResponseWriter, r *http.Request) {

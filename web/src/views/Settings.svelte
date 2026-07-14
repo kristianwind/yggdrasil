@@ -468,7 +468,20 @@
   // Beacon (voluntary, opt-in install ping)
   let beacon = $state({ enabled: false, url: "", instance_id: "", version: "", receiver_enabled: false });
   let savingBeacon = $state(false);
+  let testingBeacon = $state(false);
   let beaconStats = $state(null);
+  async function testBeacon() {
+    testingBeacon = true;
+    try {
+      const r = await api.post("/settings/beacon/test", { url: beacon.url || "" });
+      if (r.ok) toast(`Collector reachable (HTTP ${r.status})`, "success");
+      else toast(r.error || "Collector not reachable", "error");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      testingBeacon = false;
+    }
+  }
   async function loadBeacon() {
     try {
       beacon = await api.get("/settings/beacon");
@@ -797,14 +810,25 @@
     <input type="checkbox" bind:checked={beacon.enabled} />
     Send an anonymous daily beacon
   </label>
+  {#if beacon.enabled && beacon.last_sent}
+    <div class="text-xs text-muted">Last ping: {beacon.last_sent}</div>
+  {/if}
   <div class="rounded-lg bg-panel2/50 border border-border p-3 text-xs font-mono break-all">
     <div class="text-muted mb-1">Exactly what is sent — nothing more:</div>
     {'{'} "instance_id": "{beacon.instance_id}", "version": "{beacon.version}" {'}'}
   </div>
   <div>
     <label class="label" for="beacon-url">Collector URL</label>
-    <input id="beacon-url" class="input" bind:value={beacon.url} placeholder="https://yggdrasilpanel.com/api/beacon" />
-    <p class="text-xs text-muted mt-1">Where the ping goes. Leave as the default unless you run your own collector.</p>
+    <div class="flex gap-2">
+      <input id="beacon-url" class="input" bind:value={beacon.url} placeholder="https://panel.nolimit.dk/api/beacon" />
+      <button class="btn-ghost shrink-0" onclick={testBeacon} disabled={testingBeacon}>
+        {testingBeacon ? "Testing…" : "Test"}
+      </button>
+    </div>
+    <p class="text-xs text-muted mt-1">
+      Where the ping goes. Leave as the default unless you run your own collector. Use <b>Test</b> to check
+      it's reachable.
+    </p>
   </div>
 
   <!-- The collector role is a project-maintainer concern, not something every

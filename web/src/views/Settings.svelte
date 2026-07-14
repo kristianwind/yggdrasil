@@ -820,7 +820,7 @@
   <div>
     <label class="label" for="beacon-url">Collector URL</label>
     <div class="flex gap-2">
-      <input id="beacon-url" class="input" bind:value={beacon.url} placeholder="https://panel.nolimit.dk/api/beacon" />
+      <input id="beacon-url" class="input" bind:value={beacon.url} placeholder="https://beacon.yggdrasilpanel.com/api/beacon" />
       <button class="btn-ghost shrink-0" onclick={testBeacon} disabled={testingBeacon}>
         {testingBeacon ? "Testing…" : "Test"}
       </button>

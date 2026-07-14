@@ -25,7 +25,7 @@ import (
 
 const (
 	// The official collector. Overridable per-install via the beacon_url setting.
-	defaultBeaconURL = "https://panel.nolimit.dk/api/beacon"
+	defaultBeaconURL = "https://beacon.yggdrasilpanel.com/api/beacon"
 	beaconInterval   = 24 * time.Hour
 	beaconMaxIDLen   = 64
 	beaconMaxVerLen  = 32

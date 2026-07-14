@@ -279,6 +279,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "ai_config", "digest_enabled", "INTEGER NOT NULL DEFAULT 0") // daily AI ops digest to notification channels
 	addColumnIfMissing(db, "ai_config", "digest_hour", "INTEGER NOT NULL DEFAULT 8")    // local hour to send the daily digest
 	addColumnIfMissing(db, "ai_config", "digest_last_day", "TEXT NOT NULL DEFAULT ''")  // once-per-day guard (YYYY-MM-DD)
+	addColumnIfMissing(db, "ai_config", "actions_enabled", "INTEGER NOT NULL DEFAULT 0") // higher tier: let AI PROPOSE server actions (always confirmed); default off
 	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")        // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
 	return nil
 }

@@ -26,9 +26,10 @@ type aiConfig struct {
 	Model         string
 	BaseURL       string
 	APIKey        string
-	Enabled       bool
-	DigestEnabled bool
-	DigestHour    int
+	Enabled        bool
+	DigestEnabled  bool
+	DigestHour     int
+	ActionsEnabled bool // higher tier: AI may propose server actions (always confirmed)
 }
 
 // loadAIConfig reads the single ai_config row and decrypts the API key. Returns a
@@ -36,15 +37,16 @@ type aiConfig struct {
 func (s *Server) loadAIConfig(ctx context.Context) aiConfig {
 	var c aiConfig
 	var enc string
-	var enabled, digestEnabled int
+	var enabled, digestEnabled, actionsEnabled int
 	err := s.db.QueryRowContext(ctx,
-		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled, COALESCE(digest_enabled,0), COALESCE(digest_hour,8) FROM ai_config WHERE id=1").
-		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled, &digestEnabled, &c.DigestHour)
+		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled, COALESCE(digest_enabled,0), COALESCE(digest_hour,8), COALESCE(actions_enabled,0) FROM ai_config WHERE id=1").
+		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled, &digestEnabled, &c.DigestHour, &actionsEnabled)
 	if err != nil {
 		return aiConfig{}
 	}
 	c.Enabled = enabled == 1
 	c.DigestEnabled = digestEnabled == 1
+	c.ActionsEnabled = actionsEnabled == 1
 	if enc != "" {
 		if plain, derr := s.cipher.Decrypt(enc); derr == nil {
 			c.APIKey = plain
@@ -67,15 +69,16 @@ type aiConfigView struct {
 	BaseURL       string `json:"base_url"`
 	APIKey        string `json:"api_key"` // masked on GET; secretMask means "keep existing" on PUT
 	Enabled       bool   `json:"enabled"`
-	Configured    bool   `json:"configured"`     // an API key is stored
-	DigestEnabled bool   `json:"digest_enabled"` // send a daily ops digest to notification channels
-	DigestHour    int    `json:"digest_hour"`    // 0-23
+	Configured     bool `json:"configured"`      // an API key is stored
+	DigestEnabled  bool `json:"digest_enabled"`  // send a daily ops digest to notification channels
+	DigestHour     int  `json:"digest_hour"`     // 0-23
+	ActionsEnabled bool `json:"actions_enabled"` // AI may propose server actions (always confirmed)
 }
 
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	c := s.loadAIConfig(r.Context())
 	v := aiConfigView{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, Enabled: c.Enabled,
-		Configured: c.APIKey != "", DigestEnabled: c.DigestEnabled, DigestHour: c.DigestHour}
+		Configured: c.APIKey != "", DigestEnabled: c.DigestEnabled, DigestHour: c.DigestHour, ActionsEnabled: c.ActionsEnabled}
 	if c.Provider == "" {
 		v.Provider = "openai"
 	}
@@ -116,14 +119,15 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 		hour = 8
 	}
 	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, digest_enabled, digest_hour, updated_at)
-		VALUES (1,?,?,?,?,?,?,?,datetime('now'))
+		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, digest_enabled, digest_hour, actions_enabled, updated_at)
+		VALUES (1,?,?,?,?,?,?,?,?,datetime('now'))
 		ON CONFLICT(id) DO UPDATE SET
 			provider=excluded.provider, model=excluded.model, base_url=excluded.base_url,
 			api_key_enc=excluded.api_key_enc, enabled=excluded.enabled,
-			digest_enabled=excluded.digest_enabled, digest_hour=excluded.digest_hour, updated_at=excluded.updated_at`,
+			digest_enabled=excluded.digest_enabled, digest_hour=excluded.digest_hour,
+			actions_enabled=excluded.actions_enabled, updated_at=excluded.updated_at`,
 		strings.TrimSpace(req.Provider), strings.TrimSpace(req.Model), strings.TrimSpace(req.BaseURL),
-		keyEnc, boolToInt(req.Enabled), boolToInt(req.DigestEnabled), hour)
+		keyEnc, boolToInt(req.Enabled), boolToInt(req.DigestEnabled), hour, boolToInt(req.ActionsEnabled))
 	if err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return

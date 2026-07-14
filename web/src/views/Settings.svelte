@@ -489,7 +489,7 @@
   }
 
   // AI assistant (advisory features — admin brings their own LLM)
-  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false, digest_enabled: false, digest_hour: 8 });
+  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false, digest_enabled: false, digest_hour: 8, actions_enabled: false });
   let savingAi = $state(false);
   let testingAi = $state(false);
   const aiProviders = ["openai", "anthropic", "openrouter", "deepseek", "mistral", "ollama", "custom"];
@@ -1017,10 +1017,16 @@
       placeholder={ai.configured ? "•••••••• (unchanged)" : "your provider API key (not needed for local Ollama)"}
       title="Stored encrypted; never shown again. Leave blank to keep the existing key." />
   </div>
+  <div class="text-xs text-muted uppercase tracking-wide pt-1">AI levels (turn off in tiers)</div>
   <label class="inline-flex items-center gap-2 text-sm cursor-pointer"
-    title="When off, all AI features are hidden and no data is sent anywhere.">
+    title="Master switch. When off, all AI features are hidden and no data is sent anywhere.">
     <input type="checkbox" bind:checked={ai.enabled} />
-    Enable advisory AI features
+    <span><b>Advisory</b> — digests, error explainer, config review (read-only)</span>
+  </label>
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer"
+    title="Higher tier: let the AI PROPOSE server actions (restart / safe-restart / stop / start) from a natural-language request. You always review and confirm before anything runs; the AI can never wipe, delete or reconfigure. Off by default.">
+    <input type="checkbox" bind:checked={ai.actions_enabled} disabled={!ai.enabled} />
+    <span><b>Actions</b> — let AI propose restart/stop/start (you always confirm) <span class="text-warn">·  opt-in</span></span>
   </label>
   <div class="flex flex-wrap items-center gap-2 text-sm">
     <label class="inline-flex items-center gap-2 cursor-pointer"

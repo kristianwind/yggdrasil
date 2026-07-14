@@ -343,7 +343,6 @@ func (s *Server) maybeAutoUpdate() {
 	}
 }
 
-
 // semverLess reports whether version a is older than b. Tags look like vMAJOR.
 // MINOR.PATCH; unparsable parts compare as 0.
 func semverLess(a, b string) bool {
@@ -389,19 +388,20 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	cpuPct := hostCPUPercent()
 
 	jsonOK(w, map[string]interface{}{
-		"docker_ok":        dockerOK,
-		"servers":          serverCount,
-		"servers_running":  runningCount,
-		"users":            userCount,
-		"gameskills":       gameskillCount,
-		"go_version":       runtime.Version(),
-		"arch":             runtime.GOARCH,
-		"cpu_count":        runtime.NumCPU(),
-		"cpu_percent":      cpuPct, // -1 when unavailable (e.g. non-Linux)
-		"mem_total_bytes":  memTotal,
-		"mem_used_bytes":   memUsed,
-		"disk_free_bytes":  free,
-		"disk_total_bytes": total,
-		"ai_enabled":       s.aiEnabled(r.Context()), // advisory ops-digest button on the dashboard
+		"docker_ok":          dockerOK,
+		"servers":            serverCount,
+		"servers_running":    runningCount,
+		"users":              userCount,
+		"gameskills":         gameskillCount,
+		"go_version":         runtime.Version(),
+		"arch":               runtime.GOARCH,
+		"cpu_count":          runtime.NumCPU(),
+		"cpu_percent":        cpuPct, // -1 when unavailable (e.g. non-Linux)
+		"mem_total_bytes":    memTotal,
+		"mem_used_bytes":     memUsed,
+		"disk_free_bytes":    free,
+		"disk_total_bytes":   total,
+		"ai_enabled":         s.aiEnabled(r.Context()),                   // advisory ops-digest button on the dashboard
+		"ai_actions_enabled": s.loadAIConfig(r.Context()).ActionsEnabled, // natural-language ops card (higher tier)
 	})
 }

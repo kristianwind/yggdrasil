@@ -1,5 +1,6 @@
 # Binaries
 /yggdrasil
+/docs-gen
 /dist/
 *.exe
 /tmp/

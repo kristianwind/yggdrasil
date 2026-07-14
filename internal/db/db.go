@@ -277,6 +277,17 @@ CREATE TABLE IF NOT EXISTS migrations (
 	version INTEGER PRIMARY KEY,
 	applied_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Beacon: voluntary "I'm running the panel" pings, collected by whichever
+-- instance has the receiver enabled. Stores only an anonymous random instance id
+-- and the panel version — no IP, no server/user data.
+CREATE TABLE IF NOT EXISTS beacon_pings (
+	instance_id TEXT PRIMARY KEY,
+	version     TEXT NOT NULL DEFAULT '',
+	first_seen  TEXT NOT NULL DEFAULT (datetime('now')),
+	last_seen   TEXT NOT NULL DEFAULT (datetime('now')),
+	ping_count  INTEGER NOT NULL DEFAULT 1
+);
 `
 
 func migrate(db *sql.DB) error {
@@ -290,20 +301,20 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "users", "totp_secret", "TEXT") // encrypted; pending until enabled
 	addColumnIfMissing(db, "users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
-	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''")      // BattleMetrics server id (optional)
-	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")    // open firewall ports on start (UPnP/UniFi)
-	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")         // DayZ Norn loot settings (re-applied after reinstall)
-	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")         // NPM subdomain label/full domain for HTTP apps (empty = off)
-	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")     // NPM proxy-host id we created (0 = none)
-	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")       // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)
-	addColumnIfMissing(db, "servers", "host_mounts", "TEXT NOT NULL DEFAULT ''")       // admin-set host bind mounts (JSON array); read-only by default
-	addColumnIfMissing(db, "servers", "autostart", "INTEGER NOT NULL DEFAULT 1")       // start this server when the panel/host boots (default on)
-	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")     // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)
-	addColumnIfMissing(db, "users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0") // last accepted TOTP step; rejects replay within the validity window
-	addColumnIfMissing(db, "schedules", "managed", "TEXT NOT NULL DEFAULT ''")         // non-empty = owned by a per-server convenience toggle (e.g. 'auto-restart'); hidden from the generic schedule list
-	addColumnIfMissing(db, "ai_config", "digest_enabled", "INTEGER NOT NULL DEFAULT 0") // daily AI ops digest to notification channels
-	addColumnIfMissing(db, "ai_config", "digest_hour", "INTEGER NOT NULL DEFAULT 8")    // local hour to send the daily digest
-	addColumnIfMissing(db, "ai_config", "digest_last_day", "TEXT NOT NULL DEFAULT ''")  // once-per-day guard (YYYY-MM-DD)
+	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''")        // BattleMetrics server id (optional)
+	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")      // open firewall ports on start (UPnP/UniFi)
+	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")           // DayZ Norn loot settings (re-applied after reinstall)
+	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")           // NPM subdomain label/full domain for HTTP apps (empty = off)
+	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")       // NPM proxy-host id we created (0 = none)
+	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")         // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)
+	addColumnIfMissing(db, "servers", "host_mounts", "TEXT NOT NULL DEFAULT ''")         // admin-set host bind mounts (JSON array); read-only by default
+	addColumnIfMissing(db, "servers", "autostart", "INTEGER NOT NULL DEFAULT 1")         // start this server when the panel/host boots (default on)
+	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")       // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)
+	addColumnIfMissing(db, "users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0")   // last accepted TOTP step; rejects replay within the validity window
+	addColumnIfMissing(db, "schedules", "managed", "TEXT NOT NULL DEFAULT ''")           // non-empty = owned by a per-server convenience toggle (e.g. 'auto-restart'); hidden from the generic schedule list
+	addColumnIfMissing(db, "ai_config", "digest_enabled", "INTEGER NOT NULL DEFAULT 0")  // daily AI ops digest to notification channels
+	addColumnIfMissing(db, "ai_config", "digest_hour", "INTEGER NOT NULL DEFAULT 8")     // local hour to send the daily digest
+	addColumnIfMissing(db, "ai_config", "digest_last_day", "TEXT NOT NULL DEFAULT ''")   // once-per-day guard (YYYY-MM-DD)
 	addColumnIfMissing(db, "ai_config", "actions_enabled", "INTEGER NOT NULL DEFAULT 0") // higher tier: let AI PROPOSE server actions (always confirmed); default off
 	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")        // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
 	addColumnIfMissing(db, "servers", "status_public", "INTEGER NOT NULL DEFAULT 0")   // show this server on the public /status page (opt-in, default off)

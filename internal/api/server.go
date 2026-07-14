@@ -81,6 +81,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	go s.autoUpdateLoop()
 	s.startOpsDigestLoop()
 	s.startMetricsSampler()
+	s.startBeaconLoop()
 	return s
 }
 
@@ -150,6 +151,8 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Get("/api/status", s.handlePublicStatus)
 	r.Get("/status", s.handleStatusPage)
 	r.Get("/status.js", s.handleStatusPageJS)
+	// Beacon receiver (public; 404s unless this instance is the collector).
+	r.Post("/api/beacon", s.handleBeaconPing)
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
@@ -280,6 +283,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/ai/health-digest", s.requireAdmin(s.handleHealthDigest))
 		r.Post("/api/ai/plan", s.handleAIPlan)                // propose actions from natural language (never executes)
 		r.Post("/api/ai/plan/execute", s.handleAIPlanExecute) // run confirmed actions (re-checks RBAC)
+
+		// Beacon (voluntary install ping) — config + collected stats (admin-only)
+		r.Get("/api/settings/beacon", s.requireAdmin(s.handleGetBeaconSettings))
+		r.Put("/api/settings/beacon", s.requireAdmin(s.handleSetBeaconSettings))
+		r.Get("/api/beacon/stats", s.requireAdmin(s.handleBeaconStats))
 
 		// Notification channels (admin-only)
 		r.Get("/api/notifications", s.requireAdmin(s.handleListNotifications))

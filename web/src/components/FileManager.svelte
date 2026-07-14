@@ -8,6 +8,33 @@
   let path = $state("");
   let entries = $state([]);
   let editing = $state(null); // { path, content }
+
+  // Config version history (snapshots taken automatically on Save).
+  let versions = $state([]);
+  let showVersions = $state(false);
+  async function loadVersions() {
+    try {
+      versions = await api.get(`/servers/${serverId}/files/versions?path=${encodeURIComponent(editing.path)}`);
+    } catch {
+      versions = [];
+    }
+    showVersions = true;
+  }
+  async function loadVersion(v) {
+    try {
+      const res = await api.get(`/servers/${serverId}/files/versions/${v.id}`);
+      editing.content = res.content;
+      if (mode === "form") toForm();
+      showVersions = false;
+      toast("Loaded an earlier version — review it, then Save to restore", "info");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  function fmtVerTime(s) {
+    const d = new Date((s || "").replace(" ", "T") + "Z");
+    return isNaN(d) ? s : d.toLocaleString();
+  }
   let saving = $state(false);
 
   // Structured editing for key=value config files (.properties — e.g. Minecraft
@@ -200,10 +227,31 @@
           >
         </div>
       {/if}
+      <button class="btn-ghost" onclick={loadVersions} title="Restore an earlier saved version of this file">⏱ History</button>
       <button class="btn-ghost" onclick={() => (editing = null)}>Close</button>
       <button class="btn-primary" onclick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
     </div>
   </div>
+  {#if showVersions}
+    <div class="card p-2 mb-2">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-muted text-xs uppercase tracking-wide">Saved versions of this file</span>
+        <button class="text-muted hover:text-text ml-auto text-xs" onclick={() => (showVersions = false)}>✕</button>
+      </div>
+      {#if !versions.length}
+        <div class="text-muted text-xs px-1 py-2">No earlier versions yet — a snapshot is saved automatically each time you Save changes.</div>
+      {:else}
+        <div class="divide-y divide-border/50">
+          {#each versions as v}
+            <div class="flex items-center gap-2 py-1.5 text-sm">
+              <span class="text-xs text-muted flex-1">{fmtVerTime(v.created_at)} · {v.size} B</span>
+              <button class="btn-ghost text-xs" onclick={() => loadVersion(v)}>Load into editor</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
   {#if mode === "form"}
     <div class="card p-4 h-[55vh] overflow-auto">
       {#each fields as f, i}

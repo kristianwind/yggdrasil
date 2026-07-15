@@ -32,9 +32,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          # Pin to the latest 1.26 patch (>=1.26.4) so shipped binaries include
-          # the crypto/x509 + net/textproto stdlib security fixes (GO-2026-5037,
-          # GO-2026-5039). go.mod keeps its 1.26.3 language directive.
+          # Track the latest 1.26 patch so shipped binaries carry the current
+          # stdlib security fixes without needing a commit each time one lands
+          # (GO-2026-5037, GO-2026-5039 in .4; GO-2026-5856, the crypto/tls ECH
+          # privacy leak, in .5). go.mod's directive is the floor, not the ceiling.
           go-version: "1.26.x"
 
       - name: Build static binaries

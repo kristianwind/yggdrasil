@@ -321,4 +321,17 @@ information a fix actually needs. Discord is the right place to ask whether some
 
 ## License
 
-To be decided before public release (intended: open source).
+Yggdrasil Panel is free software under the
+**[GNU Affero General Public License v3.0](LICENSE)**.
+
+Run it, study it, share it, change it. The *Affero* part is the one that matters for a
+panel: if you modify it and other people use your modified version over a network, they're
+entitled to your modified source. Running it — modified or not — for yourself, your friends
+or your community carries no obligation beyond keeping the notices intact. Selling hosting
+built on a closed fork does.
+
+The panel links to its own source from the sidebar, so anyone using an instance can find it.
+If you fork it, point that link at *your* fork — that's what §13 asks for, and it's one
+string.
+
+Copyright © 2026 Kristian Wind.

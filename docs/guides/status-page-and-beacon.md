@@ -104,10 +104,10 @@ Each server becomes one inline field: a 🟢 / 🟡 / 🔴 dot with the server n
 player count, `starting…`, or `offline`. The embed's description is `**N of M online**`, and its colour
 is green when everything shared is up, amber when some are, grey when none are.
 
-Discord caps an embed at **25 fields**, so if you share more than 25 servers the board shows the first
-25 by name and stops there. The rest are on `/status`. Past that cap the colour can no longer reach
-green: the online tally counts only the servers that made it into the embed, while green requires it
-to match the full shared count. Share more than 25 and expect amber even when everything is up.
+Discord caps an embed at **25 fields**, so if you share more than 25 servers the board lists the first
+25 by name and says so in the footer — "showing 25 of 30". The rest are on `/status`. The description
+and the colour both count every shared server regardless of the cap, so a fleet of 30 that's fully up
+still reads `**30 of 30 online**` in green.
 
 ## The beacon
 

@@ -49,25 +49,41 @@ func (s *Server) discordWebhookURL(ctx context.Context) string {
 // buildDiscordStatusPayload renders the webhook body (one embed) from the current
 // public status. Reuses buildPublicStatus so the Discord board and /status agree.
 func (s *Server) buildDiscordStatusPayload(ctx context.Context) []byte {
-	st := s.buildPublicStatus(ctx)
+	return discordStatusPayload(s.buildPublicStatus(ctx))
+}
 
+// discordStatusPayload is the rendering itself, split from the fetch so it can be
+// exercised against a made-up fleet — the field cap and the colour rule only
+// diverge at sizes that are tedious to set up in a database.
+func discordStatusPayload(st publicStatusResponse) []byte {
 	type field struct {
 		Name   string `json:"name"`
 		Value  string `json:"value"`
 		Inline bool   `json:"inline"`
 	}
 	fields := []field{}
+	// Count over every server, not just the ones that fit. The colour compares
+	// against len(st.Servers), so counting inside the render loop meant a fleet
+	// larger than the field cap could never be all-green: 30 healthy servers
+	// counted 25 and showed amber forever.
 	online := 0
 	for _, sv := range st.Servers {
-		if len(fields) >= 25 { // Discord's hard cap on embed fields
-			break
+		if sv.Status == "online" {
+			online++
 		}
+	}
+
+	const maxFields = 25 // Discord's hard cap on embed fields
+	shown := st.Servers
+	if len(shown) > maxFields {
+		shown = shown[:maxFields]
+	}
+	for _, sv := range shown {
 		dot := "🔴"
 		val := sv.Game
 		switch sv.Status {
 		case "online":
 			dot = "🟢"
-			online++
 			if sv.Players != nil {
 				val = fmt.Sprintf("%s · %d online", sv.Game, *sv.Players)
 			}
@@ -95,11 +111,20 @@ func (s *Server) buildDiscordStatusPayload(ctx context.Context) []byte {
 		}
 	}
 
+	// Say so when the cap hides servers, rather than letting them vanish from the
+	// board with no sign they exist. The count in the description already covers
+	// every server, so an unexplained short list reads as "those are all of them".
+	footer := "Yggdrasil Panel · auto-updated"
+	if len(st.Servers) > len(shown) {
+		footer = fmt.Sprintf("%s · showing %d of %d (Discord caps embeds at %d)",
+			footer, len(shown), len(st.Servers), maxFields)
+	}
+
 	embed := map[string]any{
 		"title":     st.Title,
 		"color":     color,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"footer":    map[string]string{"text": "Yggdrasil Panel · auto-updated"},
+		"footer":    map[string]string{"text": footer},
 	}
 	if len(fields) > 0 {
 		embed["fields"] = fields

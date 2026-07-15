@@ -38,9 +38,10 @@ permission bits, and the four scopes a grant can live at. Read this before you h
 anyone else a login.</p>
 <h2 id="admins-and-delegates">Admins and delegates</h2>
 <p>Every account has one of two roles: <code>admin</code> or <code>user</code>. The installer creates the first
-admin. Creating an account with any other role value coerces it to <code>user</code>; updating an
-existing account with an unrecognised role leaves the role as it was, and the rest of the
-update still applies.</p>
+admin. Omitting the role when creating an account gives you <code>user</code>, the safe default; naming
+a role that isn&rsquo;t one of the two is rejected with a <code>400</code> rather than quietly filed as
+something else. The same on update, and the whole request is refused — so a mistyped role
+never lands a password change alongside a promotion that didn&rsquo;t happen.</p>
 <p>A <strong>global admin bypasses every permission check</strong>. There is no scope you can put an
 admin in and no grant that limits one — the check returns &ldquo;allowed&rdquo; before it ever
 looks at the grants table. Treat the admin role as full control of the host: runes

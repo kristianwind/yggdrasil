@@ -7,9 +7,10 @@ anyone else a login.
 ## Admins and delegates
 
 Every account has one of two roles: `admin` or `user`. The installer creates the first
-admin. Creating an account with any other role value coerces it to `user`; updating an
-existing account with an unrecognised role leaves the role as it was, and the rest of the
-update still applies.
+admin. Omitting the role when creating an account gives you `user`, the safe default; naming
+a role that isn't one of the two is rejected with a `400` rather than quietly filed as
+something else. The same on update, and the whole request is refused — so a mistyped role
+never lands a password change alongside a promotion that didn't happen.
 
 A **global admin bypasses every permission check**. There is no scope you can put an
 admin in and no grant that limits one — the check returns "allowed" before it ever

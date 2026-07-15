@@ -63,18 +63,20 @@ sessions on their next request. It is the reversible version of Delete.</p>
 you can talk about &ldquo;the Nordic cluster&rdquo; or &ldquo;the test box&rdquo; as one thing: a server belongs
 to at most one realm, and a grant can target a realm instead of naming servers one by
 one. The <strong>Servers</strong> page groups the list by realm.</p>
-<p>Realms are created through the API rather than a panel screen. As an admin:</p>
-<pre><code class="language-bash">curl -X POST -H &quot;Authorization: Bearer $YGG_TOKEN&quot; \
-  -H &quot;Content-Type: application/json&quot; \
-  -d '{&quot;name&quot;:&quot;nordic&quot;,&quot;description&quot;:&quot;EU cluster&quot;}' \
-  https://panel.example.com/api/realms
-</code></pre>
-<p>After that the realm appears in the create-server dialog, the permission editor and the
-schedule editor. A server&rsquo;s realm is picked when you create it, and an admin can move it
-later — moving a server between realms changes which delegates can reach it, so that
-change is admin-only even though the rest of the server settings are not.</p>
+<p>Most realms appear on their own: creating a server files it under a realm named after its
+rune&rsquo;s category, creating that realm if it doesn&rsquo;t exist yet. So you&rsquo;ll find a <em>Minecraft</em>
+and an <em>Apps</em> without ever having asked for them.</p>
+<p><strong>Settings → Realms</strong> is where you make your own, rename the ones that turned up, or delete
+what you don&rsquo;t want. It lists each realm with how many servers are in it. Creating an empty
+realm up front is useful when you want to grant someone &ldquo;everything in here&rdquo; before the
+servers exist. Realm names are unique, and naming one that&rsquo;s taken is refused rather than
+silently merged.</p>
+<p>A realm&rsquo;s name is what servers are matched against, so it can&rsquo;t be blank.</p>
+<p>A server&rsquo;s realm is picked when you create it, and an admin can move it later — moving a
+server between realms changes which delegates can reach it, so that change is admin-only
+even though the rest of the server settings are not.</p>
 <p>Deleting a realm does not delete its servers. Yggdrasil detaches them and leaves them
-realm-less.</p>
+realm-less. Any grant scoped to that realm stops applying, so check who had one first.</p>
 <h2 id="the-eight-permissions">The eight permissions</h2>
 <p>These are the only assignable permissions. The names in the first column are what the
 API stores and returns; the second column is what the permission editor calls them.</p>

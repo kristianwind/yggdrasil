@@ -401,10 +401,10 @@ grant boundaries.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/realms` | Session | List realms |
-| `POST` | `/api/realms` | Admin | Create a realm |
-| `PUT` | `/api/realms/{id}` | Admin | Rename or re-describe a realm |
-| `DELETE` | `/api/realms/{id}` | Admin | Delete a realm |
+| `GET` | `/api/realms` | Session | List realms. Admins also get `server_count` per realm; other callers don't, since the list exists for the create-server form |
+| `POST` | `/api/realms` | Admin | Create a realm. `name` is required and unique — a clash is a `409`, not a merge |
+| `PUT` | `/api/realms/{id}` | Admin | Rename or re-describe a realm. `name` is required here too: it writes both columns, so omitting it would blank the name servers are matched against |
+| `DELETE` | `/api/realms/{id}` | Admin | Delete a realm. Its servers are detached, not deleted; grants scoped to it stop applying |
 | `GET` | `/api/users` | Admin | List users |
 | `POST` | `/api/users` | Admin | Create a user |
 | `PUT` | `/api/users/{id}` | Admin | Update a user's password, role, or disabled flag |

@@ -56,11 +56,13 @@ sampler runs every 5 minutes, so a count can be up to five minutes behind realit
 [Monitoring and alerts](monitoring-and-alerts.md) for the sampler.
 
 On top of that, the assembled JSON is cached for **15 seconds** and served with
-`Cache-Control: public, max-age=15` — a cheap abuse guard on an unauthenticated endpoint. Changing the
-master switch or the title drops the cache immediately, so those edits show up without waiting out the
-TTL. A server's own opt-in does not: it writes the flag and leaves the cache alone, so adding a server
-to the board — or taking one off it — can take up to 15 seconds to land. A server you just un-shared
-can still appear on `/status` until the TTL expires.
+`Cache-Control: public, max-age=15` — a cheap abuse guard on an unauthenticated endpoint. Every switch
+that decides what's shared drops the cache immediately: the master toggle, the title, and a server's
+own opt-in. Sharing a server puts it on the board at once, and un-sharing takes it off at once.
+
+The `max-age=15` is a separate matter: a browser or a proxy that already fetched the JSON may hold its
+own copy for up to 15 seconds, which the panel can't reach. If you need a server off a public page
+*right now*, un-share it and turn off the master switch — that 404s the endpoint outright.
 
 ### The `/status.js` split
 

@@ -445,6 +445,11 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.StatusPublic != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET status_public=? WHERE id=?", boolInt(*req.StatusPublic), id)
+		// Sharing is a privacy decision, so it takes effect now rather than
+		// whenever the board's cache happens to expire. Un-sharing especially:
+		// leaving a server listed for another 15s after you've said to stop is
+		// the wrong way for that toggle to fail.
+		s.invalidateStatusCache()
 	}
 	if req.CPUAlarmPct != nil {
 		v := *req.CPUAlarmPct

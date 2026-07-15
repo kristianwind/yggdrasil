@@ -75,9 +75,10 @@ the type and whether it is enabled.</p>
 <p>For email, the port defaults to <code>587</code> when you leave it blank, and PLAIN auth is used when you set a
 username (leave it empty for a relay that doesn&rsquo;t authenticate). One <code>from</code> and one <code>to</code> per
 channel — add a second channel if you want a second recipient.</p>
-<p>Telegram, Discord and webhook sends get a 10-second timeout. Email does not: <code>smtp.SendMail</code> carries
-no deadline, so an SMTP server that accepts the connection and then stalls holds that send open.
-Sends happen in the background, so a dead channel never blocks a backup or a restart; failures are
+<p>Every send is bounded: 10 seconds for Telegram, Discord and webhooks, 20 for email — covering the
+whole SMTP exchange, not just the connect, so a server that accepts and then goes quiet is given up
+on rather than waited for.</p>
+<p>Sends happen in the background, so a dead channel never blocks a backup or a restart; failures are
 written to the panel log rather than retried.</p>
 <h3 id="testing">Testing</h3>
 <p><strong>Test</strong> on a channel sends &ldquo;🌳 Yggdrasil test notification — channels are working.&rdquo; through the

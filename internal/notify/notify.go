@@ -4,8 +4,10 @@ package notify
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/smtp"
 	"net/url"
@@ -63,7 +65,73 @@ func sendEmail(cfg Config, text string) error {
 	if cfg.Username != "" {
 		auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
 	}
-	return smtp.SendMail(addr, auth, cfg.From, []string{cfg.To}, msg)
+	return sendMailTimeout(addr, cfg.Host, auth, cfg.From, []string{cfg.To}, msg)
+}
+
+// smtpDeadline bounds a whole SMTP conversation — dial, handshake, and every
+// command after it.
+//
+// The other channels go through an http.Client with a 10s timeout. smtp.SendMail
+// has no timeout at all: it dials without a deadline and then blocks on reads, so
+// a host that accepts the connection and stops answering hangs forever. That
+// leaks a goroutine per background notification, and — worse — hangs the request
+// outright when it's the synchronous "Test" button, which has no server-side
+// timeout to save it.
+// A var rather than a const so the test can shorten it; nothing else reassigns it.
+var smtpDeadline = 20 * time.Second
+
+// sendMailTimeout is smtp.SendMail with a deadline on the connection. The steps
+// mirror the standard library's, including opportunistic STARTTLS: the deadline
+// is the only difference.
+func sendMailTimeout(addr, host string, a smtp.Auth, from string, to []string, msg []byte) error {
+	conn, err := net.DialTimeout("tcp", addr, smtpDeadline)
+	if err != nil {
+		return err
+	}
+	// One deadline for the whole exchange, so no individual step can stall.
+	if err := conn.SetDeadline(time.Now().Add(smtpDeadline)); err != nil {
+		conn.Close()
+		return err
+	}
+
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	defer c.Close()
+
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return err
+		}
+	}
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err := c.Auth(a); err != nil {
+				return err
+			}
+		}
+	}
+	if err := c.Mail(from); err != nil {
+		return err
+	}
+	for _, rcpt := range to {
+		if err := c.Rcpt(rcpt); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 func sendTelegram(cfg Config, text string) error {

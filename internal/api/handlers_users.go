@@ -48,8 +48,15 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "username and password required", http.StatusBadRequest)
 		return
 	}
-	if req.Role != "admin" && req.Role != "user" {
+	// Omitting the role means "user" — a safe default. Naming one we don't know is
+	// a typo, and silently filing "administrator" as a plain user is the kind of
+	// thing you only notice when the account can't do its job.
+	if req.Role == "" {
 		req.Role = "user"
+	}
+	if !validRole(req.Role) {
+		jsonError(w, "role must be \"admin\" or \"user\"", http.StatusBadRequest)
+		return
 	}
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
@@ -79,6 +86,19 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	// Validate before writing anything. This handler applies each field with its
+	// own UPDATE, so rejecting halfway would leave the earlier ones applied — a
+	// request that changed the password and mistyped the role would 400 while the
+	// password had already changed.
+	//
+	// An unrecognised role used to fall through the condition below and do
+	// nothing, while the request still returned 200, so a typo read as "promoted"
+	// and wasn't.
+	if req.Role != nil && !validRole(*req.Role) {
+		jsonError(w, "role must be \"admin\" or \"user\"", http.StatusBadRequest)
+		return
+	}
+
 	if req.Password != nil && *req.Password != "" {
 		hash, err := auth.HashPassword(*req.Password)
 		if err != nil {
@@ -87,7 +107,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		s.db.ExecContext(r.Context(), "UPDATE users SET password_hash=? WHERE id=?", hash, id)
 	}
-	if req.Role != nil && (*req.Role == "admin" || *req.Role == "user") {
+	if req.Role != nil {
 		s.db.ExecContext(r.Context(), "UPDATE users SET role=? WHERE id=?", *req.Role, id)
 	}
 	if req.Disabled != nil {
@@ -129,3 +149,8 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	s.auditLog(r, "user.delete", "user:"+id, nil)
 	jsonOK(w, map[string]string{"status": "deleted"})
 }
+
+// validRole reports whether r is a role the panel understands. The two are a
+// closed set: rbac scoping is what grants a non-admin anything, so there is no
+// third tier to add here.
+func validRole(r string) bool { return r == "admin" || r == "user" }

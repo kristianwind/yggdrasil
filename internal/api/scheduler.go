@@ -221,8 +221,13 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		backupID := uuid.New().String()
 		s.db.Exec("INSERT INTO backups (id, server_id, target_id, status) VALUES (?,?,?,'pending')",
 			backupID, serverID, target)
-		s.runBackup(serverID, target, backupID)
-		return "ok", "backup started"
+		// runBackup is synchronous, so report what actually happened. Returning a
+		// flat "ok" here made the run log claim every nightly backup succeeded,
+		// including the ones that didn't — the one place you'd look to check.
+		if err := s.runBackup(serverID, target, backupID); err != nil {
+			return "error", err.Error()
+		}
+		return "ok", "backup completed"
 
 	case scheduler.ActionWipe:
 		if err := s.wipeServer(ctx, serverID, argTrue(args["backup_first"]), args["target_id"]); err != nil {

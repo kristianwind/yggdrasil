@@ -44,11 +44,10 @@ func (s *Server) wipeServer(ctx context.Context, id string, backupFirst bool, ta
 			backupID, id, targetID); err != nil {
 			return fmt.Errorf("could not queue safety backup: %w", err)
 		}
-		s.runBackup(id, targetID, backupID) // run synchronously so we can gate on it
-		var st string
-		s.db.QueryRowContext(ctx, "SELECT status FROM backups WHERE id=?", backupID).Scan(&st)
-		if st != "done" {
-			return fmt.Errorf("safety backup did not complete (%s) — wipe aborted", st)
+		// Synchronous, and gated on the result: persistence is never deleted
+		// without a recoverable copy.
+		if err := s.runBackup(id, targetID, backupID); err != nil {
+			return fmt.Errorf("safety backup failed (%w) — wipe aborted", err)
 		}
 	}
 

@@ -312,15 +312,19 @@ status and a detail string. The panel keeps the last 100 runs per schedule and s
 Every firing records **one row per target server**, so a realm-scoped backup across six
 servers writes six rows. Status is one of:
 
-- `ok` — done, with a detail like `restarted` or `backup started`.
+- `ok` — done, with a detail like `restarted` or `backup completed`.
 - `skipped` — deliberately not done: players online, no command configured, already
   stopped.
 - `error` — tried and failed, with the reason.
 
-The `backup` action is the exception: it records `ok` / `backup started` for every server
-it fires against, whatever happens next. A backup that fails still shows as `ok` here. For
-that action the run log tells you the schedule fired, not that it worked — the real verdict
-is the ❌ notification and the row on the server's **Backups** tab.
+A scheduled **backup** runs synchronously and reports its real outcome, so `ok` here means
+the archive reached the target and `error` carries the reason it didn't. That makes the run
+log a usable answer to "did last night's backups actually run?" — you don't have to
+cross-check every server's Backups tab.
+
+A **warned restart** is the one action that reports what it started rather than what it
+finished: the countdown runs for minutes in the background, so the row says `warned restart
+initiated` as soon as the warning goes out.
 
 A firing that matches no servers records a single `skipped` row with `no servers in scope`.
 

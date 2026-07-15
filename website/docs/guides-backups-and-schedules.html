@@ -330,15 +330,17 @@ status and a detail string. The panel keeps the last 100 runs per schedule and s
 <p>Every firing records <strong>one row per target server</strong>, so a realm-scoped backup across six
 servers writes six rows. Status is one of:</p>
 <ul>
-<li><code>ok</code> — done, with a detail like <code>restarted</code> or <code>backup started</code>.</li>
+<li><code>ok</code> — done, with a detail like <code>restarted</code> or <code>backup completed</code>.</li>
 <li><code>skipped</code> — deliberately not done: players online, no command configured, already
 stopped.</li>
 <li><code>error</code> — tried and failed, with the reason.</li>
 </ul>
-<p>The <code>backup</code> action is the exception: it records <code>ok</code> / <code>backup started</code> for every server
-it fires against, whatever happens next. A backup that fails still shows as <code>ok</code> here. For
-that action the run log tells you the schedule fired, not that it worked — the real verdict
-is the ❌ notification and the row on the server&rsquo;s <strong>Backups</strong> tab.</p>
+<p>A scheduled <strong>backup</strong> runs synchronously and reports its real outcome, so <code>ok</code> here means
+the archive reached the target and <code>error</code> carries the reason it didn&rsquo;t. That makes the run
+log a usable answer to &ldquo;did last night&rsquo;s backups actually run?&rdquo; — you don&rsquo;t have to
+cross-check every server&rsquo;s Backups tab.</p>
+<p>A <strong>warned restart</strong> is the one action that reports what it started rather than what it
+finished: the countdown runs for minutes in the background, so the row says <code>warned restart initiated</code> as soon as the warning goes out.</p>
 <p>A firing that matches no servers records a single <code>skipped</code> row with <code>no servers in scope</code>.</p>
 <p><strong>Run now</strong> fires a schedule immediately, ignoring its cron time. It is the way to test one
 without waiting for 4am.</p>

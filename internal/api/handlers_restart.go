@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"sort"
 	"time"
@@ -26,7 +27,13 @@ func (s *Server) warnedRestart(serverID string, backupFirst bool, targetID strin
 		if _, err := s.db.Exec(
 			"INSERT INTO backups (id, server_id, target_id, status) VALUES (?,?,?,'pending')",
 			backupID, serverID, targetID); err == nil {
-			s.runBackup(serverID, targetID, backupID)
+			// Unlike a wipe, a failed backup doesn't abort here: the restart is
+			// what was asked for and it destroys nothing. runBackup has already
+			// sent the ❌ notification; log it so the reason is on the host too.
+			if err := s.runBackup(serverID, targetID, backupID); err != nil {
+				log.Printf("safe restart: backup before restarting %s failed, restarting anyway: %v",
+					s.serverName(serverID), err)
+			}
 		}
 	}
 	// Countdown: send each warning from the largest 'at' down to zero, sleeping

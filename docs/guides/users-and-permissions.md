@@ -41,22 +41,24 @@ you can talk about "the Nordic cluster" or "the test box" as one thing: a server
 to at most one realm, and a grant can target a realm instead of naming servers one by
 one. The **Servers** page groups the list by realm.
 
-Realms are created through the API rather than a panel screen. As an admin:
+Most realms appear on their own: creating a server files it under a realm named after its
+rune's category, creating that realm if it doesn't exist yet. So you'll find a *Minecraft*
+and an *Apps* without ever having asked for them.
 
-```bash
-curl -X POST -H "Authorization: Bearer $YGG_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"nordic","description":"EU cluster"}' \
-  https://panel.example.com/api/realms
-```
+**Settings → Realms** is where you make your own, rename the ones that turned up, or delete
+what you don't want. It lists each realm with how many servers are in it. Creating an empty
+realm up front is useful when you want to grant someone "everything in here" before the
+servers exist. Realm names are unique, and naming one that's taken is refused rather than
+silently merged.
 
-After that the realm appears in the create-server dialog, the permission editor and the
-schedule editor. A server's realm is picked when you create it, and an admin can move it
-later — moving a server between realms changes which delegates can reach it, so that
-change is admin-only even though the rest of the server settings are not.
+A realm's name is what servers are matched against, so it can't be blank.
+
+A server's realm is picked when you create it, and an admin can move it later — moving a
+server between realms changes which delegates can reach it, so that change is admin-only
+even though the rest of the server settings are not.
 
 Deleting a realm does not delete its servers. Yggdrasil detaches them and leaves them
-realm-less.
+realm-less. Any grant scoped to that realm stops applying, so check who had one first.
 
 ## The eight permissions
 

@@ -3,6 +3,7 @@
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
   import { registerPasskey, passkeysSupported } from "../lib/webauthn.js";
+  import RealmManager from "../components/RealmManager.svelte";
 
   let targets = $state([]);
   let showCreate = $state(false);
@@ -14,6 +15,7 @@
     { id: "network", label: "Network" },
     { id: "domains", label: "Domains" },
     { id: "security", label: "Security" },
+    { id: "realms", label: "Realms" },
     { id: "integrations", label: "Integrations" },
   ];
   let tab = $state(localStorage.getItem("ygg_settings_tab") || "system");
@@ -1216,6 +1218,10 @@
   </button>
 </div>
 
+{/if}
+
+{#if tab === "realms"}
+<RealmManager />
 {/if}
 
 {#if tab === "integrations"}

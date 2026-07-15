@@ -129,10 +129,10 @@ now</strong> forces a refresh on demand and surfaces any error rather than hidin
 <p>Each server becomes one inline field: a 🟢 / 🟡 / 🔴 dot with the server name, and the game plus its
 player count, <code>starting…</code>, or <code>offline</code>. The embed&rsquo;s description is <code>**N of M online**</code>, and its colour
 is green when everything shared is up, amber when some are, grey when none are.</p>
-<p>Discord caps an embed at <strong>25 fields</strong>, so if you share more than 25 servers the board shows the first
-25 by name and stops there. The rest are on <code>/status</code>. Past that cap the colour can no longer reach
-green: the online tally counts only the servers that made it into the embed, while green requires it
-to match the full shared count. Share more than 25 and expect amber even when everything is up.</p>
+<p>Discord caps an embed at <strong>25 fields</strong>, so if you share more than 25 servers the board lists the first
+25 by name and says so in the footer — &ldquo;showing 25 of 30&rdquo;. The rest are on <code>/status</code>. The description
+and the colour both count every shared server regardless of the cap, so a fleet of 30 that&rsquo;s fully up
+still reads <code>**30 of 30 online**</code> in green.</p>
 <h2 id="the-beacon">The beacon</h2>
 <p>Yggdrasil Panel ships <strong>no telemetry</strong>. Nothing phones home, nothing tracks you, and the download
 count on GitHub is the only number the project gets for free. The beacon is the single deliberate

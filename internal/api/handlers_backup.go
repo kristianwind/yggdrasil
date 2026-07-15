@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -321,21 +322,29 @@ func (s *Server) handleVerifyBackup(w http.ResponseWriter, r *http.Request) {
 
 // runBackup archives a server and uploads it to the target, then applies the
 // target's retention policy. Status is recorded on the backups row.
-func (s *Server) runBackup(serverID, targetID, backupID string) {
+// runBackup archives a server to a target, updating the backups row as it goes,
+// and reports whether it worked.
+//
+// It returns an error rather than only recording one, so a caller that gates on
+// the backup — a wipe, a scheduled run — can tell success from failure without
+// re-reading the row it just wrote. Callers that genuinely don't care (the
+// fire-and-forget HTTP handler) may ignore it; the notification still goes out
+// either way.
+func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	defer recoverLog("runBackup")
 	ctx := context.Background()
-	fail := func(msg string) {
+	fail := func(msg string) error {
 		s.db.Exec("UPDATE backups SET status='error', error_msg=?, completed_at=? WHERE id=?",
 			msg, time.Now().UTC().Format(time.RFC3339), backupID)
 		s.notifyAll("❌ Backup failed for " + s.serverName(serverID) + ": " + msg)
+		return errors.New(msg)
 	}
 	s.db.Exec("UPDATE backups SET status='running' WHERE id=?", backupID)
 
 	var dataDir, gameskillID string
 	if err := s.db.QueryRow("SELECT data_dir, gameskill_id FROM servers WHERE id=?", serverID).
 		Scan(&dataDir, &gameskillID); err != nil {
-		fail("server not found")
-		return
+		return fail("server not found")
 	}
 	var include []string
 	var yamlBlob string
@@ -347,13 +356,11 @@ func (s *Server) runBackup(serverID, targetID, backupID string) {
 
 	cfg, err := s.loadTargetConfig(ctx, targetID)
 	if err != nil {
-		fail("target config: " + err.Error())
-		return
+		return fail("target config: " + err.Error())
 	}
 	tgt, err := backup.Open(*cfg)
 	if err != nil {
-		fail("connect: " + err.Error())
-		return
+		return fail("connect: " + err.Error())
 	}
 	defer tgt.Close()
 
@@ -375,8 +382,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) {
 	}()
 	size, err := tgt.Put(ctx, name, pr)
 	if err != nil {
-		fail("upload: " + err.Error())
-		return
+		return fail("upload: " + err.Error())
 	}
 
 	s.db.Exec("UPDATE backups SET status='done', path=?, size_bytes=?, completed_at=? WHERE id=?",
@@ -384,6 +390,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) {
 	s.notifyAll("✅ Backup complete for " + s.serverName(serverID) + " (" + humanBytes(size) + ")")
 
 	s.applyRetention(ctx, serverID, targetID, tgt)
+	return nil
 }
 
 // slugName turns a server name into a filesystem-friendly token for backup paths

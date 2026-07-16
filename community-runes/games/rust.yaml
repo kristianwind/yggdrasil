@@ -4,7 +4,7 @@ gameskill:
   category: "Rust"
   description: "Facepunch Rust dedicated server (SteamCMD, anonymous login)"
   author: "yggdrasil-core"
-  version: 1
+  version: 2
   icon: "rust"
 
   docker:

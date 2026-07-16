@@ -4,7 +4,7 @@ gameskill:
   category: "DayZ"
   description: "DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)"
   author: "yggdrasil-core"
-  version: 1
+  version: 2
   icon: "dayz"
 
   # CAVEAT: The DayZ Linux dedicated server is supported via SteamCMD (app 223350)

@@ -388,6 +388,32 @@ commands — *do* prefer RCON and fall back to stdin. Graceful stop is the excep
 Games with no console save command need the timeout instead. DayZ flushes its whole Central Economy
 state on a clean SIGTERM and uses `stop_timeout: 90` rather than being killed mid-save.
 
+## `config_files`
+
+The files an operator actually edits, out of everything in the server's data directory.
+
+```yaml
+config_files:
+  - "server.properties"
+  - "whitelist.json"
+  - "config/paper-world-defaults.yml"
+```
+
+The Files tab turns each into a one-click shortcut. This matters more than it sounds: a rune's
+`variables` are the handful of settings that get templated in at install, but a game's real
+configuration lives in its own files — a `server.properties` has around fifty entries, and Rust
+keeps its config four directories down at `server/yggdrasil/cfg/server.cfg`. Without a shortcut,
+"change the MOTD" starts with knowing the layout.
+
+Paths are relative to the server's data directory. Absolute paths and anything containing `..` are
+rejected when the rune is uploaded.
+
+A listed file that doesn't exist is not an error — most are written by the game on first boot, so a
+freshly created server has none of them, and the panel says so rather than reporting a failure.
+
+Files ending in `.properties`, `.env`, `.cfg` or `.conf` open in a generated key/value form, with a
+raw-text view a click away. Anything else opens as raw text.
+
 ## `ports`
 
 ```yaml
@@ -594,7 +620,6 @@ These appear in real runes and in the schema, and they validate fine, but no pan
 them. Don't rely on them:
 
 - `author`, `icon` — descriptive only.
-- `config_files` — a list of paths. The Files tab shows the whole data dir regardless.
 - `steam.app_id` — your install script passes the app id to SteamCMD itself.
 - `wipe.backup_first` — whether a wipe takes a safety backup first is chosen when you run or
   schedule the wipe.

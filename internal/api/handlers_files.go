@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -127,7 +129,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		jsonError(w, "read dir: "+err.Error(), http.StatusBadRequest)
+		fileError(w, "list", rel, err)
 		return
 	}
 	list := []fileEntry{}
@@ -151,14 +153,15 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	full, ok := safeJoin(dataDir, r.URL.Query().Get("path"))
+	rel := r.URL.Query().Get("path")
+	full, ok := safeJoin(dataDir, rel)
 	if !ok {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 	data, err := os.ReadFile(full)
 	if err != nil {
-		jsonError(w, "read file: "+err.Error(), http.StatusBadRequest)
+		fileError(w, "read", rel, err)
 		return
 	}
 	if len(data) > 5*1024*1024 {
@@ -283,4 +286,35 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(full)+"\"")
 	http.ServeFile(w, r, full)
+}
+
+// fileError turns an os error into a response that says what happened without
+// saying where.
+//
+// These handlers used to pass err.Error() straight through, and an os error
+// carries the full resolved path — so a missing file answered with the panel's
+// absolute layout, e.g. "/var/lib/yggdrasil/servers/<uuid>/server.properties".
+// That needs only server.files, which a delegate can hold without being an admin,
+// and it tells them nothing they need: they asked about a path relative to the
+// server, so the answer should be too.
+//
+// It also fixes the status. A file that isn't there is a 404, not a 400 — the
+// request was fine. The frontend can then tell "not there yet" apart from "went
+// wrong" by status instead of by matching on the wording of an error string.
+func fileError(w http.ResponseWriter, op, rel string, err error) {
+	name := strings.TrimPrefix(rel, "/")
+	if name == "" {
+		name = "that path"
+	}
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		jsonError(w, name+": no such file or directory", http.StatusNotFound)
+	case errors.Is(err, fs.ErrPermission):
+		jsonError(w, name+": permission denied", http.StatusForbidden)
+	default:
+		// Anything else is ours to explain, so log it with detail and keep the
+		// response generic.
+		log.Printf("files: %s %q: %v", op, rel, err)
+		jsonError(w, "could not "+op+" "+name, http.StatusInternalServerError)
+	}
 }

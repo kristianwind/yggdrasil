@@ -36,7 +36,12 @@ async function request(method, path, body, opts = {}) {
     data = text;
   }
   if (!res.ok) {
-    throw new Error((data && data.error) || res.statusText);
+    // Carry the status on the error. Callers that need to tell one failure from
+    // another — "not there yet" vs "went wrong" — should branch on this rather
+    // than pattern-match the message, which changes whenever the wording does.
+    const err = new Error((data && data.error) || res.statusText);
+    err.status = res.status;
+    throw err;
   }
   return data;
 }

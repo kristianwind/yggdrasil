@@ -289,6 +289,16 @@ the <code>game</code> port for games where the protocol shares it (BattlEye).</p
 <h2 id="files">Files</h2>
 <p>The <strong>Files</strong> tab is a full file manager over the server&rsquo;s data directory: browse, open
 a text file in the editor, save, delete, upload, download.</p>
+<p><strong>Config files</strong> sit at the top, when the rune names any: shortcuts straight to the files
+you actually edit. This is where a game&rsquo;s real settings live — the create form asks for a
+handful of things, but a Minecraft <code>server.properties</code> has around fifty entries, and Rust
+keeps its config four directories down. The shortcut skips the hunt.</p>
+<p>Recognised formats (<code>.properties</code>, <code>.env</code>, <code>.cfg</code>, <code>.conf</code>) open as a form with one field
+per setting, with a raw view a click away. A file that isn&rsquo;t there yet — most are written
+by the game on first boot — says so instead of erroring.</p>
+<p>Which files appear is the rune&rsquo;s decision, via
+<a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md#config_files"><code>config_files</code></a>. A rune that names none simply
+doesn&rsquo;t show the row.</p>
 <ul>
 <li>Drag and drop files — or a whole folder, recursively — anywhere over the listing to
 upload into the current directory.</li>

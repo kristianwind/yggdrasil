@@ -255,16 +255,31 @@ variables:
 | `options` | list | **Required for `select`.** The dropdown entries. |
 | `default` | any | Pre-filled value. Stringified when it reaches the container. |
 | `required` | bool | Marks the field with an asterisk in the form. |
+| `min`, `max` | int | Bounds for an `int`. Optional, and independent — you can set just one. |
 | `secret` | bool | Treats the value as a secret. |
 
 There is no default type — a variable with no `type`, or an unknown one, fails validation.
 
-| type | renders as |
-|------|-----------|
-| `string` | text input, or a password field if it's a secret |
-| `int` | number input |
-| `bool` | checkbox, templated as `true` / `false` |
-| `select` | dropdown over `options` |
+| type | renders as | accepted values |
+|------|-----------|-----------------|
+| `string` | text input, or a password field if it's a secret | anything |
+| `int` | number input, bounded by `min`/`max` | a whole number, within bounds |
+| `bool` | checkbox, templated as `true` / `false` | `true` or `false` |
+| `select` | dropdown over `options` | one of `options` |
+
+**The panel enforces that third column.** A value that doesn't match what the variable declares is
+refused with a `400` naming the field — `Max RAM (MB): must be at least 512, got 256` — rather than
+being passed to the container to fail there in some less obvious way. An empty value means "use the
+default", so optional fields you leave alone are fine.
+
+Two details worth knowing if you're writing a rune:
+
+- Bounds are checked **on create against the whole form, including your defaults** — so a default
+  that contradicts its own `type` or bounds surfaces the first time someone builds a server, not at
+  boot. On update only the fields being changed are checked, so tightening a rune's bounds later
+  doesn't strand servers that already exist.
+- Only variables you declare are checked. The env a container sees has other sources (injected
+  ports, `HOME`, `SERVER_NAME`), and those pass through untouched.
 
 `secret: true` does three things: the form renders a password field with show/generate/copy
 controls, the value is encrypted at rest in the database, and it's masked in API responses. The
@@ -580,12 +595,15 @@ them. Don't rely on them:
 
 - `author`, `icon` — descriptive only.
 - `config_files` — a list of paths. The Files tab shows the whole data dir regardless.
-- `variables[].min`, `variables[].max` — the number input is not bounded by them.
-- `query.port` — the query port comes from the `query` or `game` port mapping.
-- `rcon.port_var` — the RCON port comes from the `rcon` or `game` port mapping.
 - `steam.app_id` — your install script passes the app id to SteamCMD itself.
 - `wipe.backup_first` — whether a wipe takes a safety backup first is chosen when you run or
   schedule the wipe.
+
+`query.port` and `rcon.port_var` used to be here. They are gone from the schema: the port to
+query or send RCON to comes from the [`ports`](#ports) block — a mapping named `query` or `rcon`,
+falling back to `game`. That mapping is what actually gets allocated and published, so a second
+place to say it could only ever disagree with it. A rune that still sets either is not an error;
+the value is ignored, as it always was.
 
 ## A complete rune
 
@@ -793,7 +811,6 @@ gameskill:
   rcon:
     enabled: true
     type: minecraft
-    port_var: RCON_PORT
     password_var: RCON_PASSWORD
 
   config_files:

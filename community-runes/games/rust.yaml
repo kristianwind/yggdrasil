@@ -95,7 +95,6 @@ gameskill:
   rcon:
     enabled: true
     type: rust-websocket        # Rust uses WebSocket RCON, not Source RCON
-    port_var: RCON_PORT
     password_var: RCON_PASSWORD
 
   config_files:

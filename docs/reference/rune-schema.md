@@ -617,7 +617,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 6
+  version: 7
   icon: "minecraft"
 
   docker:

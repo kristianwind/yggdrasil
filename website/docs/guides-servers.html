@@ -280,6 +280,25 @@ Start&rdquo; — it prints the container&rsquo;s last 300 lines so a crash-on-st
 missing jar) is right there. Same when the container dies between the check and the
 attach.</p>
 <p>The separate log stream replays the last 200 lines and then follows live.</p>
+<h3 id="copying-and-downloading-a-log">Copying and downloading a log</h3>
+<p><strong>Copy</strong> takes what&rsquo;s on screen to the clipboard — the quick move when you want to paste
+a few lines into a bug report.</p>
+<p><strong>Download…</strong> goes further back than the tab does. The tab holds what arrived since you
+opened it; the download comes from the container itself, so it reaches output from before
+you were looking. Pick a range — a line count (200, 2000, everything) or a window (last
+15 minutes, hour, 24 hours) — and whether to include timestamps. You get a text file named
+after the server and the time you took it.</p>
+<p>The ranges are relative to now, and there&rsquo;s deliberately no calendar. Starting or
+restarting a server builds a <strong>new container</strong>, and the log belongs to the container — so
+it begins at the last (re)start and there is nothing older to fetch. On a server that
+auto-restarts every six hours, &ldquo;everything&rdquo; is at most six hours.</p>
+<p>The <strong>Install log</strong> tab has the same two buttons, without the range: that log is the last
+500 lines of the most recent install, held in memory. A panel restart clears it.</p>
+<p>Both need <code>server.view</code>, the same as reading the log at all.</p>
+<blockquote>
+<p>A server log can contain passwords and tokens — an RCON password echoed at startup, a
+credential in an install script. Read a log before you attach it to an issue.</p>
+</blockquote>
 <p><strong>RCON</strong> is available through <code>POST /api/servers/{id}/rcon</code> for automation and scripts,
 for runes that declare an enabled <code>rcon</code> block; it needs <code>server.console</code> too. RCON
 also powers the <strong>Players</strong> tab — the live roster, kick, broadcast, and lock — for runes
@@ -346,7 +365,7 @@ installing. You only ever see selection controls for servers you actually hold
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody&amp;rsquo;s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t2" href="#files">Files</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody&amp;rsquo;s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t3" href="#copying-and-downloading-a-log">Copying and downloading a log</a><a class="t2" href="#files">Files</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

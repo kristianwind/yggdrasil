@@ -350,6 +350,44 @@ func (c *Client) LogsSnapshot(ctx context.Context, id, tail string) (io.ReadClos
 	})
 }
 
+// LogExportOptions selects a slice of a container's log for export.
+//
+// Tail and Since are both Docker's own filters, and they compose: "the last 200
+// lines, of the last hour". Empty means unrestricted, so the zero value is the
+// whole log the container still has.
+type LogExportOptions struct {
+	Tail       string // line count, or "all"
+	Since      string // duration ("1h") or RFC3339 timestamp
+	Until      string // same, for a closed range
+	Timestamps bool   // prefix each line with Docker's receive time
+}
+
+// LogsExport returns a non-following reader over a slice of the container's log.
+//
+// The caller streams this straight to a response: a busy server's log runs to
+// hundreds of MB, and none of it needs to be held in memory to be handed over.
+//
+// Note what "the whole log" means here: Yggdrasil recreates the container on
+// every start and restart, so Docker's log for it begins at the current
+// container's creation. There is no history from before the last restart to
+// export, which is why the range options are relative to now rather than a
+// calendar.
+func (c *Client) LogsExport(ctx context.Context, id string, opt LogExportOptions) (io.ReadCloser, error) {
+	tail := opt.Tail
+	if tail == "" {
+		tail = "all"
+	}
+	return c.dc.ContainerLogs(ctx, id, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     false,
+		Tail:       tail,
+		Since:      opt.Since,
+		Until:      opt.Until,
+		Timestamps: opt.Timestamps,
+	})
+}
+
 func (c *Client) Attach(ctx context.Context, id string) (types.HijackedResponse, error) {
 	return c.dc.ContainerAttach(ctx, id, container.AttachOptions{
 		Stream: true,

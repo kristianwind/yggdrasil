@@ -62,6 +62,15 @@ func (h *progressHub) subscribe(id string) (chan string, []string) {
 	return ch, hist
 }
 
+// History returns a copy of the buffered lines for id, for export. Same data the
+// tab replays on connect — the last historyCap lines of the most recent install,
+// held only in memory.
+func (h *progressHub) History(id string) []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.history[id]...)
+}
+
 func (h *progressHub) unsubscribe(id string, ch chan string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -306,6 +306,8 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `PUT` | `/api/servers/{id}/watchdog` | `server.control` | Toggle auto-heal for the server |
 | `POST` | `/api/servers/{id}/wipe` | `server.control` | Delete the rune's declared wipe paths, optionally backing up first |
 | `GET` | `/api/servers/{id}/stats` | `server.view` | Live CPU and memory from Docker |
+| `GET` | `/api/servers/{id}/logs/export` | `server.view` | Download the container log as `text/plain`. `tail` (a count or `all`), `since`/`until` (a duration like `2h`, or RFC3339), `timestamps=true`. Streamed, not buffered. The log starts at the current container's creation — a restart makes a new one, so there is no older history to ask for |
+| `GET` | `/api/servers/{id}/install/log/export` | `server.view` | Download the buffered install log as `text/plain`. No range: it is the last 500 lines of the most recent install, held in memory and cleared by a panel restart |
 | `GET` | `/api/servers/{id}/metrics` | `server.view` | Sampled history over the last N hours (default 24, max 168) |
 | `GET` | `/api/servers/{id}/quiet-hours` | `server.view` | The calmest hour of day from 14 days of player samples |
 | `GET` | `/api/servers/{id}/query` | `server.view` | Live game-protocol query: players, map, version |

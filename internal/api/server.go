@@ -205,6 +205,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/clone", s.handleCloneServer)
 		r.Post("/api/servers/{id}/install", s.handleInstallServer)
 		r.Get("/api/servers/{id}/install/log", s.handleInstallLog) // WebSocket
+		r.Get("/api/servers/{id}/install/log/export", s.handleExportInstallLog)
 		r.Post("/api/servers/{id}/start", s.handleStartServer)
 		r.Post("/api/servers/{id}/stop", s.handleStopServer)
 		r.Post("/api/servers/{id}/restart", s.handleRestartServer)
@@ -237,6 +238,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/players/broadcast", s.handleBroadcast)
 		r.Post("/api/servers/{id}/players/lock", s.handleLockServer)
 		r.Get("/api/servers/{id}/logs", s.handleServerLogs) // WebSocket
+		r.Get("/api/servers/{id}/logs/export", s.handleExportServerLogs)
 		r.Get("/api/servers/{id}/console", s.handleConsole) // WebSocket
 
 		// Domains overview (NPM / Cloudflare subdomains; RBAC-filtered like the server list)

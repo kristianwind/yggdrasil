@@ -284,6 +284,30 @@ attach.
 
 The separate log stream replays the last 200 lines and then follows live.
 
+### Copying and downloading a log
+
+**Copy** takes what's on screen to the clipboard — the quick move when you want to paste
+a few lines into a bug report.
+
+**Download…** goes further back than the tab does. The tab holds what arrived since you
+opened it; the download comes from the container itself, so it reaches output from before
+you were looking. Pick a range — a line count (200, 2000, everything) or a window (last
+15 minutes, hour, 24 hours) — and whether to include timestamps. You get a text file named
+after the server and the time you took it.
+
+The ranges are relative to now, and there's deliberately no calendar. Starting or
+restarting a server builds a **new container**, and the log belongs to the container — so
+it begins at the last (re)start and there is nothing older to fetch. On a server that
+auto-restarts every six hours, "everything" is at most six hours.
+
+The **Install log** tab has the same two buttons, without the range: that log is the last
+500 lines of the most recent install, held in memory. A panel restart clears it.
+
+Both need `server.view`, the same as reading the log at all.
+
+> A server log can contain passwords and tokens — an RCON password echoed at startup, a
+> credential in an install script. Read a log before you attach it to an issue.
+
 **RCON** is available through `POST /api/servers/{id}/rcon` for automation and scripts,
 for runes that declare an enabled `rcon` block; it needs `server.console` too. RCON
 also powers the **Players** tab — the live roster, kick, broadcast, and lock — for runes

@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { api, wsURL } from "../lib/api.js";
+  import { api, wsURL, getToken } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
   import { navigate } from "../lib/router.js";
   import { user } from "../lib/auth.js";
@@ -18,6 +18,96 @@
 
   // Console
   let lines = $state([]);
+
+  // Copy takes what's on screen; Download goes to the server for the real thing.
+  //
+  // They're different on purpose. The console tab only holds what arrived since
+  // you opened it, so copying it is honest about being a snapshot of the view.
+  // The container's actual log lives in Docker and reaches further back, which is
+  // what you want when something crashed before you looked.
+  async function copyLog(buf, what) {
+    const text = buf.join("\n");
+    if (!text) return toast("Nothing to copy yet", "warn");
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // The panel is commonly reached over plain http on a LAN, where the async
+        // clipboard API isn't available.
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      toast(`${what} copied — ${buf.length} line${buf.length === 1 ? "" : "s"}`, "success");
+    } catch (e) {
+      toast("Could not copy: " + e.message, "error");
+    }
+  }
+
+  let showLogExport = $state(false);
+  // Ranges are relative to now, and there's no date picker, because the log
+  // doesn't go back that far: Yggdrasil recreates the container on every restart,
+  // so Docker's log for it starts at the current container's creation. Offering
+  // "last Tuesday" would reliably return an empty file.
+  const logRanges = [
+    { id: "tail-200", label: "Last 200 lines", q: "tail=200" },
+    { id: "tail-2000", label: "Last 2000 lines", q: "tail=2000" },
+    { id: "15m", label: "Last 15 minutes", q: "since=15m" },
+    { id: "1h", label: "Last hour", q: "since=1h" },
+    { id: "24h", label: "Last 24 hours", q: "since=24h" },
+    { id: "all", label: "Everything this container has", q: "tail=all" },
+  ];
+  let logRange = $state("tail-2000");
+  let logTimestamps = $state(true);
+
+  let downloadingLog = $state(false);
+
+  async function downloadLog(kind) {
+    // A download needs the token on the URL: it's a browser navigation, not a
+    // fetch, so it can't carry the Authorization header. The access log redacts
+    // the token query parameter.
+    const tok = encodeURIComponent(getToken());
+    const base =
+      kind === "install"
+        ? `/api/servers/${id}/install/log/export?`
+        : `/api/servers/${id}/logs/export?${(logRanges.find((x) => x.id === logRange) ?? logRanges[1]).q}` +
+          `&timestamps=${logTimestamps}&`;
+    const url = `${base}token=${tok}`;
+
+    downloadingLog = true;
+    try {
+      // Ask for a token line first. Navigating straight to the real URL would be
+      // fine on success, but on failure the browser leaves the panel and lands on
+      // a page of raw JSON — losing your place to tell you the server has no
+      // container. Fetching the whole log instead and turning it into a blob
+      // would handle the error, but would also pull a large log through memory,
+      // which is exactly what streaming it avoids. So: check cheaply, then hand
+      // the real URL to the browser.
+      const probe = await fetch(kind === "install" ? url : `${base}token=${tok}&tail=1`);
+      if (!probe.ok) {
+        let msg = probe.statusText;
+        try {
+          msg = (await probe.json()).error || msg;
+        } catch {
+          /* not JSON; the status text will do */
+        }
+        toast(msg, "warn");
+        return;
+      }
+      // Content-Disposition names the file, and the body streams to disk.
+      window.location.assign(url);
+      showLogExport = false;
+    } catch (e) {
+      toast("Could not reach the panel: " + e.message, "error");
+    } finally {
+      downloadingLog = false;
+    }
+  }
   let cmd = $state("");
   let ws = $state(null);
   let termEl = $state(null); // bind:this — $state so Svelte 5 tracks the assignment
@@ -1277,6 +1367,19 @@
   {/snippet}
 
   {#if tab === "install"}
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-xs text-muted">
+        The most recent install, up to 500 lines. Held in memory — a panel restart clears it.
+      </span>
+      <div class="flex gap-2 ml-auto">
+        <button class="btn-ghost text-xs" disabled={!installLines.length}
+          onclick={() => copyLog(installLines, "Install log")}
+          title="Copy what's on screen to the clipboard.">Copy</button>
+        <button class="btn-ghost text-xs" disabled={!installLines.length || downloadingLog}
+          onclick={() => downloadLog("install")}
+          title="Download the install log as a text file.">{downloadingLog ? "…" : "Download"}</button>
+      </div>
+    </div>
     <div bind:this={installEl} class="term h-[50vh]">
       {#if installLines.length === 0}
         <div class="text-muted">No install output yet. Click Install to begin.</div>
@@ -1285,6 +1388,18 @@
     </div>
     {@render explainBlock("install", installLines.join("\n"))}
   {:else if tab === "console"}
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-xs text-muted">Live output since you opened this tab.</span>
+      <div class="flex gap-2 ml-auto">
+        <button class="btn-ghost text-xs" disabled={!lines.length}
+          onclick={() => copyLog(lines, "Console")}
+          title="Copy what's on screen to the clipboard.">Copy</button>
+        <button class="btn-ghost text-xs" onclick={() => (showLogExport = true)}
+          title="Download the container's log as a text file — including output from before you opened this tab.">
+          Download…
+        </button>
+      </div>
+    </div>
     <div bind:this={termEl} class="term h-[50vh]">
       {#each lines as l}<div>{l}</div>{/each}
     </div>
@@ -2004,4 +2119,39 @@
       </div>
     {/if}
   {/if}
+{/if}
+
+{#if showLogExport}
+  <div class="fixed inset-0 bg-black/60 grid place-items-center z-40 p-4" role="presentation"
+    onclick={(e) => { if (e.target === e.currentTarget) showLogExport = false; }}>
+    <div class="card p-5 w-full max-w-md space-y-3">
+      <h2 class="text-lg font-semibold">Download console log</h2>
+      <p class="text-sm text-muted">
+        Straight from the container, so it includes output from before you opened the tab.
+      </p>
+      <div>
+        <label class="label" for="log-range">Range</label>
+        <select id="log-range" class="input" bind:value={logRange}>
+          {#each logRanges as r}<option value={r.id}>{r.label}</option>{/each}
+        </select>
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={logTimestamps} />
+        <span>Include timestamps</span>
+      </label>
+      <p class="text-xs text-muted">
+        The log starts when the container was last created — starting or restarting the server
+        makes a new one, so there's nothing from before that to fetch.
+      </p>
+      <p class="text-xs text-muted">
+        Server logs can contain passwords and tokens. Read it before you share it.
+      </p>
+      <div class="flex gap-2 justify-end pt-1">
+        <button class="btn-ghost" onclick={() => (showLogExport = false)}>Cancel</button>
+        <button class="btn-primary" disabled={downloadingLog} onclick={() => downloadLog("console")}>
+          {downloadingLog ? "Checking…" : "Download"}
+        </button>
+      </div>
+    </div>
+  </div>
 {/if}

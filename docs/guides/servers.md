@@ -297,6 +297,19 @@ See [the API reference](../reference/api.md) for request shapes.
 The **Files** tab is a full file manager over the server's data directory: browse, open
 a text file in the editor, save, delete, upload, download.
 
+**Config files** sit at the top, when the rune names any: shortcuts straight to the files
+you actually edit. This is where a game's real settings live — the create form asks for a
+handful of things, but a Minecraft `server.properties` has around fifty entries, and Rust
+keeps its config four directories down. The shortcut skips the hunt.
+
+Recognised formats (`.properties`, `.env`, `.cfg`, `.conf`) open as a form with one field
+per setting, with a raw view a click away. A file that isn't there yet — most are written
+by the game on first boot — says so instead of erroring.
+
+Which files appear is the rune's decision, via
+[`config_files`](../reference/rune-schema.md#config_files). A rune that names none simply
+doesn't show the row.
+
 - Drag and drop files — or a whole folder, recursively — anywhere over the listing to
   upload into the current directory.
 - Files above 5 MB won't open in the editor. Download them instead.

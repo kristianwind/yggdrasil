@@ -63,6 +63,7 @@ type serverRow struct {
 	WatchdogSup    bool              `json:"watchdog_supported"`    // rune has a query the watchdog can health-check (single GET)
 	PlayersSup     bool              `json:"players_supported"`     // rune declares a players: block (Players tab; single GET)
 	AdminLogSup    bool              `json:"admin_log_supported"`   // rune declares an admin_log: block (Activity tab; single GET)
+	ConfigFiles    []string          `json:"config_files,omitempty"` // rune's config_files: the files worth editing (Files tab shortcuts; single GET)
 	AIEnabled      bool              `json:"ai_enabled"`            // advisory AI features are on (digest button; single GET)
 	CPUAlarmPct    int               `json:"cpu_alarm_pct"`         // alert when CPU% sustained at/above this (0 = off)
 	MemAlarmMB     int               `json:"mem_alarm_mb"`          // alert when memory MB sustained at/above this (0 = off)
@@ -213,6 +214,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		srv.WatchdogSup = rt.gs.Query != nil
 		srv.PlayersSup = rt.gs.Players != nil
 		srv.AdminLogSup = rt.gs.AdminLog != nil
+		srv.ConfigFiles = rt.gs.ConfigFiles
 	}
 	// AI features (digest, error-explainer) are available whenever AI is enabled;
 	// the digest button additionally lives inside the admin-log-gated Activity tab.

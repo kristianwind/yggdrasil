@@ -2,6 +2,7 @@ package gameskill
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -288,6 +289,17 @@ func validate(gs *Gameskill) error {
 		}
 	}
 
+	// config_files are paths inside the server's own data directory, and the Files
+	// tab turns them into one-click shortcuts. The file API resolves them through
+	// safeJoin, which clamps anything escaping the data dir — but a rune asking for
+	// /etc/passwd or ../../secrets is a rune bug, and saying so at upload beats
+	// silently rewriting it into something that then 404s.
+	for _, cf := range gs.ConfigFiles {
+		if err := validateConfigFile(cf); err != nil {
+			return err
+		}
+	}
+
 	if gs.Wipe != nil {
 		if len(gs.Wipe.Paths) == 0 {
 			return fmt.Errorf("gameskill.wipe.paths is required when wipe is set")
@@ -446,4 +458,20 @@ func DefaultEnv(gs *Gameskill) map[string]string {
 		}
 	}
 	return env
+}
+
+// validateConfigFile checks one config_files entry. They name files inside the
+// server's data directory, so they must be relative and stay inside it.
+func validateConfigFile(p string) error {
+	trimmed := strings.TrimSpace(p)
+	if trimmed == "" {
+		return fmt.Errorf("gameskill.config_files has an empty entry")
+	}
+	if strings.HasPrefix(trimmed, "/") {
+		return fmt.Errorf("config_files %q must be relative to the server's data directory, not absolute", p)
+	}
+	if trimmed != path.Clean(trimmed) || strings.HasPrefix(path.Clean(trimmed), "..") {
+		return fmt.Errorf("config_files %q must not escape the data directory or contain path traversal", p)
+	}
+	return nil
 }

@@ -3,7 +3,12 @@
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
 
-  let { serverId } = $props();
+  // configFiles is the rune's config_files list: the handful of paths whose
+  // author says "this is what you actually edit". A game's real settings live in
+  // its own config file — a server.properties has ~50 entries where the rune
+  // exposes 11 — and finding them means knowing the layout. Rust's are four
+  // directories down. These are shortcuts to them.
+  let { serverId, configFiles = [] } = $props();
 
   let path = $state("");
   let entries = $state([]);
@@ -87,19 +92,48 @@
     }
   }
 
+  // openPath loads a file into the editor and throws on failure, so callers can
+  // say something useful about why it didn't open.
+  async function openPath(p) {
+    const res = await api.get(`/servers/${serverId}/files/content?path=${encodeURIComponent(p)}`);
+    editing = { path: p, content: res.content };
+    // Default to the friendly form view for recognised key=value config files.
+    if (canForm(p)) {
+      fields = parseProps(res.content);
+      mode = "form";
+    } else {
+      mode = "raw";
+    }
+  }
+
   async function edit(entry) {
     try {
-      const res = await api.get(`/servers/${serverId}/files/content?path=${encodeURIComponent(entry.path)}`);
-      editing = { path: entry.path, content: res.content };
-      // Default to the friendly form view for recognised key=value config files.
-      if (canForm(entry.path)) {
-        fields = parseProps(res.content);
-        mode = "form";
-      } else {
-        mode = "raw";
-      }
+      await openPath(entry.path);
     } catch (e) {
       toast(e.message, "error");
+    }
+  }
+
+  let openingShortcut = $state(null);
+
+  // A rune's config_files name what the file is called, not whether it's there
+  // yet. Most are written by the game on first boot, so a fresh server has none
+  // of them — that's expected, and worth saying plainly rather than reporting as
+  // a bare "not found".
+  async function openConfig(p) {
+    openingShortcut = p;
+    try {
+      await openPath(p);
+    } catch (e) {
+      const missing = e.status === 404;
+      toast(
+        missing
+          ? `${p} isn't there yet — most config files appear the first time the server runs.`
+          : e.message,
+        missing ? "warn" : "error",
+      );
+    } finally {
+      openingShortcut = null;
     }
   }
 
@@ -281,6 +315,22 @@
     ></textarea>
   {/if}
 {:else}
+  {#if configFiles.length}
+    <div class="card p-3 mb-3">
+      <div class="text-xs text-muted mb-2">
+        Config files — the settings this game keeps outside the panel.
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {#each configFiles as cf (cf)}
+          <button class="btn-ghost text-xs font-mono" disabled={openingShortcut === cf}
+            onclick={() => openConfig(cf)}
+            title={`Open ${cf} for editing`}>
+            {openingShortcut === cf ? "Opening…" : cf}
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
   <div class="flex items-center gap-2 mb-3">
     <button class="btn-ghost px-2 py-1" onclick={up} disabled={!path}>↑</button>
     <span class="font-mono text-sm text-muted">/{path}</span>

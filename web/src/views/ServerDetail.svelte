@@ -1448,7 +1448,7 @@
       {/if}
     </div>
   {:else if tab === "files"}
-    <FileManager serverId={id} />
+    <FileManager serverId={id} configFiles={server.config_files ?? []} />
   {:else if tab === "settings"}
     {#if edit}
       <div class="max-w-lg space-y-4">

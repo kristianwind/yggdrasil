@@ -198,7 +198,6 @@ gameskill:
   rcon:
     enabled: true
     type: battleye             # BattlEye BERcon protocol (UDP)
-    port_var: GAME_PORT
     password_var: RCON_PASSWORD
 
   config_files:

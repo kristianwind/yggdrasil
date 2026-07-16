@@ -178,13 +178,21 @@ type Startup struct {
 
 type Query struct {
 	Type string `yaml:"type" json:"type"`
-	Port string `yaml:"port" json:"port,omitempty"`
+	// No port field: the port to query comes from the `ports` block — a mapping
+	// named "query" if the rune declares one, else "game". That mapping is what
+	// gets allocated and published, so a second way to say it could only ever
+	// disagree with reality.
 }
 
 type RCON struct {
-	Enabled     bool   `yaml:"enabled"      json:"enabled"`
-	Type        string `yaml:"type"         json:"type,omitempty"`
-	PortVar     string `yaml:"port_var"     json:"port_var,omitempty"`
+	Enabled bool   `yaml:"enabled"      json:"enabled"`
+	Type    string `yaml:"type"         json:"type,omitempty"`
+	// PasswordVar names the variable holding the RCON password. It also marks that
+	// variable as a secret, so it is encrypted at rest and masked in the API.
+	//
+	// There is no port_var: like the query port, the RCON port comes from the
+	// `ports` block — a mapping named "rcon", falling back to "game" for the
+	// protocols that share it (BattlEye).
 	PasswordVar string `yaml:"password_var" json:"password_var,omitempty"`
 }
 

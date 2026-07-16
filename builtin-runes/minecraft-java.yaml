@@ -192,7 +192,6 @@ gameskill:
   rcon:
     enabled: true
     type: minecraft
-    port_var: RCON_PORT
     password_var: RCON_PASSWORD
 
   config_files:

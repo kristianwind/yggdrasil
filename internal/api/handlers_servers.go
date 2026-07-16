@@ -297,6 +297,11 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	// orphaned containers), track picks within this request, and test-bind each
 	// candidate — so we never hand out a port that can't actually be bound.
 	allocatedPorts := map[string]int{}
+	if err := validateEnv(gs, env); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	taken, _ := s.docker.UsedHostPorts(r.Context())
 	if taken == nil {
 		taken = map[int]bool{}
@@ -408,6 +413,28 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
+	}
+	// Check the submitted variables before anything is written: this handler
+	// applies each field with its own UPDATE, so failing at the env block would
+	// leave an earlier one (the name, the realm) already changed.
+	//
+	// Only what's being changed is checked — not the merged result — so a rune
+	// that tightened its bounds after a server was built doesn't make every later
+	// edit fail on a field nobody touched.
+	if len(req.Env) > 0 {
+		if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+			changed := map[string]string{}
+			for k, v := range req.Env {
+				if v == secretMask {
+					continue // unchanged masked secret — not a new value to check
+				}
+				changed[k] = v
+			}
+			if err := validateEnv(rt.gs, changed); err != nil {
+				jsonError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	if req.HostMounts != nil {
 		// Host mounts expose host paths to a semi-trusted container — admin-only,

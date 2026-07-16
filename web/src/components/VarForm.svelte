@@ -50,7 +50,19 @@
           <span class="text-muted">Enabled</span>
         </label>
       {:else if v.type === "int"}
-        <input id={`var-${v.key}`} class="input" type="number" bind:value={values[v.key]} />
+        <!-- min/max come from the rune. The server enforces them too — this is so
+             you find out while typing rather than on submit. -->
+        <input id={`var-${v.key}`} class="input" type="number" bind:value={values[v.key]}
+          min={v.min ?? undefined} max={v.max ?? undefined} />
+        {#if v.min != null || v.max != null}
+          <p class="text-xs text-muted mt-1">
+            {v.min != null && v.max != null
+              ? `Between ${v.min} and ${v.max}.`
+              : v.min != null
+                ? `At least ${v.min}.`
+                : `At most ${v.max}.`}
+          </p>
+        {/if}
       {:else if isSecret(v)}
         <PasswordField id={`var-${v.key}`} bind:value={values[v.key]} />
       {:else}

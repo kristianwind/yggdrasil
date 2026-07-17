@@ -274,7 +274,17 @@ share of the whole host, matching the dashboard&rsquo;s host-CPU card.</p>
 runaway server can&rsquo;t fork-bomb the host&rsquo;s PID table and take the panel down with it.</p>
 <h2 id="console-logs-and-rcon">Console, logs, and RCON</h2>
 <p>The <strong>Console</strong> tab attaches to the container: you read its output live and type
-commands straight into its stdin. It needs the <code>server.console</code> permission.</p>
+commands back to the server. It needs the <code>server.console</code> permission.</p>
+<p>Commands go over <strong>RCON</strong> when the game&rsquo;s rune declares an enabled <code>rcon</code> block, and to
+the container&rsquo;s stdin otherwise. That split matters: Rust and DayZ read commands over
+RCON only, and Bedrock reads them on stdin only, so the console picks the channel the
+game actually listens on. Where RCON answers, its reply is printed in the console.</p>
+<p>If a game has RCON but the panel can&rsquo;t reach it, the console says so and sends the
+command to stdin as a fallback rather than failing outright. The usual cause on
+Minecraft is a changed RCON password: <code>rcon.password</code> is written into
+<code>server.properties</code> when the server is installed, so a password edited in the panel
+afterwards no longer matches. Fix it in <strong>Config files → server.properties</strong>, or set the
+variable back.</p>
 <p>When the container isn&rsquo;t running, the console doesn&rsquo;t leave you with a blank &ldquo;press
 Start&rdquo; — it prints the container&rsquo;s last 300 lines so a crash-on-start (a bad mod, a
 missing jar) is right there. Same when the container dies between the check and the

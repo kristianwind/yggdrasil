@@ -1532,12 +1532,13 @@ one whose hostname matches the request host, and refuses everything else.</p>
 <tr>
 <td><code>/api/servers/{id}/console</code></td>
 <td><code>server.console</code></td>
-<td>Container output, and input written to the container&rsquo;s stdin</td>
+<td>Container output, and input sent over RCON or the container&rsquo;s stdin</td>
 </tr>
 </tbody>
 </table>
 <p><code>/console</code> is the one that writes, which is why it gates on <code>server.console</code> while <code>/logs</code> needs only
-<code>server.view</code>. Start an install with <code>POST /api/servers/{id}/install</code> and follow <code>/install/log</code> for
+<code>server.view</code>. Each message you send it is one command: it goes over RCON when the server&rsquo;s rune
+declares an enabled <code>rcon</code> block, and to the container&rsquo;s stdin otherwise. Start an install with <code>POST /api/servers/{id}/install</code> and follow <code>/install/log</code> for
 progress; the install itself runs in the background and does not block the POST.</p>
 <h2 id="see-also">See also</h2>
 <ul>

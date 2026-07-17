@@ -474,8 +474,9 @@ rcon:
 Yggdrasil dials `127.0.0.1` on the server's `rcon` host port, falling back to the `game` port —
 BattlEye shares the game port. It does not read a port out of a variable.
 
-An enabled `rcon` block is what schedules, bans, restart warnings and the Players tab use to reach
-the game; without it they fall back to the container's stdin, or aren't offered at all. If the game
+An enabled `rcon` block is what the Console tab, schedules, bans, restart warnings and the Players
+tab use to reach the game; without it they fall back to the container's stdin, or aren't offered at
+all. If the game
 needs RCON switched on in a config file, do that in the install script — Minecraft's rune writes
 `enable-rcon=true` into `server.properties`.
 

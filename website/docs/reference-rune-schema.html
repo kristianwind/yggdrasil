@@ -719,8 +719,9 @@ a server eligible for the watchdog, which restarts a server that stops answering
 </table>
 <p>Yggdrasil dials <code>127.0.0.1</code> on the server&rsquo;s <code>rcon</code> host port, falling back to the <code>game</code> port —
 BattlEye shares the game port. It does not read a port out of a variable.</p>
-<p>An enabled <code>rcon</code> block is what schedules, bans, restart warnings and the Players tab use to reach
-the game; without it they fall back to the container&rsquo;s stdin, or aren&rsquo;t offered at all. If the game
+<p>An enabled <code>rcon</code> block is what the Console tab, schedules, bans, restart warnings and the Players
+tab use to reach the game; without it they fall back to the container&rsquo;s stdin, or aren&rsquo;t offered at
+all. If the game
 needs RCON switched on in a config file, do that in the install script — Minecraft&rsquo;s rune writes
 <code>enable-rcon=true</code> into <code>server.properties</code>.</p>
 <h2 id="steam"><code>steam</code></h2>

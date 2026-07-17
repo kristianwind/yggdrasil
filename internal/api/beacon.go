@@ -77,9 +77,19 @@ func (s *Server) maybeSendBeacon() {
 	if s.getSetting(ctx, "beacon_enabled") != "1" {
 		return
 	}
+	// Ping once a day — but also whenever the version changes, which the day gate
+	// alone missed.
+	//
+	// The version is the whole payload besides the count: the beacon exists so the
+	// project can see how many installs are on which release. A panel that
+	// auto-updates at 03:00 has already pinged that day, so it kept reporting the
+	// version it was running *before* the update for up to 24 hours — stale exactly
+	// when adoption of a new release is what you'd want to look at. Both live
+	// panels were caught doing it: running v0.2.160, reported as v0.2.158/159.
 	today := time.Now().UTC().Format("2006-01-02")
-	if s.getSetting(ctx, "beacon_last_day") == today {
-		return // already pinged today
+	if s.getSetting(ctx, "beacon_last_day") == today &&
+		s.getSetting(ctx, "beacon_last_version") == s.version {
+		return // already reported this version today
 	}
 	if err := s.sendBeacon(ctx); err != nil {
 		// Keep the reason where the admin will see it, and log it once per attempt
@@ -90,6 +100,7 @@ func (s *Server) maybeSendBeacon() {
 		return
 	}
 	s.setSetting(ctx, "beacon_last_day", today)
+	s.setSetting(ctx, "beacon_last_version", s.version)
 	s.setSetting(ctx, "beacon_last_error", "")
 	s.setSetting(ctx, "beacon_last_error_at", "")
 }

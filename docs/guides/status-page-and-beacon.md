@@ -137,9 +137,17 @@ values, so there is nothing to take on trust.
 ### How it behaves
 
 The loop wakes 30 seconds after startup and every 30 minutes after that, but sends at most **one ping
-per calendar day (UTC)**, and only records the day as done when the collector actually accepts it. A
-panel that isn't up around the clock still pings roughly daily. Opting in sends a ping right away
-rather than waiting. The settings page shows the date of the last successful ping.
+per calendar day (UTC)** — with one exception: **a version change pings again**, without waiting for
+the next day. Otherwise a panel that auto-updated overnight would keep reporting the version it was
+running before the update for up to 24 hours, and the version is the whole point of the payload
+besides the count.
+
+A ping is only recorded as done when the collector actually accepts it, so a panel that isn't up
+around the clock still pings roughly daily. Opting in sends one right away rather than waiting.
+
+The settings page shows the date of the last successful ping — **and, if the last one failed, why**.
+A beacon that can't reach its collector says so there rather than retrying quietly forever; the most
+common cause is a collector URL that resolves but has nothing routed behind it.
 
 ### Collector URL and Test
 

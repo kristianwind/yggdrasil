@@ -16,10 +16,16 @@
   function render(hits, term) {
     if (!hits.length) { res.innerHTML = '<div class="none">Nothing matches “' + esc(term) + '”.</div>'; res.hidden = false; return; }
     res.innerHTML = hits.map(function (h) {
-      // Show the section as the headline and the page as the breadcrumb, since
-      // the section is what the reader actually wants to land on.
-      var parts = h.t.split(" › "), page = parts[0], section = parts[1] || "";
-      return '<a href="' + h.u + '"><div class="rs">' + esc(h.s) + " · " + esc(page) + '</div>' +
+      // Show the deepest section as the headline and everything above it as the
+      // breadcrumb, since the section is what the reader wants to land on. The
+      // title is "Page › Section" or "Page › Section › Subsection", so the
+      // headline is always the last part — never a fixed index, or an h3 hit
+      // would show the h2 it happens to sit under.
+      var parts = h.t.split(" › "), page = parts[0];
+      var section = parts.length > 1 ? parts[parts.length - 1] : "";
+      var crumb = esc(h.s) + " · " + esc(page);
+      if (parts.length > 2) crumb += " · " + esc(parts.slice(1, -1).join(" · "));
+      return '<a href="' + h.u + '"><div class="rs">' + crumb + '</div>' +
              '<div class="rt">' + esc(section || page) + '</div>' +
              '<div class="rb">' + mark(h.b, term) + '</div></a>';
     }).join("");

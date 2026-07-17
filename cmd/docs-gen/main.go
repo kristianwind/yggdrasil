@@ -157,13 +157,18 @@ type built struct {
 	secs  []sec  // per-section text, for the search index
 }
 
-// sec is one h2 span of a page. Search indexes these rather than whole pages, so
-// a hit can deep-link to the section that actually matched — and so a long page's
-// later sections are searchable at all.
+// sec is one h2-or-h3 span of a page. Search indexes these rather than whole
+// pages, so a hit can deep-link to the section that actually matched — and so a
+// long page's later sections are searchable at all.
+//
+// h3 counts as a boundary because that's the level real answers live at: every
+// rune variable in rune-schema.md is an h3, and folding them into the h2 above
+// dropped the reader a screen or more from the thing they searched for.
 type sec struct {
-	ID    string
-	Title string
-	Text  string
+	ID     string
+	Title  string
+	Parent string // the enclosing h2's title, for an h3 — "" for an h2
+	Text   string
 }
 
 type head struct {
@@ -233,21 +238,34 @@ func renderPage(md goldmark.Markdown, p Page) (built, error) {
 	return b, nil
 }
 
-// sections splits a page at its h2 boundaries. Everything before the first h2
-// (the intro paragraph) is kept as a section anchored at the page itself, so the
-// opening lines are searchable too.
+// sections splits a page at its h2 and h3 boundaries. Everything before the
+// first heading (the intro paragraph) is kept as a section anchored at the page
+// itself, so the opening lines are searchable too.
+//
+// An h3 carries its enclosing h2 as Parent: "Rune schema › Variables › secret"
+// tells the reader where they're about to land, which the bare h3 title doesn't.
 func sections(doc ast.Node, src []byte) []sec {
 	out := []sec{{ID: "", Title: ""}}
 	var sb strings.Builder
+	h2 := "" // most recent h2, to hang h3s off
 
 	flush := func() {
 		out[len(out)-1].Text = strings.TrimSpace(wsRE.ReplaceAllString(sb.String(), " "))
 		sb.Reset()
 	}
 	for n := doc.FirstChild(); n != nil; n = n.NextSibling() {
-		if h, ok := n.(*ast.Heading); ok && h.Level <= 2 {
+		// Only h2 and h3 — rewrite has already dropped the h1 (the page shell
+		// renders the title), so it never reaches here and is not a boundary.
+		if h, ok := n.(*ast.Heading); ok && (h.Level == 2 || h.Level == 3) {
 			flush()
-			out = append(out, sec{ID: headingID(h), Title: string(h.Text(src))})
+			title := string(h.Text(src))
+			parent := ""
+			if h.Level == 3 {
+				parent = h2
+			} else {
+				h2 = title // each h2 becomes the parent of the h3s that follow it
+			}
+			out = append(out, sec{ID: headingID(h), Title: title, Parent: parent})
 			continue
 		}
 		sb.WriteString(string(n.Text(src)))
@@ -431,6 +449,9 @@ func writeSearchIndex(bs []built) error {
 			if s.ID != "" {
 				url += "#" + s.ID
 				title = b.title + " › " + s.Title
+				if s.Parent != "" {
+					title = b.title + " › " + s.Parent + " › " + s.Title
+				}
 			}
 			if !first {
 				sb.WriteString(",\n")

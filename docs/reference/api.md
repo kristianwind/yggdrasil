@@ -282,7 +282,8 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `POST` | `/api/gameskills` | Admin | Upload a rune YAML (body capped at 512 KB) |
 | `POST` | `/api/gameskills/import-egg` | Admin | Convert a Pterodactyl egg JSON into a rune |
 | `POST` | `/api/gameskills/import-xml` | Admin | Import a rune expressed in XML |
-| `GET` | `/api/gameskills/github` | Admin | List runes in a GitHub repo directory, flagging installed ones |
+| `GET` | `/api/gameskills/github` | Admin | List runes in a GitHub repo directory. Each entry carries the repo copy's `version`, plus `installed` / `installed_version` / `builtin` for the local one |
+| `GET` | `/api/gameskills/updates` | Admin | Installed non-builtin runes the catalog has moved past: `{updates:[{id,name,installed_version,available_version,download_url}], checked_at, note?}`. Matched by rune id against the community catalog; a `note` means the check couldn't run, which is not the same as everything being current |
 | `POST` | `/api/gameskills/install-from-github` | Admin | Fetch, validate, and store one rune from GitHub |
 | `DELETE` | `/api/gameskills/{id}` | Admin | Delete a rune |
 

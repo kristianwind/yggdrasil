@@ -188,6 +188,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/gameskills/import-egg", s.requireAdmin(s.handleImportEgg))
 		r.Post("/api/gameskills/import-xml", s.requireAdmin(s.handleImportXML))
 		r.Get("/api/gameskills/github", s.requireAdmin(s.handleGithubRunes))
+		r.Get("/api/gameskills/updates", s.requireAdmin(s.handleRuneUpdates))
 		r.Post("/api/gameskills/install-from-github", s.requireAdmin(s.handleInstallGithubRune))
 		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
 		r.Delete("/api/gameskills/{id}", s.requireAdmin(s.handleDeleteGameskill))

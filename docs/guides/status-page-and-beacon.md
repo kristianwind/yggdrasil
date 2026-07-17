@@ -171,6 +171,30 @@ acting as a collector, its Beacon settings card shows the tallies: total instanc
 the last 7 and 30 days, and a version breakdown across the last 30 days (`GET /api/beacon/stats`,
 admin only).
 
+### Publishing the count
+
+A collector can publish its count at `GET /api/beacon/count` — unauthenticated, so a website can read
+it. This is a **second, separate opt-in**: receiving pings privately and putting a number on a public
+page are different decisions, so `beacon_receiver_enabled` alone doesn't publish anything. Until both
+are on, the route is **404**, same as the receiver.
+
+```json
+{ "count": 142, "window_days": 30 }
+```
+
+Two deliberate choices:
+
+- **It counts installs seen in the last 30 days, not installs ever seen.** A running total only ever
+  climbs, and counts panels that were installed once and thrown away — it would flatter the project
+  while describing nothing.
+- **Below a threshold, `count` is `null` rather than a number.** A count can fall for reasons that
+  aren't real: a collector outage, a DNS change that silently stops pings, a bad release. The
+  threshold (`public_count_min`, default 25) means a number that isn't trustworthy is withheld
+  instead of published as fact. Consumers must handle `null` — it means "not saying", not "zero".
+
+Responses are cached for 60 seconds and carry `Cache-Control: public, max-age=60`, so a busy page
+doesn't turn into a query per view. A ping that arrives mid-window shows up when the cache turns over.
+
 ## See also
 
 - [Servers](servers.md)

@@ -176,6 +176,25 @@ ping count and refresh the version — and stores no IP or other request metadat
 acting as a collector, its Beacon settings card shows the tallies: total instances ever seen, active in
 the last 7 and 30 days, and a version breakdown across the last 30 days (<code>GET /api/beacon/stats</code>,
 admin only).</p>
+<h3 id="publishing-the-count">Publishing the count</h3>
+<p>A collector can publish its count at <code>GET /api/beacon/count</code> — unauthenticated, so a website can read
+it. This is a <strong>second, separate opt-in</strong>: receiving pings privately and putting a number on a public
+page are different decisions, so <code>beacon_receiver_enabled</code> alone doesn&rsquo;t publish anything. Until both
+are on, the route is <strong>404</strong>, same as the receiver.</p>
+<pre><code class="language-json">{ &quot;count&quot;: 142, &quot;window_days&quot;: 30 }
+</code></pre>
+<p>Two deliberate choices:</p>
+<ul>
+<li><strong>It counts installs seen in the last 30 days, not installs ever seen.</strong> A running total only ever
+climbs, and counts panels that were installed once and thrown away — it would flatter the project
+while describing nothing.</li>
+<li><strong>Below a threshold, <code>count</code> is <code>null</code> rather than a number.</strong> A count can fall for reasons that
+aren&rsquo;t real: a collector outage, a DNS change that silently stops pings, a bad release. The
+threshold (<code>public_count_min</code>, default 25) means a number that isn&rsquo;t trustworthy is withheld
+instead of published as fact. Consumers must handle <code>null</code> — it means &ldquo;not saying&rdquo;, not &ldquo;zero&rdquo;.</li>
+</ul>
+<p>Responses are cached for 60 seconds and carry <code>Cache-Control: public, max-age=60</code>, so a busy page
+doesn&rsquo;t turn into a query per view. A ping that arrives mid-window shows up when the cache turns over.</p>
 <h2 id="see-also">See also</h2>
 <ul>
 <li><a href="guides-servers.html">Servers</a></li>
@@ -190,7 +209,7 @@ admin only).</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-public-status-page">The public status page</a><a class="t3" href="#double-opt-in">Double opt-in</a><a class="t3" href="#exactly-what-it-exposes">Exactly what it exposes</a><a class="t3" href="#player-counts-come-from-the-sampler">Player counts come from the sampler</a><a class="t3" href="#the-statusjs-split">The /status.js split</a><a class="t2" href="#the-discord-status-board">The Discord status board</a><a class="t3" href="#one-message-edited-in-place">One message, edited in place</a><a class="t3" href="#what-the-embed-looks-like">What the embed looks like</a><a class="t2" href="#the-beacon">The beacon</a><a class="t3" href="#the-literal-payload">The literal payload</a><a class="t3" href="#how-it-behaves">How it behaves</a><a class="t3" href="#collector-url-and-test">Collector URL and Test</a><a class="t3" href="#running-your-own-collector">Running your own collector</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-public-status-page">The public status page</a><a class="t3" href="#double-opt-in">Double opt-in</a><a class="t3" href="#exactly-what-it-exposes">Exactly what it exposes</a><a class="t3" href="#player-counts-come-from-the-sampler">Player counts come from the sampler</a><a class="t3" href="#the-statusjs-split">The /status.js split</a><a class="t2" href="#the-discord-status-board">The Discord status board</a><a class="t3" href="#one-message-edited-in-place">One message, edited in place</a><a class="t3" href="#what-the-embed-looks-like">What the embed looks like</a><a class="t2" href="#the-beacon">The beacon</a><a class="t3" href="#the-literal-payload">The literal payload</a><a class="t3" href="#how-it-behaves">How it behaves</a><a class="t3" href="#collector-url-and-test">Collector URL and Test</a><a class="t3" href="#running-your-own-collector">Running your own collector</a><a class="t3" href="#publishing-the-count">Publishing the count</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

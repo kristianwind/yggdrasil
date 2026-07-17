@@ -299,6 +299,21 @@ holding one at send time is **not** sent: the run log records
 players with a gap where a number should be is worse than one that doesn't go out, and
 the run log is where you find out why.
 
+### Warning players before a scheduled restart
+
+`restart` offers **warn players with the in-game countdown first**, on by default. It runs
+the same safe-restart path as the button on the server page: Yggdrasil broadcasts the
+rune's `restart.warnings` countdown in-game, waits it out, and then restarts. The run log
+records `warned restart initiated` when the countdown starts, because the countdown
+outlives the run itself.
+
+A game whose rune declares no countdown has nothing to broadcast, so it restarts straight
+away — the setting costs nothing there, but it buys nothing either. A schedule scoped to a
+realm or to all servers can span both kinds.
+
+Untick it for a restart that should happen immediately and unannounced. That is the right
+choice at 04:00 on an empty server, and the wrong one at 20:00.
+
 ### Skipping when players are online
 
 `restart` and `update` offer **skip if players are online**. When it is on, Yggdrasil

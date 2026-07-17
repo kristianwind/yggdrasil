@@ -321,6 +321,17 @@ holding one at send time is <strong>not</strong> sent: the run log records
 <code>error — template needs a value for {{seconds}}</code> instead. A message going out to your
 players with a gap where a number should be is worse than one that doesn&rsquo;t go out, and
 the run log is where you find out why.</p>
+<h3 id="warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</h3>
+<p><code>restart</code> offers <strong>warn players with the in-game countdown first</strong>, on by default. It runs
+the same safe-restart path as the button on the server page: Yggdrasil broadcasts the
+rune&rsquo;s <code>restart.warnings</code> countdown in-game, waits it out, and then restarts. The run log
+records <code>warned restart initiated</code> when the countdown starts, because the countdown
+outlives the run itself.</p>
+<p>A game whose rune declares no countdown has nothing to broadcast, so it restarts straight
+away — the setting costs nothing there, but it buys nothing either. A schedule scoped to a
+realm or to all servers can span both kinds.</p>
+<p>Untick it for a restart that should happen immediately and unannounced. That is the right
+choice at 04:00 on an empty server, and the wrong one at 20:00.</p>
 <h3 id="skipping-when-players-are-online">Skipping when players are online</h3>
 <p><code>restart</code> and <code>update</code> offer <strong>skip if players are online</strong>. When it is on, Yggdrasil
 queries the server&rsquo;s player count before acting and skips if anyone is connected; the run
@@ -427,7 +438,7 @@ to have no say, do not grant <code>server.schedule</code>.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

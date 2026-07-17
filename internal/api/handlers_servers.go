@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -1079,17 +1080,55 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}()
 
-	// WebSocket input → Docker stdin (one console command per message)
+	// WebSocket input → RCON, or the container's stdin (one command per message)
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			return
 		}
-		msg = append(msg, '\n')
-		if _, err := hijack.Conn.Write(msg); err != nil {
-			return
+		command := strings.TrimSpace(string(msg))
+		if command == "" {
+			continue
+		}
+		for _, line := range s.consoleSend(ctx, id, command, hijack.Conn) {
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(line)); err != nil {
+				return
+			}
 		}
 	}
+}
+
+// consoleSend delivers one console command to a server and returns the lines to
+// echo back to the operator (empty when the command went to stdin, which reports
+// itself through the container's own log stream).
+//
+// It prefers RCON wherever the rune declares one. Rust reads commands over its
+// WebSocket RCON and DayZ over BattlEye; neither reads container stdin, so a
+// command written there is swallowed with no error and no effect. Games with no
+// rcon: block (Bedrock) keep using stdin, which is their real control channel.
+//
+// An RCON failure falls back to stdin rather than erroring out: Minecraft stamps
+// rcon.password into server.properties at install time only, so a password
+// changed in the panel afterwards fails to authenticate while stdin still works.
+// The fallback keeps that console usable — but it says so, because a command that
+// silently goes nowhere is the bug this function exists to fix.
+func (s *Server) consoleSend(ctx context.Context, serverID, command string, stdin io.Writer) []string {
+	reply, err := s.rconExec(ctx, serverID, command)
+	if err == nil {
+		// Plenty of commands answer with nothing; don't echo a blank line for them.
+		if reply = strings.TrimRight(reply, "\n"); reply == "" {
+			return nil
+		}
+		return strings.Split(reply, "\n")
+	}
+	var out []string
+	if !errors.Is(err, errNoRCON) {
+		out = append(out, "[rcon unavailable: "+err.Error()+" — sent to the container console instead]")
+	}
+	if _, err := stdin.Write([]byte(command + "\n")); err != nil {
+		return append(out, "[could not send the command: "+err.Error()+"]")
+	}
+	return out
 }
 
 // showRecentLogs streams a container's recent output to the console WebSocket.

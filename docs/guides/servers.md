@@ -275,7 +275,19 @@ runaway server can't fork-bomb the host's PID table and take the panel down with
 ## Console, logs, and RCON
 
 The **Console** tab attaches to the container: you read its output live and type
-commands straight into its stdin. It needs the `server.console` permission.
+commands back to the server. It needs the `server.console` permission.
+
+Commands go over **RCON** when the game's rune declares an enabled `rcon` block, and to
+the container's stdin otherwise. That split matters: Rust and DayZ read commands over
+RCON only, and Bedrock reads them on stdin only, so the console picks the channel the
+game actually listens on. Where RCON answers, its reply is printed in the console.
+
+If a game has RCON but the panel can't reach it, the console says so and sends the
+command to stdin as a fallback rather than failing outright. The usual cause on
+Minecraft is a changed RCON password: `rcon.password` is written into
+`server.properties` when the server is installed, so a password edited in the panel
+afterwards no longer matches. Fix it in **Config files → server.properties**, or set the
+variable back.
 
 When the container isn't running, the console doesn't leave you with a blank "press
 Start" — it prints the container's last 300 lines so a crash-on-start (a bad mod, a

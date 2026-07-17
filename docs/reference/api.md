@@ -545,10 +545,11 @@ one whose hostname matches the request host, and refuses everything else.
 | --- | --- | --- |
 | `/api/servers/{id}/install/log` | `server.view` | Install and build output — buffered history, then live |
 | `/api/servers/{id}/logs` | `server.view` | Container logs, live |
-| `/api/servers/{id}/console` | `server.console` | Container output, and input written to the container's stdin |
+| `/api/servers/{id}/console` | `server.console` | Container output, and input sent over RCON or the container's stdin |
 
 `/console` is the one that writes, which is why it gates on `server.console` while `/logs` needs only
-`server.view`. Start an install with `POST /api/servers/{id}/install` and follow `/install/log` for
+`server.view`. Each message you send it is one command: it goes over RCON when the server's rune
+declares an enabled `rcon` block, and to the container's stdin otherwise. Start an install with `POST /api/servers/{id}/install` and follow `/install/log` for
 progress; the install itself runs in the background and does not block the POST.
 
 ## See also

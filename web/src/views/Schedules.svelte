@@ -25,8 +25,23 @@
       realm_id: "",
       cron_expr: "0 4 * * *",
       action: "restart",
-      args: { skip_if_players: "true", target_id: "", command: "", template_id: "", minutes: "5" },
+      args: { skip_if_players: "true", target_id: "", command: "", template_id: "", minutes: "5", seconds: "30" },
     };
+  }
+
+  // The panel fills this one in itself, so the form never asks for it.
+  const computedVars = ["server_name"];
+
+  // The placeholders the chosen template actually uses. Asking per template beats
+  // a fixed list of inputs: a countdown needs {{seconds}}, a backup warning needs
+  // nothing at all, and a template someone writes tomorrow needs whatever it says.
+  let templateVars = $derived(
+    placeholders(templates.find((t) => t.id === form.args.template_id)?.body || "")
+      .filter((v) => !computedVars.includes(v)),
+  );
+
+  function placeholders(body) {
+    return [...new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
   }
 
   const actions = [
@@ -97,7 +112,10 @@
     if (form.action === "command") payload.args.command = form.args.command;
     if (form.action === "message") {
       payload.args.template_id = form.args.template_id;
-      payload.args.minutes = form.args.minutes;
+      for (const v of templateVars) {
+        if (!form.args[v]) return toast(`Give {{${v}}} a value`, "warn");
+        payload.args[v] = form.args[v];
+      }
     }
     if (form.action === "restart" || form.action === "update")
       payload.args.skip_if_players = form.args.skip_if_players;
@@ -324,11 +342,18 @@
               {#each templates as t}<option value={t.id}>{t.name}</option>{/each}
             </select>
           </div>
-          <div>
-            <label class="label" for="s-min">{"{{minutes}}"} value</label>
-            <input id="s-min" class="input" bind:value={form.args.minutes} />
-          </div>
+          {#each templateVars as v (v)}
+            <div>
+              <label class="label" for="s-var-{v}">{`{{${v}}}`} value</label>
+              <input id="s-var-{v}" class="input" bind:value={form.args[v]} />
+            </div>
+          {/each}
         </div>
+        {#if form.args.template_id}
+          <p class="text-xs text-muted font-mono">
+            {templates.find((t) => t.id === form.args.template_id)?.body}
+          </p>
+        {/if}
       {:else if form.action === "restart" || form.action === "update"}
         <label class="flex items-center gap-2 text-sm"
           title="If anyone is connected when this fires, skip it this time instead of interrupting them. The task runs on its next scheduled time when the server is empty.">

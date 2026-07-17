@@ -43,3 +43,32 @@ func TestValidateCron(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaceholders(t *testing.T) {
+	got := Placeholders("say {{server_name}} restarts in {{minutes}}m ({{minutes}} again)")
+	want := []string{"server_name", "minutes"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v (order and dedup matter)", got, want)
+		}
+	}
+	if p := Placeholders("say hello"); len(p) != 0 {
+		t.Errorf("a body with no placeholders returned %v", p)
+	}
+}
+
+// Every seeded template must declare only placeholders the scheduler can fill,
+// or it ships broken the way "Restart countdown" did.
+func TestDefaultTemplatesUseKnownPlaceholders(t *testing.T) {
+	known := map[string]bool{"server_name": true, "minutes": true, "seconds": true}
+	for _, tmpl := range DefaultTemplates {
+		for _, p := range Placeholders(tmpl.Body) {
+			if !known[p] {
+				t.Errorf("template %q uses {{%s}}, which nothing fills in", tmpl.Name, p)
+			}
+		}
+	}
+}

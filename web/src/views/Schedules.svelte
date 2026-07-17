@@ -73,15 +73,23 @@
     return servers.find((s) => s.id === id)?.name || id;
   }
 
+  // The args this schedule was stored with. save() writes on top of these rather
+  // than rebuilding from scratch: runAction reads args the editor has no field
+  // for (backup_first, target_id on a warned restart, a raw text body), and the
+  // API lets anything set them. Rebuilding threw those away on the first save.
+  let storedArgs = $state({});
+
   function openCreate() {
     editingId = null;
     form = blank();
+    storedArgs = {};
     showCreate = true;
   }
 
   // Pre-fill the form from an existing schedule for editing.
   function openEdit(s) {
     editingId = s.id;
+    storedArgs = { ...(s.args || {}) };
     form = {
       name: s.name,
       scope: s.server_id ? "server" : s.realm_id ? "realm" : "global",
@@ -105,7 +113,10 @@
       action: form.action,
       server_id: form.scope === "server" ? form.server_id : "",
       realm_id: form.scope === "realm" ? form.realm_id : "",
-      args: {},
+      // Keep what was already there. The fields below overwrite what this editor
+      // manages; anything else the schedule carries is none of its business, and
+      // dropping it would quietly change what the schedule does.
+      args: { ...storedArgs },
     };
     // Only include relevant args per action.
     if (form.action === "backup") payload.args.target_id = form.args.target_id;

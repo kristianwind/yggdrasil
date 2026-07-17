@@ -25,7 +25,7 @@
       realm_id: "",
       cron_expr: "0 4 * * *",
       action: "restart",
-      args: { skip_if_players: "true", target_id: "", command: "", template_id: "", minutes: "5", seconds: "30" },
+      args: { skip_if_players: "true", warn: "true", target_id: "", command: "", template_id: "", minutes: "5", seconds: "30" },
     };
   }
 
@@ -119,6 +119,7 @@
     }
     if (form.action === "restart" || form.action === "update")
       payload.args.skip_if_players = form.args.skip_if_players;
+    if (form.action === "restart") payload.args.warn = form.args.warn;
     try {
       if (editingId) {
         await api.put(`/schedules/${editingId}`, payload);
@@ -365,6 +366,18 @@
           />
           Skip if players are online
         </label>
+        {#if form.action === "restart"}
+          <label class="flex items-center gap-2 text-sm"
+            title="Broadcast the rune's in-game countdown before restarting, then restart when it runs out. Games whose rune declares no countdown restart immediately.">
+            <input
+              type="checkbox"
+              class="accent-accent2 w-4 h-4"
+              checked={form.args.warn === "true"}
+              onchange={(e) => (form.args.warn = e.target.checked ? "true" : "false")}
+            />
+            Warn players with the in-game countdown first
+          </label>
+        {/if}
       {/if}
 
       <div class="flex gap-2 pt-2">

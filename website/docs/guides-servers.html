@@ -338,6 +338,16 @@ file</strong>; binaries and anything over 256 KB are skipped.</p>
 <p><strong>Notes</strong> live at the top of each server page — free text shared with the whole admin
 team, for what the server is for, event schedules, gotchas. Up to 8000 characters, and
 editing needs <code>server.control</code>.</p>
+<p>Tick <strong>Markdown</strong> while editing and the note renders instead: headings, lists, bold,
+links, code, tables. It&rsquo;s stored per server and <strong>off by default</strong>, so an existing note
+keeps reading exactly as it does now and nobody&rsquo;s asterisks quietly turn into bullets.
+Untick it and you get the plain text back, unchanged — the note itself is never rewritten,
+only how it&rsquo;s displayed.</p>
+<p>Markdown notes are rendered by the panel, not the browser, and raw HTML in a note is
+<strong>dropped rather than shown</strong>: a <code>&lt;script&gt;</code> becomes nothing, and a link whose target is
+<code>javascript:</code> loses that target. That&rsquo;s deliberate rather than incidental. A note is writable by anyone
+with <code>server.control</code> and read by admins, so it crosses a privilege boundary — the
+rendering has to be safe by construction, not by whoever happens to be typing.</p>
 <p><strong>Tags</strong> are comma-separated labels set under <strong>Settings</strong> on the server page
 (&ldquo;survival, event, staging&rdquo;). They&rsquo;re normalized to lowercase, deduplicated, and capped
 at 20 tags of 30 characters. Tagged servers show their tags as chips on the Servers

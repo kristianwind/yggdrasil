@@ -54,21 +54,27 @@ type serverRow struct {
 	Autostart      bool              `json:"autostart"`     // start on panel/host boot
 	StatusPublic   bool              `json:"status_public"` // listed on the public /status page (opt-in)
 	Subdomain      string            `json:"subdomain,omitempty"`
-	Perms          []string          `json:"perms"`                 // caller's effective permissions on this server
-	HostMountsJSON string            `json:"-"`                     // raw servers.host_mounts (admin host binds)
-	HostMounts     []hostMount       `json:"host_mounts,omitempty"` // populated on single GET for admins only
-	WipeSupported  bool              `json:"wipe_supported"`        // rune declares a wipe: block (single GET)
-	RestartWarn    bool              `json:"restart_warn"`          // rune declares restart warnings (single GET)
-	Watchdog       bool              `json:"watchdog"`              // auto-heal enabled for this server
-	WatchdogSup    bool              `json:"watchdog_supported"`    // rune has a query the watchdog can health-check (single GET)
-	PlayersSup     bool              `json:"players_supported"`     // rune declares a players: block (Players tab; single GET)
-	AdminLogSup    bool              `json:"admin_log_supported"`   // rune declares an admin_log: block (Activity tab; single GET)
+	Perms          []string          `json:"perms"`                  // caller's effective permissions on this server
+	HostMountsJSON string            `json:"-"`                      // raw servers.host_mounts (admin host binds)
+	HostMounts     []hostMount       `json:"host_mounts,omitempty"`  // populated on single GET for admins only
+	WipeSupported  bool              `json:"wipe_supported"`         // rune declares a wipe: block (single GET)
+	RestartWarn    bool              `json:"restart_warn"`           // rune declares restart warnings (single GET)
+	Watchdog       bool              `json:"watchdog"`               // auto-heal enabled for this server
+	WatchdogSup    bool              `json:"watchdog_supported"`     // rune has a query the watchdog can health-check (single GET)
+	PlayersSup     bool              `json:"players_supported"`      // rune declares a players: block (Players tab; single GET)
+	AdminLogSup    bool              `json:"admin_log_supported"`    // rune declares an admin_log: block (Activity tab; single GET)
 	ConfigFiles    []string          `json:"config_files,omitempty"` // rune's config_files: the files worth editing (Files tab shortcuts; single GET)
-	AIEnabled      bool              `json:"ai_enabled"`            // advisory AI features are on (digest button; single GET)
-	CPUAlarmPct    int               `json:"cpu_alarm_pct"`         // alert when CPU% sustained at/above this (0 = off)
-	MemAlarmMB     int               `json:"mem_alarm_mb"`          // alert when memory MB sustained at/above this (0 = off)
-	DiskAlarmMB    int               `json:"disk_alarm_mb"`         // alert when the data dir grows to/above this many MB (0 = off)
-	Notes          string            `json:"notes"`                 // free-text admin notes (single GET)
+	AIEnabled      bool              `json:"ai_enabled"`             // advisory AI features are on (digest button; single GET)
+	CPUAlarmPct    int               `json:"cpu_alarm_pct"`          // alert when CPU% sustained at/above this (0 = off)
+	MemAlarmMB     int               `json:"mem_alarm_mb"`           // alert when memory MB sustained at/above this (0 = off)
+	DiskAlarmMB    int               `json:"disk_alarm_mb"`          // alert when the data dir grows to/above this many MB (0 = off)
+	Notes          string            `json:"notes"`                  // free-text admin notes (single GET)
+	NotesMarkdown  bool              `json:"notes_markdown"`         // render the note as markdown rather than plain text
+	// NotesHTML is the note rendered server-side, present only when NotesMarkdown
+	// is on. The frontend injects it, so it is produced by a renderer that drops
+	// raw HTML and empties dangerous URLs — see notes_render.go. Never build this
+	// anywhere else.
+	NotesHTML string `json:"notes_html,omitempty"` // single GET
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0), COALESCE(tags,'')"
@@ -194,9 +200,17 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	// Single GET also returns the current variable values + resource caps so the
 	// edit form can be pre-filled.
 	var envJSON string
+	var notesMD int
 	s.db.QueryRowContext(r.Context(),
-		"SELECT env_json, COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0), COALESCE(notes,'') FROM servers WHERE id=?", id).
-		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB, &srv.Notes)
+		"SELECT env_json, COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0), COALESCE(notes,''), COALESCE(notes_markdown,0) FROM servers WHERE id=?", id).
+		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB, &srv.Notes, &notesMD)
+	srv.NotesMarkdown = notesMD == 1
+	// Rendered here, not in the browser: the frontend carries no markdown library
+	// (and no runtime dependencies at all), and the escaping is the security
+	// boundary — it belongs where it can be tested. See notes_render.go.
+	if srv.NotesMarkdown {
+		srv.NotesHTML = renderNotes(srv.Notes)
+	}
 	srv.Env = map[string]string{}
 	json.Unmarshal([]byte(envJSON), &srv.Env)
 	// Mask ALL secret env vars (RCON password + password-typed vars) so they're
@@ -397,20 +411,21 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		// IDs in load order). The web UI sends mods inside env, but API clients
 		// naturally reach for a top-level "mods" — accept both so it can't silently
 		// no-op.
-		Mods         *string      `json:"mods"`
-		CPUPercent   *float64     `json:"cpu_percent"`
-		MemoryMB     *int64       `json:"memory_mb"`
-		BMServerID   *string      `json:"bm_server_id"`
-		AutoForward  *bool        `json:"auto_forward"`
-		Autostart    *bool        `json:"autostart"`
-		StatusPublic *bool        `json:"status_public"`
-		CPUAlarmPct  *int         `json:"cpu_alarm_pct"`
-		MemAlarmMB   *int         `json:"mem_alarm_mb"`
-		DiskAlarmMB  *int         `json:"disk_alarm_mb"`
-		Notes        *string      `json:"notes"`
-		Tags         *[]string    `json:"tags"`
-		Subdomain    *string      `json:"subdomain"`
-		HostMounts   *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
+		Mods          *string      `json:"mods"`
+		CPUPercent    *float64     `json:"cpu_percent"`
+		MemoryMB      *int64       `json:"memory_mb"`
+		BMServerID    *string      `json:"bm_server_id"`
+		AutoForward   *bool        `json:"auto_forward"`
+		Autostart     *bool        `json:"autostart"`
+		StatusPublic  *bool        `json:"status_public"`
+		CPUAlarmPct   *int         `json:"cpu_alarm_pct"`
+		MemAlarmMB    *int         `json:"mem_alarm_mb"`
+		DiskAlarmMB   *int         `json:"disk_alarm_mb"`
+		Notes         *string      `json:"notes"`
+		NotesMarkdown *bool        `json:"notes_markdown"`
+		Tags          *[]string    `json:"tags"`
+		Subdomain     *string      `json:"subdomain"`
+		HostMounts    *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -500,6 +515,9 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 			v = 0
 		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET disk_alarm_mb=? WHERE id=?", v, id)
+	}
+	if req.NotesMarkdown != nil {
+		s.db.ExecContext(r.Context(), "UPDATE servers SET notes_markdown=? WHERE id=?", boolInt(*req.NotesMarkdown), id)
 	}
 	if req.Notes != nil {
 		notes := *req.Notes

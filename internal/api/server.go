@@ -30,13 +30,17 @@ type Server struct {
 	webFS   fs.FS
 	install *progressHub  // live install/build output, keyed by server id
 	osUpd   osUpdateCache // host OS update status, refreshed on a TTL
-	cipher  *crypto.Cipher
-	sched   *schedulerState
-	viol    *violationWatcher
-	wd      *watchdogState // auto-heal: per-server query health streaks + cooldowns
-	startWD *startState    // start-failure detection: per-server failed-start streaks
-	alarms  *alarmState    // per-server CPU/memory threshold alarms
-	version string         // build version (set via SetVersion)
+
+	pubCount   *publicCount // cached public install count (unauthenticated endpoint)
+	pubCountAt time.Time
+	pubCountMu sync.Mutex
+	cipher     *crypto.Cipher
+	sched      *schedulerState
+	viol       *violationWatcher
+	wd         *watchdogState // auto-heal: per-server query health streaks + cooldowns
+	startWD    *startState    // start-failure detection: per-server failed-start streaks
+	alarms     *alarmState    // per-server CPU/memory threshold alarms
+	version    string         // build version (set via SetVersion)
 
 	extIP   string // cached external IP (detectPublicAddr)
 	extIPAt time.Time
@@ -159,6 +163,8 @@ func (s *Server) buildRouter() *chi.Mux {
 	r.Get("/status.js", s.handleStatusPageJS)
 	// Beacon receiver (public; 404s unless this instance is the collector).
 	r.Post("/api/beacon", s.handleBeaconPing)
+	// Public install count for the website (404s unless a collector opted in).
+	r.Get("/api/beacon/count", s.handlePublicBeaconCount)
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {

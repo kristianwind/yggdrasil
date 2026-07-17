@@ -317,6 +317,12 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 <td>none</td>
 <td>Receive an install ping; 404 unless this instance is the collector</td>
 </tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/beacon/count</code></td>
+<td>none</td>
+<td>Installs seen in the last 30 days; 404 unless the collector opted into publishing. <code>count</code> is <code>null</code> below the threshold — &ldquo;not saying&rdquo;, not zero</td>
+</tr>
 </tbody>
 </table>
 <h3 id="session-and-account">Session and account</h3>

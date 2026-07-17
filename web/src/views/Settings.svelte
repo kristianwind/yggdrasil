@@ -539,10 +539,19 @@
       // Don't send receiver_enabled — the collector role is managed out-of-band, so
       // saving client settings here must never flip it. The backend leaves any field
       // we omit unchanged.
-      beacon = await api.put("/settings/beacon", {
+      const body = {
         enabled: !!beacon.enabled,
         url: beacon.url || "",
-      });
+      };
+      // The publish settings only exist on a collector, and only send when they're
+      // on screen — on every other instance those fields aren't rendered and would
+      // post undefined.
+      if (beacon.receiver_enabled) {
+        body.public_count_enabled = !!beacon.public_count_enabled;
+        const min = parseInt(beacon.public_count_min, 10);
+        if (!isNaN(min)) body.public_count_min = min;
+      }
+      beacon = await api.put("/settings/beacon", body);
       toast("Beacon settings saved", "success");
       if (beacon.receiver_enabled) loadBeaconStats();
     } catch (e) {
@@ -1037,6 +1046,42 @@
           </div>
         {/if}
       {/if}
+
+      <!-- Publishing the count is a second, separate decision: receiving pings
+           privately and putting a number on a public page are not the same thing,
+           so opting into one must not opt you into the other. -->
+      <div class="mt-4 pt-3 border-t border-border">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" bind:checked={beacon.public_count_enabled} />
+          Publish the count at <code class="text-xs">/api/beacon/count</code>
+        </label>
+        <p class="text-xs text-muted mt-1">
+          Unauthenticated, cached 60s. Reports installs seen in the last 30 days — not a running total,
+          which would only ever climb.
+        </p>
+        {#if beacon.public_count_enabled}
+          <div class="mt-3">
+            <label class="label" for="beacon-count-min">Withhold below</label>
+            <input
+              id="beacon-count-min"
+              class="input w-32"
+              type="number"
+              min="1"
+              bind:value={beacon.public_count_min}
+            />
+            <p class="text-xs text-muted mt-1">
+              Under this many, the endpoint answers <code>null</code> instead of a number. A count can
+              fall for reasons that aren't real — a collector outage, pings that quietly stop arriving —
+              and a small number published as fact is worse than no number.
+              {#if beaconStats && beaconStats.active_30d < (beacon.public_count_min || 0)}
+                <span class="block mt-1 text-warn">
+                  Currently {beaconStats.active_30d} active — below the floor, so nothing is published yet.
+                </span>
+              {/if}
+            </p>
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 

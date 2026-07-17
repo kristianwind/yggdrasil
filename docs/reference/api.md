@@ -250,6 +250,7 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 | `GET` | `/status` | none | Public status page HTML; 404 when the status page is off |
 | `GET` | `/status.js` | none | The status page's script, served same-origin for the CSP |
 | `POST` | `/api/beacon` | none | Receive an install ping; 404 unless this instance is the collector |
+| `GET` | `/api/beacon/count` | none | Installs seen in the last 30 days; 404 unless the collector opted into publishing. `count` is `null` below the threshold — "not saying", not zero |
 
 ### Session and account
 

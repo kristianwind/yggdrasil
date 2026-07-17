@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -214,14 +215,16 @@ func (s *Server) handleBeaconStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetBeaconSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	jsonOK(w, map[string]any{
-		"enabled":          s.getSetting(ctx, "beacon_enabled") == "1",
-		"url":              s.beaconURL(),
-		"instance_id":      s.beaconInstanceID(),
-		"version":          s.version,
-		"receiver_enabled": s.beaconReceiverEnabled(ctx),
-		"last_sent":        s.getSetting(ctx, "beacon_last_day"), // YYYY-MM-DD of the last successful ping ("" = never)
-		"last_error":       s.getSetting(ctx, "beacon_last_error"),
-		"last_error_at":    s.getSetting(ctx, "beacon_last_error_at"),
+		"enabled":              s.getSetting(ctx, "beacon_enabled") == "1",
+		"url":                  s.beaconURL(),
+		"instance_id":          s.beaconInstanceID(),
+		"version":              s.version,
+		"receiver_enabled":     s.beaconReceiverEnabled(ctx),
+		"last_sent":            s.getSetting(ctx, "beacon_last_day"), // YYYY-MM-DD of the last successful ping ("" = never)
+		"public_count_enabled": s.publicCountEnabled(ctx),
+		"public_count_min":     s.publicCountMin(ctx),
+		"last_error":           s.getSetting(ctx, "beacon_last_error"),
+		"last_error_at":        s.getSetting(ctx, "beacon_last_error_at"),
 	})
 }
 
@@ -273,6 +276,8 @@ func (s *Server) handleSetBeaconSettings(w http.ResponseWriter, r *http.Request)
 		Enabled         *bool   `json:"enabled"`
 		URL             *string `json:"url"`
 		ReceiverEnabled *bool   `json:"receiver_enabled"`
+		PublicCount     *bool   `json:"public_count_enabled"`
+		PublicCountMin  *int    `json:"public_count_min"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -297,10 +302,106 @@ func (s *Server) handleSetBeaconSettings(w http.ResponseWriter, r *http.Request)
 	}
 	if req.ReceiverEnabled != nil {
 		s.setSetting(ctx, "beacon_receiver_enabled", boolStr(*req.ReceiverEnabled))
+		s.invalidatePublicCount()
+	}
+	if req.PublicCount != nil {
+		s.setSetting(ctx, "beacon_public_count_enabled", boolStr(*req.PublicCount))
+		s.invalidatePublicCount()
+	}
+	if req.PublicCountMin != nil {
+		n := *req.PublicCountMin
+		if n < 1 {
+			n = defaultPublicCountMin // a floor of zero would publish any number, which is the thing it exists to prevent
+		}
+		s.setSetting(ctx, "beacon_public_count_min", strconv.Itoa(n))
+		s.invalidatePublicCount()
 	}
 	s.auditLog(r, "settings.beacon", "beacon", map[string]any{
 		"enabled":          req.Enabled != nil && *req.Enabled,
 		"receiver_enabled": req.ReceiverEnabled != nil && *req.ReceiverEnabled,
 	})
 	s.handleGetBeaconSettings(w, r)
+}
+
+// --- Public install count ---
+
+const (
+	publicCountTTL        = 60 * time.Second
+	defaultPublicCountMin = 25
+)
+
+type publicCount struct {
+	// Count is null rather than a number when there isn't enough to say. The
+	// endpoint existing and having nothing to report is a different thing from the
+	// endpoint being broken, and a caller can tell them apart.
+	Count      *int `json:"count"`
+	WindowDays int  `json:"window_days"`
+}
+
+func (s *Server) publicCountEnabled(ctx context.Context) bool {
+	return s.getSetting(ctx, "beacon_public_count_enabled") == "1"
+}
+
+func (s *Server) publicCountMin(ctx context.Context) int {
+	if n, err := strconv.Atoi(s.getSetting(ctx, "beacon_public_count_min")); err == nil && n > 0 {
+		return n
+	}
+	return defaultPublicCountMin
+}
+
+// handlePublicBeaconCount publishes how many panels have pinged recently, for the
+// website to show. Unauthenticated, and only on a collector that opts in.
+//
+// It reports the 30-day active count, not the all-time total: total includes
+// panels installed once and thrown away, so it would drift upward forever and
+// describe nothing real.
+//
+// The threshold is not modesty. A count that falls — a bad release, a collector
+// that lost rows, a DNS change that quietly stops the pings — would otherwise be
+// published as fact. Below the floor the answer is null, so the number can only
+// ever be one worth standing behind.
+func (s *Server) handlePublicBeaconCount(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	// 404 when this instance isn't a collector, or hasn't opted in — same as the
+	// receiver itself, so an endpoint nobody enabled isn't advertised.
+	if !s.beaconReceiverEnabled(ctx) || !s.publicCountEnabled(ctx) {
+		http.NotFound(w, r)
+		return
+	}
+
+	s.pubCountMu.Lock()
+	if s.pubCount != nil && time.Since(s.pubCountAt) < publicCountTTL {
+		cached := *s.pubCount
+		s.pubCountMu.Unlock()
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		jsonOK(w, cached)
+		return
+	}
+	s.pubCountMu.Unlock()
+
+	var active int
+	s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM beacon_pings WHERE last_seen >= datetime('now','-30 days')").Scan(&active)
+
+	out := publicCount{WindowDays: 30}
+	if active >= s.publicCountMin(ctx) {
+		n := active
+		out.Count = &n
+	}
+
+	s.pubCountMu.Lock()
+	s.pubCount, s.pubCountAt = &out, time.Now()
+	s.pubCountMu.Unlock()
+
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	jsonOK(w, out)
+}
+
+// invalidatePublicCount drops the cached count so a settings change lands now
+// rather than up to a minute later. Publishing is a deliberate act; turning it
+// off should take effect the moment you say so.
+func (s *Server) invalidatePublicCount() {
+	s.pubCountMu.Lock()
+	s.pubCount = nil
+	s.pubCountMu.Unlock()
 }

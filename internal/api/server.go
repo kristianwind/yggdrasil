@@ -28,7 +28,8 @@ type Server struct {
 	docker  *docker.Client
 	router  *chi.Mux
 	webFS   fs.FS
-	install *progressHub // live install/build output, keyed by server id
+	install *progressHub  // live install/build output, keyed by server id
+	osUpd   osUpdateCache // host OS update status, refreshed on a TTL
 	cipher  *crypto.Cipher
 	sched   *schedulerState
 	viol    *violationWatcher
@@ -370,6 +371,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// System info
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
+		r.Get("/api/system/os-updates", s.requireAdmin(s.handleOSUpdates))
 		r.Get("/api/system/backup-coverage", s.requireAdmin(s.handleBackupCoverage))
 		r.Post("/api/system/update", s.requireAdmin(s.handleSystemUpdate))
 		r.Post("/api/system/check-update", s.requireAdmin(s.handleCheckUpdate))

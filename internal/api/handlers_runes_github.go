@@ -45,8 +45,15 @@ type ghRune struct {
 	Name        string `json:"name,omitempty"`
 	Category    string `json:"category,omitempty"`
 	Description string `json:"description,omitempty"`
+	Version     int    `json:"version,omitempty"` // the repo copy's version
 	Installed   bool   `json:"installed"`
-	ParseError  string `json:"parse_error,omitempty"`
+	// InstalledVersion is the version of the local copy, when there is one. Runes
+	// carry no record of where they came from, so this is matched by id against
+	// the repo being listed — which is right for the community catalog, and means
+	// a rune from somewhere else simply reports nothing rather than a wrong answer.
+	InstalledVersion int    `json:"installed_version,omitempty"`
+	Builtin          bool   `json:"builtin,omitempty"` // ships in the binary; updates with the panel, not from here
+	ParseError       string `json:"parse_error,omitempty"`
 }
 
 // ghRunesCache memoizes the (relatively expensive, rate-limited) GitHub listing +
@@ -118,20 +125,30 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		ghRunesMu.Unlock()
 	}
 
-	// Flag installed runes (by id) — fresh each call, not from cache.
-	installed := map[string]bool{}
-	if rows, err := s.db.QueryContext(r.Context(), "SELECT id FROM gameskills"); err == nil {
+	// Match against what's installed — read fresh each call, never from the cache,
+	// so an install or a delete shows up immediately.
+	type local struct {
+		version int
+		builtin bool
+	}
+	installed := map[string]local{}
+	if rows, err := s.db.QueryContext(r.Context(), "SELECT id, version, builtin FROM gameskills"); err == nil {
 		for rows.Next() {
 			var id string
-			if rows.Scan(&id) == nil {
-				installed[id] = true
+			var l local
+			var b int
+			if rows.Scan(&id, &l.version, &b) == nil {
+				l.builtin = b == 1
+				installed[id] = l
 			}
 		}
 		rows.Close()
 	}
 	out := make([]ghRune, len(runes))
 	for i, g := range runes {
-		g.Installed = g.ID != "" && installed[g.ID]
+		if l, ok := installed[g.ID]; ok && g.ID != "" {
+			g.Installed, g.InstalledVersion, g.Builtin = true, l.version, l.builtin
+		}
 		out[i] = g
 	}
 
@@ -226,7 +243,7 @@ func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, er
 				g.ParseError = err.Error()
 				return
 			}
-			g.ID, g.Name, g.Category, g.Description = gs.ID, gs.Name, gs.Category, gs.Description
+			g.ID, g.Name, g.Category, g.Description, g.Version = gs.ID, gs.Name, gs.Category, gs.Description, gs.Version
 		}(&candidates[i])
 	}
 	wg.Wait()

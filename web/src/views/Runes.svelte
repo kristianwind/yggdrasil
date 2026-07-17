@@ -29,7 +29,53 @@
       toast(e.message, "error");
     }
   }
-  onMount(load);
+
+  // Which installed runes the community catalog has moved past. A rune's version
+  // is the only signal that a local copy has drifted from its source, and nothing
+  // compared the two — you had to open Browse GitHub and check by eye.
+  //
+  // Admin-only, like the rest of rune management. Failure is quiet on purpose:
+  // GitHub being unreachable shouldn't put an error over a page that otherwise
+  // works, and the endpoint returns a note rather than pretending all is current.
+  let runeUpdates = $state({});
+  let updatingRune = $state(null);
+  async function loadRuneUpdates() {
+    if (!isAdmin) return;
+    try {
+      const r = await api.get("/gameskills/updates");
+      runeUpdates = Object.fromEntries((r.updates ?? []).map((u) => [u.id, u]));
+    } catch {
+      runeUpdates = {};
+    }
+  }
+
+  async function updateRune(u) {
+    if (
+      !confirm(
+        `Update ${u.name} from v${u.installed_version} to v${u.available_version}?\n\n` +
+          `This replaces the rune definition. Existing servers keep their own settings, ` +
+          `but they are built from this rune — so the new version applies the next time one ` +
+          `is started, restarted or reinstalled.`,
+      )
+    )
+      return;
+    updatingRune = u.id;
+    try {
+      await api.post("/gameskills/install-from-github", { download_url: u.download_url });
+      toast(`${u.name} updated to v${u.available_version}`, "success");
+      await load();
+      await loadRuneUpdates();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      updatingRune = null;
+    }
+  }
+
+  onMount(async () => {
+    await load();
+    loadRuneUpdates();
+  });
 
   async function upload(e) {
     const file = e.target.files?.[0];
@@ -241,7 +287,17 @@
             </td>
             <td class="px-4 py-2 text-muted">{r.category}</td>
             <td class="px-4 py-2 text-muted font-mono text-xs hidden sm:table-cell">{r.id}</td>
-            <td class="px-4 py-2 text-muted">v{r.version}</td>
+            <td class="px-4 py-2 text-muted whitespace-nowrap">
+              v{r.version}
+              {#if runeUpdates[r.id]}
+                <button class="badge bg-warn/20 text-warn ml-1 hover:bg-warn/30"
+                  disabled={updatingRune === r.id}
+                  onclick={() => updateRune(runeUpdates[r.id])}
+                  title={`The catalog has v${runeUpdates[r.id].available_version}. Click to update this rune.`}>
+                  {updatingRune === r.id ? "updating…" : `↑ v${runeUpdates[r.id].available_version}`}
+                </button>
+              {/if}
+            </td>
             <td class="px-4 py-2 text-right whitespace-nowrap">
               {#if r.creatable}
                 <button class="btn-primary px-2 py-1" onclick={() => createServer(r)}
@@ -270,7 +326,17 @@
             <span class="badge bg-border text-muted">built-in</span>
           {/if}
         </div>
-        <div class="text-xs text-muted mt-1">{r.category} · v{r.version}</div>
+        <div class="text-xs text-muted mt-1">
+          {r.category} · v{r.version}
+          {#if runeUpdates[r.id]}
+            <button class="badge bg-warn/20 text-warn ml-1 hover:bg-warn/30"
+              disabled={updatingRune === r.id}
+              onclick={() => updateRune(runeUpdates[r.id])}
+              title={`The catalog has v${runeUpdates[r.id].available_version}. Click to update this rune.`}>
+              {updatingRune === r.id ? "updating…" : `↑ v${runeUpdates[r.id].available_version}`}
+            </button>
+          {/if}
+        </div>
         <div class="text-xs text-muted font-mono mt-1">{r.id}</div>
         {#if r.creatable || (isAdmin)}
           <div class="flex gap-2 mt-3">

@@ -27,6 +27,29 @@ field on a server. In the panel it's a rune.
 Runes are versioned by an integer `version` field, shown in the list. It's metadata for
 you, not a dependency system.
 
+## Keeping runes up to date
+
+A rune declares a `version`. It's the rune author's number, bumped when the file changes — and for
+a rune you installed from the catalog it's the only signal that your copy has drifted from its
+source.
+
+The **Runes** page compares the two. A rune the catalog has moved past shows a badge next to its
+version — `v1 ↑ v2` — and clicking it re-imports the newer file. Admin-only, like everything else
+that touches a rune.
+
+Built-in runes never show one: they're embedded in the panel binary and re-seeded on every boot, so
+they move when the panel does.
+
+The check matches by rune **id** against the community catalog. Runes carry no record of where they
+were installed from, so a rune you wrote yourself, or took from another repo, simply isn't reported
+rather than being compared against something it isn't. If GitHub can't be reached the page stays
+quiet rather than claiming everything is current.
+
+**What updating a rune changes.** It replaces the definition, not your servers. Existing servers keep
+their own names, variables, ports and data. But a server is *built* from its rune, so the new
+definition — image, startup command, ports — applies the next time that server is started, restarted
+or reinstalled. If a rune changed its image, that's when you'll get it.
+
 ## Built-in runes
 
 Five runes are embedded in the Yggdrasil binary and seeded into the catalog on every

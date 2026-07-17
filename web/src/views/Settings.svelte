@@ -976,6 +976,20 @@
   {#if beacon.enabled && beacon.last_sent}
     <div class="text-xs text-muted">Last ping: {beacon.last_sent}</div>
   {/if}
+  {#if beacon.enabled && beacon.last_error}
+    <!-- A beacon that can't reach its collector used to fail in total silence and
+         retry forever. Say so where the switch is. -->
+    <div class="rounded-lg bg-warn/10 border border-warn/35 p-3 text-xs">
+      <div class="text-warn font-medium mb-1">The last ping didn't land</div>
+      <div class="text-muted font-mono break-all">{beacon.last_error}</div>
+      <div class="text-muted mt-1">
+        {beacon.last_sent
+          ? `Nothing has been counted since ${beacon.last_sent}.`
+          : "This panel has never been counted."}
+        It keeps retrying every 30 minutes. <b>Test</b> checks a URL before you commit to it.
+      </div>
+    </div>
+  {/if}
   <div class="rounded-lg bg-panel2/50 border border-border p-3 text-xs font-mono break-all">
     <div class="text-muted mb-1">Exactly what is sent — nothing more:</div>
     {'{'} "instance_id": "{beacon.instance_id}", "version": "{beacon.version}" {'}'}

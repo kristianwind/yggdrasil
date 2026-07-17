@@ -77,8 +77,8 @@ var pages = []Page{
 
 	// Deep reference: integrators and rune authors are already on GitHub, and
 	// these move with the code. Flip OnSite to publish them here.
-	{Src: "reference/api.md", Section: "Reference", Nav: "HTTP API", Blurb: "All 165 routes, auth, and permission gates.", OnSite: false},
-	{Src: "reference/rune-schema.md", Section: "Reference", Nav: "Rune schema", Blurb: "The YAML format for teaching Yggdrasil a new game.", OnSite: false},
+	{Src: "reference/api.md", Section: "Reference", Nav: "HTTP API", Blurb: "Every route, its auth, and its permission gate.", OnSite: true},
+	{Src: "reference/rune-schema.md", Section: "Reference", Nav: "Rune schema", Blurb: "The YAML format for teaching Yggdrasil a new game.", OnSite: true},
 }
 
 // sectionOrder fixes the sidebar order; a map alone would render randomly.
@@ -213,7 +213,10 @@ func renderPage(md goldmark.Markdown, p Page) (built, error) {
 	if err != nil {
 		return built{}, err
 	}
-	doc := md.Parser().Parse(text.NewReader(raw))
+	// Each document gets its own ID table, so the "-1" suffix for a repeated
+	// heading is scoped to the page — same as GitHub.
+	pctx := parser.NewContext(parser.WithIDs(newGithubIDs()))
+	doc := md.Parser().Parse(text.NewReader(raw), parser.WithContext(pctx))
 
 	b := built{page: p}
 	if err := rewrite(doc, raw, p, &b); err != nil {

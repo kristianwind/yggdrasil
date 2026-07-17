@@ -25,7 +25,7 @@
   </div>
 </header>
 <div class="shell">
-<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html" class="on">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html" class="on">Configuration</a><a href="reference-api.html">HTTP API</a><a href="reference-rune-schema.html">Rune schema</a></nav>
 <main>
   <div class="search">
   <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
@@ -122,7 +122,7 @@ is written <code>chmod 640</code>, owned <code>root:yggdrasil</code>, because it
 </tr>
 </tbody>
 </table>
-<h2 id="authsecret-key"><code>auth.secret_key</code></h2>
+<h2 id="authsecret_key"><code>auth.secret_key</code></h2>
 <p>This one key protects everything. It signs session tokens and derives the AES-GCM key that encrypts
 stored secrets — UniFi and Nginx Proxy Manager credentials, Cloudflare and BattleMetrics tokens, the
 Discord webhook, and backup-target credentials.</p>
@@ -156,7 +156,7 @@ noticeably less scanning, and every server still gets a unique one. The rune&rsq
 <p>The exception is Steam games, which publish 1:1 (host port == container port) because the game binds,
 publishes, and advertises the same number to the Steam master.</p>
 <p>Steam games publish 1:1 (host port == container port) so the game binds, publishes, and advertises
-the same number to the Steam master. See the <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md">rune schema</a> for how ports are
+the same number to the Steam master. See the <a href="reference-rune-schema.html">rune schema</a> for how ports are
 declared and injected.</p>
 <p>Whatever range you choose has to be reachable from the internet for players to connect — see
 <a href="guides-networking.html">Networking</a>.</p>
@@ -236,7 +236,7 @@ what the panel&rsquo;s own <a href="guides-backups-and-schedules.html">backup sy
 <ul>
 <li><a href="getting-started.html">Getting started</a> — installing for the first time</li>
 <li><a href="guides-networking.html">Networking</a> — making servers reachable</li>
-<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a> — the HTTP API</li>
+<li><a href="reference-api.html">API reference</a> — the HTTP API</li>
 </ul>
 
     <div class="editrow">
@@ -244,7 +244,7 @@ what the panel&rsquo;s own <a href="guides-backups-and-schedules.html">backup sy
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#full-file">Full file</a><a class="t2" href="#keys">Keys</a><a class="t2" href="#authsecret-key">auth.secret_key</a><a class="t2" href="#adminusername--adminpassword">admin.username / admin.password</a><a class="t2" href="#ports">ports</a><a class="t2" href="#environment-variables">Environment variables</a><a class="t2" href="#paths">Paths</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#full-file">Full file</a><a class="t2" href="#keys">Keys</a><a class="t2" href="#authsecret_key">auth.secret_key</a><a class="t2" href="#adminusername--adminpassword">admin.username / admin.password</a><a class="t2" href="#ports">ports</a><a class="t2" href="#environment-variables">Environment variables</a><a class="t2" href="#paths">Paths</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

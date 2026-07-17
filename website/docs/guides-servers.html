@@ -25,7 +25,7 @@
   </div>
 </header>
 <div class="shell">
-<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html" class="on">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" class="ext" target="_blank" rel="noopener">HTTP API <span class="gh">GitHub&nbsp;↗</span></a><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" class="ext" target="_blank" rel="noopener">Rune schema <span class="gh">GitHub&nbsp;↗</span></a></nav>
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html" class="on">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="reference-api.html">HTTP API</a><a href="reference-rune-schema.html">Rune schema</a></nav>
 <main>
   <div class="search">
   <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
@@ -304,7 +304,7 @@ for runes that declare an enabled <code>rcon</code> block; it needs <code>server
 also powers the <strong>Players</strong> tab — the live roster, kick, broadcast, and lock — for runes
 that declare a <code>players</code> block. Yggdrasil dials the server&rsquo;s allocated <code>rcon</code> port, or
 the <code>game</code> port for games where the protocol shares it (BattlEye).</p>
-<p>See <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">the API reference</a> for request shapes.</p>
+<p>See <a href="reference-api.html">the API reference</a> for request shapes.</p>
 <h2 id="files">Files</h2>
 <p>The <strong>Files</strong> tab is a full file manager over the server&rsquo;s data directory: browse, open
 a text file in the editor, save, delete, upload, download.</p>
@@ -316,7 +316,7 @@ keeps its config four directories down. The shortcut skips the hunt.</p>
 per setting, with a raw view a click away. A file that isn&rsquo;t there yet — most are written
 by the game on first boot — says so instead of erroring.</p>
 <p>Which files appear is the rune&rsquo;s decision, via
-<a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md#config_files"><code>config_files</code></a>. A rune that names none simply
+<a href="reference-rune-schema.html#config_files"><code>config_files</code></a>. A rune that names none simply
 doesn&rsquo;t show the row.</p>
 <ul>
 <li>Drag and drop files — or a whole folder, recursively — anywhere over the listing to
@@ -356,8 +356,8 @@ installing. You only ever see selection controls for servers you actually hold
 <li><a href="guides-networking.html">Networking</a> — port forwarding, subdomains, reverse proxies</li>
 <li><a href="guides-backups-and-schedules.html">Backups and schedules</a> — backup targets, scheduled restarts and wipes</li>
 <li><a href="guides-monitoring-and-alerts.html">Monitoring and alerts</a> — notifications, resource alarms, the status page</li>
-<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md">API reference</a></li>
-<li><a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md">Rune schema</a> — the fields quoted above (<code>done_regex</code>, <code>stop_timeout</code>, <code>wipe</code>, …)</li>
+<li><a href="reference-api.html">API reference</a></li>
+<li><a href="reference-rune-schema.html">Rune schema</a> — the fields quoted above (<code>done_regex</code>, <code>stop_timeout</code>, <code>wipe</code>, …)</li>
 </ul>
 
     <div class="editrow">

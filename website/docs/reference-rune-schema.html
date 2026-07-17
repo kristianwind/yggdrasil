@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rune Schema — Yggdrasil Panel docs</title>
+<meta name="description" content="A rune is a YAML file that teaches Yggdrasil Panel how to install, run, and manage one game or app." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a href="https://discord.gg/murNphXV3" target="_blank" rel="noopener">Discord</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="reference-api.html">HTTP API</a><a href="reference-rune-schema.html" class="on">Rune schema</a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Rune Schema</h1>
+    <p>A <strong>rune</strong> is a YAML file that teaches Yggdrasil Panel how to install, run, and manage one game or
+app. This is the field-by-field reference for writing one, plus the container patterns that real
+runes use.</p>
+<h2 id="the-file">The file</h2>
+<p>Everything lives under a single top-level <code>gameskill:</code> key — <code>gameskill</code> is the code and API name
+for a rune, and this is one of the few places you meet the spelling.</p>
+<pre><code class="language-yaml">gameskill:
+  id: minecraft-java
+  name: &quot;Minecraft (Java)&quot;
+  category: &quot;Minecraft&quot;
+  docker:
+    image: &quot;eclipse-temurin:21-jre&quot;
+  startup:
+    command: &quot;java -jar server.jar nogui&quot;
+</code></pre>
+<p>That is a valid rune. Four things are required: <code>id</code>, <code>name</code>, <code>docker.image</code>, and a startup command
+(<code>startup.command</code> or <code>startup.exec</code> — unless <code>docker.keep_entrypoint</code> is set, in which case the
+image&rsquo;s own <code>CMD</code> is the command). Everything else is optional and adds a panel feature.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>string</td>
+<td><strong>Required.</strong> The rune&rsquo;s primary key. Re-uploading the same <code>id</code> replaces the rune. You cannot overwrite a built-in rune — pick a different <code>id</code>.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td><strong>Required.</strong> Display name in the Runes list.</td>
+</tr>
+<tr>
+<td><code>category</code></td>
+<td>string</td>
+<td>When you create a server without picking a realm, Yggdrasil puts it in a realm with this name, creating the realm if needed. Also shown in the Runes list.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td>Shown on the rune&rsquo;s card in <strong>Runes → Browse GitHub</strong>.</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>int</td>
+<td>Shown as <code>v&lt;n&gt;</code> in the Runes list. Bump it when you change the file.</td>
+</tr>
+<tr>
+<td><code>docker</code></td>
+<td>map</td>
+<td><strong>Required.</strong> The image and how the container is built.</td>
+</tr>
+<tr>
+<td><code>variables</code></td>
+<td>list</td>
+<td>The settings form, and the env vars/<code>{{KEY}}</code> values.</td>
+</tr>
+<tr>
+<td><code>install</code></td>
+<td>map</td>
+<td>One-time setup script.</td>
+</tr>
+<tr>
+<td><code>startup</code></td>
+<td>map</td>
+<td><strong>Required.</strong> How the server runs, stops, and reports readiness.</td>
+</tr>
+<tr>
+<td><code>ports</code></td>
+<td>list</td>
+<td>Host ports to allocate and publish.</td>
+</tr>
+<tr>
+<td><code>query</code></td>
+<td>map</td>
+<td>Player count and liveness polling.</td>
+</tr>
+<tr>
+<td><code>rcon</code></td>
+<td>map</td>
+<td>Remote console, for the console box, schedules, bans and the Players tab.</td>
+</tr>
+<tr>
+<td><code>steam</code></td>
+<td>map</td>
+<td>Marks the rune as a SteamCMD game.</td>
+</tr>
+<tr>
+<td><code>bans</code></td>
+<td>map</td>
+<td>Ban/unban console commands.</td>
+</tr>
+<tr>
+<td><code>players</code></td>
+<td>map</td>
+<td>Live Players tab: list, kick, broadcast, lock.</td>
+</tr>
+<tr>
+<td><code>admin_log</code></td>
+<td>map</td>
+<td>Parsed admin/activity feed.</td>
+</tr>
+<tr>
+<td><code>wipe</code></td>
+<td>map</td>
+<td>What &ldquo;reset the world&rdquo; deletes.</td>
+</tr>
+<tr>
+<td><code>restart</code></td>
+<td>map</td>
+<td>In-game countdown before a safe restart.</td>
+</tr>
+<tr>
+<td><code>backup</code></td>
+<td>map</td>
+<td>What goes into a backup archive.</td>
+</tr>
+<tr>
+<td><code>anticheat</code></td>
+<td>map</td>
+<td>Informational anti-cheat hints.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="templating-and-injected-values">Templating and injected values</h2>
+<p>Yggdrasil substitutes <code>{{KEY}}</code> placeholders in <code>docker.image</code>, <code>docker.user</code>, <code>install.image</code>,
+<code>install.script</code>, <code>startup.command</code>, and every element of <code>startup.exec</code>. This is plain string
+replacement — there are no conditionals, loops, or filters, and a <code>{{KEY}}</code> with no matching value
+is left in the text as-is.</p>
+<p>The values come from the server&rsquo;s variables, plus two things the panel injects:</p>
+<table>
+<thead>
+<tr>
+<th>Injected key</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SERVER_NAME</code></td>
+<td>The server&rsquo;s name as typed in the panel. Don&rsquo;t declare a variable for it.</td>
+</tr>
+<tr>
+<td><code>&lt;NAME&gt;_PORT</code></td>
+<td>The allocated host port for each declared port, name uppercased — <code>game</code> becomes <code>GAME_PORT</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>The same set is exported as real environment variables inside both the install and the runtime
+container. The runtime container additionally gets <code>PORT_&lt;name&gt;</code> (the same port, keyed by the
+declared name as written) and <code>HOME=/data</code>.</p>
+<p>The <code>bans</code>, <code>players</code>, and <code>restart</code> blocks use their own placeholders (<code>{{player}}</code>, <code>{{reason}}</code>,
+<code>{{id}}</code>, <code>{{name}}</code>, <code>{{message}}</code>). Those are filled from the action, not from variables.</p>
+<h2 id="docker"><code>docker</code></h2>
+<pre><code class="language-yaml">docker:
+  image: &quot;eclipse-temurin:{{JAVA_VERSION}}-jre&quot;
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image</code></td>
+<td>string</td>
+<td>—</td>
+<td><strong>Required.</strong> The runtime image. Templated.</td>
+</tr>
+<tr>
+<td><code>data_path</code></td>
+<td>string</td>
+<td><code>/data</code></td>
+<td>Where the server&rsquo;s persistent directory mounts inside the container.</td>
+</tr>
+<tr>
+<td><code>user</code></td>
+<td>string</td>
+<td>the panel&rsquo;s own uid:gid</td>
+<td>Overrides the runtime user. Templated.</td>
+</tr>
+<tr>
+<td><code>keep_entrypoint</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Run the image&rsquo;s own <code>ENTRYPOINT</code> instead of clearing it.</td>
+</tr>
+<tr>
+<td><code>extra_volumes</code></td>
+<td>list of strings</td>
+<td>—</td>
+<td>Extra container paths that each get their own persisted directory.</td>
+</tr>
+<tr>
+<td><code>capabilities</code></td>
+<td>list of strings</td>
+<td>—</td>
+<td>Linux capabilities to add (<code>cap_add</code>). Allowlisted.</td>
+</tr>
+<tr>
+<td><code>devices</code></td>
+<td>list of strings</td>
+<td>—</td>
+<td>Host devices to expose. Allowlisted.</td>
+</tr>
+<tr>
+<td><code>sysctls</code></td>
+<td>map</td>
+<td>—</td>
+<td>Kernel parameters set in the container&rsquo;s namespace. Allowlisted.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data_path-and-the-working-directory"><code>data_path</code> and the working directory</h3>
+<p>Yggdrasil bind-mounts the server&rsquo;s data directory into the container. Games leave <code>data_path</code>
+unset: the mount lands on <code>/data</code> and the container&rsquo;s working directory is set to <code>/data</code>, so a
+startup command like <code>./DayZServer</code> or <code>-jar server.jar</code> resolves against the server&rsquo;s files.</p>
+<p>Set <code>data_path</code> when the image stores its state somewhere else — <code>/app/data</code> for Uptime Kuma,
+<code>/var/www/html</code> for WordPress, <code>/etc/pihole</code> for Pi-hole. Setting it has a second effect: Yggdrasil
+then leaves the working directory alone, so the image&rsquo;s own <code>WORKDIR</code> applies. That matters for
+images that resolve relative paths against their <code>WORKDIR</code>, and it&rsquo;s why <code>builtin-runes/vaultwarden.yaml</code>
+sets <code>data_path: /data</code> even though <code>/data</code> is already the default — same mount, but the image keeps
+its own working directory.</p>
+<h3 id="user-and-the-etcpasswd-shim"><code>user</code> and the <code>/etc/passwd</code> shim</h3>
+<p>By default the container runs as the panel&rsquo;s uid:gid, which keeps every file the server writes
+editable from the Files tab. Set <code>user: &quot;0:0&quot;</code> for images that must start as root in order to drop
+to their own <code>PUID</code>/<code>PGID</code> (linuxserver.io images, Gitea&rsquo;s s6 init, Nginx Proxy Manager). The
+install script always runs as root regardless of this field.</p>
+<p>Running as a uid that doesn&rsquo;t exist in the image&rsquo;s <code>/etc/passwd</code> breaks any binary that calls
+<code>getpwuid()</code> — Steam-based servers segfault on the NULL result, which surfaces as a misleading
+<code>CrashReporter: not found</code>. So when a rune does <strong>not</strong> set <code>keep_entrypoint</code>, Yggdrasil mounts a
+minimal read-only <code>/etc/passwd</code> (root, the run-as user with home <code>/data</code>, and nobody) into the
+container. Runes with <code>keep_entrypoint</code> don&rsquo;t get the shim on purpose: those images run their own
+init and need their own named users (<code>git</code>, <code>www-data</code>), and overwriting <code>/etc/passwd</code> would delete
+them.</p>
+<h3 id="keep_entrypoint"><code>keep_entrypoint</code></h3>
+<p>Yggdrasil clears the image&rsquo;s <code>ENTRYPOINT</code> by default so that your startup command is the actual
+command. Without this, an image like <code>cm2network/steamcmd</code> would pass your startup command as
+arguments to its own entrypoint.</p>
+<p>Set <code>keep_entrypoint: true</code> to run an off-the-shelf image the way a plain <code>docker run</code> would. The
+startup command then becomes optional: leave it empty and the image&rsquo;s default <code>CMD</code> runs, or use
+<code>startup.exec</code> to pass arguments to the image&rsquo;s entrypoint.</p>
+<h3 id="extra_volumes"><code>extra_volumes</code></h3>
+<p>For images that insist on more than one mount. Each listed container path gets its own directory
+under the server&rsquo;s data dir, named after the path (<code>/etc/letsencrypt</code> becomes <code>_etc_letsencrypt</code>),
+created if missing.</p>
+<pre><code class="language-yaml">docker:
+  image: &quot;jc21/nginx-proxy-manager:latest&quot;
+  data_path: /data
+  extra_volumes:
+    - /etc/letsencrypt
+</code></pre>
+<p>Each target must be an absolute path with no <code>..</code>. Yggdrasil refuses targets that would shadow
+sensitive container directories: exactly <code>/</code>, <code>/etc</code>, <code>/var</code>, <code>/var/run</code>, <code>/run</code> or <code>/home</code>, and
+anything at or under <code>/usr</code>, <code>/bin</code>, <code>/sbin</code>, <code>/lib</code>, <code>/lib64</code>, <code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/boot</code> or
+<code>/root</code>. Subpaths of the exact-match denies are fine — <code>/etc/letsencrypt</code> passes, <code>/etc</code> does not.</p>
+<h3 id="capabilities-devices-sysctls"><code>capabilities</code>, <code>devices</code>, <code>sysctls</code></h3>
+<p>These three widen a container&rsquo;s blast radius, and runes are semi-trusted — they get uploaded or
+imported from GitHub. So Yggdrasil validates them against a fixed allowlist, both when the rune is
+uploaded and every time it&rsquo;s loaded to start a server. Anything outside the list is a validation
+error, not a warning.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Permitted values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>capabilities</code></td>
+<td><code>NET_ADMIN</code>, <code>NET_RAW</code>, <code>NET_BIND_SERVICE</code>, <code>SYS_NICE</code></td>
+</tr>
+<tr>
+<td><code>devices</code></td>
+<td><code>/dev/net/tun</code>, <code>/dev/dri</code>, <code>/dev/fuse</code></td>
+</tr>
+<tr>
+<td><code>sysctls</code></td>
+<td><code>net.ipv4.ip_forward</code>, <code>net.ipv6.conf.all.forwarding</code>, <code>net.ipv4.conf.all.src_valid_mark</code></td>
+</tr>
+</tbody>
+</table>
+<p>Capability names are matched case-insensitively. A device entry is <code>host[:container[:perms]]</code> — the
+container path defaults to the host path and permissions default to <code>rwm</code>; only the host part is
+checked against the allowlist.</p>
+<pre><code class="language-yaml">docker:
+  image: &quot;tailscale/tailscale:latest&quot;
+  capabilities: [&quot;NET_ADMIN&quot;]
+  devices: [&quot;/dev/net/tun&quot;]
+  sysctls:
+    net.ipv4.ip_forward: &quot;1&quot;
+</code></pre>
+<p>A rune cannot mount host paths. Host binds exist, but only an admin can add them per server, and
+they never come from rune YAML.</p>
+<h2 id="two-container-patterns">Two container patterns</h2>
+<p>Nearly every working rune is one of these two.</p>
+<p><strong>A — you own the command.</strong> Yggdrasil clears the entrypoint, runs your command as the panel user,
+and mounts <code>/etc/passwd</code>. Use it for game servers and for app images whose binary you can invoke
+directly. Files stay editable from the Files tab because the process runs as the panel&rsquo;s uid. This
+is <code>builtin-runes/uptime-kuma.yaml</code> in full:</p>
+<pre><code class="language-yaml">gameskill:
+  id: uptime-kuma
+  name: &quot;Uptime Kuma&quot;
+  category: &quot;Apps&quot;
+  description: &quot;Self-hosted uptime monitoring with status pages and alerts&quot;
+  author: &quot;yggdrasil-community&quot;
+  version: 1
+  icon: &quot;app&quot;
+
+  docker:
+    image: &quot;louislam/uptime-kuma:1&quot;
+    data_path: /app/data
+
+  install:
+    image: &quot;louislam/uptime-kuma:1&quot;
+    script: |
+      mkdir -p /data
+      echo &quot;Uptime Kuma data directory ready&quot;
+
+  startup:
+    command: &quot;node server/server.js&quot;
+    done_regex: 'Listening on'
+
+  ports:
+    - { name: web, default: 3001, protocol: tcp }
+
+  backup:
+    include: [&quot;.&quot;]
+</code></pre>
+<p><strong>B — the image owns the command.</strong> <code>keep_entrypoint: true</code> plus <code>user: &quot;0:0&quot;</code> runs the image
+exactly as its author intended: its init starts as root and drops to whatever uid it wants. Use it
+when the image has an s6/init layer, an entrypoint that chowns or generates config, or no shell at
+all. The cost is that files land under the image&rsquo;s uid, not the panel&rsquo;s.</p>
+<pre><code class="language-yaml">docker:
+  image: &quot;lscr.io/linuxserver/freshrss:latest&quot;
+  data_path: /config
+  keep_entrypoint: true
+  user: &quot;0:0&quot;
+</code></pre>
+<p>For a shell-less (distroless, ko-built) image, pair <code>keep_entrypoint</code> with <code>startup.exec</code> — see
+<code>builtin-runes/cloudflared.yaml</code> and <code>community-runes/apps/headscale.yaml</code>.</p>
+<h2 id="variables"><code>variables</code></h2>
+<p>Each variable is one field in the create-server form and in <strong>Settings</strong> on the server, and one env
+var in the install and runtime containers.</p>
+<pre><code class="language-yaml">variables:
+  - key: SERVER_TYPE
+    name: &quot;Server software&quot;
+    type: select
+    options: [vanilla, paper, purpur, fabric, forge]
+    default: paper
+  - key: RCON_PASSWORD
+    name: &quot;RCON password&quot;
+    type: string
+    default: &quot;change-me&quot;
+    secret: true
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key</code></td>
+<td>string</td>
+<td><strong>Required.</strong> The env var name and the <code>{{KEY}}</code> placeholder.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>The form label. Falls back to <code>key</code>.</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td><strong>Required.</strong> One of <code>string</code>, <code>int</code>, <code>bool</code>, <code>select</code>.</td>
+</tr>
+<tr>
+<td><code>options</code></td>
+<td>list</td>
+<td><strong>Required for <code>select</code>.</strong> The dropdown entries.</td>
+</tr>
+<tr>
+<td><code>default</code></td>
+<td>any</td>
+<td>Pre-filled value. Stringified when it reaches the container.</td>
+</tr>
+<tr>
+<td><code>required</code></td>
+<td>bool</td>
+<td>Marks the field with an asterisk in the form.</td>
+</tr>
+<tr>
+<td><code>min</code>, <code>max</code></td>
+<td>int</td>
+<td>Bounds for an <code>int</code>. Optional, and independent — you can set just one.</td>
+</tr>
+<tr>
+<td><code>secret</code></td>
+<td>bool</td>
+<td>Treats the value as a secret.</td>
+</tr>
+</tbody>
+</table>
+<p>There is no default type — a variable with no <code>type</code>, or an unknown one, fails validation.</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>renders as</th>
+<th>accepted values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>string</code></td>
+<td>text input, or a password field if it&rsquo;s a secret</td>
+<td>anything</td>
+</tr>
+<tr>
+<td><code>int</code></td>
+<td>number input, bounded by <code>min</code>/<code>max</code></td>
+<td>a whole number, within bounds</td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td>checkbox, templated as <code>true</code> / <code>false</code></td>
+<td><code>true</code> or <code>false</code></td>
+</tr>
+<tr>
+<td><code>select</code></td>
+<td>dropdown over <code>options</code></td>
+<td>one of <code>options</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The panel enforces that third column.</strong> A value that doesn&rsquo;t match what the variable declares is
+refused with a <code>400</code> naming the field — <code>Max RAM (MB): must be at least 512, got 256</code> — rather than
+being passed to the container to fail there in some less obvious way. An empty value means &ldquo;use the
+default&rdquo;, so optional fields you leave alone are fine.</p>
+<p>Two details worth knowing if you&rsquo;re writing a rune:</p>
+<ul>
+<li>Bounds are checked <strong>on create against the whole form, including your defaults</strong> — so a default
+that contradicts its own <code>type</code> or bounds surfaces the first time someone builds a server, not at
+boot. On update only the fields being changed are checked, so tightening a rune&rsquo;s bounds later
+doesn&rsquo;t strand servers that already exist.</li>
+<li>Only variables you declare are checked. The env a container sees has other sources (injected
+ports, <code>HOME</code>, <code>SERVER_NAME</code>), and those pass through untouched.</li>
+</ul>
+<p><code>secret: true</code> does three things: the form renders a password field with show/generate/copy
+controls, the value is encrypted at rest in the database, and it&rsquo;s masked in API responses. The
+variable named by <code>rcon.password_var</code> gets the same treatment, whether or not it says so.</p>
+<p><strong>Set <code>secret: true</code> on every sensitive variable. Do not rely on the name.</strong> The form independently
+renders a password-style field for any string variable whose key or label matches <code>pass</code>,
+<code>password</code>, <code>secret</code>, or <code>token</code> — but that heuristic lives entirely in the frontend and only
+chooses the <em>input widget</em>. Encryption and API masking key off <code>secret: true</code> (or
+<code>rcon.password_var</code>) and nothing else. A variable called <code>API_TOKEN</code> without the flag therefore
+looks protected in the form while being stored in plaintext in <code>servers.env_json</code> and returned
+unmasked by <code>GET /api/servers/{id}</code>.</p>
+<h2 id="install"><code>install</code></h2>
+<p>Runs once, before the server may start, in a throwaway container. Its output streams live to the
+install log in the UI.</p>
+<pre><code class="language-yaml">install:
+  image: &quot;eclipse-temurin:21-jre&quot;   # defaults to docker.image
+  script: |
+    curl -fsSL -o server.jar &quot;$URL&quot;
+    echo &quot;eula={{EULA}}&quot; &gt; eula.txt
+</code></pre>
+<p>The script runs as root via <code>/bin/sh -c</code>, with the server&rsquo;s data directory mounted at <code>/data</code> and
+the working directory set to <code>/data</code> — always <code>/data</code>, regardless of <code>docker.data_path</code>. Whatever
+the script writes there persists as the server&rsquo;s files. The host filesystem is never exposed. When
+the script finishes, Yggdrasil chowns <code>/data</code> to the panel&rsquo;s user so the server and the Files tab
+can both write to it. A non-zero exit fails the install.</p>
+<p>A rune with no <code>install</code> block is marked installed immediately. A server cannot be started until its
+install has finished, and re-running an install on a running server recreates the container
+afterwards so the new files take effect.</p>
+<p>For Steam runes, the install container gets extra help — see <a href="#steam"><code>steam</code></a>.</p>
+<h2 id="startup"><code>startup</code></h2>
+<pre><code class="language-yaml">startup:
+  command: &quot;java -Xmx{{MEMORY_MB}}M -jar server.jar nogui&quot;
+  done_regex: 'Done \(.*\)! For help'
+  save_command: &quot;save-all&quot;
+  stop: &quot;stop&quot;
+  stop_timeout: 90
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>command</code></td>
+<td>string</td>
+<td>—</td>
+<td>The command, run via <code>/bin/sh -c</code>. Templated.</td>
+</tr>
+<tr>
+<td><code>exec</code></td>
+<td>list of strings</td>
+<td>—</td>
+<td>Raw argv, no shell. Each element templated. Takes precedence over <code>command</code>.</td>
+</tr>
+<tr>
+<td><code>done_regex</code></td>
+<td>string</td>
+<td>—</td>
+<td>Log pattern that promotes <code>starting</code> → <code>running</code>.</td>
+</tr>
+<tr>
+<td><code>save_command</code></td>
+<td>string</td>
+<td>—</td>
+<td>Console command sent before <code>stop</code>, to flush state to disk.</td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td>string</td>
+<td>—</td>
+<td>Console command sent before the container is signalled.</td>
+</tr>
+<tr>
+<td><code>stop_timeout</code></td>
+<td>int</td>
+<td><code>30</code></td>
+<td>SIGTERM→SIGKILL grace period, in seconds. Capped at <code>300</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="command-vs-exec"><code>command</code> vs <code>exec</code></h3>
+<p><code>command</code> is the normal choice: it goes to <code>/bin/sh -c</code>, so pipes, <code>export</code>, and multi-line scripts
+all work. Start the real process with <code>exec</code> inside the script (<code>exec java -jar server.jar</code>) so it
+becomes PID 1 and receives both stdin and SIGTERM — without that, <code>stop</code> and the graceful shutdown
+never reach the game.</p>
+<p><code>startup.exec</code> is a raw argv list with no shell involved. Use it for images with no shell (distroless,
+ko-built), or to pass arguments to an image&rsquo;s own entrypoint alongside <code>keep_entrypoint</code>. When
+<code>exec</code> is set, <code>command</code> is ignored.</p>
+<pre><code class="language-yaml">docker:
+  image: &quot;cloudflare/cloudflared:latest&quot;
+  keep_entrypoint: true
+startup:
+  exec: [&quot;tunnel&quot;, &quot;--no-autoupdate&quot;, &quot;run&quot;]
+  done_regex: 'Registered tunnel connection|Starting tunnel'
+</code></pre>
+<h3 id="done_regex"><code>done_regex</code></h3>
+<p>A freshly started server is <code>starting</code>, not <code>running</code>. Every three seconds Yggdrasil scans the last
+2000 lines of the container log for <code>done_regex</code>; the first match flips the server to <code>running</code>.
+Without a <code>done_regex</code>, a container that stays up is called <code>running</code> on the next poll.</p>
+<p>Pick a line the game prints exactly once, when it&rsquo;s actually accepting players. Alternatives with
+<code>|</code> are fine. If the container exits before the pattern matches, the server goes to <code>stopped</code> and
+the start-failure path takes over.</p>
+<p>A <code>done_regex</code> that never matches is not fatal, but it is a bad time: the server sits in <code>starting</code>
+for five minutes, you get a &ldquo;taking a long time&rdquo; notification, and at ten minutes Yggdrasil gives up
+waiting and marks it <code>running</code> anyway if the container is still alive. Ten minutes of a wrong status
+badge, plus anything gated on <code>running</code> running late. Test the pattern against a real log.</p>
+<h3 id="stopping-cleanly">Stopping cleanly</h3>
+<p>On stop and on restart, Yggdrasil sends <code>save_command</code> to the console, waits two seconds, sends
+<code>stop</code>, waits two more, then asks Docker to stop the container with <code>stop_timeout</code> seconds of grace
+before SIGKILL.</p>
+<p><strong>Both commands go to the container&rsquo;s stdin, always — never over RCON</strong>, even on a rune with an
+enabled <code>rcon</code> block. That&rsquo;s why the game must be PID 1 and must read commands on stdin. If your
+game only takes commands over RCON, <code>save_command</code> and <code>stop</code> will silently do nothing: rely on
+<code>stop_timeout</code> and a clean SIGTERM instead. (Other features — bans, restart warnings, scheduled
+commands — <em>do</em> prefer RCON and fall back to stdin. Graceful stop is the exception.)</p>
+<p>Games with no console save command need the timeout instead. DayZ flushes its whole Central Economy
+state on a clean SIGTERM and uses <code>stop_timeout: 90</code> rather than being killed mid-save.</p>
+<h2 id="config_files"><code>config_files</code></h2>
+<p>The files an operator actually edits, out of everything in the server&rsquo;s data directory.</p>
+<pre><code class="language-yaml">config_files:
+  - &quot;server.properties&quot;
+  - &quot;whitelist.json&quot;
+  - &quot;config/paper-world-defaults.yml&quot;
+</code></pre>
+<p>The Files tab turns each into a one-click shortcut. This matters more than it sounds: a rune&rsquo;s
+<code>variables</code> are the handful of settings that get templated in at install, but a game&rsquo;s real
+configuration lives in its own files — a <code>server.properties</code> has around fifty entries, and Rust
+keeps its config four directories down at <code>server/yggdrasil/cfg/server.cfg</code>. Without a shortcut,
+&ldquo;change the MOTD&rdquo; starts with knowing the layout.</p>
+<p>Paths are relative to the server&rsquo;s data directory. Absolute paths and anything containing <code>..</code> are
+rejected when the rune is uploaded.</p>
+<p>A listed file that doesn&rsquo;t exist is not an error — most are written by the game on first boot, so a
+freshly created server has none of them, and the panel says so rather than reporting a failure.</p>
+<p>Files ending in <code>.properties</code>, <code>.env</code>, <code>.cfg</code> or <code>.conf</code> open in a generated key/value form, with a
+raw-text view a click away. Anything else opens as raw text.</p>
+<h2 id="ports"><code>ports</code></h2>
+<pre><code class="language-yaml">ports:
+  - { name: game, default: 25565, protocol: tcp }
+  - { name: rcon, default: 25575, protocol: tcp }
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td><strong>Required.</strong> The port&rsquo;s role. Becomes <code>&lt;NAME&gt;_PORT</code> and <code>PORT_&lt;name&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>default</code></td>
+<td>int</td>
+<td>The container-side port.</td>
+</tr>
+<tr>
+<td><code>protocol</code></td>
+<td>string</td>
+<td><strong>Required.</strong> Exactly <code>tcp</code> or <code>udp</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>For each entry, Yggdrasil allocates a free <strong>host</strong> port from the configured range (25000–30000 by
+default, see <a href="reference-configuration.html">Configuration</a>) and publishes the container port to it. The
+allocator walks the range sequentially and test-binds each candidate; it deliberately ignores
+<code>default</code>, because well-known game ports are the ones that get scanned. <code>default</code> is only the
+container side of the mapping.</p>
+<p>Steam runes are the exception: they publish 1:1, so the container port equals the allocated host
+port. A Steam server registers its bind port with the Steam master server, so bind, publish and
+advertised port all have to be the same number. This is what makes <code>-port={{GAME_PORT}}</code> correct in
+a Steam rune&rsquo;s startup command.</p>
+<p>Three names are load-bearing. <code>game</code> is the fallback for both query and RCON. <code>query</code> is preferred
+by the query poller if present. <code>rcon</code> is preferred by the console if present.</p>
+<h2 id="query"><code>query</code></h2>
+<pre><code class="language-yaml">query:
+  type: minecraft
+</code></pre>
+<p><code>type</code> is one of <code>a2s</code> (or its alias <code>source</code>) for Steam games, <code>minecraft</code> (alias
+<code>minecraft-java</code>), or <code>minecraft-bedrock</code>. Anything else is an error at query time.</p>
+<p>Yggdrasil polls the <code>query</code> host port if the rune declares one, otherwise <code>game</code>, and uses the
+result for the dashboard&rsquo;s player count and liveness. Declaring a <code>query</code> block is also what makes
+a server eligible for the watchdog, which restarts a server that stops answering.</p>
+<h2 id="rcon"><code>rcon</code></h2>
+<pre><code class="language-yaml">rcon:
+  enabled: true
+  type: minecraft
+  password_var: RCON_PASSWORD
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td>Turns the console box and RCON delivery on.</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td><code>minecraft</code> or <code>source</code> (both Source RCON, and the default when empty), <code>rust-websocket</code>, or <code>battleye</code>.</td>
+</tr>
+<tr>
+<td><code>password_var</code></td>
+<td>string</td>
+<td>The variable holding the password. Always stored encrypted.</td>
+</tr>
+</tbody>
+</table>
+<p>Yggdrasil dials <code>127.0.0.1</code> on the server&rsquo;s <code>rcon</code> host port, falling back to the <code>game</code> port —
+BattlEye shares the game port. It does not read a port out of a variable.</p>
+<p>An enabled <code>rcon</code> block is what schedules, bans, restart warnings and the Players tab use to reach
+the game; without it they fall back to the container&rsquo;s stdin, or aren&rsquo;t offered at all. If the game
+needs RCON switched on in a config file, do that in the install script — Minecraft&rsquo;s rune writes
+<code>enable-rcon=true</code> into <code>server.properties</code>.</p>
+<h2 id="steam"><code>steam</code></h2>
+<pre><code class="language-yaml">steam:
+  anonymous: false
+</code></pre>
+<p>Declaring a <code>steam</code> block changes four things: host ports are published 1:1, the install script is
+prefixed with a <code>chmod -R a+rwX /data</code> (SteamCMD drops privileges and can&rsquo;t otherwise rewrite
+<code>steamapps/</code> on a reinstall), a persistent SteamCMD cache is mounted at <code>/steamcache</code> with <code>HOME</code>
+pointing at it, and the data dir is made world-writable for the install.</p>
+<p><code>anonymous: true</code> games just install. With <code>anonymous: false</code>, Yggdrasil requires an authorized
+Steam account — set one up once under <strong>Settings → Steam</strong> — and injects its username as
+<code>STEAM_USER</code> for the install script to use. The install fails with a clear message if no account is
+authorized. The sentry cache in <code>/steamcache</code> means Steam Guard isn&rsquo;t re-triggered on later updates.</p>
+<p>Your install script issues the SteamCMD commands itself, including the app id.</p>
+<h2 id="bans"><code>bans</code></h2>
+<pre><code class="language-yaml">bans:
+  ban_command: &quot;ban {{player}} {{reason}}&quot;
+  unban_command: &quot;pardon {{player}}&quot;
+</code></pre>
+<p>Centralized ban management substitutes <code>{{player}}</code> and <code>{{reason}}</code> and delivers the command over
+RCON, or the container&rsquo;s stdin if the rune has no enabled <code>rcon</code> block. Control characters in both
+values are collapsed to spaces before substitution, so a crafted player name can&rsquo;t inject a second
+command. Omit the block for games with no console ban.</p>
+<h2 id="players"><code>players</code></h2>
+<p>Adds the live Players tab. Requires an enabled <code>rcon</code> block — validation rejects the rune otherwise.</p>
+<pre><code class="language-yaml">players:
+  list_command: &quot;players&quot;
+  player_regex: '^(?P&lt;id&gt;\d+)\s+(?P&lt;ip&gt;[0-9.]+):\d+\s+(?P&lt;ping&gt;\d+)\s+(?P&lt;guid&gt;[0-9a-f]+)\s*\((?:OK|\?)\)\s+(?P&lt;name&gt;.+?)\s*$'
+  kick_command: &quot;kick {{id}} {{reason}}&quot;
+  broadcast_command: &quot;say -1 {{message}}&quot;
+  lock_command: &quot;#lock&quot;
+  unlock_command: &quot;#unlock&quot;
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list_command</code></td>
+<td>yes</td>
+<td>Run over RCON; its text response is parsed line by line.</td>
+</tr>
+<tr>
+<td><code>player_regex</code></td>
+<td>yes</td>
+<td>Must compile and must have a <code>(?P&lt;name&gt;...)</code> group.</td>
+</tr>
+<tr>
+<td><code>kick_command</code></td>
+<td>no</td>
+<td>Templated with <code>{{id}}</code>, <code>{{name}}</code>, <code>{{reason}}</code>.</td>
+</tr>
+<tr>
+<td><code>broadcast_command</code></td>
+<td>no</td>
+<td>Templated with <code>{{message}}</code>.</td>
+</tr>
+<tr>
+<td><code>lock_command</code></td>
+<td>no</td>
+<td>No template.</td>
+</tr>
+<tr>
+<td><code>unlock_command</code></td>
+<td>no</td>
+<td>No template.</td>
+</tr>
+</tbody>
+</table>
+<p><code>player_regex</code> runs against each line of the response; lines that don&rsquo;t match (headers, totals) are
+skipped. <code>name</code> is required; <code>id</code>, <code>ping</code>, <code>guid</code> and <code>ip</code> are optional and shown when captured. Any
+action command you leave out is not offered in the UI, so read-only listing is a valid rune.</p>
+<p>Single-quote the regex in YAML so backslashes stay literal.</p>
+<h2 id="admin_log"><code>admin_log</code></h2>
+<p>Turns a game&rsquo;s admin/activity log into a parsed feed of joins, leaves, deaths and kills.</p>
+<pre><code class="language-yaml">admin_log:
+  path: &quot;profiles/*.ADM&quot;
+  time_regex: '^(?P&lt;time&gt;\d{1,2}:\d{2}:\d{2})'
+  events:
+    - { type: &quot;kill&quot;,  regex: 'Player &quot;(?P&lt;name&gt;[^&quot;]+)&quot;.*killed by' }
+    - { type: &quot;join&quot;,  regex: 'Player &quot;(?P&lt;name&gt;[^&quot;]+)&quot; is connected' }
+</code></pre>
+<p><code>path</code> is a glob relative to the server&rsquo;s data dir; the most recently modified match is read. It
+can&rsquo;t contain <code>..</code>. <code>events</code> is required and each entry needs a <code>type</code> (your own label) and a
+<code>regex</code> that compiles; an optional <code>(?P&lt;name&gt;...)</code> group names the player. The first rule that
+matches a line wins, and unmatched lines are dropped. <code>time_regex</code> pulls a timestamp off the front
+of the line — its <code>time</code> group if it has one, otherwise the whole match.</p>
+<h2 id="wipe"><code>wipe</code></h2>
+<pre><code class="language-yaml">wipe:
+  paths: [&quot;mpmissions/*/storage_*&quot;]
+</code></pre>
+<p>Gives the rune a Wipe button and a schedulable wipe action. <code>paths</code> is required when the block is
+present: glob patterns relative to the server&rsquo;s data dir, deleted on wipe. Yggdrasil refuses an
+empty entry, <code>/</code>, <code>.</code>, or anything containing <code>..</code> — at upload and again at wipe time. A wipe stops
+the server, deletes the matches, and restarts it if it was running.</p>
+<h2 id="restart"><code>restart</code></h2>
+<pre><code class="language-yaml">restart:
+  warnings:
+    - { at: &quot;15m&quot;, msg: &quot;say ⚠ Server restart in 15 minutes.&quot; }
+    - { at: &quot;5m&quot;,  msg: &quot;say ⚠ Server restart in 5 minutes.&quot; }
+    - { at: &quot;1m&quot;,  msg: &quot;say ⚠ Restarting in 1 minute!&quot; }
+</code></pre>
+<p>Enables warned restarts, manual and scheduled. Yggdrasil sorts the warnings by <code>at</code> descending and
+sends each <code>msg</code> that long before the restart. <code>at</code> is a Go duration (<code>15m</code>, <code>60s</code>) and must parse
+to something greater than zero. <code>msg</code> is a complete broadcast command for the game, delivered over
+RCON or stdin — not just the text.</p>
+<h2 id="backup"><code>backup</code></h2>
+<pre><code class="language-yaml">backup:
+  include: [&quot;world&quot;, &quot;world_nether&quot;, &quot;server.properties&quot;, &quot;plugins&quot;]
+</code></pre>
+<p>Paths relative to the server&rsquo;s data dir, archived into the backup tarball. Files and directories
+both work; there is no globbing, and a listed path that doesn&rsquo;t exist is skipped rather than failing
+the backup. Omit <code>include</code>, or leave it empty, to archive the whole data dir.</p>
+<h2 id="anticheat"><code>anticheat</code></h2>
+<pre><code class="language-yaml">anticheat:
+  antixray:
+    supported: true
+    config_hint: &quot;Paper anti-xray (engine-mode 1/2) in config/paper-world-defaults.yml&quot;
+  battleye:
+    supported: true
+    config_hint: &quot;BattlEye enabled via -BEpath=battleye&quot;
+  plugins_recommended: [&quot;Grim&quot;, &quot;Vulcan&quot;, &quot;NoCheatPlus&quot;]
+</code></pre>
+<p>Purely informational. <code>antixray</code> and <code>battleye</code> each take a <code>supported</code> bool and a <code>config_hint</code>
+string; <code>plugins_recommended</code> is a list of names. All of it is rendered on the server&rsquo;s <strong>Anti-cheat</strong>
+tab and nothing acts on it.</p>
+<h2 id="fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&rsquo;t use</h2>
+<p>These appear in real runes and in the schema, and they validate fine, but no panel feature reads
+them. Don&rsquo;t rely on them:</p>
+<ul>
+<li><code>author</code>, <code>icon</code> — descriptive only.</li>
+<li><code>steam.app_id</code> — your install script passes the app id to SteamCMD itself.</li>
+<li><code>wipe.backup_first</code> — whether a wipe takes a safety backup first is chosen when you run or
+schedule the wipe.</li>
+</ul>
+<p><code>query.port</code> and <code>rcon.port_var</code> used to be here. They are gone from the schema: the port to
+query or send RCON to comes from the <a href="#ports"><code>ports</code></a> block — a mapping named <code>query</code> or <code>rcon</code>,
+falling back to <code>game</code>. That mapping is what actually gets allocated and published, so a second
+place to say it could only ever disagree with it. A rune that still sets either is not an error;
+the value is ignored, as it always was.</p>
+<h2 id="a-complete-rune">A complete rune</h2>
+<p>This is <code>builtin-runes/minecraft-java.yaml</code>, the rune behind the panel&rsquo;s built-in Minecraft (Java)
+servers. It uses pattern A, and every block above except <code>steam</code>, <code>players</code> and <code>admin_log</code>.</p>
+<pre><code class="language-yaml">gameskill:
+  id: minecraft-java
+  name: &quot;Minecraft (Java)&quot;
+  category: &quot;Minecraft&quot;
+  description: &quot;Vanilla / Paper / Purpur / Fabric / Forge Java server&quot;
+  author: &quot;yggdrasil-core&quot;
+  version: 7
+  icon: &quot;minecraft&quot;
+
+  docker:
+    # The JRE image depends on the resolved Java version (see install step).
+    image: &quot;eclipse-temurin:{{JAVA_VERSION}}-jre&quot;
+
+  variables:
+    - key: SERVER_TYPE
+      name: &quot;Server software&quot;
+      type: select
+      options: [vanilla, paper, purpur, fabric, forge]
+      default: paper
+    - key: MC_VERSION
+      name: &quot;Minecraft version&quot;
+      type: string
+      default: &quot;latest&quot;
+    - key: JAVA_VERSION
+      name: &quot;Java runtime&quot;
+      type: select
+      options: [&quot;25&quot;, &quot;21&quot;, &quot;17&quot;]
+      default: &quot;25&quot;
+    - key: MEMORY_MB
+      name: &quot;Max RAM (MB)&quot;
+      type: int
+      default: 4096
+    - key: LEVEL_SEED
+      name: &quot;World seed (blank = random)&quot;
+      type: string
+      default: &quot;&quot;
+    - key: LEVEL_TYPE
+      name: &quot;World type (only applies to a new world)&quot;
+      type: select
+      options: [normal, flat, large_biomes, amplified]
+      default: normal
+    - key: DIFFICULTY
+      name: &quot;Difficulty&quot;
+      type: select
+      options: [peaceful, easy, normal, hard]
+      default: easy
+    - key: RCON_PORT
+      name: &quot;RCON port (container-internal)&quot;
+      type: int
+      default: 25575
+    # Encrypted at rest and masked in the API because `rcon.password_var` below
+    # names it — not because of its name. Any other sensitive variable would
+    # need an explicit `secret: true`.
+    - key: RCON_PASSWORD
+      name: &quot;RCON password&quot;
+      type: string
+      default: &quot;change-me&quot;
+    - key: ENABLE_WHITELIST
+      name: &quot;Enable whitelist (only listed players can join)&quot;
+      type: bool
+      default: false
+    - key: EULA
+      name: &quot;Accept the Minecraft EULA&quot;
+      type: bool
+      default: false
+      required: true
+
+  # Runs once as root, with the data dir at /data. Downloads the jar the chosen
+  # SERVER_TYPE needs and seeds the config files the panel depends on.
+  install:
+    image: &quot;eclipse-temurin:21-jre&quot;
+    script: |
+      set -eu
+      # eclipse-temurin is Ubuntu-based; add curl + jq for robust JSON parsing.
+      if ! command -v curl &gt;/dev/null 2&gt;&amp;1 || ! command -v jq &gt;/dev/null 2&gt;&amp;1; then
+        apt-get update -qq &amp;&amp; apt-get install -y -qq curl ca-certificates jq &gt;/dev/null
+      fi
+
+      TYPE=&quot;{{SERVER_TYPE}}&quot;
+      VER=&quot;{{MC_VERSION}}&quot;
+      MANIFEST=https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
+
+      latest_vanilla() { curl -fsSL &quot;$MANIFEST&quot; | jq -r '.latest.release'; }
+      need() { [ -n &quot;$1&quot; ] &amp;&amp; [ &quot;$1&quot; != &quot;null&quot; ] || { echo &quot;$2&quot;; exit 1; }; }
+
+      echo &quot;Installing $TYPE (requested version: $VER)&quot;
+      case &quot;$TYPE&quot; in
+        vanilla)
+          [ &quot;$VER&quot; = &quot;latest&quot; ] &amp;&amp; VER=&quot;$(latest_vanilla)&quot;
+          need &quot;$VER&quot; &quot;could not resolve latest Minecraft version&quot;
+          VER_URL=$(curl -fsSL &quot;$MANIFEST&quot; | jq -r --arg v &quot;$VER&quot; '.versions[] | select(.id==$v) | .url')
+          need &quot;$VER_URL&quot; &quot;version $VER not found&quot;
+          SRV_URL=$(curl -fsSL &quot;$VER_URL&quot; | jq -r '.downloads.server.url')
+          need &quot;$SRV_URL&quot; &quot;no server download for $VER&quot;
+          curl -fsSL -o server.jar &quot;$SRV_URL&quot;
+          ;;
+        paper)
+          # Paper v3 (fill) API — v2 is frozen at 1.21.x. Newest version is the
+          # first patch of the first version group.
+          UA=&quot;yggdrasil-installer&quot;
+          if [ &quot;$VER&quot; = &quot;latest&quot; ]; then
+            VER=$(curl -fsSL -A &quot;$UA&quot; https://fill.papermc.io/v3/projects/paper | jq -r '.versions | to_entries[0].value[0]')
+          fi
+          need &quot;$VER&quot; &quot;could not resolve Paper version&quot;
+          URL=$(curl -fsSL -A &quot;$UA&quot; &quot;https://fill.papermc.io/v3/projects/paper/versions/$VER/builds/latest&quot; \
+            | jq -r '.downloads[&quot;server:default&quot;].url')
+          need &quot;$URL&quot; &quot;no Paper build for $VER&quot;
+          curl -fsSL -A &quot;$UA&quot; -o server.jar &quot;$URL&quot;
+          ;;
+        purpur)
+          [ &quot;$VER&quot; = &quot;latest&quot; ] &amp;&amp; VER=$(curl -fsSL https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
+          need &quot;$VER&quot; &quot;could not resolve Purpur version&quot;
+          curl -fsSL -o server.jar &quot;https://api.purpurmc.org/v2/purpur/$VER/latest/download&quot;
+          ;;
+        fabric)
+          [ &quot;$VER&quot; = &quot;latest&quot; ] &amp;&amp; VER=&quot;$(latest_vanilla)&quot;
+          need &quot;$VER&quot; &quot;could not resolve Minecraft version for Fabric&quot;
+          LOADER=$(curl -fsSL &quot;https://meta.fabricmc.net/v2/versions/loader/$VER&quot; | jq -r '.[0].loader.version')
+          INSTALLER=$(curl -fsSL https://meta.fabricmc.net/v2/versions/installer | jq -r '.[0].version')
+          need &quot;$LOADER&quot; &quot;no Fabric loader for $VER&quot;
+          need &quot;$INSTALLER&quot; &quot;no Fabric installer&quot;
+          curl -fsSL -o server.jar \
+            &quot;https://meta.fabricmc.net/v2/versions/loader/$VER/$LOADER/$INSTALLER/server/jar&quot;
+          ;;
+        forge)
+          echo &quot;Forge requires running its installer; install the Forge universal jar&quot;
+          echo &quot;and adjust the startup command. Not yet automated.&quot;
+          exit 1
+          ;;
+        *)
+          echo &quot;unknown SERVER_TYPE: $TYPE&quot;; exit 1 ;;
+      esac
+
+      # Make sure we actually got a jar.
+      [ -s server.jar ] || { echo &quot;download produced no server.jar&quot;; exit 1; }
+
+      echo &quot;eula={{EULA}}&quot; &gt; eula.txt
+
+      # Append a trailing newline first if the file lacks one, so we never merge
+      # onto the last existing line (e.g. a hand-edited server.properties).
+      # Append a trailing newline only if the file exists and lacks one. Must
+      # return 0 even when the file is absent (fresh install) — otherwise `set -e`
+      # would abort the whole install.
+      ensure_nl() { if [ -s server.properties ] &amp;&amp; [ -n &quot;$(tail -c1 server.properties)&quot; ]; then echo &gt;&gt; server.properties; fi; }
+      # Pre-seed RCON + whitelist settings so the panel (and schedules/bans) can
+      # connect. Minecraft fills in any remaining server.properties on first run.
+      if ! grep -q '^enable-rcon=' server.properties 2&gt;/dev/null; then
+        ensure_nl
+        {
+          echo &quot;enable-rcon=true&quot;
+          echo &quot;rcon.port={{RCON_PORT}}&quot;
+          echo &quot;rcon.password={{RCON_PASSWORD}}&quot;
+          echo &quot;white-list={{ENABLE_WHITELIST}}&quot;
+          echo &quot;enforce-whitelist={{ENABLE_WHITELIST}}&quot;
+          echo &quot;difficulty={{DIFFICULTY}}&quot;
+          # World type is fixed at generation — only meaningful on the first run.
+          echo &quot;level-type=minecraft:{{LEVEL_TYPE}}&quot;
+        } &gt;&gt; server.properties
+      fi
+      # World seed (only on first install, before the world is generated).
+      if [ -n &quot;{{LEVEL_SEED}}&quot; ] &amp;&amp; ! grep -q '^level-seed=' server.properties 2&gt;/dev/null; then
+        ensure_nl
+        echo &quot;level-seed={{LEVEL_SEED}}&quot; &gt;&gt; server.properties
+      fi
+      # Ensure the whitelist/ops files exist so they're editable in the file manager.
+      [ -f whitelist.json ] || echo &quot;[]&quot; &gt; whitelist.json
+      [ -f ops.json ] || echo &quot;[]&quot; &gt; ops.json
+
+      echo &quot;Installed $TYPE $VER -&gt; server.jar&quot;
+      ls -la server.jar
+
+  startup:
+    # Re-stamp eula.txt + the mutable server.properties toggles (difficulty,
+    # whitelist) from the CURRENT settings on every start, so changing them in
+    # Settings + restart actually takes effect — install only writes them once,
+    # and the toggle otherwise looks applied while the server keeps the old value.
+    # World type is omitted — it's fixed at world generation and can't change.
+    # `exec` hands PID 1 + stdin to Java so the &quot;stop&quot; command and signals reach it.
+    # --enable-native-access=ALL-UNNAMED silences the Java 24+ &quot;restricted
+    # method ... java.lang.System::load (JNA)&quot; warnings; harmless either way.
+    command: |
+      setprop() { if grep -q &quot;^$1=&quot; server.properties 2&gt;/dev/null; then sed -i &quot;s/^$1=.*/$1=$2/&quot; server.properties; else echo &quot;$1=$2&quot; &gt;&gt; server.properties; fi; }
+      echo eula={{EULA}} &gt; eula.txt
+      setprop difficulty {{DIFFICULTY}}
+      setprop white-list {{ENABLE_WHITELIST}}
+      setprop enforce-whitelist {{ENABLE_WHITELIST}}
+      exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui
+    done_regex: 'Done \(.*\)! For help'
+    # Flush chunks to disk before shutting down, then stop cleanly (the &quot;stop&quot;
+    # command already saves, but save-all first makes a graceful restart robust).
+    save_command: &quot;save-all&quot;
+    stop: &quot;stop&quot;
+
+  query:
+    type: minecraft
+
+  # RCON itself is switched on by the install script, in server.properties.
+  rcon:
+    enabled: true
+    type: minecraft
+    password_var: RCON_PASSWORD
+
+  config_files:
+    - &quot;server.properties&quot;
+    - &quot;whitelist.json&quot;
+    - &quot;ops.json&quot;
+    - &quot;config/paper-world-defaults.yml&quot;
+
+  # The host ports are allocated from the panel's range; 25565 and 25575 are only
+  # the container side of each mapping.
+  ports:
+    - { name: game, default: 25565, protocol: tcp }
+    - { name: rcon, default: 25575, protocol: tcp }
+
+  anticheat:
+    antixray:
+      supported: true
+      config_hint: &quot;Paper anti-xray (engine-mode 1/2) in config/paper-world-defaults.yml&quot;
+    plugins_recommended: [&quot;Grim&quot;, &quot;Vulcan&quot;, &quot;NoCheatPlus&quot;]
+
+  bans:
+    ban_command: &quot;ban {{player}} {{reason}}&quot;
+    unban_command: &quot;pardon {{player}}&quot;
+
+  backup:
+    include: [&quot;world&quot;, &quot;world_nether&quot;, &quot;world_the_end&quot;, &quot;server.properties&quot;, &quot;whitelist.json&quot;, &quot;ops.json&quot;, &quot;plugins&quot;]
+
+  # &quot;Wipe&quot; deletes the world folders; a fresh world regenerates on next start
+  # (same seed if level-seed is set, otherwise random). Keeps server.properties,
+  # whitelist and ops.
+  wipe:
+    paths: [&quot;world&quot;, &quot;world_nether&quot;, &quot;world_the_end&quot;]
+    backup_first: true
+
+  # In-game countdown broadcast before a safe restart.
+  restart:
+    warnings:
+      - { at: &quot;15m&quot;, msg: &quot;say ⚠ Server restart in 15 minutes.&quot; }
+      - { at: &quot;5m&quot;,  msg: &quot;say ⚠ Server restart in 5 minutes.&quot; }
+      - { at: &quot;1m&quot;,  msg: &quot;say ⚠ Restarting in 1 minute — find a safe spot!&quot; }
+</code></pre>
+<h2 id="authoring-a-new-rune">Authoring a new rune</h2>
+<p>Start from a rune that already works. <code>builtin-runes/</code> has the five that ship with the panel;
+<code>community-runes/</code> has thirty-odd more, split into <code>games/</code>, <code>apps/</code> and <code>databases/</code>. Copy the
+closest one and change the image, variables and startup command.</p>
+<ol>
+<li><strong>Write the YAML.</strong> Give it a new <code>id</code> — you cannot overwrite a built-in rune, and re-uploading
+an existing <code>id</code> replaces that rune in place.</li>
+<li><strong>Get it into the panel.</strong> Either <strong>Runes → Carve a rune (upload)</strong> and pick your <code>.yaml</code>
+(512 KB maximum), or <strong>Runes → Browse GitHub</strong> to install straight from a repo folder — it
+defaults to this project&rsquo;s <code>community-runes/</code>, and takes any <code>owner/repo</code>, path and branch.
+Pterodactyl eggs and XML definitions import under <strong>Import egg</strong> / <strong>Import XML</strong>. All of these
+need admin rights.</li>
+<li><strong>Read the validation errors.</strong> Yggdrasil parses and validates on upload and refuses anything
+invalid, naming the field: a missing <code>startup.command</code>, a variable with no <code>type</code>, a port with no
+protocol, a <code>player_regex</code> that doesn&rsquo;t compile or lacks its <code>name</code> group, a capability outside
+the allowlist. The same validation runs every time a server starts, so a rune that uploads is a
+rune that loads.</li>
+<li><strong>Test it.</strong> Create a server from the rune, watch the install log for the script&rsquo;s output, then
+start it and watch the console. The two things that usually need a second pass are the startup
+command&rsquo;s paths (working directory, library paths) and <code>done_regex</code> — if the server plays fine
+but the badge stays on <code>starting</code>, the regex is wrong.</li>
+</ol>
+<p>Iterate by re-uploading the same <code>id</code>. Existing servers pick up the new YAML on their next start,
+since the container is rebuilt from the rune every time.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="reference-configuration.html">Configuration</a> — the port range runes allocate from</li>
+<li><a href="reference-api.html">API reference</a> — the <code>/api/gameskills</code> endpoints behind the Runes page</li>
+<li><a href="guides-networking.html">Networking</a> — making an allocated port reachable</li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/rune-schema.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,1556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>API reference — Yggdrasil Panel docs</title>
+<meta name="description" content="Every route Yggdrasil Panel serves, what it does, and what it takes to call it." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a href="https://discord.gg/murNphXV3" target="_blank" rel="noopener">Discord</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="reference-api.html" class="on">HTTP API</a><a href="reference-rune-schema.html">Rune schema</a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>API reference</h1>
+    <p>Every route Yggdrasil Panel serves, what it does, and what it takes to call it. The web UI talks to
+this API and nothing else, so anything the UI can do, you can automate.</p>
+<h2 id="authentication">Authentication</h2>
+<p>Yggdrasil accepts two kinds of credential, and one endpoint reads them in a fixed order:</p>
+<ol>
+<li><code>Authorization: Bearer &lt;token&gt;</code> — the header wins if present.</li>
+<li>The <code>ygg_token</code> cookie.</li>
+<li>The <code>?token=</code> query parameter.</li>
+</ol>
+<h3 id="session-cookie">Session cookie</h3>
+<p><code>POST /api/auth/login</code> with <code>{&quot;username&quot;, &quot;password&quot;}</code> (plus <code>&quot;code&quot;</code> when the account has TOTP
+enabled) returns a signed JWT and sets it as a <code>ygg_token</code> cookie. The cookie is <code>HttpOnly</code>,
+<code>SameSite=Strict</code>, path <code>/</code>, and lives for the configured session TTL. The same JWT is also returned
+in the response body.</p>
+<p>Every request carrying a JWT is re-checked against the database: the panel reads the user&rsquo;s current
+<code>role</code>, refuses the request if the account is disabled, and refuses it if the token&rsquo;s version no
+longer matches the account&rsquo;s <code>token_version</code>. That last check is what makes <code>POST /api/auth/logout</code>
+a real revocation — it bumps <code>token_version</code>, invalidating every JWT ever issued to that user.
+Because the role is read live, a demotion takes effect on the next request rather than at token
+expiry.</p>
+<h3 id="api-tokens">API tokens</h3>
+<p>For automation, mint a token with <code>POST /api/tokens</code> and a body of <code>{&quot;name&quot;: &quot;...&quot;}</code>. The response
+contains the plaintext token exactly once:</p>
+<pre><code class="language-json">{&quot;id&quot;: &quot;…&quot;, &quot;name&quot;: &quot;home-automation&quot;, &quot;token&quot;: &quot;ygg_…&quot;}
+</code></pre>
+<p>Only a hash is stored, so a lost token cannot be recovered — delete it and mint another. Tokens
+start with <code>ygg_</code>, which is how the auth middleware tells them apart from JWTs. Send one as
+<code>Authorization: Bearer ygg_…</code>. <code>GET /api/tokens</code> lists your own tokens with their last-used
+timestamp; <code>DELETE /api/tokens/{id}</code> removes one, and you may only delete your own.</p>
+<p>Read <a href="#gotchas">Gotchas</a> before you hand an API token to anything. A token is not a scoped
+credential.</p>
+<h3 id="websocket-handshakes">WebSocket handshakes</h3>
+<p>Browsers cannot set headers on a WebSocket handshake, so the three streaming endpoints also accept
+<code>?token=&lt;jwt-or-api-token&gt;</code> in the query string. The access log redacts <code>token</code>, <code>access_token</code>, and
+<code>api_key</code> query parameters, so a token in a URL does not land in journald — but it does travel in
+the request line, so prefer the cookie from a browser and the query parameter only where you have
+no alternative.</p>
+<h3 id="cross-origin-requests-and-csrf">Cross-origin requests and CSRF</h3>
+<p>The panel serves its own UI, so it never needs credentialed cross-origin access. CORS allows any
+origin but never reflects credentials, and the allowed headers are <code>Accept</code>, <code>Authorization</code>,
+<code>Content-Type</code>, and <code>X-CSRF-Token</code>.</p>
+<p>On top of <code>SameSite=Strict</code>, the auth middleware rejects <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, and <code>DELETE</code>
+whenever the request carries an <code>Origin</code> header whose hostname differs from the request&rsquo;s host. The
+response is <code>403 {&quot;error&quot;: &quot;cross-origin request blocked&quot;}</code>. A browser on the panel&rsquo;s own origin
+matches and passes. Bearer automation — curl, a script, a home assistant — sends no <code>Origin</code> at all,
+so the check does not apply to it. The WebSocket upgrader applies the same rule: an empty <code>Origin</code>
+or a same-host one is accepted, anything else is refused.</p>
+<h3 id="login-rate-limits">Login rate limits</h3>
+<p><code>POST /api/auth/login</code> is limited to 5 attempts per IP per minute; over that you get
+<code>429 {&quot;error&quot;: &quot;too many login attempts&quot;}</code>. The client IP comes from the real-IP middleware, so a
+reverse proxy&rsquo;s <code>X-Forwarded-For</code> is honoured.</p>
+<p>Because a spoofed <code>X-Forwarded-For</code> would sidestep a purely IP-based limit, there is a second,
+per-account lockout: 10 failed attempts on one username within 15 minutes locks that username for 15
+minutes, regardless of source IP, with <code>429 {&quot;error&quot;: &quot;account temporarily locked due to repeated failed logins; try again later&quot;}</code>. A successful login clears the counter. A wrong password, an
+unknown username, a bad TOTP code, and a replayed TOTP code all count as failures.</p>
+<h2 id="permissions">Permissions</h2>
+<p>A user is either a global admin or a delegate. Admins bypass every check in the panel — the
+permission helpers return <code>true</code> for them before any grant is loaded, and <code>requireAdmin</code> routes
+accept them unconditionally.</p>
+<p>Everyone else holds <em>grants</em>. A grant is a set of permissions attached to one scope. There are eight
+permissions:</p>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.view</code></td>
+<td>Seeing the server, its status, stats, metrics, queries, and logs</td>
+</tr>
+<tr>
+<td><code>server.control</code></td>
+<td>Start, stop, restart, install, update, wipe, watchdog, config edits</td>
+</tr>
+<tr>
+<td><code>server.console</code></td>
+<td>The console stream, RCON, and player moderation</td>
+</tr>
+<tr>
+<td><code>server.files</code></td>
+<td>Browsing, reading, editing, uploading, downloading, deleting files</td>
+</tr>
+<tr>
+<td><code>server.create</code></td>
+<td>Creating servers within the scope</td>
+</tr>
+<tr>
+<td><code>server.delete</code></td>
+<td>Deleting servers</td>
+</tr>
+<tr>
+<td><code>server.backup</code></td>
+<td>Listing, running, verifying, restoring, and deleting backups</td>
+</tr>
+<tr>
+<td><code>server.schedule</code></td>
+<td>Creating schedules and reading their run history</td>
+</tr>
+</tbody>
+</table>
+<p>And four scopes a grant can hang off:</p>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Grant applies to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>global</code></td>
+<td>Every server</td>
+</tr>
+<tr>
+<td><code>realm</code></td>
+<td>Every server in that realm</td>
+</tr>
+<tr>
+<td><code>gameskill</code></td>
+<td>Every server built from that rune, in any realm</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td>That one server</td>
+</tr>
+</tbody>
+</table>
+<p>A check passes when any single grant both contains the permission and covers the target. So a
+<code>server.control</code> grant at realm scope lets you restart every server in that realm; a <code>server.files</code>
+grant at gameskill scope lets you edit files on every DayZ server you can see, wherever it lives.
+List endpoints filter rather than refuse: <code>GET /api/servers</code> returns only servers you can view, and
+<code>GET /api/domains</code> and <code>GET /api/schedules</code> filter the same way.</p>
+<p>Denied requests return <code>403 {&quot;error&quot;: &quot;forbidden: insufficient permissions&quot;}</code>. <code>requireAdmin</code>
+returns <code>403 {&quot;error&quot;: &quot;forbidden&quot;}</code>.</p>
+<p>Rune management, realm mutations, user management, and every integration setting are admin-only —
+a rune controls the Docker runtime (image, command, user, capabilities, devices, mounts), so
+uploading one is equivalent to root on the host.</p>
+<h2 id="gotchas">Gotchas</h2>
+<p>Two behaviors here will not match what you assume from the shape of the API. Both are worth reading
+before you build against it.</p>
+<h3 id="api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</h3>
+<p>An <code>ygg_</code> token is not a scoped credential. It is a pointer to a user. When the middleware sees the
+<code>ygg_</code> prefix it looks the token&rsquo;s hash up in <code>api_tokens</code>, joins to the owning user, and builds
+claims from that user&rsquo;s id, username, and current role. There is no per-token permission subset and
+no way to create one: a token minted by an admin is an admin token, and it passes every
+<code>requireAdmin</code> route — user management, rune upload, system update, the lot. A token minted by a
+delegate carries exactly that delegate&rsquo;s grants, no more and no less. If you want a narrow
+automation credential, create a user with narrow grants and mint the token as that user.</p>
+<p>The token lookup filters on <code>disabled=0</code>, so disabling an account does immediately kill its tokens.</p>
+<h3 id="logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</h3>
+<p>The <code>token_version</code> mechanism that makes logout revoke JWTs does not reach API tokens. The claims
+built for an <code>ygg_</code> token omit the version field entirely, and the API-token branch of the
+middleware returns before the code that compares a token&rsquo;s version against the account&rsquo;s. Bumping
+<code>token_version</code> — which is all <code>POST /api/auth/logout</code> does — therefore has no effect on any <code>ygg_</code>
+token. Logging out everywhere leaves every API token live.</p>
+<p>To revoke an API token, delete it: <code>DELETE /api/tokens/{id}</code>. To revoke all of a user&rsquo;s tokens at
+once, disable or delete the user.</p>
+<h3 id="a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</h3>
+<p><code>POST /api/schedules</code> is permission-checked. For a server-scoped schedule it requires
+<code>server.schedule</code> on that server, plus the permission the scheduled action would need if you ran it
+by hand: <code>server.console</code> for a command, <code>server.control</code> for start/stop/restart/update/wipe,
+<code>server.backup</code> for a backup. A rendered player message needs nothing beyond <code>server.schedule</code>. The
+table is exhaustive and fails closed — an action with no entry is rejected. Realm- and
+global-scoped schedules are admin-only.</p>
+<p>The other three mutations are not permission-checked. <code>PUT /api/schedules/{id}</code>,
+<code>DELETE /api/schedules/{id}</code>, and <code>POST /api/schedules/{id}/run</code> are flat admin-only and return
+<code>403 {&quot;error&quot;: &quot;admin required&quot;}</code> for everyone else, with no consideration of grants.</p>
+<p>So a delegate with <code>server.schedule</code> and <code>server.control</code> on a server can create a nightly restart,
+see it in <code>GET /api/schedules</code>, and read its history at <code>GET /api/schedules/{id}/runs</code> — but cannot
+edit its cron expression, cannot disable it, cannot delete it, and cannot trigger it early. Only an
+admin can do those.</p>
+<h2 id="conventions">Conventions</h2>
+<p>Everything is JSON in and JSON out, with <code>Content-Type: application/json</code>.</p>
+<p>Errors are a flat object with a single key, returned with the matching HTTP status:</p>
+<pre><code class="language-json">{&quot;error&quot;: &quot;forbidden: insufficient permissions&quot;}
+</code></pre>
+<p>JSON request bodies are read through a 1 MiB limit. The reader truncates at the cap rather than
+returning a distinct error, so an oversized body surfaces as <code>400 {&quot;error&quot;: &quot;invalid request&quot;}</code> from
+the decode. This applies to the pre-auth login endpoint too, which is the point: an unauthenticated
+client cannot exhaust memory. A few endpoints have their own limits — rune upload caps the body at
+512 KB, file upload is multipart with a 64 MiB form buffer, and the file editor refuses to open
+anything over 5 MB.</p>
+<p>There is deliberately no global request timeout. The console, log, and install streams are
+long-lived, and container operations like an image pull or a first start can run for minutes; a
+blanket timeout dropped both. Individual operations carry their own contexts instead — the AI
+planner, for instance, gives the model 60 seconds.</p>
+<p>Responses set <code>X-Content-Type-Options: nosniff</code>, <code>X-Frame-Options: DENY</code>,
+<code>Referrer-Policy: strict-origin-when-cross-origin</code>, and a strict CSP. HSTS is asserted only when the
+request arrived over TLS or through a proxy that set <code>X-Forwarded-Proto: https</code>, so plain-HTTP LAN
+access does not lock you out.</p>
+<h2 id="worked-example">Worked example</h2>
+<p>Mint a token in the UI under <strong>Settings → API tokens</strong>, or over the API from an existing session.
+Then list your servers:</p>
+<pre><code class="language-bash">curl -s -H &quot;Authorization: Bearer ygg_XXXXXXXX&quot; \
+  https://panel.example.com/api/servers
+</code></pre>
+<p>Each entry carries the server&rsquo;s id, name, rune, status, allocated ports, tags, and more. Abridged:</p>
+<pre><code class="language-json">[
+  {
+    &quot;id&quot;: &quot;3f9c…&quot;,
+    &quot;name&quot;: &quot;survival&quot;,
+    &quot;gameskill_id&quot;: &quot;minecraft-java&quot;,
+    &quot;status&quot;: &quot;stopped&quot;,
+    &quot;ports&quot;: {&quot;game&quot;: 25565, &quot;rcon&quot;: 25575},
+    &quot;perms&quot;: [&quot;server.view&quot;, &quot;server.control&quot;, &quot;server.console&quot;]
+  }
+]
+</code></pre>
+<p>The <code>perms</code> array on each server is the caller&rsquo;s effective permissions on it — useful for deciding
+what to attempt. An admin always gets all eight. Start one:</p>
+<pre><code class="language-bash">curl -s -X POST -H &quot;Authorization: Bearer ygg_XXXXXXXX&quot; \
+  https://panel.example.com/api/servers/3f9c…/start
+</code></pre>
+<p>No <code>Origin</code> header goes out, so the same-origin mutation check does not apply. Follow the console:</p>
+<pre><code class="language-bash">websocat &quot;wss://panel.example.com/api/servers/3f9c…/console?token=ygg_XXXXXXXX&quot;
+</code></pre>
+<h2 id="route-reference">Route reference</h2>
+<p>The <strong>Auth</strong> column names the strictest requirement. &ldquo;Session&rdquo; means any authenticated caller,
+JWT or API token. &ldquo;Admin&rdquo; means a global admin. A permission name means that permission on the
+target server, which an admin also satisfies.</p>
+<h3 id="public">Public</h3>
+<p>These need no credential at all. The status and beacon routes 404 rather than 403 when their feature
+is switched off, so a disabled status page or beacon receiver is not advertised.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/login</code></td>
+<td>none</td>
+<td>Exchange username/password (+ TOTP code) for a JWT and session cookie</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/passkey/login/begin</code></td>
+<td>none</td>
+<td>Start a WebAuthn login; returns the challenge</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/passkey/login/finish</code></td>
+<td>none</td>
+<td>Complete a WebAuthn login; issues the session</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/version</code></td>
+<td>none</td>
+<td>Build version, repo URL, latest release, and whether an update exists</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/status</code></td>
+<td>none</td>
+<td>Public status board JSON; 404 when the status page is off</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/status</code></td>
+<td>none</td>
+<td>Public status page HTML; 404 when the status page is off</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/status.js</code></td>
+<td>none</td>
+<td>The status page&rsquo;s script, served same-origin for the CSP</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/beacon</code></td>
+<td>none</td>
+<td>Receive an install ping; 404 unless this instance is the collector</td>
+</tr>
+</tbody>
+</table>
+<h3 id="session-and-account">Session and account</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/logout</code></td>
+<td>Session</td>
+<td>Clear the cookie and bump <code>token_version</code>, revoking every JWT for the user</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/auth/me</code></td>
+<td>Session</td>
+<td>The caller&rsquo;s id, username, role, and the scopes they can create servers in</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/auth/2fa</code></td>
+<td>Session</td>
+<td>Whether TOTP is enabled on the caller&rsquo;s account</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/2fa/setup</code></td>
+<td>Session</td>
+<td>Generate a pending secret and return its <code>otpauth://</code> URI</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/2fa/enable</code></td>
+<td>Session</td>
+<td>Verify a code against the pending secret and turn TOTP on</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/2fa/disable</code></td>
+<td>Session</td>
+<td>Turn TOTP off; requires a valid code</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/auth/passkey/credentials</code></td>
+<td>Session</td>
+<td>List the caller&rsquo;s registered passkeys</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/passkey/register/begin</code></td>
+<td>Session</td>
+<td>Start registering a passkey</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/passkey/register/finish</code></td>
+<td>Session</td>
+<td>Finish registering a passkey</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/auth/passkey/credentials/{id}</code></td>
+<td>Session</td>
+<td>Rename one of the caller&rsquo;s passkeys</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/auth/passkey/credentials/{id}</code></td>
+<td>Session</td>
+<td>Delete one of the caller&rsquo;s passkeys</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/tokens</code></td>
+<td>Session</td>
+<td>List the caller&rsquo;s API tokens with last-used times</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/tokens</code></td>
+<td>Session</td>
+<td>Mint an API token; the plaintext is returned once</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/tokens/{id}</code></td>
+<td>Session</td>
+<td>Delete one of the caller&rsquo;s own API tokens</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runes">Runes</h3>
+<p>The API spells a rune <code>gameskill</code>. Reading the catalogue is open to any session because the
+create-server form needs it; everything that changes the catalogue is admin-only.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/gameskills</code></td>
+<td>Session</td>
+<td>List runes, each flagged with whether the caller can create servers from it</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/gameskills/{id}</code></td>
+<td>Session</td>
+<td>The parsed rune definition</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/gameskills</code></td>
+<td>Admin</td>
+<td>Upload a rune YAML (body capped at 512 KB)</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/gameskills/import-egg</code></td>
+<td>Admin</td>
+<td>Convert a Pterodactyl egg JSON into a rune</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/gameskills/import-xml</code></td>
+<td>Admin</td>
+<td>Import a rune expressed in XML</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/gameskills/github</code></td>
+<td>Admin</td>
+<td>List runes in a GitHub repo directory. Each entry carries the repo copy&rsquo;s <code>version</code>, plus <code>installed</code> / <code>installed_version</code> / <code>builtin</code> for the local one</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/gameskills/updates</code></td>
+<td>Admin</td>
+<td>Installed non-builtin runes the catalog has moved past: <code>{updates:[{id,name,installed_version,available_version,download_url}], checked_at, note?}</code>. Matched by rune id against the community catalog; a <code>note</code> means the check couldn&rsquo;t run, which is not the same as everything being current</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/gameskills/install-from-github</code></td>
+<td>Admin</td>
+<td>Fetch, validate, and store one rune from GitHub</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/gameskills/{id}</code></td>
+<td>Admin</td>
+<td>Delete a rune</td>
+</tr>
+</tbody>
+</table>
+<h3 id="servers">Servers</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers</code></td>
+<td>Session</td>
+<td>List servers, filtered to those the caller can view</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers</code></td>
+<td><code>server.create</code></td>
+<td>Create a server in a realm from a rune</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}</code></td>
+<td><code>server.view</code></td>
+<td>One server, with the caller&rsquo;s effective permissions</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/servers/{id}</code></td>
+<td><code>server.control</code></td>
+<td>Edit name, variable values, and resource caps. Changing <code>realm_id</code> or <code>host_mounts</code> requires admin — both are privilege-scoping fields</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/servers/{id}</code></td>
+<td><code>server.delete</code></td>
+<td>Delete the server</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/clone</code></td>
+<td><code>server.view</code> + <code>server.create</code></td>
+<td>Copy a server&rsquo;s setup into a fresh server with new ports and an empty data dir</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/install</code></td>
+<td><code>server.control</code></td>
+<td>Run or re-run the install in the background</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/start</code></td>
+<td><code>server.control</code></td>
+<td>Start the container</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/stop</code></td>
+<td><code>server.control</code></td>
+<td>Stop the container</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/restart</code></td>
+<td><code>server.control</code></td>
+<td>Restart the container</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/safe-restart</code></td>
+<td><code>server.control</code></td>
+<td>Restart after warning players on a countdown</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/auto-restart</code></td>
+<td><code>server.control</code></td>
+<td>The auto-restart toggle&rsquo;s current state: <code>{enabled, every_hours, anchor_hour, warn, backup_first, target_id}</code></td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/servers/{id}/auto-restart</code></td>
+<td><code>server.control</code></td>
+<td>Create, update, or remove the managed auto-restart schedule. <code>every_hours</code> 1–24, <code>anchor_hour</code> 0–23 is the hour the cycle starts from; <code>backup_first</code> requires <code>target_id</code></td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/servers/{id}/watchdog</code></td>
+<td><code>server.control</code></td>
+<td>Toggle auto-heal for the server</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/wipe</code></td>
+<td><code>server.control</code></td>
+<td>Delete the rune&rsquo;s declared wipe paths, optionally backing up first</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/stats</code></td>
+<td><code>server.view</code></td>
+<td>Live CPU and memory from Docker</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/logs/export</code></td>
+<td><code>server.view</code></td>
+<td>Download the container log as <code>text/plain</code>. <code>tail</code> (a count or <code>all</code>), <code>since</code>/<code>until</code> (a duration like <code>2h</code>, or RFC3339), <code>timestamps=true</code>. Streamed, not buffered. The log starts at the current container&rsquo;s creation — a restart makes a new one, so there is no older history to ask for</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/install/log/export</code></td>
+<td><code>server.view</code></td>
+<td>Download the buffered install log as <code>text/plain</code>. No range: it is the last 500 lines of the most recent install, held in memory and cleared by a panel restart</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/metrics</code></td>
+<td><code>server.view</code></td>
+<td>Sampled history over the last N hours (default 24, max 168)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/quiet-hours</code></td>
+<td><code>server.view</code></td>
+<td>The calmest hour of day from 14 days of player samples</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/query</code></td>
+<td><code>server.view</code></td>
+<td>Live game-protocol query: players, map, version</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/battlemetrics</code></td>
+<td><code>server.view</code></td>
+<td>Online-status summary from BattleMetrics, when an id is configured</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/reachability</code></td>
+<td><code>server.view</code></td>
+<td>Probe the public connect address to prove the port is forwarded</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/admin-log</code></td>
+<td><code>server.view</code></td>
+<td>Parsed admin-log events, when the rune supports one</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/delegates</code></td>
+<td>Admin</td>
+<td>Every user holding a server-scoped grant on this server</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/servers/{id}/delegates</code></td>
+<td>Admin</td>
+<td>Replace the full set of server-scoped grants on this server</td>
+</tr>
+</tbody>
+</table>
+<h3 id="players-and-moderation">Players and moderation</h3>
+<p>Player actions run over RCON, so they gate on <code>server.console</code> rather than <code>server.control</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/players</code></td>
+<td><code>server.console</code></td>
+<td>The online player list, or why it is unavailable</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/players/kick</code></td>
+<td><code>server.console</code></td>
+<td>Kick a player</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/players/broadcast</code></td>
+<td><code>server.console</code></td>
+<td>Broadcast a message in-game</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/players/lock</code></td>
+<td><code>server.console</code></td>
+<td>Lock or unlock the server against new joins</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/rcon</code></td>
+<td><code>server.console</code></td>
+<td>Send a raw RCON command</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/bans</code></td>
+<td>Admin</td>
+<td>List centrally managed bans</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/bans</code></td>
+<td>Admin</td>
+<td>Ban a player on one server or all of them</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/bans/{id}</code></td>
+<td>Admin</td>
+<td>Lift a ban</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/violations</code></td>
+<td>Admin</td>
+<td>List violation auto-action rules</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/violations</code></td>
+<td>Admin</td>
+<td>Create a violation auto-action rule</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/violations/{id}</code></td>
+<td>Admin</td>
+<td>Edit a violation auto-action rule</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/violations/{id}</code></td>
+<td>Admin</td>
+<td>Delete a violation auto-action rule</td>
+</tr>
+</tbody>
+</table>
+<h3 id="files">Files</h3>
+<p>All of these resolve the server&rsquo;s data directory and gate on <code>server.files</code>. Paths are jailed to
+that directory, including through symlinks.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/files</code></td>
+<td><code>server.files</code></td>
+<td>List a directory (<code>?path=</code>)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/files/content</code></td>
+<td><code>server.files</code></td>
+<td>Read a file for editing; refuses anything over 5 MB</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/servers/{id}/files/content</code></td>
+<td><code>server.files</code></td>
+<td>Write a file, snapshotting the previous contents first</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/files/versions</code></td>
+<td><code>server.files</code></td>
+<td>List snapshots for a path (metadata only)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/files/versions/{vid}</code></td>
+<td><code>server.files</code></td>
+<td>One snapshot&rsquo;s full contents</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/servers/{id}/files</code></td>
+<td><code>server.files</code></td>
+<td>Delete a file or directory (<code>?path=</code>)</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/files/upload</code></td>
+<td><code>server.files</code></td>
+<td>Multipart upload into a directory</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/files/download</code></td>
+<td><code>server.files</code></td>
+<td>Download a single file</td>
+</tr>
+</tbody>
+</table>
+<p>The editor keeps 10 versions per file and only snapshots UTF-8 files up to 256 KB.</p>
+<h3 id="backups">Backups</h3>
+<p>Backup <em>targets</em> are global configuration and admin-only. Individual backups gate on
+<code>server.backup</code> for the server they belong to — for <code>/api/backups/{id}/…</code> the panel resolves the
+backup&rsquo;s server first, then checks.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/backup/targets</code></td>
+<td>Admin</td>
+<td>List configured backup destinations</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/backup/targets</code></td>
+<td>Admin</td>
+<td>Add a backup destination</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/backup/targets/{id}</code></td>
+<td>Admin</td>
+<td>Remove a backup destination</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/backup/targets/{id}/test</code></td>
+<td>Admin</td>
+<td>Verify a destination&rsquo;s credentials and reachability</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/backups</code></td>
+<td><code>server.backup</code></td>
+<td>List a server&rsquo;s backups</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/backup</code></td>
+<td><code>server.backup</code></td>
+<td>Run a backup now</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/backups/{id}/restore</code></td>
+<td><code>server.backup</code></td>
+<td>Restore a backup over the server&rsquo;s data</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/backups/{id}/verify</code></td>
+<td><code>server.backup</code></td>
+<td>Check one backup&rsquo;s integrity on demand</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/backups/{id}</code></td>
+<td><code>server.backup</code></td>
+<td>Delete a backup</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/backup-verify</code></td>
+<td>Admin</td>
+<td>The automatic backup-verification settings</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/backup-verify</code></td>
+<td>Admin</td>
+<td>Update the automatic backup-verification settings</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/system/backup-coverage</code></td>
+<td>Admin</td>
+<td>Installed servers with no recent successful backup (default window 7 days)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="schedules-and-templates">Schedules and templates</h3>
+<p>Read <a href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">Gotchas</a> — the gates here are not
+symmetric.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/schedules</code></td>
+<td>Session</td>
+<td>List schedules, filtered to those the caller has <code>server.schedule</code> on; realm/global rows are admin-only</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/schedules</code></td>
+<td><code>server.schedule</code> + the action&rsquo;s own permission</td>
+<td>Create a schedule; realm/global scope is admin-only</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/schedules/{id}</code></td>
+<td>Admin</td>
+<td>Edit a schedule, or toggle it on and off</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/schedules/{id}</code></td>
+<td>Admin</td>
+<td>Delete a schedule</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/schedules/{id}/run</code></td>
+<td>Admin</td>
+<td>Trigger a schedule immediately</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/schedules/{id}/runs</code></td>
+<td><code>server.schedule</code></td>
+<td>The last 50 executions; admin for realm/global schedules</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/templates</code></td>
+<td>Session</td>
+<td>List message templates, built-in and custom</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/templates</code></td>
+<td>Admin</td>
+<td>Create or update a message template</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/templates/{id}</code></td>
+<td>Admin</td>
+<td>Delete a message template</td>
+</tr>
+</tbody>
+</table>
+<p>Managed schedule rows — the ones behind the per-server auto-restart toggle — are hidden from
+<code>GET /api/schedules</code> and driven through <code>/api/servers/{id}/auto-restart</code> instead.</p>
+<h3 id="users-realms-and-permissions">Users, realms, and permissions</h3>
+<p>Listing realms is open to any session because the create-server form needs it. Every other route
+here is admin-only: a realm is a permission scope, so renaming or deleting one moves servers between
+grant boundaries.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/realms</code></td>
+<td>Session</td>
+<td>List realms. Admins also get <code>server_count</code> per realm; other callers don&rsquo;t, since the list exists for the create-server form</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/realms</code></td>
+<td>Admin</td>
+<td>Create a realm. <code>name</code> is required and unique — a clash is a <code>409</code>, not a merge</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/realms/{id}</code></td>
+<td>Admin</td>
+<td>Rename or re-describe a realm. <code>name</code> is required here too: it writes both columns, so omitting it would blank the name servers are matched against</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/realms/{id}</code></td>
+<td>Admin</td>
+<td>Delete a realm. Its servers are detached, not deleted; grants scoped to it stop applying</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/users</code></td>
+<td>Admin</td>
+<td>List users</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/users</code></td>
+<td>Admin</td>
+<td>Create a user</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/users/{id}</code></td>
+<td>Admin</td>
+<td>Update a user&rsquo;s password, role, or disabled flag</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/users/{id}</code></td>
+<td>Admin</td>
+<td>Delete a user</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/users/{id}/permissions</code></td>
+<td>Admin</td>
+<td>A user&rsquo;s grants</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/users/{id}/permissions</code></td>
+<td>Admin</td>
+<td>Replace a user&rsquo;s grants</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/permissions/catalog</code></td>
+<td>Admin</td>
+<td>The assignable permissions and scope types, for building an editor</td>
+</tr>
+</tbody>
+</table>
+<h3 id="kvasir">Kvasir</h3>
+<p>Kvasir&rsquo;s features are opt-in and off until an admin configures a provider. Configuration is
+admin-only; the advisory endpoints gate on the permission that matches what they reveal.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/ai/config</code></td>
+<td>Admin</td>
+<td>The AI provider configuration</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/ai/config</code></td>
+<td>Admin</td>
+<td>Update the AI provider configuration</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/ai/config/test</code></td>
+<td>Admin</td>
+<td>Send a trivial prompt to verify credentials and endpoint</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/ai/health-digest</code></td>
+<td>Admin</td>
+<td>An advisory cross-server ops briefing</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/admin-log/digest</code></td>
+<td><code>server.view</code></td>
+<td>A plain-language read of recent admin-log activity</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/explain</code></td>
+<td><code>server.view</code></td>
+<td>Explain an error from log text the caller is looking at</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/config-advice</code></td>
+<td><code>server.control</code></td>
+<td>An advisory review of the server&rsquo;s configuration</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/ai/plan</code></td>
+<td>Session</td>
+<td>Turn a natural-language request into a previewable plan; executes nothing</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/ai/plan/execute</code></td>
+<td>Session</td>
+<td>Run confirmed actions, re-checking each against RBAC</td>
+</tr>
+</tbody>
+</table>
+<p><code>/api/ai/plan</code> and <code>/api/ai/plan/execute</code> need no explicit permission because they scope themselves:
+both build the candidate set from the servers the caller holds <code>server.control</code> on, and the execute
+step re-derives that set server-side rather than trusting the posted plan. Both refuse with <code>400</code>
+unless an admin has enabled AI actions.</p>
+<h3 id="norn">Norn</h3>
+<p>Norn is the DayZ loot-economy tool. Reading the economy needs <code>server.view</code>; changing it needs
+<code>server.control</code>, because these routes rewrite mission files.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/dayz/economy</code></td>
+<td><code>server.view</code></td>
+<td>Types files, item and lifetime stats, cleanup timers</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/dayz/mods</code></td>
+<td><code>server.view</code></td>
+<td>Each Workshop mod&rsquo;s on-disk and upstream status, plus orphan folders</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/dayz/mod-loot</code></td>
+<td><code>server.view</code></td>
+<td>Installed mods and the <code>types.xml</code> files each ships</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/dayz/min-lifetime</code></td>
+<td><code>server.control</code></td>
+<td>Raise every item lifetime below a floor, in hours</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/dayz/globals</code></td>
+<td><code>server.control</code></td>
+<td>Update allowlisted <code>globals.xml</code> cleanup timers</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/dayz/register-types</code></td>
+<td><code>server.control</code></td>
+<td>Register detected types files in <code>cfgeconomycore.xml</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/dayz/import-mod-types</code></td>
+<td><code>server.control</code></td>
+<td>Copy a mod&rsquo;s <code>types.xml</code> into the mission and register it</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/dayz/reset</code></td>
+<td><code>server.control</code></td>
+<td>Clear saved Norn settings so reinstalls return to vanilla</td>
+</tr>
+</tbody>
+</table>
+<h3 id="networking-and-domains">Networking and domains</h3>
+<p>The domain list is RBAC-filtered like the server list. Every integration setting is admin-only.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/domains</code></td>
+<td>Session</td>
+<td>Per-server subdomain and proxy state, filtered to viewable servers</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/domains/{id}/check</code></td>
+<td><code>server.view</code></td>
+<td>Probe one server&rsquo;s public URL; the domain is recomputed server-side</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/network</code></td>
+<td>Session</td>
+<td>Public hostname, detected address, and the effective connect address</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/network</code></td>
+<td>Admin</td>
+<td>Set the public hostname, UPnP toggle, and BattleMetrics token</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/upnp/status</code></td>
+<td>Admin</td>
+<td>Whether UPnP is on and a gateway is reachable</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/unifi</code></td>
+<td>Admin</td>
+<td>The UniFi controller configuration</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/unifi</code></td>
+<td>Admin</td>
+<td>Update the UniFi controller configuration</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/unifi/test</code></td>
+<td>Admin</td>
+<td>Log in and list rules to confirm it works</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/npm</code></td>
+<td>Admin</td>
+<td>The Nginx Proxy Manager configuration</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/npm</code></td>
+<td>Admin</td>
+<td>Update the Nginx Proxy Manager configuration</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/npm/test</code></td>
+<td>Admin</td>
+<td>Log in and list proxy hosts to confirm it works</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/cloudflare</code></td>
+<td>Admin</td>
+<td>The Cloudflare tunnel configuration</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/cloudflare</code></td>
+<td>Admin</td>
+<td>Update the Cloudflare tunnel configuration</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/cloudflare/test</code></td>
+<td>Admin</td>
+<td>Verify the token, resolve the zone, and check the tunnel config</td>
+</tr>
+</tbody>
+</table>
+<p><code>GET /api/settings/network</code> is readable by any session because the connect address is what the UI
+shows players; writing it is admin-only.</p>
+<h3 id="steam">Steam</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/steam/account</code></td>
+<td>Admin</td>
+<td>The authorized Steam account, if any</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/steam/send-code</code></td>
+<td>Admin</td>
+<td>Attempt a login without a Guard code, prompting Steam to email one</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/steam/authorize</code></td>
+<td>Admin</td>
+<td>Complete authorization with the Guard code</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/steam/account</code></td>
+<td>Admin</td>
+<td>Remove the stored Steam credentials</td>
+</tr>
+</tbody>
+</table>
+<h3 id="status-page-beacon-and-discord">Status page, beacon, and Discord</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/status-page</code></td>
+<td>Admin</td>
+<td>The public status page configuration</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/status-page</code></td>
+<td>Admin</td>
+<td>Update the public status page configuration</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/beacon</code></td>
+<td>Admin</td>
+<td>The beacon configuration</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/beacon</code></td>
+<td>Admin</td>
+<td>Update the beacon configuration</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/beacon/test</code></td>
+<td>Admin</td>
+<td>Send a one-off ping to confirm a collector is reachable</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/beacon/stats</code></td>
+<td>Admin</td>
+<td>Collected install counts, when this instance is a collector</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/discord-status</code></td>
+<td>Admin</td>
+<td>The Discord status board configuration</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/discord-status</code></td>
+<td>Admin</td>
+<td>Update the Discord status board configuration</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/discord-status/post</code></td>
+<td>Admin</td>
+<td>Force an immediate status board refresh</td>
+</tr>
+</tbody>
+</table>
+<p>The public status board caches for 15 seconds and is served with <code>Cache-Control: public, max-age=15</code>.</p>
+<h3 id="notifications">Notifications</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/notifications</code></td>
+<td>Admin</td>
+<td>List notification channels</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/notifications</code></td>
+<td>Admin</td>
+<td>Add a notification channel</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/notifications/{id}</code></td>
+<td>Admin</td>
+<td>Remove a notification channel</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/notifications/{id}/test</code></td>
+<td>Admin</td>
+<td>Send a test notification</td>
+</tr>
+</tbody>
+</table>
+<h3 id="audit">Audit</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/audit</code></td>
+<td>Admin</td>
+<td>The audit log, filterable</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/audit/export</code></td>
+<td>Admin</td>
+<td>The same filtered log as a CSV download</td>
+</tr>
+</tbody>
+</table>
+<h3 id="system">System</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/system/info</code></td>
+<td>Admin</td>
+<td>Docker health, object counts, and host CPU/memory/disk figures</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/system/os-updates</code></td>
+<td>Admin</td>
+<td>Pending host OS updates: <code>{supported, total, security?, reboot_required, reboot_pkgs?, cache_age_hours?, source}</code>. Read-only — the panel reports, it never applies. <code>security</code> is <strong>absent</strong> when the host can&rsquo;t tell, which is not the same as zero. Cached 15 minutes</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/system/update</code></td>
+<td>Admin</td>
+<td>Update the panel to the latest official release</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/system/check-update</code></td>
+<td>Admin</td>
+<td>Force a fresh release check, bypassing the 6-hour cache</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/system/update-status</code></td>
+<td>Admin</td>
+<td>The last update result written by the helper, including failures</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/system/auto-update</code></td>
+<td>Admin</td>
+<td>The opt-in scheduled updater&rsquo;s settings</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/system/auto-update</code></td>
+<td>Admin</td>
+<td>Update the scheduled updater&rsquo;s settings</td>
+</tr>
+</tbody>
+</table>
+<p>Anything not matching <code>/api/</code> falls through to the embedded SPA, which serves <code>index.html</code> for
+unknown paths so client-side routes deep-link correctly. Unknown <code>/api/</code> paths return <code>404</code>.</p>
+<h2 id="websocket-endpoints">WebSocket endpoints</h2>
+<p>Three endpoints upgrade to WebSocket. All three authenticate exactly like the rest of the API — the
+<code>ygg_token</code> cookie is enough from a browser, and <code>?token=</code> carries a JWT or an <code>ygg_</code> API token from
+anything that cannot set headers. The upgrader accepts a handshake with no <code>Origin</code> (automation) or
+one whose hostname matches the request host, and refuses everything else.</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Auth</th>
+<th>Streams</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/api/servers/{id}/install/log</code></td>
+<td><code>server.view</code></td>
+<td>Install and build output — buffered history, then live</td>
+</tr>
+<tr>
+<td><code>/api/servers/{id}/logs</code></td>
+<td><code>server.view</code></td>
+<td>Container logs, live</td>
+</tr>
+<tr>
+<td><code>/api/servers/{id}/console</code></td>
+<td><code>server.console</code></td>
+<td>Container output, and input written to the container&rsquo;s stdin</td>
+</tr>
+</tbody>
+</table>
+<p><code>/console</code> is the one that writes, which is why it gates on <code>server.console</code> while <code>/logs</code> needs only
+<code>server.view</code>. Start an install with <code>POST /api/servers/{id}/install</code> and follow <code>/install/log</code> for
+progress; the install itself runs in the background and does not block the POST.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="reference-rune-schema.html">Rune schema</a></li>
+</ul>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/reference/api.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

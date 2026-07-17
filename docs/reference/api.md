@@ -523,6 +523,7 @@ The public status board caches for 15 seconds and is served with `Cache-Control:
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/system/info` | Admin | Docker health, object counts, and host CPU/memory/disk figures |
+| `GET` | `/api/system/os-updates` | Admin | Pending host OS updates: `{supported, total, security?, reboot_required, reboot_pkgs?, cache_age_hours?, source}`. Read-only — the panel reports, it never applies. `security` is **absent** when the host can't tell, which is not the same as zero. Cached 15 minutes |
 | `POST` | `/api/system/update` | Admin | Update the panel to the latest official release |
 | `POST` | `/api/system/check-update` | Admin | Force a fresh release check, bypassing the 6-hour cache |
 | `GET` | `/api/system/update-status` | Admin | The last update result written by the helper, including failures |

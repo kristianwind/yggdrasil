@@ -204,6 +204,31 @@ hasn&rsquo;t run today. The catch-up window matters — gating on the exact hour
 rebooting, asleep or offline during that one hour silently skipped the whole day. A self-update
 restarts only the panel binary; your game and app containers keep running, so the impact is a few
 seconds of UI downtime.</p>
+<h2 id="host-operating-system">Host operating system</h2>
+<p><strong>Settings → System → Operating system</strong> reports what the host has pending: how many updates, how
+many of those are security, and whether something has asked for a reboot.</p>
+<p>The numbers come from the host&rsquo;s own tooling, so they agree with what the box tells you when you log
+into it over SSH — <code>apt-check</code> where it exists (Ubuntu&rsquo;s, the one behind the login banner), falling
+back to counting <code>apt list --upgradable</code>. That fallback has no security breakdown, and the card says
+so rather than showing a zero it can&rsquo;t stand behind: Ubuntu publishes security updates into both
+<code>-security</code> and <code>-updates</code>, so counting suites would under-report them.</p>
+<p>If apt&rsquo;s package list hasn&rsquo;t been refreshed in a couple of days the card says that too. A count of
+zero from a stale list means nothing has been <em>checked</em>, not that nothing is pending.</p>
+<p><strong>Yggdrasil does not install them.</strong> That&rsquo;s deliberate, and worth understanding:</p>
+<ul>
+<li>Upgrading Docker restarts <code>docker.service</code>, which stops <strong>every running server</strong>. As a side effect
+of &ldquo;update the OS&rdquo;, with no warning, that&rsquo;s the most disruptive thing the panel could do.</li>
+<li>A kernel update needs a reboot, which is a decision about your players, not a button.</li>
+<li><code>unattended-upgrades</code> already does unattended patching properly, and it ships with the distro.</li>
+</ul>
+<p>So the panel tells you, and you choose when:</p>
+<pre><code class="language-bash">sudo apt update &amp;&amp; sudo apt upgrade
+</code></pre>
+<p>Pick a quiet hour — a server&rsquo;s <strong>Auto-restart</strong> dialog names its calmest one, mined from real player
+counts. See <a href="guides-servers.html#auto-restart">auto-restart</a>.</p>
+<p>This exists because <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/../SECURITY.md">the security policy</a> says the fix for the open Docker
+advisories is keeping Docker updated on the host. Until now nothing in the panel would tell you
+whether you had.</p>
 <h2 id="see-also">See also</h2>
 <ul>
 <li><a href="guides-servers.html">Servers</a></li>
@@ -219,7 +244,7 @@ seconds of UI downtime.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

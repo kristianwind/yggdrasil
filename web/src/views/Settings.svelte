@@ -33,6 +33,40 @@
   let twofaSetup = $state(null); // { secret, uri }
   let twofaCode = $state("");
 
+  // Host OS updates — read-only. The panel says what's pending; applying is left
+  // to the operator, because `apt upgrade` bounces Docker (and every server with
+  // it) and that's not a call to make from a web button.
+  let osUpd = $state(null);
+  const staleAptCache = $derived(osUpd?.cache_age_hours != null && osUpd.cache_age_hours > 48);
+  async function loadOSUpdates() {
+    try {
+      osUpd = await api.get("/system/os-updates");
+    } catch {
+      osUpd = { supported: false, note: "Could not read the host's update status." };
+    }
+  }
+  async function copyAptCmd() {
+    const cmd = "sudo apt update && sudo apt upgrade";
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(cmd);
+      } else {
+        // The panel is often reached over plain http on a LAN.
+        const ta = document.createElement("textarea");
+        ta.value = cmd;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      toast("Command copied", "success");
+    } catch (e) {
+      toast("Could not copy: " + e.message, "error");
+    }
+  }
+
   // Panel updates (self-update of the Yggdrasil panel binary)
   let build = $state(null);
   let updating = $state(false);
@@ -743,6 +777,7 @@
     loadPasskeys();
     loadBuild();
     loadAutoUpdate();
+    loadOSUpdates();
     loadNetwork();
     loadStatusPage();
     loadBeacon();
@@ -859,6 +894,70 @@
     </div>
   {:else}
     <p class="text-sm text-muted">Checking for updates…</p>
+  {/if}
+</div>
+
+
+<!-- Host OS updates (read-only: the panel reports, it doesn't apply) -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Operating system</h2>
+<div class="card p-4 mb-10 max-w-xl">
+  {#if !osUpd}
+    <p class="text-sm text-muted">Checking…</p>
+  {:else if !osUpd.supported}
+    <p class="text-sm text-muted">{osUpd.note || "The panel can't read this host's update status."}</p>
+  {:else}
+    <div class="flex items-center gap-3 flex-wrap">
+      <span class="text-sm">
+        {#if osUpd.total === 0}
+          <span class="badge bg-accent2/20 text-accent">up to date</span>
+        {:else}
+          <b>{osUpd.total}</b> update{osUpd.total === 1 ? "" : "s"} available
+        {/if}
+      </span>
+      {#if osUpd.security != null && osUpd.security > 0}
+        <span class="badge bg-warn/20 text-warn">{osUpd.security} security</span>
+      {/if}
+      {#if osUpd.reboot_required}
+        <span class="badge bg-warn/20 text-warn">reboot needed</span>
+      {/if}
+    </div>
+
+    {#if osUpd.reboot_required}
+      <p class="text-xs text-muted mt-2">
+        Something installed needs a reboot to take effect{osUpd.reboot_pkgs?.length
+          ? ` — ${osUpd.reboot_pkgs.join(", ")}`
+          : ""}. Rebooting stops every server, so pick your moment; autostart brings the running
+        ones back.
+      </p>
+    {/if}
+
+    {#if osUpd.security == null && osUpd.total > 0}
+      <p class="text-xs text-muted mt-2">
+        No security breakdown on this host — {osUpd.note || "install update-notifier-common for one"}.
+      </p>
+    {/if}
+
+    {#if staleAptCache}
+      <p class="text-xs text-warn mt-2">
+        The package list was last refreshed {Math.round(osUpd.cache_age_hours)} hours ago, so this
+        count may be out of date. <span class="font-mono">sudo apt update</span> refreshes it.
+      </p>
+    {/if}
+
+    <div class="border-t border-border mt-4 pt-4 space-y-2">
+      <p class="text-xs text-muted">
+        Yggdrasil reports these but doesn't install them — that's a decision with your players on
+        it. Apply them over SSH:
+      </p>
+      <div class="install-cmd flex items-center gap-2">
+        <code class="text-xs font-mono text-accent2 break-all">sudo apt update &amp;&amp; sudo apt upgrade</code>
+        <button class="btn-ghost text-xs ml-auto shrink-0" onclick={copyAptCmd}>Copy</button>
+      </div>
+      <p class="text-xs text-muted">
+        Upgrading Docker restarts it, which stops every running server. Do it when it's quiet — a
+        server's <b>Auto-restart</b> dialog will tell you its calmest hour.
+      </p>
+    </div>
   {/if}
 </div>
 

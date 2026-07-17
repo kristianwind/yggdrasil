@@ -186,6 +186,40 @@ rebooting, asleep or offline during that one hour silently skipped the whole day
 restarts only the panel binary; your game and app containers keep running, so the impact is a few
 seconds of UI downtime.
 
+## Host operating system
+
+**Settings → System → Operating system** reports what the host has pending: how many updates, how
+many of those are security, and whether something has asked for a reboot.
+
+The numbers come from the host's own tooling, so they agree with what the box tells you when you log
+into it over SSH — `apt-check` where it exists (Ubuntu's, the one behind the login banner), falling
+back to counting `apt list --upgradable`. That fallback has no security breakdown, and the card says
+so rather than showing a zero it can't stand behind: Ubuntu publishes security updates into both
+`-security` and `-updates`, so counting suites would under-report them.
+
+If apt's package list hasn't been refreshed in a couple of days the card says that too. A count of
+zero from a stale list means nothing has been *checked*, not that nothing is pending.
+
+**Yggdrasil does not install them.** That's deliberate, and worth understanding:
+
+- Upgrading Docker restarts `docker.service`, which stops **every running server**. As a side effect
+  of "update the OS", with no warning, that's the most disruptive thing the panel could do.
+- A kernel update needs a reboot, which is a decision about your players, not a button.
+- `unattended-upgrades` already does unattended patching properly, and it ships with the distro.
+
+So the panel tells you, and you choose when:
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+Pick a quiet hour — a server's **Auto-restart** dialog names its calmest one, mined from real player
+counts. See [auto-restart](servers.md#auto-restart).
+
+This exists because [the security policy](../../SECURITY.md) says the fix for the open Docker
+advisories is keeping Docker updated on the host. Until now nothing in the panel would tell you
+whether you had.
+
 ## See also
 
 - [Servers](servers.md)

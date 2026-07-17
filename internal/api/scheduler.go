@@ -296,12 +296,21 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		if body == "" {
 			return "skipped", "no message body"
 		}
-		vars := map[string]string{
-			"server_name": s.serverName(serverID),
-			"minutes":     args["minutes"],
-			"seconds":     args["seconds"],
+		// Only pass values we actually have: Render leaves unknown placeholders
+		// alone, which is what lets the check below spot a template we can't fill.
+		vars := map[string]string{"server_name": s.serverName(serverID)}
+		for _, k := range []string{"minutes", "seconds"} {
+			if v := args[k]; v != "" {
+				vars[k] = v
+			}
 		}
 		rendered := scheduler.Render(body, vars)
+		// Refuse rather than broadcast a half-filled line. Feeding every known key
+		// in as "" used to turn "Restarting in {{seconds}} seconds!" into
+		// "Restarting in  seconds!" — sent to players, and logged as a success.
+		if missing := scheduler.Placeholders(rendered); len(missing) > 0 {
+			return "error", "template needs a value for {{" + strings.Join(missing, "}}, {{") + "}}"
+		}
 		s.sendToServer(serverID, rendered)
 		return "ok", "message sent: " + rendered
 

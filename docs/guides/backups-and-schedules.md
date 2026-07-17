@@ -285,13 +285,19 @@ say Server restarting in {{minutes}} minutes. Please find a safe spot.
 ```
 
 `{{key}}` placeholders are substituted at send time. Three keys are substituted:
-`{{server_name}}`, `{{minutes}}` and `{{seconds}}`. The schedule editor supplies the
-server name and a **minutes** value you type next to the template picker, so those are
-the two to build templates around — a `message` schedule has nothing to put in
-`{{seconds}}`, and it renders empty.
+`{{server_name}}`, `{{minutes}}` and `{{seconds}}`.
 
-Any other placeholder is left in the text untouched, so a typo shows up in-game rather
-than silently vanishing.
+The panel fills in `{{server_name}}` itself. For the rest, the schedule editor reads the
+template you picked and gives you an input for each placeholder it uses — pick **Restart
+countdown** and you're asked for a `{{seconds}}` value; pick **Backup warning**, which
+uses only the server name, and you're asked for nothing. The body is shown under the
+picker so you can see what you're filling in.
+
+A placeholder nothing fills in is left in the text untouched, and a template still
+holding one at send time is **not** sent: the run log records
+`error — template needs a value for {{seconds}}` instead. A message going out to your
+players with a gap where a number should be is worse than one that doesn't go out, and
+the run log is where you find out why.
 
 ### Skipping when players are online
 

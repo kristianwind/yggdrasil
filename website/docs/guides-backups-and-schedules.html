@@ -310,12 +310,17 @@ the syntax per game if you need to:</p>
 <pre><code class="language-text">say Server restarting in {{minutes}} minutes. Please find a safe spot.
 </code></pre>
 <p><code>{{key}}</code> placeholders are substituted at send time. Three keys are substituted:
-<code>{{server_name}}</code>, <code>{{minutes}}</code> and <code>{{seconds}}</code>. The schedule editor supplies the
-server name and a <strong>minutes</strong> value you type next to the template picker, so those are
-the two to build templates around — a <code>message</code> schedule has nothing to put in
-<code>{{seconds}}</code>, and it renders empty.</p>
-<p>Any other placeholder is left in the text untouched, so a typo shows up in-game rather
-than silently vanishing.</p>
+<code>{{server_name}}</code>, <code>{{minutes}}</code> and <code>{{seconds}}</code>.</p>
+<p>The panel fills in <code>{{server_name}}</code> itself. For the rest, the schedule editor reads the
+template you picked and gives you an input for each placeholder it uses — pick <strong>Restart
+countdown</strong> and you&rsquo;re asked for a <code>{{seconds}}</code> value; pick <strong>Backup warning</strong>, which
+uses only the server name, and you&rsquo;re asked for nothing. The body is shown under the
+picker so you can see what you&rsquo;re filling in.</p>
+<p>A placeholder nothing fills in is left in the text untouched, and a template still
+holding one at send time is <strong>not</strong> sent: the run log records
+<code>error — template needs a value for {{seconds}}</code> instead. A message going out to your
+players with a gap where a number should be is worse than one that doesn&rsquo;t go out, and
+the run log is where you find out why.</p>
 <h3 id="skipping-when-players-are-online">Skipping when players are online</h3>
 <p><code>restart</code> and <code>update</code> offer <strong>skip if players are online</strong>. When it is on, Yggdrasil
 queries the server&rsquo;s player count before acting and skips if anyone is connected; the run

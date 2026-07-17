@@ -5,6 +5,7 @@ package scheduler
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -14,6 +15,24 @@ func Render(body string, vars map[string]string) string {
 	out := body
 	for k, v := range vars {
 		out = strings.ReplaceAll(out, "{{"+k+"}}", v)
+	}
+	return out
+}
+
+var placeholderRe = regexp.MustCompile(`\{\{(\w+)\}\}`)
+
+// Placeholders lists the {{key}} names in body, in order, without duplicates.
+// Callers use it two ways: to ask an admin for the values a template needs, and
+// to check a rendered message for placeholders Render couldn't fill — the point
+// of leaving those untouched is that somebody looks.
+func Placeholders(body string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range placeholderRe.FindAllStringSubmatch(body, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			out = append(out, m[1])
+		}
 	}
 	return out
 }

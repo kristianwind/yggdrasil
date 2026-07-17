@@ -70,6 +70,62 @@ body {
 }
 
 /* Console / log viewer */
+/* Rendered server notes. Tailwind's preflight strips list markers and heading
+   sizes, so markdown would otherwise render as a flat wall of text — these put
+   back just enough for a note, not a document. */
+.notes-md > *:first-child {
+  @apply mt-0;
+}
+.notes-md > *:last-child {
+  @apply mb-0;
+}
+.notes-md p {
+  @apply my-2;
+}
+.notes-md h1 {
+  @apply text-base font-semibold mt-3 mb-1;
+}
+.notes-md h2 {
+  @apply text-sm font-semibold mt-3 mb-1;
+}
+.notes-md h3 {
+  @apply text-sm font-medium mt-2 mb-1;
+}
+.notes-md ul {
+  @apply list-disc pl-5 my-2 space-y-0.5;
+}
+.notes-md ol {
+  @apply list-decimal pl-5 my-2 space-y-0.5;
+}
+.notes-md a {
+  @apply text-accent2 underline underline-offset-2;
+}
+.notes-md code {
+  @apply font-mono text-xs bg-panel2 border border-border rounded px-1 py-0.5;
+}
+.notes-md pre {
+  @apply font-mono text-xs bg-black/40 rounded-md p-2 my-2 overflow-auto;
+}
+.notes-md pre code {
+  @apply bg-transparent border-0 p-0;
+}
+.notes-md blockquote {
+  @apply border-l-2 border-border pl-3 my-2 text-muted;
+}
+.notes-md table {
+  @apply my-2 text-xs border-collapse block overflow-x-auto;
+}
+.notes-md th,
+.notes-md td {
+  @apply border border-border px-2 py-1 text-left;
+}
+.notes-md hr {
+  @apply border-border my-3;
+}
+.notes-md img {
+  @apply max-w-full rounded my-2;
+}
+
 .term {
   @apply font-mono text-xs leading-relaxed bg-black/40 rounded-md p-3 overflow-auto whitespace-pre-wrap break-words;
 }

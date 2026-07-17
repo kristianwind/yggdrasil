@@ -852,16 +852,25 @@
   // Shared free-text notes for the admin team (per server).
   let editingNotes = $state(false);
   let notesDraft = $state("");
+  // Whether this note is markdown is stored per server rather than being a view
+  // toggle: it's a property of how the note was written. Off by default, so an
+  // existing note keeps reading exactly as it does now and nobody's asterisks
+  // silently turn into bullets.
+  let notesMdDraft = $state(false);
   let savingNotes = $state(false);
   function startEditNotes() {
     notesDraft = server.notes || "";
+    notesMdDraft = !!server.notes_markdown;
     editingNotes = true;
   }
   async function saveNotes() {
     savingNotes = true;
     try {
-      await api.put(`/servers/${id}`, { notes: notesDraft });
-      server.notes = notesDraft;
+      await api.put(`/servers/${id}`, { notes: notesDraft, notes_markdown: notesMdDraft });
+      // Re-fetch rather than patch locally: the rendered HTML is built by the
+      // server, so anything assembled here would be showing something it didn't
+      // produce — and it's the escaping that makes it safe to inject.
+      await loadServer();
       editingNotes = false;
       toast("Notes saved", "success");
     } catch (e) {
@@ -1300,16 +1309,32 @@
           bind:value={notesDraft}
           placeholder="Shared notes for the admin team — e.g. what this server is for, event schedule, gotchas…"
         ></textarea>
-        <div class="flex gap-2 mt-2">
+        <div class="flex gap-2 mt-2 items-center flex-wrap">
           <button class="btn-primary" disabled={savingNotes} onclick={saveNotes}>{savingNotes ? "Saving…" : "Save"}</button>
           <button class="btn-ghost" onclick={() => (editingNotes = false)}>Cancel</button>
+          <label class="inline-flex items-center gap-2 text-sm ml-auto"
+            title="Render this note as Markdown — headings, lists, bold, links, tables. Off means it shows exactly as typed.">
+            <input type="checkbox" class="accent-accent2 w-4 h-4" bind:checked={notesMdDraft} />
+            <span>Markdown</span>
+          </label>
         </div>
       {:else}
         <div class="flex items-start gap-3">
           <div class="flex-1 min-w-0">
-            <div class="text-xs text-muted mb-1">📝 Notes</div>
+            <div class="text-xs text-muted mb-1">
+              📝 Notes{server.notes_markdown ? " · Markdown" : ""}
+            </div>
             {#if server.notes}
-              <div class="text-sm whitespace-pre-wrap break-words">{server.notes}</div>
+              {#if server.notes_markdown && server.notes_html}
+                <!-- The one place this panel injects HTML. server.notes_html is
+                     rendered by internal/api/notes_render.go, which drops raw HTML
+                     and empties javascript:/data: URLs — a note is written with
+                     server.control and read by an admin, so it crosses a privilege
+                     boundary. Never put anything else in here. -->
+                <div class="text-sm notes-md break-words">{@html server.notes_html}</div>
+              {:else}
+                <div class="text-sm whitespace-pre-wrap break-words">{server.notes}</div>
+              {/if}
             {:else}
               <div class="text-sm text-muted italic">No notes yet.</div>
             {/if}

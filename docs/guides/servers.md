@@ -358,6 +358,18 @@ That's the undo for "I edited server.properties and now it won't boot".
 team, for what the server is for, event schedules, gotchas. Up to 8000 characters, and
 editing needs `server.control`.
 
+Tick **Markdown** while editing and the note renders instead: headings, lists, bold,
+links, code, tables. It's stored per server and **off by default**, so an existing note
+keeps reading exactly as it does now and nobody's asterisks quietly turn into bullets.
+Untick it and you get the plain text back, unchanged — the note itself is never rewritten,
+only how it's displayed.
+
+Markdown notes are rendered by the panel, not the browser, and raw HTML in a note is
+**dropped rather than shown**: a `<script>` becomes nothing, and a link whose target is
+`javascript:` loses that target. That's deliberate rather than incidental. A note is writable by anyone
+with `server.control` and read by admins, so it crosses a privilege boundary — the
+rendering has to be safe by construction, not by whoever happens to be typing.
+
 **Tags** are comma-separated labels set under **Settings** on the server page
 ("survival, event, staging"). They're normalized to lowercase, deduplicated, and capped
 at 20 tags of 30 characters. Tagged servers show their tags as chips on the Servers

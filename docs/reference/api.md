@@ -294,7 +294,7 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `GET` | `/api/servers` | Session | List servers, filtered to those the caller can view |
 | `POST` | `/api/servers` | `server.create` | Create a server in a realm from a rune |
 | `GET` | `/api/servers/{id}` | `server.view` | One server, with the caller's effective permissions |
-| `PUT` | `/api/servers/{id}` | `server.control` | Edit name, variable values, and resource caps. Changing `realm_id` or `host_mounts` requires admin — both are privilege-scoping fields |
+| `PUT` | `/api/servers/{id}` | `server.control` | Edit name, variable values, resource caps, `notes`, `notes_markdown`. Changing `realm_id` or `host_mounts` requires admin — both are privilege-scoping fields |
 | `DELETE` | `/api/servers/{id}` | `server.delete` | Delete the server |
 | `POST` | `/api/servers/{id}/clone` | `server.view` + `server.create` | Copy a server's setup into a fresh server with new ports and an empty data dir |
 | `POST` | `/api/servers/{id}/install` | `server.control` | Run or re-run the install in the background |

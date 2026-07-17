@@ -47,11 +47,12 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Frontend build (compiles the Svelte app)
+      - name: Frontend test and build (compiles the Svelte app)
         run: |
           if [ -f web/package.json ]; then
             cd web
             npm ci
+            npm test
             npm run build
           else
             echo "No web/package.json — skipping frontend build."

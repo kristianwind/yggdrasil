@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { buildScheduleArgs, missingTemplateVars, templateVarsFor } from "../lib/scheduleArgs.js";
 
   let schedules = $state([]);
   let servers = $state([]);
@@ -29,20 +30,12 @@
     };
   }
 
-  // The panel fills this one in itself, so the form never asks for it.
-  const computedVars = ["server_name"];
-
   // The placeholders the chosen template actually uses. Asking per template beats
   // a fixed list of inputs: a countdown needs {{seconds}}, a backup warning needs
   // nothing at all, and a template someone writes tomorrow needs whatever it says.
   let templateVars = $derived(
-    placeholders(templates.find((t) => t.id === form.args.template_id)?.body || "")
-      .filter((v) => !computedVars.includes(v)),
+    templateVarsFor(templates.find((t) => t.id === form.args.template_id)?.body || ""),
   );
-
-  function placeholders(body) {
-    return [...new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
-  }
 
   const actions = [
     ["restart", "Restart"],
@@ -107,30 +100,21 @@
     if (!form.name) return toast("Name required", "warn");
     if (form.scope === "server" && !form.server_id) return toast("Pick a server", "warn");
     if (form.scope === "realm" && !form.realm_id) return toast("Pick a realm", "warn");
+    const missing = form.action === "message" ? missingTemplateVars(form.args, templateVars) : [];
+    if (missing.length) return toast(`Give {{${missing[0]}}} a value`, "warn");
     const payload = {
       name: form.name,
       cron_expr: form.cron_expr,
       action: form.action,
       server_id: form.scope === "server" ? form.server_id : "",
       realm_id: form.scope === "realm" ? form.realm_id : "",
-      // Keep what was already there. The fields below overwrite what this editor
-      // manages; anything else the schedule carries is none of its business, and
-      // dropping it would quietly change what the schedule does.
-      args: { ...storedArgs },
+      args: buildScheduleArgs({
+        action: form.action,
+        args: form.args,
+        storedArgs,
+        templateVars,
+      }),
     };
-    // Only include relevant args per action.
-    if (form.action === "backup") payload.args.target_id = form.args.target_id;
-    if (form.action === "command") payload.args.command = form.args.command;
-    if (form.action === "message") {
-      payload.args.template_id = form.args.template_id;
-      for (const v of templateVars) {
-        if (!form.args[v]) return toast(`Give {{${v}}} a value`, "warn");
-        payload.args[v] = form.args[v];
-      }
-    }
-    if (form.action === "restart" || form.action === "update")
-      payload.args.skip_if_players = form.args.skip_if_players;
-    if (form.action === "restart") payload.args.warn = form.args.warn;
     try {
       if (editingId) {
         await api.put(`/schedules/${editingId}`, payload);

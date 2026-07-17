@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -80,27 +81,50 @@ func (s *Server) maybeSendBeacon() {
 	if s.getSetting(ctx, "beacon_last_day") == today {
 		return // already pinged today
 	}
-	if s.sendBeacon(ctx) {
-		s.setSetting(ctx, "beacon_last_day", today)
+	if err := s.sendBeacon(ctx); err != nil {
+		// Keep the reason where the admin will see it, and log it once per attempt
+		// rather than staying quiet.
+		s.setSetting(ctx, "beacon_last_error", err.Error())
+		s.setSetting(ctx, "beacon_last_error_at", time.Now().UTC().Format(time.RFC3339))
+		log.Printf("beacon: ping failed: %v", err)
+		return
 	}
+	s.setSetting(ctx, "beacon_last_day", today)
+	s.setSetting(ctx, "beacon_last_error", "")
+	s.setSetting(ctx, "beacon_last_error_at", "")
 }
 
-// sendBeacon POSTs the two-field payload to the collector. Returns true on a 2xx.
-func (s *Server) sendBeacon(ctx context.Context) bool {
+// sendBeacon POSTs the two-field payload to the collector, and says why if it
+// couldn't.
+//
+// It used to return a bare bool and drop the reason on the floor. A beacon that
+// can't reach its collector then failed in complete silence — no log, no error
+// stored, nothing in the UI — and retried every 30 minutes forever. The only way
+// to notice was to count the installs on the collector and find one missing,
+// which is exactly how this was found. Whatever the collector URL happens to be,
+// a ping that never lands has to be visible.
+func (s *Server) sendBeacon(ctx context.Context) error {
 	body, _ := json.Marshal(beaconPayload{InstanceID: s.beaconInstanceID(), Version: s.version})
 	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(c, "POST", s.beaconURL(), bytes.NewReader(body))
+	url := s.beaconURL()
+	req, err := http.NewRequestWithContext(c, "POST", url, bytes.NewReader(body))
 	if err != nil {
-		return false
+		return fmt.Errorf("bad collector URL %q: %w", url, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return false
+		return fmt.Errorf("could not reach %s: %w", url, err)
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// A 404 here is the classic one: the URL resolves but nothing is routed to
+		// a receiver behind it, or the receiver is switched off.
+		return fmt.Errorf("%s returned %s — check the collector URL is routed to a panel with the receiver on",
+			url, resp.Status)
+	}
+	return nil
 }
 
 // --- Receiver (collector) side ---
@@ -185,6 +209,8 @@ func (s *Server) handleGetBeaconSettings(w http.ResponseWriter, r *http.Request)
 		"version":          s.version,
 		"receiver_enabled": s.beaconReceiverEnabled(ctx),
 		"last_sent":        s.getSetting(ctx, "beacon_last_day"), // YYYY-MM-DD of the last successful ping ("" = never)
+		"last_error":       s.getSetting(ctx, "beacon_last_error"),
+		"last_error_at":    s.getSetting(ctx, "beacon_last_error_at"),
 	})
 }
 

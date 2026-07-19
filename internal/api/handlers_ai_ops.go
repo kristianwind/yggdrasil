@@ -87,11 +87,11 @@ func (s *Server) handleAIPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		buildAIPlanMessages(req.Request, servers), 800)
+		buildAIPlanMessages(req.Request, servers), aiReplyMaxTokens)
 	if err != nil {
 		jsonError(w, "AI request failed: "+err.Error(), http.StatusBadGateway)
 		return

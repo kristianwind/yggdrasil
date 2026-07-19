@@ -10,12 +10,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// ErrEmptyCompletion means the model returned no visible text. The usual cause is
+// a max_tokens budget too small for a verbose model: it spends the whole cap
+// before emitting the answer and finishes with reason "length", leaving empty
+// content. Complete surfaces this instead of returning "" so callers don't show a
+// blank result as if the model had nothing to say. Callers that only need a
+// liveness check (the config test) may treat it as success via errors.Is.
+var ErrEmptyCompletion = errors.New("model returned an empty completion")
 
 // Config describes which model to call and how to reach it.
 type Config struct {
@@ -129,6 +138,7 @@ func completeOpenAI(ctx context.Context, cfg Config, base string, messages []Mes
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -137,7 +147,17 @@ func completeOpenAI(ctx context.Context, cfg Config, base string, messages []Mes
 	if len(out.Choices) == 0 {
 		return "", fmt.Errorf("model returned no choices")
 	}
-	return strings.TrimSpace(out.Choices[0].Message.Content), nil
+	text := strings.TrimSpace(out.Choices[0].Message.Content)
+	if text == "" {
+		// The model produced no usable text. finish_reason "length" means it hit the
+		// token cap without getting to the answer — the actionable fix is a bigger
+		// budget, so say so. Either way this is a failure, not a blank answer.
+		if out.Choices[0].FinishReason == "length" {
+			return "", fmt.Errorf("%w — it hit the token limit before answering (raise max_tokens or use a less verbose model)", ErrEmptyCompletion)
+		}
+		return "", ErrEmptyCompletion
+	}
+	return text, nil
 }
 
 // ---- Anthropic (/v1/messages) ----
@@ -191,6 +211,7 @@ func completeAnthropic(ctx context.Context, cfg Config, base string, messages []
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
+		StopReason string `json:"stop_reason"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", fmt.Errorf("decode response: %w", err)
@@ -203,7 +224,10 @@ func completeAnthropic(ctx context.Context, cfg Config, base string, messages []
 	}
 	s := strings.TrimSpace(sb.String())
 	if s == "" {
-		return "", fmt.Errorf("model returned no text")
+		if out.StopReason == "max_tokens" {
+			return "", fmt.Errorf("%w — it hit the token limit before answering (raise max_tokens or use a less verbose model)", ErrEmptyCompletion)
+		}
+		return "", ErrEmptyCompletion
 	}
 	return s, nil
 }

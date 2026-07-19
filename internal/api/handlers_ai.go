@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,14 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/llm"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
+
+// aiReplyMaxTokens caps the advisory replies (digests, config review, error
+// explainer, ops plan). It's a ceiling, not a target — a well-behaved model
+// stops at its natural end well below this. It sits high because self-hosted
+// models are often verbose: gemma-4-12b-qat spends ~600 tokens of preamble on the
+// ops digest before the ~50-token answer, so the old 700 cap cut it off mid-think
+// and returned nothing. 700 was a false economy that made the feature look broken.
+const aiReplyMaxTokens = 2000
 
 // Advisory AI layer. An admin optionally wires up their own LLM (any provider);
 // server features can then ask it for a plain-language read on machine-parsed
@@ -147,16 +156,18 @@ func (s *Server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	// Give reasoning models (e.g. DeepSeek v4) enough budget to spend on internal
-	// reasoning and still return visible content — a 16-token cap came back empty.
+	// A small budget is fine for a one-word ping; verbose models that burn it all
+	// come back empty, but for a connectivity test an empty reply still proves the
+	// endpoint and credentials work — so treat ErrEmptyCompletion as success here,
+	// unlike the digests, which need the actual text.
 	out, err := llm.Complete(ctx, llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
 		[]llm.Message{{Role: "user", Content: "Reply with exactly: OK"}}, 128)
+	if errors.Is(err, llm.ErrEmptyCompletion) {
+		out, err = "(connected — model returned an empty reply)", nil
+	}
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
-	}
-	if strings.TrimSpace(out) == "" {
-		out = "(connected — model returned an empty reply)"
 	}
 	jsonOK(w, map[string]string{"status": "ok", "reply": out})
 }
@@ -200,11 +211,11 @@ func (s *Server) handleAdminLogDigest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		buildDigestMessages(srv.Name, events), 700)
+		buildDigestMessages(srv.Name, events), aiReplyMaxTokens)
 	if err != nil {
 		jsonError(w, "AI request failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -298,11 +309,11 @@ func (s *Server) handleExplainError(w http.ResponseWriter, r *http.Request) {
 		logText = logText[len(logText)-explainMaxChars:]
 	}
 	gameskillID := srv.GameskillID
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		buildExplainMessages(gameskillID, req.Context, logText), 700)
+		buildExplainMessages(gameskillID, req.Context, logText), aiReplyMaxTokens)
 	if err != nil {
 		jsonError(w, "AI request failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -442,11 +453,11 @@ func (s *Server) handleHealthDigest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snapshot := s.gatherHealthSnapshot(r.Context())
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		buildHealthDigestMessages(snapshot), 700)
+		buildHealthDigestMessages(snapshot), aiReplyMaxTokens)
 	if err != nil {
 		jsonError(w, "AI request failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -528,11 +539,11 @@ func (s *Server) handleConfigAdvice(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		buildConfigAdviceMessages(s.configSnapshot(rt)), 700)
+		buildConfigAdviceMessages(s.configSnapshot(rt)), aiReplyMaxTokens)
 	if err != nil {
 		jsonError(w, "AI request failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -582,7 +593,7 @@ func (s *Server) maybeSendOpsDigest() {
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, APIKey: c.APIKey},
-		buildHealthDigestMessages(snapshot), 700)
+		buildHealthDigestMessages(snapshot), aiReplyMaxTokens)
 	if err != nil {
 		log.Printf("ops digest: LLM request failed: %v", err)
 		return

@@ -97,7 +97,13 @@ def main() -> int:
     req = urllib.request.Request(
         webhook,
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        # A User-Agent is required. Discord sits behind Cloudflare, which blocks
+        # urllib's default "Python-urllib/x" signature with HTTP 403 "error code:
+        # 1010" — the request never reaches Discord. Any real UA gets through.
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "Yggdrasil-Panel-Release (+https://github.com/kristianwind/yggdrasil)",
+        },
         method="POST",
     )
     try:

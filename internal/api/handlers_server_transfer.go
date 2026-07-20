@@ -27,6 +27,7 @@ type transferManifest struct {
 	Version     int               `json:"version"`
 	Name        string            `json:"name"`
 	GameskillID string            `json:"gameskill_id"`
+	RealmName   string            `json:"realm_name"` // the group; matched by name on import (ids don't cross panels)
 	RuneYAML    string            `json:"rune_yaml"`
 	Env         map[string]string `json:"env"`
 	CPULimit    float64           `json:"cpu_limit"`
@@ -52,15 +53,16 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var envJSON, hostMounts, yamlBlob string
+	var envJSON, hostMounts, yamlBlob, realmName string
 	var cpu float64
 	var mem int64
 	var autostart, autoForward, watchdog int
 	if err := s.db.QueryRowContext(r.Context(), `
 		SELECT COALESCE(s.env_json,'{}'), COALESCE(s.host_mounts,''), COALESCE(s.cpu_limit,0), COALESCE(s.mem_limit_mb,0),
-		       COALESCE(s.autostart,1), COALESCE(s.auto_forward,1), COALESCE(s.watchdog,0), g.yaml_blob
-		FROM servers s JOIN gameskills g ON g.id=s.gameskill_id WHERE s.id=?`, id).
-		Scan(&envJSON, &hostMounts, &cpu, &mem, &autostart, &autoForward, &watchdog, &yamlBlob); err != nil {
+		       COALESCE(s.autostart,1), COALESCE(s.auto_forward,1), COALESCE(s.watchdog,0), g.yaml_blob, COALESCE(rlm.name,'')
+		FROM servers s JOIN gameskills g ON g.id=s.gameskill_id
+		LEFT JOIN realms rlm ON rlm.id=s.realm_id WHERE s.id=?`, id).
+		Scan(&envJSON, &hostMounts, &cpu, &mem, &autostart, &autoForward, &watchdog, &yamlBlob, &realmName); err != nil {
 		jsonError(w, "source read failed", http.StatusInternalServerError)
 		return
 	}
@@ -74,7 +76,7 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 	s.decryptSecretEnv(env, gs) // plaintext into the bundle; the target re-encrypts
 
 	man := transferManifest{
-		Version: transferVersion, Name: src.Name, GameskillID: src.GameskillID, RuneYAML: yamlBlob,
+		Version: transferVersion, Name: src.Name, GameskillID: src.GameskillID, RealmName: realmName, RuneYAML: yamlBlob,
 		Env: env, CPULimit: cpu, MemLimitMB: mem, HostMounts: hostMounts,
 		Autostart: autostart, AutoForward: autoForward, Watchdog: watchdog,
 	}
@@ -210,11 +212,20 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	envJSON, _ := json.Marshal(env)
 	portsJSON, _ := json.Marshal(allocated)
 
+	// Group the server: reuse the source's group by name (realms are keyed by name,
+	// so this works across panels), falling back to the rune's category — exactly
+	// where a freshly-created server of this rune would land. Never leave it ungrouped.
+	realmName := man.RealmName
+	if realmName == "" {
+		realmName = gs.Category
+	}
+	realmID := s.ensureRealm(r.Context(), realmName)
+
 	if _, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO servers (id, name, gameskill_id, status, env_json, ports_json, cpu_limit, mem_limit_mb,
+		INSERT INTO servers (id, name, gameskill_id, realm_id, status, env_json, ports_json, cpu_limit, mem_limit_mb,
 		                     data_dir, host_mounts, autostart, auto_forward, watchdog, installed, install_status)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,'done')`,
-		newID, man.Name+" (imported)", man.GameskillID, "stopped", string(envJSON), string(portsJSON),
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'done')`,
+		newID, man.Name+" (imported)", man.GameskillID, nullableStr(realmID), "stopped", string(envJSON), string(portsJSON),
 		man.CPULimit, man.MemLimitMB, dataDir, man.HostMounts, man.Autostart, man.AutoForward, man.Watchdog); err != nil {
 		os.RemoveAll(dataDir)
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)

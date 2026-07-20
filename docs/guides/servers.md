@@ -234,6 +234,13 @@ restarts — but only if it was actually running when things went down. A server
 deliberately stopped stays stopped, and a plain panel restart or deploy is a no-op
 because the game containers keep running through it.
 
+Turn it **off** and a host reboot leaves that server down until you start it yourself.
+This works by the container's Docker restart policy: on keeps `on-failure` (which also
+recovers from a crash mid-run), off sets `no`. Toggling it updates the running
+container immediately, so it takes effect on the very next reboot — you don't have to
+restart the server for the change to count. Crash recovery for an autostart-off server
+is the [watchdog](#watchdog-auto-heal)'s job if you want it.
+
 ## Clone
 
 **⧉ Clone** stands up "another one like this": same rune, variables, resource limits,

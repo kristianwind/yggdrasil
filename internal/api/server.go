@@ -229,6 +229,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/battlemetrics", s.handleServerBattleMetrics)
 		r.Get("/api/servers/{id}/reachability", s.handleServerReachability)
 		r.Get("/api/servers/{id}/mods/search", s.handleModSearch)
+		r.Post("/api/servers/{id}/mods/install", s.handleModInstall)
+		r.Delete("/api/servers/{id}/mods", s.handleModRemove) // ?file=<name>.jar
 		r.Get("/api/servers/{id}/dayz/economy", s.handleDayzEconomy)
 		r.Get("/api/servers/{id}/dayz/mods", s.handleDayzMods)
 		r.Post("/api/servers/{id}/dayz/min-lifetime", s.handleDayzMinLifetime)

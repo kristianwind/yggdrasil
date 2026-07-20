@@ -66,7 +66,7 @@ func TestResolveVersionPicksNewest(t *testing.T) {
 			{"id":"new","version_number":"2.0","date_published":"2024-06-01T00:00:00Z","files":[{"url":"u2","filename":"b.jar","primary":true,"hashes":{"sha512":"h2"}}]}
 		]`))
 	})
-	v, err := ResolveVersion(context.Background(), "sodium", "fabric", "1.20.1")
+	v, err := ResolveVersion(context.Background(), "sodium", []string{"fabric"}, "1.20.1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestResolveVersionPicksNewest(t *testing.T) {
 
 func TestResolveVersionEmptyIsNotFound(t *testing.T) {
 	withFake(t, func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`[]`)) })
-	if _, err := ResolveVersion(context.Background(), "x", "fabric", "1.99"); err != ErrNotFound {
+	if _, err := ResolveVersion(context.Background(), "x", []string{"fabric"}, "1.99"); err != ErrNotFound {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
@@ -93,7 +93,7 @@ func TestResolveVersionQueryEncoding(t *testing.T) {
 		q = r.URL.Query()
 		w.Write([]byte(`[{"id":"v","files":[{"url":"u","filename":"f.jar","primary":true}]}]`))
 	})
-	ResolveVersion(context.Background(), "sodium", "fabric", "1.20.1")
+	ResolveVersion(context.Background(), "sodium", []string{"fabric"}, "1.20.1")
 	if q.Get("loaders") != `["fabric"]` {
 		t.Errorf("loaders = %q", q.Get("loaders"))
 	}

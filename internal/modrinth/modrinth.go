@@ -1,0 +1,180 @@
+// Package modrinth is a small read-only client for the Modrinth API
+// (https://modrinth.com), the mod/plugin index behind Yggdrasil's one-click
+// Minecraft mod manager. It searches for projects compatible with a server's
+// loader and game version and resolves the exact file to download.
+//
+// Modrinth requires a descriptive User-Agent and rejects requests without one,
+// so every request sets it. The API is free and unauthenticated for the read
+// endpoints used here. Only project_type "mod" exists for both Fabric/Forge mods
+// and Paper/Spigot plugins — the loader (a "category") is what tells them apart,
+// so callers filter by loader, never by project_type.
+package modrinth
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+const apiBase = "https://api.modrinth.com/v2"
+
+// userAgent identifies the panel to Modrinth as their docs require.
+const userAgent = "kristianwind/yggdrasil (Minecraft mod manager)"
+
+var httpClient = &http.Client{Timeout: 20 * time.Second}
+
+// baseURL is overridable in tests.
+var baseURL = apiBase
+
+// Project is one search hit: a mod or plugin.
+type Project struct {
+	ProjectID   string   `json:"project_id"`
+	Slug        string   `json:"slug"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Downloads   int      `json:"downloads"`
+	IconURL     string   `json:"icon_url"`
+	Categories  []string `json:"categories"`
+}
+
+// File is one downloadable artifact of a version.
+type File struct {
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
+	Primary  bool   `json:"primary"`
+	Hashes   struct {
+		SHA512 string `json:"sha512"`
+	} `json:"hashes"`
+}
+
+// Dependency links a version to another project it needs. DependencyType is
+// "required", "optional", "incompatible" or "embedded".
+type Dependency struct {
+	ProjectID      string `json:"project_id"`
+	VersionID      string `json:"version_id"`
+	DependencyType string `json:"dependency_type"`
+}
+
+// Version is one release of a project for a set of loaders and game versions.
+type Version struct {
+	ID            string       `json:"id"`
+	ProjectID     string       `json:"project_id"`
+	VersionNumber string       `json:"version_number"`
+	Files         []File       `json:"files"`
+	Dependencies  []Dependency `json:"dependencies"`
+	GameVersions  []string     `json:"game_versions"`
+	Loaders       []string     `json:"loaders"`
+	DatePublished time.Time    `json:"date_published"`
+}
+
+func get(ctx context.Context, path string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("modrinth: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return json.Unmarshal(body, out)
+}
+
+// ErrNotFound is returned when a project or version doesn't exist.
+var ErrNotFound = fmt.Errorf("modrinth: not found")
+
+// facets builds a Modrinth facet array: an AND of OR-groups. Each group here is
+// a single dimension (loaders OR'd together, one game version).
+func facets(loaders []string, gameVersion string) string {
+	var groups []string
+	if len(loaders) > 0 {
+		var ors []string
+		for _, l := range loaders {
+			ors = append(ors, fmt.Sprintf("%q", "categories:"+l))
+		}
+		groups = append(groups, "["+strings.Join(ors, ",")+"]")
+	}
+	if gameVersion != "" {
+		groups = append(groups, fmt.Sprintf("[%q]", "versions:"+gameVersion))
+	}
+	return "[" + strings.Join(groups, ",") + "]"
+}
+
+// Search finds projects matching query, compatible with any of loaders and (if
+// non-empty) gameVersion. loaders are Modrinth loader categories ("fabric",
+// "paper", …). Results are ordered by relevance, capped at limit (max 100).
+func Search(ctx context.Context, query string, loaders []string, gameVersion string, limit int) ([]Project, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	q := url.Values{}
+	q.Set("query", query)
+	q.Set("limit", fmt.Sprintf("%d", limit))
+	q.Set("index", "relevance")
+	if f := facets(loaders, gameVersion); f != "[]" {
+		q.Set("facets", f)
+	}
+	var out struct {
+		Hits []Project `json:"hits"`
+	}
+	if err := get(ctx, "/search?"+q.Encode(), &out); err != nil {
+		return nil, err
+	}
+	return out.Hits, nil
+}
+
+// ResolveVersion returns the newest version of idOrSlug that supports loader and
+// (if non-empty) gameVersion. Returns ErrNotFound when nothing matches, so the
+// caller can tell "no compatible build" apart from a network error.
+func ResolveVersion(ctx context.Context, idOrSlug, loader, gameVersion string) (*Version, error) {
+	q := url.Values{}
+	if loader != "" {
+		q.Set("loaders", fmt.Sprintf("[%q]", loader))
+	}
+	if gameVersion != "" {
+		q.Set("game_versions", fmt.Sprintf("[%q]", gameVersion))
+	}
+	var versions []Version
+	if err := get(ctx, "/project/"+url.PathEscape(idOrSlug)+"/version?"+q.Encode(), &versions); err != nil {
+		return nil, err
+	}
+	if len(versions) == 0 {
+		return nil, ErrNotFound
+	}
+	// The API returns newest first, but don't rely on it — pick the latest by date.
+	best := &versions[0]
+	for i := range versions {
+		if versions[i].DatePublished.After(best.DatePublished) {
+			best = &versions[i]
+		}
+	}
+	return best, nil
+}
+
+// PrimaryFile returns the version's primary downloadable file (the mod jar). It
+// falls back to the first file when none is flagged primary, and errors only
+// when the version carries no files at all.
+func (v *Version) PrimaryFile() (File, error) {
+	for _, f := range v.Files {
+		if f.Primary {
+			return f, nil
+		}
+	}
+	if len(v.Files) > 0 {
+		return v.Files[0], nil
+	}
+	return File{}, fmt.Errorf("modrinth: version %s has no files", v.ID)
+}

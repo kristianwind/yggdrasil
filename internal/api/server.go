@@ -212,6 +212,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/servers/{id}", s.handleUpdateServer)
 		r.Delete("/api/servers/{id}", s.handleDeleteServer)
 		r.Post("/api/servers/{id}/clone", s.handleCloneServer)
+		r.Get("/api/servers/{id}/export", s.handleServerExport)
+		r.Post("/api/servers/import", s.handleServerImport)
 		r.Post("/api/servers/{id}/install", s.handleInstallServer)
 		r.Get("/api/servers/{id}/install/log", s.handleInstallLog) // WebSocket
 		r.Get("/api/servers/{id}/install/log/export", s.handleExportInstallLog)

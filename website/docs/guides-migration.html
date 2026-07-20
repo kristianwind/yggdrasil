@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Migrating a panel to another host — Yggdrasil Panel docs</title>
+<meta name="description" content="Moving a whole Yggdrasil panel — every server, its data, its runes and its settings — from one machine to another." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+<header class="nav">
+  <div class="navwrap">
+    <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+    <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+    <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
+    <nav>
+      <a href="/#features">Features</a>
+      <a href="/#screens">Screenshots</a>
+      <a href="/docs/" class="on">Docs</a>
+      <a href="/#install">Install</a>
+      <a href="https://discord.gg/murNphXV3" target="_blank" rel="noopener">Discord</a>
+      <a class="btn ghost" href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-migration.html" class="on">Migrating hosts</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="reference-api.html">HTTP API</a><a href="reference-rune-schema.html">Rune schema</a></nav>
+<main>
+  <div class="search">
+  <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
+  <div id="res" class="res" hidden></div>
+</div>
+  <article class="doc">
+    <h1>Migrating a panel to another host</h1>
+    <p>Moving a whole Yggdrasil panel — every server, its data, its runes and its
+settings — from one machine to another. Think &ldquo;the old box is dying&rdquo; or &ldquo;I set up
+a fresh Ubuntu server and want everything over there.&rdquo;</p>
+<p>This is a <strong>whole-panel</strong> move. Moving a single server between two panels that
+both keep running is a different job — see <a href="#exporting-one-server">Exporting one server</a>.</p>
+<h2 id="what-actually-makes-up-a-panel">What actually makes up a panel</h2>
+<p>Almost everything lives in one place and one file:</p>
+<ul>
+<li><strong>The database</strong> (<code>/var/lib/yggdrasil/yggdrasil.db</code>) — your servers, their
+variables, ports and resource limits, <strong>your runes</strong> (community runes are
+stored here, not just built-in ones), backup targets, users and permissions.</li>
+<li><strong>The server data directories</strong> (<code>/var/lib/yggdrasil/servers/&lt;id&gt;/</code>) — worlds,
+configs, plugins and mods.</li>
+<li><strong>The <code>secret_key</code></strong> in your config (<code>/etc/yggdrasil/config.yaml</code>). This one is
+easy to forget and <strong>critical</strong>: variable secrets like RCON passwords and API
+keys are encrypted with it. Move the database without the key and those secrets
+are unrecoverable on the new host.</li>
+</ul>
+<p>Docker images aren&rsquo;t part of the move — the new host re-pulls them on first
+start.</p>
+<h2 id="the-easy-way-migrate-export--migrate-import">The easy way: <code>migrate export</code> / <code>migrate import</code></h2>
+<p>The binary bundles all three into a single file for you.</p>
+<p><strong>On the old host:</strong></p>
+<pre><code class="language-bash">sudo systemctl stop yggdrasil          # so nothing is mid-write
+sudo yggdrasil migrate export -o ygg-migration.tar.gz
+</code></pre>
+<p>The bundle contains the database snapshot, every server&rsquo;s data directory, and the
+<code>secret_key</code>. <strong>It is a full-panel credential</strong> — it holds password hashes and
+every encrypted secret. Treat it like a private key and transfer it over
+something you trust (<code>scp</code>, a USB drive), not a public share.</p>
+<p><strong>On the new host</strong> — install Yggdrasil the usual way first, then:</p>
+<pre><code class="language-bash">sudo systemctl stop yggdrasil
+sudo yggdrasil migrate import ygg-migration.tar.gz
+</code></pre>
+<p>Import writes the database, restores each server&rsquo;s data directory to the same
+path it had before, and then prints the original <code>secret_key</code>. Put that key into
+the new host&rsquo;s <code>/etc/yggdrasil/config.yaml</code>:</p>
+<pre><code class="language-yaml">auth:
+  secret_key: &quot;…the key it printed…&quot;
+</code></pre>
+<p>Then start it:</p>
+<pre><code class="language-bash">sudo systemctl start yggdrasil
+</code></pre>
+<p>The panel reads the database, re-pulls images, and recreates the containers. Your
+servers, runes, backups, users and settings are all there.</p>
+<blockquote>
+<p><strong>Same layout on both hosts.</strong> Import restores data directories to the absolute
+paths recorded in the database (<code>/var/lib/yggdrasil/servers/&lt;id&gt;/</code>). Use the
+default install layout on the new host — which a normal install already does —
+and the paths line up. A server that had no data directory yet (never installed)
+is skipped on export; its configuration still moves with the database.</p>
+</blockquote>
+<h2 id="the-manual-way-rsync">The manual way: <code>rsync</code></h2>
+<p>If the two hosts can reach each other directly, you don&rsquo;t need the bundle — it&rsquo;s
+all just files:</p>
+<pre><code class="language-bash"># on the old host
+sudo systemctl stop yggdrasil
+sudo rsync -aH /var/lib/yggdrasil/ newhost:/var/lib/yggdrasil/
+
+# copy the secret_key line from the old /etc/yggdrasil/config.yaml
+# into the new host's config, then on the new host:
+sudo systemctl start yggdrasil
+</code></pre>
+<p>Same rules apply: the <code>secret_key</code> must come across, and both hosts should use the
+default layout.</p>
+<h2 id="after-the-move">After the move</h2>
+<ul>
+<li>Check <strong>Dashboard → Servers</strong>: everything should be listed. Start one and watch
+the console to confirm the image pulled and the world loaded.</li>
+<li><strong>Ports and networking</strong> move with the database, but the new host needs the same
+ports free and forwarded. See <a href="guides-networking.html">Networking</a>.</li>
+<li>If a game says it can&rsquo;t reach its RCON or a password is wrong, the <code>secret_key</code>
+probably didn&rsquo;t come across — the secrets decrypted to garbage. Fix the key and
+restart.</li>
+<li>Once the new host is confirmed healthy, retire the old one. Don&rsquo;t run both
+against the same game servers or backup targets at once.</li>
+</ul>
+<h2 id="exporting-one-server">Exporting one server</h2>
+<p>Moving a single server between two panels that both stay running isn&rsquo;t covered by
+the whole-panel tools above — the server&rsquo;s configuration (its rune, variables and
+ports) lives in the source panel&rsquo;s database, and a plain data backup doesn&rsquo;t carry
+it. A dedicated per-server export/import is the right tool for that; until it
+lands, the manual route is: recreate the server on the target panel with the same
+rune and variables, then restore its data from a shared backup target (see
+<a href="guides-backups-and-schedules.html">Backups</a>).</p>
+
+    <div class="editrow">
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/migration.md" target="_blank" rel="noopener">Edit this page on GitHub ↗</a>
+    </div>
+  </article>
+</main>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-actually-makes-up-a-panel">What actually makes up a panel</a><a class="t2" href="#the-easy-way-migrate-export--migrate-import">The easy way: migrate export / migrate import</a><a class="t2" href="#the-manual-way-rsync">The manual way: rsync</a><a class="t2" href="#after-the-move">After the move</a><a class="t2" href="#exporting-one-server">Exporting one server</a></aside>
+</div>
+<script src="docs.js"></script>
+</body>
+</html>

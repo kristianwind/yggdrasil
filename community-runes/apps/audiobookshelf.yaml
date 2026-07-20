@@ -1,0 +1,52 @@
+gameskill:
+  id: audiobookshelf
+  name: "Audiobookshelf"
+  category: "Apps"
+  description: "Self-hosted audiobook and podcast server"
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "ghcr.io/advplyr/audiobookshelf:latest"
+    # /config holds the SQLite database. data_path puts it in the server's own data
+    # directory — on the host's LOCAL disk, which is exactly what Audiobookshelf
+    # requires (see the library note below).
+    data_path: /config
+    keep_entrypoint: true
+    # Audiobookshelf has no PUID/PGID and expects to start as root, like Jellyfin.
+    user: "0:0"
+    # /metadata (cover/author images, logs, and Audiobookshelf's own in-app backups)
+    # gets its own persisted directory under the server's data dir — also local.
+    extra_volumes:
+      - /metadata
+
+  install:
+    image: "ghcr.io/advplyr/audiobookshelf:latest"
+    script: |
+      mkdir -p /data
+      echo "Audiobookshelf config directory ready"
+
+  startup:
+    command: ""
+    # Audiobookshelf logs "Listening on port :80" once it's ready to serve.
+    done_regex: 'Listening on port'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  # Your audiobook and podcast library lives OUTSIDE this data directory. As an
+  # admin, open this server's Settings → "Host mounts" and add it, e.g.
+  #   /mnt/audiobooks → /audiobooks   (read-only is fine)
+  #   /mnt/podcasts   → /podcasts
+  # then add /audiobooks (and /podcasts) as libraries in the Audiobookshelf UI.
+  #
+  # The library MAY be a network share (an SMB/NFS mount on the host) — that's the
+  # whole point of keeping it separate. But the /config database above must stay on
+  # the host's LOCAL disk, never on a NAS: Audiobookshelf will corrupt an SQLite
+  # database accessed over a network filesystem. This rune keeps config/metadata
+  # local (the data dir) and leaves the library to a host mount, so both live where
+  # they should. Host mounts are admin-only and set per server (never baked into a
+  # rune), so importing this rune can't touch your filesystem on its own.
+  backup:
+    include: ["."]

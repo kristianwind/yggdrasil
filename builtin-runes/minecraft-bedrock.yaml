@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Mojang Bedrock dedicated server (no Steam, no RCON — console only)"
   author: "yggdrasil-core"
-  version: 1
+  version: 2
   icon: "minecraft"
 
   # CAVEAT: The Bedrock dedicated server is x86_64-only. On arm64 hosts it must
@@ -80,9 +80,23 @@ gameskill:
       [ -n "$LC" ] && cp -Ln "$LC" /data/.libs/ 2>/dev/null || true
 
   startup:
-    # Bedrock reads stdin for console commands (no RCON). Runs as the panel user;
-    # the bundled .libs (incl. libcurl) on LD_LIBRARY_PATH avoid needing root/apt.
-    command: "LD_LIBRARY_PATH=/data/.libs:/data ./bedrock_server"
+    # Re-stamp server.properties from the CURRENT settings on every start (like the
+    # Java rune), so changing Difficulty / Gamemode / Max players / Allow-list in
+    # Settings and restarting actually takes effect. Before this the whole form was
+    # cosmetic: the server always ran with the zip's default server.properties, so
+    # difficulty (and the rest) had no effect no matter what you picked.
+    #
+    # server-name uses the panel's server name (SERVER_NAME is injected). Bedrock
+    # reads stdin for console commands (no RCON); exec hands it PID 1 + stdin so the
+    # "stop" command reaches it. The bundled .libs on LD_LIBRARY_PATH avoid apt.
+    command: |
+      setprop() { if grep -q "^$1=" server.properties 2>/dev/null; then sed -i "s#^$1=.*#$1=$2#" server.properties; else echo "$1=$2" >> server.properties; fi; }
+      setprop server-name "{{SERVER_NAME}}"
+      setprop gamemode {{GAMEMODE}}
+      setprop difficulty {{DIFFICULTY}}
+      setprop max-players {{MAX_PLAYERS}}
+      setprop allow-list {{ALLOW_LIST}}
+      exec env LD_LIBRARY_PATH=/data/.libs:/data ./bedrock_server
     done_regex: 'Server started'
     stop: "stop"
 

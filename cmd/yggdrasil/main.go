@@ -52,6 +52,11 @@ func main() {
 		case "update":
 			fmt.Println("self-update is implemented in a later phase; re-run install.sh to upgrade")
 			return
+		case "migrate":
+			if err := runMigrate(os.Args[2:]); err != nil {
+				log.Fatalf("migrate: %v", err)
+			}
+			return
 		}
 	}
 

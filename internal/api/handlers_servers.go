@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -487,6 +488,15 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Autostart != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET autostart=? WHERE id=?", boolInt(*req.Autostart), id)
+		// Apply it to the live container too, so the toggle takes effect on the next
+		// reboot rather than only after the server is next recreated. Otherwise a
+		// server you just told not to auto-start keeps its old on-failure policy and
+		// Docker still brings it back — the bug this setting is supposed to control.
+		if cid := s.containerID(id); cid != "" {
+			if err := s.docker.SetRestartPolicy(r.Context(), cid, *req.Autostart); err != nil {
+				log.Printf("autostart: could not update restart policy for %s: %v", id, err)
+			}
+		}
 	}
 	if req.StatusPublic != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET status_public=? WHERE id=?", boolInt(*req.StatusPublic), id)
@@ -795,6 +805,7 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 		DataMount:      gs.Docker.DataPath, // empty = /data
 		ExtraVolumes:   gs.Docker.ExtraVolumes,
 		KeepEntrypoint: gs.Docker.KeepEntrypoint,
+		Autostart:      srv.Autostart, // off → no Docker restart policy (won't come back on reboot)
 		Capabilities:   gs.Docker.Capabilities,
 		Devices:        gs.Docker.Devices,
 		Sysctls:        gs.Docker.Sysctls,

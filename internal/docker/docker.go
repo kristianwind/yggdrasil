@@ -64,6 +64,10 @@ type CreateOptions struct {
 	MemoryMB       int64
 	Labels         map[string]string
 	AutoRemove     bool
+	// Autostart is the server's "start automatically after a reboot" setting. It
+	// decides the restart policy: without it, Docker must NOT bring the container
+	// back when the daemon restarts (a host reboot) — see the policy below.
+	Autostart bool
 	// Capabilities (cap_add), Devices ("host[:container[:perms]]"), and Sysctls let
 	// special runes like Tailscale act as a subnet router / exit node.
 	Capabilities []string
@@ -235,9 +239,17 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 	// immediately (missing jar, bad mod, bad config) stops cleanly instead of
 	// crash-looping forever — the status reconciler then marks it stopped and the
 	// console can show the failure logs.
-	restart := container.RestartPolicy{Name: container.RestartPolicyOnFailure, MaximumRetryCount: 3}
+	//
+	// on-failure has a second, undocumented-here effect: Docker's restart-manager
+	// also restarts on-failure containers when the daemon starts (a host reboot).
+	// That silently overrode "Start automatically after a reboot" — a server with
+	// autostart off came back anyway. So when autostart is off we use no policy:
+	// Docker leaves it down on reboot, and startAutostartServers (which honours the
+	// flag) doesn't touch it either. Crash recovery for those servers is the
+	// opt-in watchdog's job. Autostart servers keep on-failure and come back.
+	restart := restartPolicyFor(opts.Autostart)
 	if opts.AutoRemove {
-		restart = container.RestartPolicy{} // no restart policy for ephemeral
+		restart = container.RestartPolicy{} // ephemeral install container — never restart
 	}
 
 	// Clear any image ENTRYPOINT so our Cmd is the actual command — otherwise images
@@ -316,6 +328,25 @@ func (c *Client) Stop(ctx context.Context, id string, timeoutSec int) error {
 func (c *Client) Restart(ctx context.Context, id string) error {
 	t := 30
 	return c.dc.ContainerRestart(ctx, id, container.StopOptions{Timeout: &t})
+}
+
+// restartPolicyFor maps the "start automatically after a reboot" setting to a
+// Docker restart policy. On: on-failure (recover from crashes, and come back when
+// the daemon restarts). Off: none — Docker leaves it down, matching the setting.
+// Create and SetRestartPolicy share this so the two never diverge.
+func restartPolicyFor(autostart bool) container.RestartPolicy {
+	if autostart {
+		return container.RestartPolicy{Name: container.RestartPolicyOnFailure, MaximumRetryCount: 3}
+	}
+	return container.RestartPolicy{Name: container.RestartPolicyDisabled}
+}
+
+// SetRestartPolicy updates a running container's restart policy in place, so
+// toggling autostart takes effect immediately instead of waiting for the next
+// recreate (the policy is otherwise fixed at create time).
+func (c *Client) SetRestartPolicy(ctx context.Context, id string, autostart bool) error {
+	_, err := c.dc.ContainerUpdate(ctx, id, container.UpdateConfig{RestartPolicy: restartPolicyFor(autostart)})
+	return err
 }
 
 func (c *Client) Remove(ctx context.Context, id string) error {

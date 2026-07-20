@@ -245,6 +245,12 @@ chain bows out and leaves the server to you.</p>
 restarts — but only if it was actually running when things went down. A server you
 deliberately stopped stays stopped, and a plain panel restart or deploy is a no-op
 because the game containers keep running through it.</p>
+<p>Turn it <strong>off</strong> and a host reboot leaves that server down until you start it yourself.
+This works by the container&rsquo;s Docker restart policy: on keeps <code>on-failure</code> (which also
+recovers from a crash mid-run), off sets <code>no</code>. Toggling it updates the running
+container immediately, so it takes effect on the very next reboot — you don&rsquo;t have to
+restart the server for the change to count. Crash recovery for an autostart-off server
+is the <a href="#watchdog-auto-heal">watchdog</a>&rsquo;s job if you want it.</p>
 <h2 id="clone">Clone</h2>
 <p><strong>⧉ Clone</strong> stands up &ldquo;another one like this&rdquo;: same rune, variables, resource limits,
 host mounts, autostart, port-forward, and watchdog settings, with a fresh set of ports

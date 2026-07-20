@@ -750,6 +750,7 @@
   // Edit settings
   let edit = $state(null); // { name, env, cpu_percent, memory_mb }
   let savingEdit = $state(false);
+  let realms = $state([]); // groups, for the admin-only Group picker in the editor
   // Admin-only host bind mounts (e.g. a media library /mnt/mediaserver → /media).
   let hostMounts = $state([]);
   function openEdit() {
@@ -767,8 +768,11 @@
       disk_alarm_mb: server.disk_alarm_mb || 0,
       tags: (server.tags || []).join(", "),
       subdomain: server.subdomain || "",
+      realm_id: server.realm_id || "",
     };
     hostMounts = (server.host_mounts || []).map((m) => ({ host: m.host, container: m.container, rw: !!m.rw }));
+    // Groups are admin-only to change; load them lazily when the editor opens.
+    if ($user?.role === "admin" && !realms.length) api.get("/realms").then((r) => (realms = r)).catch(() => {});
   }
   const addMount = () => (hostMounts = [...hostMounts, { host: "", container: "", rw: false }]);
   const removeMount = (i) => (hostMounts = hostMounts.filter((_, j) => j !== i));
@@ -798,6 +802,7 @@
         payload.host_mounts = hostMounts
           .filter((m) => m.host.trim() && m.container.trim())
           .map((m) => ({ host: m.host.trim(), container: m.container.trim(), rw: !!m.rw }));
+        payload.realm_id = edit.realm_id || ""; // reassign group (admin-only in the backend)
       }
       await api.put(`/servers/${id}`, payload);
       toast("Saved — restart to apply (reinstall for file-baked values)", "success");
@@ -1858,6 +1863,16 @@
             public <code>/status</code> page (no login). Enable the page under Settings → Status page.
           </p>
         </div>
+        {#if $user?.role === "admin"}
+          <div>
+            <label class="label" for="e-realm">Group</label>
+            <select id="e-realm" class="input" bind:value={edit.realm_id}>
+              <option value="">— no group —</option>
+              {#each realms as rl (rl.id)}<option value={rl.id}>{rl.name}</option>{/each}
+            </select>
+            <p class="text-xs text-muted mt-1">The realm this server belongs to. Moving it also changes which delegates can reach it.</p>
+          </div>
+        {/if}
         <div>
           <label class="label" for="e-tags">Tags</label>
           <input id="e-tags" class="input" placeholder="e.g. survival, event, staging" bind:value={edit.tags} />

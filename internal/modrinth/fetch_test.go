@@ -95,3 +95,27 @@ func TestFetchFileSizeCap(t *testing.T) {
 		t.Errorf("expected size-limit error, got %v", err)
 	}
 }
+
+// The icon proxy must refuse any host but the CDN — same SSRF guard as FetchFile,
+// since the URL comes from an API response and gets fetched server-side.
+func TestFetchIconRejectsOtherHosts(t *testing.T) {
+	for _, u := range []string{"https://evil.example.com/x.png", "http://cdn.modrinth.com/x.png", "http://127.0.0.1/x"} {
+		if _, _, err := FetchIcon(context.Background(), u); err == nil {
+			t.Errorf("FetchIcon(%q) allowed a non-CDN/non-https host", u)
+		}
+	}
+}
+
+func TestFetchIconServesImage(t *testing.T) {
+	srv := withFakeCDN(t, []byte("\x89PNG\r\n"))
+	// withFakeCDN serves any content; set an image content-type via a wrapper isn't
+	// possible here, so this just checks bytes come back for a CDN URL.
+	ct, data, err := FetchIcon(context.Background(), srv.URL+"/data/x/icon.png")
+	if err != nil {
+		t.Fatalf("FetchIcon: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("no icon bytes returned")
+	}
+	_ = ct
+}

@@ -272,6 +272,43 @@ var cdnHost = "cdn.modrinth.com"
 // from filling the disk.
 var maxFileBytes = 100 << 20 // 100 MiB
 
+// FetchIcon fetches a mod's icon from the Modrinth CDN so the panel can serve it
+// from its own origin — the strict CSP blocks external images, and proxying keeps
+// the viewer's IP from reaching Modrinth. Same host pin as FetchFile; capped
+// small since icons are tiny. Returns the content type and bytes.
+func FetchIcon(ctx context.Context, rawurl string) (string, []byte, error) {
+	u, err := url.Parse(rawurl)
+	if err != nil || u.Scheme != "https" || u.Host != cdnHost {
+		return "", nil, fmt.Errorf("modrinth: refusing to fetch icon from %q (only %s)", rawurl, cdnHost)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawurl, nil)
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return "", nil, fmt.Errorf("modrinth: icon HTTP %d", resp.StatusCode)
+	}
+	const maxIcon = 4 << 20 // 4 MiB — icons are far smaller
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxIcon+1))
+	if err != nil {
+		return "", nil, err
+	}
+	if len(data) > maxIcon {
+		return "", nil, fmt.Errorf("modrinth: icon too large")
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "image/") {
+		ct = "application/octet-stream"
+	}
+	return ct, data, nil
+}
+
 // FetchFile downloads f from the Modrinth CDN and returns its bytes, refusing any
 // other host, capping the size, and verifying the SHA-512 the API published. A
 // file with no published hash is refused rather than trusted — an unverified

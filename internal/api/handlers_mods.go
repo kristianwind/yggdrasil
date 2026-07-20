@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +15,21 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/modrinth"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
+
+// sha512File returns the hex SHA-512 of a file — the hash Modrinth indexes jars
+// by, used to identify installed mods and check them for updates.
+func sha512File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha512.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 // modProfile describes how a Minecraft server's software maps onto Modrinth: the
 // loader categories to search (a Paper server can load Spigot/Bukkit plugins too,
@@ -92,10 +110,11 @@ func (s *Server) handleModSearch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Indirected so tests can drive installOne's recursion without the network.
+// Indirected so tests can drive install/update without the network.
 var (
 	modResolveVersion = modrinth.ResolveVersion
 	modFetchFile      = modrinth.FetchFile
+	modLookupByHashes = modrinth.LookupByHashes
 )
 
 // maxDependencyInstalls bounds the recursive dependency walk — a guard against a
@@ -192,6 +211,157 @@ func (s *Server) handleModInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auditLog(r, "mod.install", "server:"+id, map[string]any{"project": req.Project, "files": installed})
 	jsonOK(w, map[string]any{"installed": installed, "restart_required": true})
+}
+
+// installedMod is one jar in a server's mod/plugin folder, enriched from Modrinth
+// when the file is recognised by its checksum.
+type installedMod struct {
+	Filename         string `json:"filename"`
+	Managed          bool   `json:"managed"`           // recognised on Modrinth (installable/updatable)
+	ProjectID        string `json:"project_id,omitempty"`
+	Title            string `json:"title,omitempty"`
+	Slug             string `json:"slug,omitempty"`
+	IconURL          string `json:"icon_url,omitempty"`
+	InstalledVersion string `json:"installed_version,omitempty"`
+	LatestVersion    string `json:"latest_version,omitempty"`
+	UpdateAvailable  bool   `json:"update_available"`
+}
+
+// handleModList lists the jars in the server's mod/plugin folder, identifying each
+// against Modrinth (by sha512) and flagging any with a newer build for this
+// server's loader and version. Hand-installed jars are listed as unmanaged.
+func (s *Server) handleModList(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	srv, err := s.getServer(r.Context(), id)
+	if err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerView, srv.target()) {
+		return
+	}
+	rt, err := s.loadRuntime(r.Context(), id)
+	if err != nil {
+		jsonError(w, "could not load server", http.StatusInternalServerError)
+		return
+	}
+	profile, ok := modProfileFor(rt.env["SERVER_TYPE"])
+	if !ok {
+		jsonError(w, "this server type doesn't support mods or plugins", http.StatusBadRequest)
+		return
+	}
+	dir, ok := safeJoin(srv.DataDir, profile.Folder)
+	if !ok {
+		jsonError(w, "bad data dir", http.StatusInternalServerError)
+		return
+	}
+
+	entries, _ := os.ReadDir(dir) // missing folder → no mods yet, not an error
+	mods := []installedMod{}
+	hashByFile := map[string]string{}
+	var hashes []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jar") {
+			continue
+		}
+		h, err := sha512File(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		hashByFile[e.Name()] = h
+		hashes = append(hashes, h)
+		mods = append(mods, installedMod{Filename: e.Name()})
+	}
+
+	// Identify + update-check on Modrinth. Failures degrade to an un-enriched list
+	// rather than erroring the whole page — you can still see and remove jars.
+	installed, _ := modrinth.LookupByHashes(r.Context(), hashes)
+	latest, _ := modrinth.LatestByHashes(r.Context(), hashes, profile.Loaders, modGameVersion(rt.env))
+	var projectIDs []string
+	for _, v := range installed {
+		projectIDs = append(projectIDs, v.ProjectID)
+	}
+	projects, _ := modrinth.GetProjects(r.Context(), projectIDs)
+
+	for i := range mods {
+		h := hashByFile[mods[i].Filename]
+		cur, known := installed[h]
+		if !known {
+			continue
+		}
+		mods[i].Managed = true
+		mods[i].ProjectID = cur.ProjectID
+		mods[i].InstalledVersion = cur.VersionNumber
+		if p, ok := projects[cur.ProjectID]; ok {
+			mods[i].Title, mods[i].Slug, mods[i].IconURL = p.Title, p.Slug, p.IconURL
+		}
+		if lv, ok := latest[h]; ok {
+			mods[i].LatestVersion = lv.VersionNumber
+			mods[i].UpdateAvailable = lv.ID != cur.ID
+		}
+	}
+	jsonOK(w, map[string]any{"mods": mods, "folder": profile.Folder})
+}
+
+// handleModUpdate updates one installed jar to the latest compatible version:
+// it identifies the jar by checksum, installs the newest build (with deps), and
+// removes the old file if the filename changed. ServerFiles-gated.
+func (s *Server) handleModUpdate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	old := filepath.Base(strings.TrimSpace(r.URL.Query().Get("file")))
+	if old == "" || old == "." || !strings.HasSuffix(old, ".jar") {
+		jsonError(w, "a .jar filename is required", http.StatusBadRequest)
+		return
+	}
+	dataDir, ok := s.serverDataDir(w, r)
+	if !ok {
+		return
+	}
+	rt, err := s.loadRuntime(r.Context(), id)
+	if err != nil {
+		jsonError(w, "could not load server", http.StatusInternalServerError)
+		return
+	}
+	profile, ok := modProfileFor(rt.env["SERVER_TYPE"])
+	if !ok {
+		jsonError(w, "this server type doesn't support mods or plugins", http.StatusBadRequest)
+		return
+	}
+	oldPath, ok := safeJoin(dataDir, profile.Folder+"/"+old)
+	if !ok {
+		jsonError(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+	h, err := sha512File(oldPath)
+	if err != nil {
+		jsonError(w, "not installed", http.StatusNotFound)
+		return
+	}
+	found, err := modLookupByHashes(r.Context(), []string{h})
+	if err != nil {
+		jsonError(w, "update check failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	cur, ok := found[h]
+	if !ok {
+		jsonError(w, "this jar isn't from Modrinth — update it manually", http.StatusBadRequest)
+		return
+	}
+	var installed []string
+	if err := s.installOne(r.Context(), dataDir, profile, modGameVersion(rt.env), cur.ProjectID, map[string]bool{}, &installed); err != nil {
+		jsonError(w, "update failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	// Drop the old jar if the new build has a different filename (a same-name
+	// rebuild was already overwritten in place).
+	removed := false
+	if len(installed) > 0 && installed[0] != old {
+		if os.Remove(oldPath) == nil {
+			removed = true
+		}
+	}
+	s.auditLog(r, "mod.update", "server:"+id, map[string]any{"from": old, "installed": installed})
+	jsonOK(w, map[string]any{"installed": installed, "removed_old": removed, "restart_required": true})
 }
 
 // handleModRemove deletes a jar from the server's mod/plugin folder by filename.

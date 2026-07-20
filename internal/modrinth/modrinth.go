@@ -11,6 +11,7 @@
 package modrinth
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha512"
 	"encoding/hex"
@@ -33,8 +34,10 @@ var httpClient = &http.Client{Timeout: 20 * time.Second}
 // baseURL is overridable in tests.
 var baseURL = apiBase
 
-// Project is one search hit: a mod or plugin.
+// Project is one search hit or a fetched project. Search hits carry project_id;
+// the /projects endpoint carries id — both are captured so either shape parses.
 type Project struct {
+	ID          string   `json:"id"`
 	ProjectID   string   `json:"project_id"`
 	Slug        string   `json:"slug"`
 	Title       string   `json:"title"`
@@ -97,6 +100,77 @@ func get(ctx context.Context, path string, out any) error {
 
 // ErrNotFound is returned when a project or version doesn't exist.
 var ErrNotFound = fmt.Errorf("modrinth: not found")
+
+func postJSON(ctx context.Context, path string, reqBody, out any) error {
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("modrinth: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return json.Unmarshal(raw, out)
+}
+
+// LookupByHashes identifies installed jars: it maps each sha512 to the Modrinth
+// Version that file belongs to (giving its project and installed version).
+// Unknown hashes are simply absent from the result — a hand-installed jar.
+func LookupByHashes(ctx context.Context, sha512s []string) (map[string]Version, error) {
+	out := map[string]Version{}
+	if len(sha512s) == 0 {
+		return out, nil
+	}
+	err := postJSON(ctx, "/version_files", map[string]any{"hashes": sha512s, "algorithm": "sha512"}, &out)
+	return out, err
+}
+
+// LatestByHashes returns, per installed sha512, the newest version for the given
+// loaders and gameVersion — the purpose-built update check. A hash whose latest
+// build is itself just maps back to the same version (i.e. up to date).
+func LatestByHashes(ctx context.Context, sha512s, loaders []string, gameVersion string) (map[string]Version, error) {
+	out := map[string]Version{}
+	if len(sha512s) == 0 || gameVersion == "" {
+		return out, nil // can't pin updates without a concrete game version
+	}
+	body := map[string]any{"hashes": sha512s, "algorithm": "sha512", "loaders": loaders, "game_versions": []string{gameVersion}}
+	err := postJSON(ctx, "/version_files/update", body, &out)
+	return out, err
+}
+
+// GetProjects fetches project metadata (title, slug, icon) for the given ids, so
+// installed jars can be shown by name rather than by hash.
+func GetProjects(ctx context.Context, ids []string) (map[string]Project, error) {
+	out := map[string]Project{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	quoted := make([]string, len(ids))
+	for i, id := range ids {
+		quoted[i] = fmt.Sprintf("%q", id)
+	}
+	q := url.Values{}
+	q.Set("ids", "["+strings.Join(quoted, ",")+"]") // Encode escapes the [ ] " chars
+	var list []Project
+	if err := get(ctx, "/projects?"+q.Encode(), &list); err != nil {
+		return nil, err
+	}
+	for _, p := range list {
+		out[p.ID] = p
+	}
+	return out, nil
+}
 
 // facets builds a Modrinth facet array: an AND of OR-groups. Each group here is
 // a single dimension (loaders OR'd together, one game version).

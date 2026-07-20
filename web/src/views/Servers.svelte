@@ -39,7 +39,17 @@
         throw new Error(e.error || "Import failed");
       }
       const r = await resp.json();
-      toast(`Imported “${r.name}” — set it up under Settings, then Start.`, "success");
+      if (r.ports_changed?.length) {
+        // Some ports collided on this panel and were reassigned — the operator must
+        // repoint just these in their forwarding (NPM/tunnel/DNS).
+        toast(
+          `Imported “${r.name}”, but ${r.ports_changed.length} port(s) were already in use and moved: ${r.ports_changed.join(", ")}. Update your forwarding for these.`,
+          "warn",
+          10000,
+        );
+      } else {
+        toast(`Imported “${r.name}” — ports preserved. Set it up under Settings, then Start.`, "success");
+      }
       navigate(`/servers/${r.id}`);
     } catch (err) {
       toast(err.message || "Import failed", "error");

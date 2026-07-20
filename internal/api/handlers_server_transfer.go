@@ -30,6 +30,7 @@ type transferManifest struct {
 	RealmName   string            `json:"realm_name"` // the group; matched by name on import (ids don't cross panels)
 	RuneYAML    string            `json:"rune_yaml"`
 	Env         map[string]string `json:"env"`
+	Ports       map[string]int    `json:"ports,omitempty"` // source host ports by name; a migration keeps them so NPM/tunnel/DNS forwarding survives — reallocated only on collision
 	CPULimit    float64           `json:"cpu_limit"`
 	MemLimitMB  int64             `json:"mem_limit_mb"`
 	HostMounts  string            `json:"host_mounts"`
@@ -77,7 +78,7 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 
 	man := transferManifest{
 		Version: transferVersion, Name: src.Name, GameskillID: src.GameskillID, RealmName: realmName, RuneYAML: yamlBlob,
-		Env: env, CPULimit: cpu, MemLimitMB: mem, HostMounts: hostMounts,
+		Env: env, Ports: src.Ports, CPULimit: cpu, MemLimitMB: mem, HostMounts: hostMounts,
 		Autostart: autostart, AutoForward: autoForward, Watchdog: watchdog,
 	}
 
@@ -100,8 +101,8 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 
 // handleServerImport creates a new server on this panel from an exported bundle:
 // adds the rune if missing, re-encrypts the secrets with this panel's key,
-// allocates fresh ports, restores the data directory, and marks it installed.
-// Admin-only.
+// preserves the source's host ports (reallocating only the ones already taken
+// here), restores the data directory, and marks it installed. Admin-only.
 func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	if !isAdmin(r) {
 		jsonError(w, "forbidden", http.StatusForbidden)
@@ -186,21 +187,18 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fresh ports on this panel.
-	allocated := map[string]int{}
+	// Keep the source's host ports where they're still free on this panel — a
+	// migration must preserve game.host:PORT so NPM/tunnel/DNS forwarding survives
+	// untouched. Only a real collision forces a fresh port, and those are reported
+	// back so the admin can repoint just those.
 	taken, _ := s.docker.UsedHostPorts(r.Context())
-	if taken == nil {
-		taken = map[int]bool{}
-	}
-	for _, p := range gs.Ports {
-		hp, err := s.allocatePort(r.Context(), p.Default, taken)
-		if err != nil {
-			os.RemoveAll(dataDir)
-			jsonError(w, "port allocation failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		allocated[p.Name] = hp
-		taken[hp] = true
+	allocated, moved, err := pickTransferPorts(gs.Ports, man.Ports, taken,
+		s.cfg.Ports.RangeMin, s.cfg.Ports.RangeMax,
+		func(port int) bool { return s.portAvailable(r.Context(), port) })
+	if err != nil {
+		os.RemoveAll(dataDir)
+		jsonError(w, "port allocation failed: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	// Re-encrypt secrets with THIS panel's key.
@@ -243,7 +241,52 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auditLog(r, "server.import", "server:"+newID, map[string]string{"name": man.Name})
 	w.WriteHeader(http.StatusCreated)
-	jsonOK(w, map[string]string{"id": newID, "name": man.Name + " (imported)", "status": "stopped"})
+	resp := map[string]interface{}{"id": newID, "name": man.Name + " (imported)", "status": "stopped"}
+	if len(moved) > 0 {
+		resp["ports_changed"] = moved // "game 25081→25000" — these need forwarding repointed
+	}
+	jsonOK(w, resp)
+}
+
+// pickTransferPorts maps each rune port to a host port, preferring the source's
+// original port so a migrated server keeps its public game.host:PORT. A source
+// port is honoured even when it sits outside this panel's auto-allocation range —
+// preserving an explicit port is the whole point of a migration. When the source
+// port is already in use here (or the source didn't carry one), it falls back to
+// the first free port in [rangeMin,rangeMax]. `taken` is seeded with ports in use
+// on the host and mutated as ports are claimed; `available` reports whether a
+// single port is free ignoring `taken` (DB + live socket). Returns the assignment
+// and a "name old→new" line for every port that had to move.
+func pickTransferPorts(runePorts []gameskill.Port, source map[string]int, taken map[int]bool, rangeMin, rangeMax int, available func(int) bool) (map[string]int, []string, error) {
+	if taken == nil {
+		taken = map[int]bool{}
+	}
+	allocated := map[string]int{}
+	var moved []string
+	for _, p := range runePorts {
+		if src := source[p.Name]; src > 0 && !taken[src] && available(src) {
+			allocated[p.Name] = src
+			taken[src] = true
+			continue
+		}
+		got := 0
+		for port := rangeMin; port <= rangeMax; port++ {
+			if taken[port] || !available(port) {
+				continue
+			}
+			got = port
+			break
+		}
+		if got == 0 {
+			return nil, nil, fmt.Errorf("no free ports in range %d-%d", rangeMin, rangeMax)
+		}
+		allocated[p.Name] = got
+		taken[got] = true
+		if src := source[p.Name]; src > 0 && src != got {
+			moved = append(moved, fmt.Sprintf("%s %d→%d", p.Name, src, got))
+		}
+	}
+	return allocated, moved, nil
 }
 
 // safeFilename reduces a server name to a filesystem-safe download filename.

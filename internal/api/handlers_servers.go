@@ -1174,28 +1174,29 @@ func (s *Server) showRecentLogs(ctx context.Context, conn *websocket.Conn, conta
 // chosen earlier in this request), and not actually bound on the host.
 // `preferred` is accepted but ignored — see the comment in the body.
 func (s *Server) allocatePort(ctx context.Context, preferred int, taken map[int]bool) (int, error) {
-	free := func(port int) bool {
-		if taken[port] {
-			return false
-		}
-		var count int
-		s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM port_allocations WHERE port=?", port).Scan(&count)
-		if count != 0 {
-			return false
-		}
-		return hostPortAvailable(port)
-	}
 	// Allocate sequentially from the configured range, NOT the game's well-known
 	// default port (2302, 25565, 27016, …) — distinctive ports are less scanned/
 	// abused, and each server still gets its own unique one. `preferred` is
 	// ignored on purpose (kept in the signature for callers/tests).
 	_ = preferred
 	for port := s.cfg.Ports.RangeMin; port <= s.cfg.Ports.RangeMax; port++ {
-		if free(port) {
+		if !taken[port] && s.portAvailable(ctx, port) {
 			return port, nil
 		}
 	}
 	return 0, fmt.Errorf("no free ports in range %d-%d", s.cfg.Ports.RangeMin, s.cfg.Ports.RangeMax)
+}
+
+// portAvailable reports whether a single host port is free to claim, ignoring any
+// in-flight allocation set: it's neither recorded in port_allocations nor bindable
+// on the host right now. Callers track their own just-claimed ports separately.
+func (s *Server) portAvailable(ctx context.Context, port int) bool {
+	var count int
+	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM port_allocations WHERE port=?", port).Scan(&count)
+	if count != 0 {
+		return false
+	}
+	return hostPortAvailable(port)
 }
 
 // hostPortAvailable reports whether a TCP host port can be bound right now —

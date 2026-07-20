@@ -210,6 +210,94 @@
     }
   });
 
+  // Mods tab (Modrinth mod/plugin manager for Minecraft) — search filtered to the
+  // server's loader + version, one-click install with dependencies, update, remove.
+  let modsInstalled = $state([]);
+  let modsFolder = $state("");
+  let modsLoading = $state(false);
+  let modQuery = $state("");
+  let modResults = $state([]);
+  let modLoader = $state("");
+  let modGameVersion = $state("");
+  let modSearching = $state(false);
+  let modBusy = $state(""); // project id / filename currently acting on
+  let modSearchTimer = null;
+
+  async function loadInstalledMods() {
+    modsLoading = true;
+    try {
+      const r = await api.get(`/servers/${id}/mods`);
+      modsInstalled = r.mods || [];
+      modsFolder = r.folder || "";
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modsLoading = false;
+    }
+  }
+  async function searchMods() {
+    if (!modQuery.trim()) {
+      modResults = [];
+      return;
+    }
+    modSearching = true;
+    try {
+      const r = await api.get(`/servers/${id}/mods/search?q=${encodeURIComponent(modQuery)}`);
+      modResults = r.results || [];
+      modLoader = r.loader || "";
+      modGameVersion = r.game_version || "";
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modSearching = false;
+    }
+  }
+  function onModQuery() {
+    clearTimeout(modSearchTimer);
+    modSearchTimer = setTimeout(searchMods, 350); // debounce
+  }
+  const installedSlugs = $derived(new Set(modsInstalled.map((m) => m.slug).filter(Boolean)));
+  async function installMod(project) {
+    modBusy = project;
+    try {
+      const r = await api.post(`/servers/${id}/mods/install`, { project });
+      toast(`Installed: ${r.installed.join(", ")} — restart the server to apply`, "success");
+      await loadInstalledMods();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modBusy = "";
+    }
+  }
+  async function updateMod(file) {
+    modBusy = file;
+    try {
+      await api.post(`/servers/${id}/mods/update?file=${encodeURIComponent(file)}`);
+      toast("Updated — restart the server to apply", "success");
+      await loadInstalledMods();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modBusy = "";
+    }
+  }
+  async function removeMcMod(file) {
+    if (!confirm(`Remove ${file}?`)) return;
+    modBusy = file;
+    try {
+      await api.del(`/servers/${id}/mods?file=${encodeURIComponent(file)}`);
+      toast("Removed — restart the server to apply", "info");
+      await loadInstalledMods();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modBusy = "";
+    }
+  }
+  $effect(() => {
+    if (tab === "mcmods" && server?.mods_supported) loadInstalledMods();
+  });
+
   // Resource history charts (sampled server-side every ~5 min)
   let metrics = $state([]);
   let metricsHours = $state(24);
@@ -501,6 +589,7 @@
       ...(can("server.console") ? [["console", "Console"]] : []),
       ...(server?.players_supported && can("server.console") ? [["players", "Players"]] : []),
       ...(server?.admin_log_supported && can("server.view") ? [["activity", "Activity"]] : []),
+      ...(server?.mods_supported && can("server.files") ? [["mcmods", "Mods"]] : []),
       ...(can("server.files") ? [["files", "Files"]] : []),
       ...(can("server.backup") ? [["backups", "Backups"]] : []),
       ...(can("server.control") ? [["settings", "Settings"]] : []),
@@ -1586,6 +1675,88 @@
           {/each}
         </div>
       {/if}
+    </div>
+  {:else if tab === "mcmods"}
+    <div class="max-w-3xl space-y-6">
+      <!-- Search -->
+      <div>
+        <label class="label" for="mod-search">Add a mod or plugin</label>
+        <input
+          id="mod-search"
+          class="input"
+          placeholder="Search Modrinth…"
+          bind:value={modQuery}
+          oninput={onModQuery} />
+        <p class="text-xs text-muted mt-1">
+          {#if modLoader}
+            Showing {modLoader} results{modGameVersion ? ` for ${modGameVersion}` : " (all versions)"} — only what this server can load. Installs to <code>{modsFolder}/</code>; restart the server to apply.
+          {:else}
+            Only mods/plugins compatible with this server's loader and version are shown.
+          {/if}
+        </p>
+      </div>
+
+      {#if modSearching}
+        <p class="text-sm text-muted">Searching…</p>
+      {:else if modResults.length}
+        <div class="space-y-2">
+          {#each modResults as m (m.project_id)}
+            <div class="card p-3 flex items-center gap-3">
+              {#if m.icon_url}<img src={m.icon_url} alt="" class="w-9 h-9 rounded flex-shrink-0" />{/if}
+              <div class="min-w-0 flex-1">
+                <div class="font-medium truncate">{m.title}</div>
+                <div class="text-xs text-muted truncate">{m.description}</div>
+              </div>
+              {#if installedSlugs.has(m.slug)}
+                <span class="badge bg-border text-muted">installed</span>
+              {:else}
+                <button
+                  class="btn-primary text-sm"
+                  disabled={modBusy === m.project_id}
+                  onclick={() => installMod(m.slug || m.project_id)}>
+                  {modBusy === m.project_id ? "Installing…" : "Install"}
+                </button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {:else if modQuery.trim()}
+        <p class="text-sm text-muted">No compatible results for “{modQuery}”.</p>
+      {/if}
+
+      <!-- Installed -->
+      <div>
+        <h3 class="text-sm font-semibold mb-2">Installed</h3>
+        {#if modsLoading}
+          <p class="text-sm text-muted">Loading…</p>
+        {:else if modsInstalled.length === 0}
+          <p class="text-sm text-muted">No mods installed yet.</p>
+        {:else}
+          <div class="space-y-2">
+            {#each modsInstalled as m (m.filename)}
+              <div class="card p-3 flex items-center gap-3">
+                {#if m.icon_url}<img src={m.icon_url} alt="" class="w-8 h-8 rounded flex-shrink-0" />{/if}
+                <div class="min-w-0 flex-1">
+                  <div class="font-medium truncate">
+                    {m.title || m.filename}
+                    {#if !m.managed}<span class="badge bg-border text-muted ml-1">manual</span>{/if}
+                    {#if m.update_available}<span class="badge bg-warn/20 text-warn ml-1">update</span>{/if}
+                  </div>
+                  <div class="text-xs text-muted truncate">
+                    {m.installed_version || m.filename}{#if m.update_available} → {m.latest_version}{/if}
+                  </div>
+                </div>
+                {#if m.update_available}
+                  <button class="btn-primary text-sm" disabled={modBusy === m.filename} onclick={() => updateMod(m.filename)}>
+                    {modBusy === m.filename ? "…" : "Update"}
+                  </button>
+                {/if}
+                <button class="btn-ghost text-sm text-warn" disabled={modBusy === m.filename} onclick={() => removeMcMod(m.filename)}>Remove</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </div>
   {:else if tab === "files"}
     <FileManager serverId={id} configFiles={server.config_files ?? []} />

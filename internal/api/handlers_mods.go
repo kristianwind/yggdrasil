@@ -73,6 +73,21 @@ func modGameVersion(env map[string]string) string {
 	return v
 }
 
+// handleModIcon proxies a Modrinth icon through the panel, so mod icons show
+// under the strict CSP (img-src 'self') without the browser ever hitting an
+// external host — the viewer's IP stays off Modrinth. Any authenticated user may
+// call it; the URL is pinned to the Modrinth CDN inside FetchIcon.
+func (s *Server) handleModIcon(w http.ResponseWriter, r *http.Request) {
+	ct, data, err := modrinth.FetchIcon(r.Context(), r.URL.Query().Get("url"))
+	if err != nil {
+		http.Error(w, "icon unavailable", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "public, max-age=86400") // icons rarely change
+	w.Write(data)
+}
+
 // handleModSearch searches Modrinth for mods/plugins compatible with this
 // server's loader and version. Read-only, so it gates on ServerView.
 func (s *Server) handleModSearch(w http.ResponseWriter, r *http.Request) {

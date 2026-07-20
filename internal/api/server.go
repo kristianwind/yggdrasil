@@ -187,6 +187,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// Gameskills (Runes)
 		r.Get("/api/gameskills", s.handleListGameskills)
+		r.Get("/api/mods/icon", s.handleModIcon) // proxies Modrinth icons under the strict CSP
 		// Rune (gameskill) management is admin-only: a rune fully controls the Docker
 		// runtime (image, command, user, capabilities, devices, mounts), so letting a
 		// non-admin upload/import/delete one is a privilege-escalation path.

@@ -257,6 +257,9 @@
     modSearchTimer = setTimeout(searchMods, 350); // debounce
   }
   const installedSlugs = $derived(new Set(modsInstalled.map((m) => m.slug).filter(Boolean)));
+  // Mod icons live on Modrinth's CDN, which the strict CSP (img-src 'self') blocks
+  // — route them through the panel so they load without leaking the viewer's IP.
+  const modIcon = (url) => (url ? `/api/mods/icon?url=${encodeURIComponent(url)}` : "");
   async function installMod(project) {
     modBusy = project;
     try {
@@ -1702,7 +1705,7 @@
         <div class="space-y-2">
           {#each modResults as m (m.project_id)}
             <div class="card p-3 flex items-center gap-3">
-              {#if m.icon_url}<img src={m.icon_url} alt="" class="w-9 h-9 rounded flex-shrink-0" />{/if}
+              {#if m.icon_url}<img src={modIcon(m.icon_url)} alt="" class="w-9 h-9 rounded flex-shrink-0" />{/if}
               <div class="min-w-0 flex-1">
                 <div class="font-medium truncate">{m.title}</div>
                 <div class="text-xs text-muted truncate">{m.description}</div>
@@ -1735,7 +1738,7 @@
           <div class="space-y-2">
             {#each modsInstalled as m (m.filename)}
               <div class="card p-3 flex items-center gap-3">
-                {#if m.icon_url}<img src={m.icon_url} alt="" class="w-8 h-8 rounded flex-shrink-0" />{/if}
+                {#if m.icon_url}<img src={modIcon(m.icon_url)} alt="" class="w-8 h-8 rounded flex-shrink-0" />{/if}
                 <div class="min-w-0 flex-1">
                   <div class="font-medium truncate">
                     {m.title || m.filename}

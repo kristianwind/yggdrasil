@@ -23,12 +23,33 @@
   let menuGuardUntil = 0; // ignore ☰ taps until this time (ms) — see below
   let wasAuthed = false;
   let theme = $state(getTheme());
+  let runeUpdateCount = $state(0); // installed runes the catalog has moved past (admin only)
 
   onMount(async () => {
     await loadUser();
     if (!location.hash) navigate("/");
     ready = true;
     api.get("/version").then((v) => (build = v)).catch(() => {});
+  });
+
+  // Surface rune updates in the nav so an admin sees them without opening Runes.
+  // The endpoint is admin-only and shares a 10-minute GitHub cache, so refetching
+  // on navigation is cheap and keeps the badge fresh after an update-and-leave.
+  async function refreshRuneUpdates() {
+    if (!$user || $user.role !== "admin") {
+      runeUpdateCount = 0;
+      return;
+    }
+    try {
+      const r = await api.get("/gameskills/updates");
+      runeUpdateCount = (r.updates ?? []).length;
+    } catch {
+      /* transient error — leave the last known count rather than flicker to 0 */
+    }
+  }
+  $effect(() => {
+    void $route.path; // re-check on every navigation
+    if (ready && $user) refreshRuneUpdates();
   });
 
   // Redirect to login when unauthenticated (except on the login route).
@@ -105,6 +126,12 @@
               }}
             >
               <span class="w-5 text-center">{item.icon}</span>{item.label}
+              {#if item.path === "/runes" && runeUpdateCount > 0}
+                <span
+                  class="ml-auto badge bg-warn/20 text-warn min-w-5 text-center"
+                  title="{runeUpdateCount} rune update{runeUpdateCount === 1 ? '' : 's'} available"
+                >{runeUpdateCount}</span>
+              {/if}
             </button>
           {/if}
         {/each}

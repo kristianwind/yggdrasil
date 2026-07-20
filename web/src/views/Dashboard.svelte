@@ -35,6 +35,39 @@
     return `${Math.floor(s / 2592000)}mo ago`;
   }
 
+  // The "no recent backup" nudge is dismissable, but honestly: dismissing
+  // remembers exactly which servers you acknowledged, so it returns if a *new*
+  // server goes unprotected, or after a week. One click can't silence a real gap
+  // forever.
+  const BACKUP_DISMISS_KEY = "ygg.backupWarnDismissed";
+  let backupDismiss = $state(loadBackupDismiss());
+  function loadBackupDismiss() {
+    try {
+      return JSON.parse(localStorage.getItem(BACKUP_DISMISS_KEY)) || { ids: [], at: 0 };
+    } catch {
+      return { ids: [], at: 0 };
+    }
+  }
+  let showBackupWarning = $derived.by(() => {
+    const stale = backupCoverage?.stale ?? [];
+    if (!stale.length) return false;
+    const acked = new Set(backupDismiss.ids);
+    const allAcked = stale.every((s) => acked.has(s.id));
+    const recent = Date.now() - backupDismiss.at < 7 * 864e5; // within 7 days
+    return !(allAcked && recent);
+  });
+  function dismissBackupWarning() {
+    const stale = backupCoverage?.stale ?? [];
+    const names = stale.map((s) => s.name).join(", ");
+    backupDismiss = { ids: stale.map((s) => s.id), at: Date.now() };
+    localStorage.setItem(BACKUP_DISMISS_KEY, JSON.stringify(backupDismiss));
+    toast(
+      `Noted — ${names} ${stale.length === 1 ? "isn't" : "aren't"} backed up, and that's your call. ` +
+        `Set up a backup whenever you like; this reminder returns if another server goes unprotected.`,
+      "info",
+    );
+  }
+
   onMount(async () => {
     try {
       [servers, gameskills] = await Promise.all([
@@ -200,9 +233,14 @@
   {/each}
 </div>
 
-{#if backupCoverage?.stale?.length}
-  <div class="card p-4 mb-8 border-l-4 border-warn">
-    <h2 class="text-base font-semibold">
+{#if showBackupWarning}
+  <div class="card p-4 mb-8 border-l-4 border-warn relative">
+    <button
+      class="absolute top-2 right-2 text-muted hover:text-text text-lg leading-none px-1"
+      title="Dismiss — you're acknowledging these servers have no backup. The reminder returns if another server goes unprotected, or after a week."
+      aria-label="Dismiss backup reminder"
+      onclick={dismissBackupWarning}>×</button>
+    <h2 class="text-base font-semibold pr-6">
       ⚠️ {backupCoverage.stale.length}
       {backupCoverage.stale.length === 1 ? "server has" : "servers have"} no recent backup
     </h2>

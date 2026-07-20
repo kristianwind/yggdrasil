@@ -12,6 +12,8 @@ package modrinth
 
 import (
 	"context"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -136,13 +138,19 @@ func Search(ctx context.Context, query string, loaders []string, gameVersion str
 	return out.Hits, nil
 }
 
-// ResolveVersion returns the newest version of idOrSlug that supports loader and
-// (if non-empty) gameVersion. Returns ErrNotFound when nothing matches, so the
-// caller can tell "no compatible build" apart from a network error.
-func ResolveVersion(ctx context.Context, idOrSlug, loader, gameVersion string) (*Version, error) {
+// ResolveVersion returns the newest version of idOrSlug that supports any of
+// loaders and (if non-empty) gameVersion. loaders is a family (a Paper server
+// also loads Spigot/Bukkit plugins), so pass them all. Returns ErrNotFound when
+// nothing matches, so the caller can tell "no compatible build" from a network
+// error.
+func ResolveVersion(ctx context.Context, idOrSlug string, loaders []string, gameVersion string) (*Version, error) {
 	q := url.Values{}
-	if loader != "" {
-		q.Set("loaders", fmt.Sprintf("[%q]", loader))
+	if len(loaders) > 0 {
+		var quoted []string
+		for _, l := range loaders {
+			quoted = append(quoted, fmt.Sprintf("%q", l))
+		}
+		q.Set("loaders", "["+strings.Join(quoted, ",")+"]")
 	}
 	if gameVersion != "" {
 		q.Set("game_versions", fmt.Sprintf("[%q]", gameVersion))
@@ -177,4 +185,54 @@ func (v *Version) PrimaryFile() (File, error) {
 		return v.Files[0], nil
 	}
 	return File{}, fmt.Errorf("modrinth: version %s has no files", v.ID)
+}
+
+// cdnHost is the only host FetchFile will download from. The file URLs come from
+// the API (which we trust), but pinning the host is defence in depth: a tampered
+// or unexpected response can't make the panel fetch an arbitrary URL (SSRF). A
+// var, not a const, only so tests can point it at a local server.
+var cdnHost = "cdn.modrinth.com"
+
+// maxFileBytes caps a mod download. Individual mods and plugins are small; this
+// is generous headroom, not a target, and stops a runaway or hostile response
+// from filling the disk.
+var maxFileBytes = 100 << 20 // 100 MiB
+
+// FetchFile downloads f from the Modrinth CDN and returns its bytes, refusing any
+// other host, capping the size, and verifying the SHA-512 the API published. A
+// file with no published hash is refused rather than trusted — an unverified
+// binary dropped into a server is exactly what this guards against.
+func FetchFile(ctx context.Context, f File) ([]byte, error) {
+	u, err := url.Parse(f.URL)
+	if err != nil || u.Scheme != "https" || u.Host != cdnHost {
+		return nil, fmt.Errorf("modrinth: refusing to download from %q (only %s)", f.URL, cdnHost)
+	}
+	if f.Hashes.SHA512 == "" {
+		return nil, fmt.Errorf("modrinth: %s has no published checksum — refusing to install unverified", f.Filename)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("modrinth: download HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxFileBytes)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxFileBytes {
+		return nil, fmt.Errorf("modrinth: %s exceeds the %d MiB limit", f.Filename, maxFileBytes>>20)
+	}
+	sum := sha512.Sum512(body)
+	if got := hex.EncodeToString(sum[:]); got != f.Hashes.SHA512 {
+		return nil, fmt.Errorf("modrinth: checksum mismatch for %s (corrupt or tampered download)", f.Filename)
+	}
+	return body, nil
 }

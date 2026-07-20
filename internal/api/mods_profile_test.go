@@ -34,13 +34,13 @@ func TestModProfileFor(t *testing.T) {
 			t.Errorf("%q: folder=%q want %q", c.serverType, p.Folder, c.folder)
 		}
 		found := false
-		for _, l := range p.SearchLoaders {
+		for _, l := range p.Loaders {
 			if l == c.hasLoader {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("%q: search loaders %v missing %q", c.serverType, p.SearchLoaders, c.hasLoader)
+			t.Errorf("%q: search loaders %v missing %q", c.serverType, p.Loaders, c.hasLoader)
 		}
 	}
 }
@@ -51,13 +51,13 @@ func TestPaperSearchesPluginFamily(t *testing.T) {
 	p, _ := modProfileFor("paper")
 	for _, want := range []string{"paper", "spigot", "bukkit"} {
 		found := false
-		for _, l := range p.SearchLoaders {
+		for _, l := range p.Loaders {
 			if l == want {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("paper search set %v missing %q", p.SearchLoaders, want)
+			t.Errorf("paper search set %v missing %q", p.Loaders, want)
 		}
 	}
 }

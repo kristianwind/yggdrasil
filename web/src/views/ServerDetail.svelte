@@ -973,6 +973,24 @@
   }
 
   let cloning = $state(false);
+  // Download this server as a portable bundle to import on another panel. The
+  // bundle holds decrypted secrets, so it's admin-only and worth a heads-up.
+  async function exportServer() {
+    try {
+      const resp = await fetch(`/api/servers/${id}/export`, { credentials: "include" });
+      if (!resp.ok) return toast("Export failed", "error");
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(server.name || "server").replace(/[^a-z0-9_-]/gi, "-")}.yggserver.tar.gz`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("Exported. The bundle holds this server's secrets — handle it like a credential.", "info");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   async function cloneServer() {
     const name = prompt("Name for the clone:", `${server.name} (copy)`);
     if (name === null) return; // cancelled
@@ -1173,6 +1191,10 @@
       <button class="btn-ghost" disabled={cloning} onclick={cloneServer}
         title="Create a new server with this one's setup — same rune, variables, resource limits and mods — with fresh ports and an empty data dir. Clones the configuration, not the world/data; the copy installs fresh.">
         {cloning ? "Cloning…" : "⧉ Clone"}</button>
+    {/if}
+    {#if $user?.role === "admin"}
+      <button class="btn-ghost" onclick={exportServer}
+        title="Download this server as a portable bundle (its config, rune and data) to import on another Yggdrasil panel. The bundle contains decrypted secrets — treat it like a credential.">⤓ Export</button>
     {/if}
     {#if server.wipe_supported && can("server.control")}
       <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}

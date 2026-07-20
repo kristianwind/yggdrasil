@@ -17,6 +17,37 @@
   let backupTargets = $state([]);
   let loading = $state(true);
 
+  // Import a server bundle exported from another panel (admin only).
+  let importFile = $state(null);
+  let importing = $state(false);
+  async function importServer(e) {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!f) return;
+    importing = true;
+    try {
+      // The endpoint reads a raw gzip stream, so send the file directly rather
+      // than through api.post (which would JSON-encode it).
+      const resp = await fetch("/api/servers/import", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/gzip" },
+        body: f,
+      });
+      if (!resp.ok) {
+        const e = await resp.json().catch(() => ({}));
+        throw new Error(e.error || "Import failed");
+      }
+      const r = await resp.json();
+      toast(`Imported “${r.name}” — set it up under Settings, then Start.`, "success");
+      navigate(`/servers/${r.id}`);
+    } catch (err) {
+      toast(err.message || "Import failed", "error");
+    } finally {
+      importing = false;
+    }
+  }
+
   // View mode (grid cards vs. compact table), remembered per browser.
   let view = $state(localStorage.getItem("ygg_servers_view") || "grid");
   function setView(v) {
@@ -297,6 +328,13 @@
         title={gameskills.length === 0 ? "Add a rune first (Runes → Browse GitHub) before creating a server." : "Create a new game server from one of your runes."}>
         + New server
       </button>
+    {/if}
+    {#if $user?.role === "admin"}
+      <button class="btn-ghost" onclick={() => importFile?.click()} disabled={importing}
+        title="Import a server exported from another Yggdrasil panel (a .yggserver.tar.gz bundle): its config, rune and data.">
+        {importing ? "Importing…" : "⤒ Import server"}
+      </button>
+      <input type="file" accept=".gz,.tar.gz" class="hidden" bind:this={importFile} onchange={importServer} />
     {/if}
   </div>
 </div>

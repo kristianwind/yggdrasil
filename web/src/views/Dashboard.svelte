@@ -4,8 +4,10 @@
   import { user } from "../lib/auth.js";
   import { navigate } from "../lib/router.js";
   import { toast } from "../lib/toast.js";
+  import Sparkline from "../components/Sparkline.svelte";
 
   let info = $state(null);
+  let fleet = $state(null); // aggregate across game servers: running, players, container CPU/RAM
   let backupCoverage = $state(null);
   let servers = $state([]);
   let gameskills = $state([]);
@@ -21,6 +23,16 @@
   function primaryPort(s) {
     const p = s.ports || {};
     return p.game || p.query || p.web || Object.values(p)[0] || 0;
+  }
+  // The address players actually connect to: the configured public hostname (or
+  // detected IP) + the primary port. Falls back to a subdomain or bare :port.
+  let network = $state(null);
+  function connectAddr(s) {
+    const port = primaryPort(s);
+    const host = network?.effective;
+    if (host && port) return `${host}:${port}`;
+    if (s.subdomain) return s.subdomain;
+    return port ? `:${port}` : "";
   }
   // Compact "added X ago" from an SQLite UTC timestamp ("YYYY-MM-DD HH:MM:SS").
   function relTime(iso) {
@@ -74,6 +86,8 @@
         api.get("/servers"),
         api.get("/gameskills").catch(() => []),
       ]);
+      network = await api.get("/settings/network").catch(() => null);
+      fleet = await api.get("/fleet/summary").catch(() => null);
       if ($user.role === "admin") {
         info = await api.get("/system/info");
         beacon = await api.get("/settings/beacon").catch(() => null);
@@ -83,6 +97,38 @@
       error = e.message;
     }
   });
+
+  // Whole-host resource history for the Dashboard — the machine's CPU/RAM/disk over
+  // time, the same trend charts each server page shows for itself. Admin-only, lazy
+  // (loads when expanded), and reloads when the time window changes.
+  let hostMetrics = $state([]);
+  let hostHours = $state(24);
+  // Open by default; the user's choice is remembered per browser.
+  let showHostHistory = $state(localStorage.getItem("ygg_dash_hosthistory") !== "0");
+  function toggleHostHistory() {
+    showHostHistory = !showHostHistory;
+    localStorage.setItem("ygg_dash_hosthistory", showHostHistory ? "1" : "0");
+  }
+  async function loadHostMetrics() {
+    try {
+      hostMetrics = await api.get(`/system/metrics?hours=${hostHours}`);
+    } catch {
+      hostMetrics = [];
+    }
+  }
+  $effect(() => {
+    if (showHostHistory && $user.role === "admin") {
+      hostHours; // track for reload on window change
+      loadHostMetrics();
+    }
+  });
+  const hostCpuSeries = $derived(hostMetrics.map((m) => m.cpu));
+  const hostRamSeries = $derived(
+    hostMetrics.map((m) => (m.mem_total_mb > 0 ? (m.mem_used_mb / m.mem_total_mb) * 100 : -1)),
+  );
+  const hostDiskSeries = $derived(
+    hostMetrics.map((m) => (m.disk_total_mb > 0 ? (m.disk_used_mb / m.disk_total_mb) * 100 : -1)),
+  );
 
   // Beacon teaser: a gentle, dismissible nudge to opt into the anonymous install
   // ping. Shows only to admins, only while the beacon is off and not dismissed —
@@ -215,23 +261,73 @@
   {/if}
 </div>
 
+{#if fleet && fleet.servers > 0}
+  <div class="card px-4 py-2.5 mb-6 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+    <a href="#/servers" class="flex items-center gap-1.5 hover:text-text">
+      <span
+        class="w-2 h-2 rounded-full {fleet.running === fleet.servers
+          ? 'bg-accent'
+          : fleet.running > 0
+            ? 'bg-warn'
+            : 'bg-muted/40'}"
+        aria-hidden="true"
+      ></span>
+      <span class="font-semibold">{fleet.running}/{fleet.servers}</span><span class="text-muted">running</span>
+    </a>
+    <span><span class="font-semibold">👥 {fleet.players}</span> <span class="text-muted">player{fleet.players === 1 ? "" : "s"} online</span></span>
+    <span class="text-muted">
+      Containers: <span class="text-text font-medium">{fleet.cpu_percent.toFixed(0)}% CPU</span>
+      · <span class="text-text font-medium">{fmtBytes(fleet.mem_mb * 1024 * 1024)} RAM</span>
+    </span>
+  </div>
+{/if}
+
 {#if error}
   <div class="card border-danger p-3 text-danger text-sm mb-4">{error}</div>
 {/if}
 
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+<div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 mb-8">
   {#each cards as c}
     <svelte:element
       this={c.link ? "a" : "div"}
       href={c.link}
-      class="card p-4 block {c.link ? 'hover:bg-panel2/50 transition-colors' : ''}"
+      class="card p-3 block {c.link ? 'hover:bg-panel2/50 transition-colors' : ''}"
     >
-      <div class="text-muted text-xs uppercase tracking-wide">{c.label}</div>
-      <div class="text-2xl font-semibold mt-1">{c.value}</div>
-      {#if c.sub}<div class="text-muted text-xs mt-0.5">{c.sub}</div>{/if}
+      <div class="text-muted text-[11px] uppercase tracking-wide truncate">{c.label}</div>
+      <div class="text-xl font-semibold mt-0.5">{c.value}</div>
+      {#if c.sub}<div class="text-muted text-xs mt-0.5 truncate">{c.sub}</div>{/if}
     </svelte:element>
   {/each}
 </div>
+
+{#if $user.role === "admin" && info}
+  <div class="mb-8">
+    <div class="flex items-center gap-2">
+      <button class="text-sm text-muted hover:text-text" onclick={toggleHostHistory}>
+        {showHostHistory ? "▾" : "▸"} 📈 Host history
+      </button>
+      {#if showHostHistory}
+        <div class="inline-flex rounded-md border border-border overflow-hidden text-xs ml-2">
+          {#each [[24, "24h"], [72, "3d"], [168, "7d"]] as [h, lbl]}
+            <button class="px-2 py-1 {hostHours === h ? 'bg-panel2 text-text' : 'text-muted hover:bg-panel2/50'}"
+              onclick={() => (hostHours = h)}>{lbl}</button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    {#if showHostHistory}
+      {#if hostMetrics.length >= 2}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+          <Sparkline values={hostCpuSeries} label="CPU" unit="%" color="rgb(var(--c-accent2))" format={(v) => v.toFixed(0)} />
+          <Sparkline values={hostRamSeries} label="RAM" unit="%" color="rgb(var(--c-accent))" format={(v) => v.toFixed(0)} />
+          <Sparkline values={hostDiskSeries} label="Disk" unit="%" color="rgb(var(--c-warn))" format={(v) => v.toFixed(0)} />
+        </div>
+      {:else}
+        <p class="text-muted text-sm mt-3">Not enough samples yet — the host is sampled every ~5 minutes. Check back shortly.</p>
+      {/if}
+    {/if}
+  </div>
+{/if}
 
 {#if showBackupWarning}
   <div class="card p-4 mb-8 border-l-4 border-warn relative">
@@ -356,42 +452,42 @@
 {/if}
 
 <h2 class="text-lg font-semibold mb-3">Recent servers</h2>
-<div class="card divide-y divide-border">
-  {#if servers.length === 0}
-    <div class="p-4 text-muted text-sm">No servers yet. Create one from the Servers page.</div>
-  {/if}
-  {#each servers.slice(0, 8) as s}
-    <a href={`#/servers/${s.id}`} class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-panel2/50">
-      <div class="flex items-center gap-3 min-w-0">
-        <span
-          class="w-2 h-2 rounded-full shrink-0 {s.status === 'running'
-            ? 'bg-accent'
-            : s.status === 'starting'
-              ? 'bg-warn animate-pulse'
-              : 'bg-muted/40'}"
-          aria-hidden="true"
-        ></span>
-        <div class="min-w-0">
-          <div class="font-medium truncate">{s.name}</div>
-          <div class="text-xs text-muted truncate">
-            {skillName(s.gameskill_id)}{#if primaryPort(s)} ·
-              <span class="font-mono">:{primaryPort(s)}</span>{/if}{#if s.subdomain} ·
-              {s.subdomain}{/if} · added {relTime(s.created_at)}
+{#if servers.length === 0}
+  <div class="card p-4 text-muted text-sm">No servers yet. Create one from the Servers page.</div>
+{:else}
+  <div class="grid gap-3 lg:grid-cols-2">
+    {#each servers.slice(0, 8) as s}
+      <a href={`#/servers/${s.id}`} class="card flex items-center justify-between gap-3 px-4 py-3 hover:bg-panel2/50">
+        <div class="flex items-center gap-3 min-w-0">
+          <span
+            class="w-2 h-2 rounded-full shrink-0 {s.status === 'running'
+              ? 'bg-accent'
+              : s.status === 'starting'
+                ? 'bg-warn animate-pulse'
+                : 'bg-muted/40'}"
+            aria-hidden="true"
+          ></span>
+          <div class="min-w-0">
+            <div class="font-medium truncate">{s.name}</div>
+            <div class="text-xs text-muted truncate">
+              {skillName(s.gameskill_id)}{#if connectAddr(s)} · <span class="font-mono">{connectAddr(s)}</span>{/if}
+            </div>
+            <div class="text-[11px] text-muted/80 truncate">added {relTime(s.created_at)}</div>
           </div>
         </div>
-      </div>
-      <div class="flex items-center gap-2 shrink-0">
-        {#if !s.installed}
-          <span class="badge bg-warn/20 text-warn">needs install</span>
-        {/if}
-        <span
-          class="badge {s.status === 'running'
-            ? 'bg-accent2/20 text-accent'
-            : s.status === 'starting'
-              ? 'bg-warn/20 text-warn'
-              : 'bg-border text-muted'}">{s.status}</span
-        >
-      </div>
-    </a>
-  {/each}
-</div>
+        <div class="flex items-center gap-2 shrink-0">
+          {#if !s.installed}
+            <span class="badge bg-warn/20 text-warn">needs install</span>
+          {/if}
+          <span
+            class="badge {s.status === 'running'
+              ? 'bg-accent2/20 text-accent'
+              : s.status === 'starting'
+                ? 'bg-warn/20 text-warn'
+                : 'bg-border text-muted'}">{s.status}</span
+          >
+        </div>
+      </a>
+    {/each}
+  </div>
+{/if}

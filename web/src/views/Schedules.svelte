@@ -30,6 +30,19 @@
     };
   }
 
+  // Quiet-hours hint: for a server-scoped schedule, look up the calmest hour (mined
+  // from the last 14 days of player samples) so a disruptive restart/update can be
+  // timed when nobody's on. Reloads when the chosen server changes.
+  let quiet = $state(null);
+  const hh = (h) => String(h).padStart(2, "0") + ":00";
+  $effect(() => {
+    const sid = form.scope === "server" ? form.server_id : "";
+    quiet = null;
+    if (sid) {
+      api.get(`/servers/${sid}/quiet-hours`).then((q) => (quiet = q)).catch(() => (quiet = null));
+    }
+  });
+
   // The placeholders the chosen template actually uses. Asking per template beats
   // a fixed list of inputs: a countdown needs {{seconds}}, a backup warning needs
   // nothing at all, and a template someone writes tomorrow needs whatever it says.
@@ -315,6 +328,14 @@
             title="Standard cron: minute hour day month weekday. Examples — '0 4 * * *' = every day at 04:00; '0 */6 * * *' = every 6 hours; '30 5 * * 1' = 05:30 every Monday." />
         </div>
       </div>
+
+      {#if quiet?.has_data}
+        <div class="text-xs text-muted flex flex-wrap items-center gap-2">
+          <span>💡 This server is quietest around <span class="text-text font-medium">{hh(quiet.recommended_hour)}</span> (avg {quiet.recommended_avg} players, last 14 days) — a good time for a disruptive job.</span>
+          <button type="button" class="text-accent hover:underline"
+            onclick={() => (form.cron_expr = `0 ${quiet.recommended_hour} * * *`)}>Use {hh(quiet.recommended_hour)} daily</button>
+        </div>
+      {/if}
 
       {#if form.action === "backup"}
         <div>

@@ -4,7 +4,9 @@
   import { user, loadUser, logout } from "./lib/auth.js";
   import { getTheme, toggleTheme } from "./lib/theme.js";
   import { api } from "./lib/api.js";
+  import { DISCORD_INVITE } from "./lib/links.js";
   import Toasts from "./components/Toasts.svelte";
+  import CommandPalette from "./components/CommandPalette.svelte";
   import Login from "./views/Login.svelte";
   import Dashboard from "./views/Dashboard.svelte";
   import Servers from "./views/Servers.svelte";
@@ -20,6 +22,13 @@
   let ready = $state(false);
   let build = $state(null); // { version, repo }
   let mobileOpen = $state(false);
+  // Desktop-only: collapse the sidebar to an icon rail (persisted). Never affects
+  // the mobile drawer — every collapse style below is md:-scoped, width is md:w-16.
+  let collapsed = $state(localStorage.getItem("ygg_sidebar_collapsed") === "1");
+  function toggleCollapsed() {
+    collapsed = !collapsed;
+    localStorage.setItem("ygg_sidebar_collapsed", collapsed ? "1" : "0");
+  }
   let menuGuardUntil = 0; // ignore ☰ taps until this time (ms) — see below
   let wasAuthed = false;
   let theme = $state(getTheme());
@@ -93,30 +102,53 @@
 {:else if !$user}
   <Login />
 {:else}
+  <CommandPalette />
   <!-- Desktop: lock to the viewport so only <main> scrolls (no stray page scroll).
        Mobile keeps min-h-screen to avoid the iOS 100vh/URL-bar cutoff. -->
   <div class="min-h-screen md:h-screen md:overflow-hidden flex">
     <!-- Sidebar -->
     <aside
-      class="fixed md:sticky md:top-0 z-40 inset-y-0 md:inset-y-auto left-0 w-52 md:h-screen bg-panel border-r border-border
-             flex flex-col transition-transform {mobileOpen ? '' : '-translate-x-full md:translate-x-0'}"
+      class="fixed md:sticky md:top-0 z-40 inset-y-0 md:inset-y-auto left-0 w-52 {collapsed ? 'md:w-16' : 'md:w-52'} md:h-screen bg-panel border-r border-border
+             flex flex-col transition-[width,transform] duration-200 {mobileOpen ? '' : '-translate-x-full md:translate-x-0'}"
       style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
     >
+      <!-- Collapse/expand the rail — a small chip straddling the divider line, the
+           spot people expect it. Desktop only; mobile uses the ☰ drawer. -->
       <button
-        class="shrink-0 px-5 py-4 text-lg font-semibold flex items-center gap-2 hover:bg-panel2/50 text-left"
+        class="hidden md:flex absolute top-4 -right-3 z-50 w-6 h-6 items-center justify-center rounded-full border border-border bg-panel text-muted hover:text-text hover:bg-panel2 shadow-sm transition-colors"
+        onclick={toggleCollapsed}
+        title={collapsed ? "Expand menu" : "Collapse menu"}
+        aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+      >{collapsed ? "›" : "‹"}</button>
+      <button
+        class="shrink-0 py-4 text-lg font-semibold flex items-center gap-2 hover:bg-panel2/50 text-left px-5 {collapsed ? 'md:px-0 md:justify-center' : ''}"
         title="Go to dashboard"
         onclick={() => {
           navigate("/");
           mobileOpen = false;
         }}
       >
-        <span>🌳</span> Yggdrasil Panel
+        <span>🌳</span><span class="whitespace-nowrap {collapsed ? 'md:hidden' : ''}">Yggdrasil Panel</span>
+      </button>
+      <!-- Command palette trigger — keeps ⌘K discoverable and works on touch. -->
+      <button
+        class="mx-2 mb-1 flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-muted hover:bg-panel2/60 hover:text-text {collapsed ? 'md:justify-center md:px-0' : ''}"
+        title="Search — jump to a page, server or action (⌘K)"
+        onclick={() => {
+          window.dispatchEvent(new CustomEvent("ygg:cmdk"));
+          mobileOpen = false;
+        }}
+      >
+        <span class="w-5 text-center">🔍</span>
+        <span class="{collapsed ? 'md:hidden' : ''}">Search</span>
+        <kbd class="ml-auto text-[10px] border border-border rounded px-1 opacity-70 {collapsed ? 'md:hidden' : ''}">⌘K</kbd>
       </button>
       <nav class="flex-1 min-h-0 overflow-y-auto px-2 space-y-1">
         {#each nav as item}
           {#if !item.admin || $user.role === "admin"}
             <button
-              class="w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-3
+              title={item.label}
+              class="w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-3 {collapsed ? 'md:justify-center md:gap-0' : ''}
                      {$route.path === item.path || ($route.parts[0] === item.path.slice(1) && item.path !== '/')
                        ? 'bg-panel2 text-text'
                        : 'text-muted hover:bg-panel2/60'}"
@@ -125,10 +157,17 @@
                 mobileOpen = false;
               }}
             >
-              <span class="w-5 text-center">{item.icon}</span>{item.label}
+              <span class="w-5 text-center relative">
+                {item.icon}
+                {#if item.path === "/runes" && runeUpdateCount > 0 && collapsed}
+                  <!-- Collapsed rail: a dot on the icon stands in for the count badge. -->
+                  <span class="hidden md:block absolute -top-1 -right-1 w-2 h-2 rounded-full bg-warn" aria-hidden="true"></span>
+                {/if}
+              </span>
+              <span class="truncate {collapsed ? 'md:hidden' : ''}">{item.label}</span>
               {#if item.path === "/runes" && runeUpdateCount > 0}
                 <span
-                  class="ml-auto badge bg-warn/20 text-warn min-w-5 text-center"
+                  class="ml-auto badge bg-warn/20 text-warn min-w-5 text-center {collapsed ? 'md:hidden' : ''}"
                   title="{runeUpdateCount} rune update{runeUpdateCount === 1 ? '' : 's'} available"
                 >{runeUpdateCount}</span>
               {/if}
@@ -142,7 +181,7 @@
             href={build.repo}
             target="_blank"
             rel="noopener"
-            class="flex items-center gap-1 px-2 pb-1 text-xs text-muted hover:text-text"
+            class="flex items-center gap-1 px-2 pb-1 text-xs text-muted hover:text-text {collapsed ? 'md:hidden' : ''}"
             title="View Yggdrasil on GitHub"
           >
             🌳 Yggdrasil {build.version}
@@ -153,16 +192,29 @@
               href={`${build.repo}/releases/latest`}
               target="_blank"
               rel="noopener"
-              class="flex items-center gap-1 mx-2 mb-1 px-2 py-1 rounded bg-warn/15 text-warn text-xs hover:bg-warn/25"
+              class="flex items-center gap-1 mx-2 mb-1 px-2 py-1 rounded bg-warn/15 text-warn text-xs hover:bg-warn/25 {collapsed ? 'md:hidden' : ''}"
               title="A newer release is available"
             >
               ↑ Update available: {build.latest}
             </a>
           {/if}
         {/if}
-        <div class="px-2 py-1 text-muted truncate">{$user.username} · {$user.role}</div>
-        <div class="flex gap-1 mt-1">
-          <button class="btn-ghost flex-1" onclick={logout}>Sign out</button>
+        <a
+          href={DISCORD_INVITE}
+          target="_blank"
+          rel="noopener"
+          class="flex items-center gap-1 px-2 pb-1 text-xs text-muted hover:text-text {collapsed ? 'md:hidden' : ''}"
+          title="Join the Yggdrasil community on Discord"
+        >
+          💬 Discord
+          <span class="opacity-60">↗</span>
+        </a>
+        <div class="px-2 py-1 text-muted truncate {collapsed ? 'md:hidden' : ''}">{$user.username} · {$user.role}</div>
+        <div class="flex gap-1 mt-1 {collapsed ? 'md:flex-col' : ''}">
+          <button class="btn-ghost flex-1" onclick={logout} title="Sign out">
+            <span class="{collapsed ? 'md:hidden' : ''}">Sign out</span>
+            {#if collapsed}<span class="hidden md:inline" aria-hidden="true">🚪</span>{/if}
+          </button>
           <button
             class="btn-ghost px-3"
             aria-label="Toggle light/dark theme"

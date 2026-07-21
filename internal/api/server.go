@@ -227,6 +227,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/metrics", s.handleServerMetrics)
+		r.Get("/api/servers/{id}/crashes", s.handleServerCrashes)
+		r.Get("/api/crashes/summary", s.handleCrashesSummary)
+		r.Get("/api/fleet/summary", s.handleFleetSummary)
 		r.Get("/api/servers/{id}/quiet-hours", s.handleQuietHours)
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)
 		r.Get("/api/servers/{id}/battlemetrics", s.handleServerBattleMetrics)
@@ -386,6 +389,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// System info
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
+		r.Get("/api/system/metrics", s.requireAdmin(s.handleSystemMetrics))
 		r.Get("/api/system/os-updates", s.requireAdmin(s.handleOSUpdates))
 		r.Get("/api/system/backup-coverage", s.requireAdmin(s.handleBackupCoverage))
 		r.Post("/api/system/update", s.requireAdmin(s.handleSystemUpdate))

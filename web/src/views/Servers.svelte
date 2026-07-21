@@ -15,6 +15,7 @@
   let realms = $state([]);
   let gameskills = $state([]);
   let backupTargets = $state([]);
+  let crashes = $state({}); // server_id -> unexpected-exit count in the last 24h
   let loading = $state(true);
 
   // Import a server bundle exported from another panel (admin only).
@@ -69,6 +70,42 @@
   let isMobile = $state(false);
   const effectiveView = $derived(isMobile ? "grid" : view);
 
+  // Sort order within each group, remembered per browser. Status sorts by a
+  // usefulness rank (running first) rather than alphabetically.
+  let sortKey = $state(localStorage.getItem("ygg_servers_sortkey") || "name");
+  let sortDir = $state(localStorage.getItem("ygg_servers_sortdir") || "asc");
+  function setSort(key) {
+    if (sortKey === key) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortKey = key;
+      sortDir = "asc";
+    }
+    localStorage.setItem("ygg_servers_sortkey", sortKey);
+    localStorage.setItem("ygg_servers_sortdir", sortDir);
+  }
+  const sortArrow = (key) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
+  const statusRank = { running: 0, starting: 1, stopping: 2, stopped: 3 };
+  function sortServers(list) {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      let av, bv;
+      if (sortKey === "status") {
+        av = statusRank[a.status] ?? 9;
+        bv = statusRank[b.status] ?? 9;
+      } else if (sortKey === "rune") {
+        av = (a.gameskill_id || "").toLowerCase();
+        bv = (b.gameskill_id || "").toLowerCase();
+      } else {
+        av = (a.name || "").toLowerCase();
+        bv = (b.name || "").toLowerCase();
+      }
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return (a.name || "").localeCompare(b.name || ""); // stable tiebreak by name
+    });
+  }
+
   // Create modal state
   let showCreate = $state(false);
   let selectedSkill = $state(null);
@@ -92,11 +129,12 @@
   async function load() {
     loading = true;
     try {
-      [servers, realms, gameskills, backupTargets] = await Promise.all([
+      [servers, realms, gameskills, backupTargets, crashes] = await Promise.all([
         api.get("/servers"),
         api.get("/realms"),
         api.get("/gameskills"),
         api.get("/backup/targets").catch(() => []), // admin-only; [] for delegates
+        api.get("/crashes/summary").catch(() => ({})), // flapping badges; {} if unavailable
       ]);
       loadReach();
     } catch (e) {
@@ -149,6 +187,7 @@
       const key = byId[s.realm_id] || "Ungrouped";
       (g[key] ||= []).push(s);
     }
+    for (const k in g) g[k] = sortServers(g[k]);
     return g;
   });
 
@@ -320,18 +359,38 @@
       <!-- The view toggle is desktop-only; phones are always the card grid. -->
       <div class="hidden sm:inline-flex rounded-md border border-border overflow-hidden">
         <button
-          class="px-2.5 py-1.5 text-sm {view === 'grid' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
+          class="px-2.5 py-2 text-sm {view === 'grid' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
           title="Grid view"
           aria-label="Grid view"
           onclick={() => setView("grid")}>▦</button
         >
         <button
-          class="px-2.5 py-1.5 text-sm border-l border-border {view === 'table' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
+          class="px-2.5 py-2 text-sm border-l border-border {view === 'table' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/50'}"
           title="Table view"
           aria-label="Table view"
           onclick={() => setView("table")}>☰</button
         >
       </div>
+    {/if}
+    {#if servers.length > 1}
+      <select
+        class="input w-auto text-sm"
+        value={`${sortKey}:${sortDir}`}
+        onchange={(e) => {
+          const [k, d] = e.target.value.split(":");
+          sortKey = k;
+          sortDir = d;
+          localStorage.setItem("ygg_servers_sortkey", k);
+          localStorage.setItem("ygg_servers_sortdir", d);
+        }}
+        title="Sort servers within each group"
+        aria-label="Sort servers"
+      >
+        <option value="name:asc">Name A–Z</option>
+        <option value="name:desc">Name Z–A</option>
+        <option value="status:asc">Status (running first)</option>
+        <option value="rune:asc">Rune A–Z</option>
+      </select>
     {/if}
     {#if $user?.can_create}
       <button class="btn-primary" onclick={openCreate} disabled={gameskills.length === 0}
@@ -404,9 +463,15 @@
         <table class="w-full text-sm" style="table-layout:fixed">
           <thead class="text-muted text-xs uppercase tracking-wide border-b border-border">
             <tr>
-              <th class="text-left font-medium px-4 py-2" style="width:22%">Name</th>
-              <th class="text-left font-medium px-4 py-2" style="width:18%">Rune</th>
-              <th class="text-left font-medium px-4 py-2" style="width:16%">Status</th>
+              <th class="text-left font-medium px-4 py-2" style="width:22%">
+                <button class="uppercase tracking-wide hover:text-text {sortKey === 'name' ? 'text-text' : ''}" onclick={() => setSort("name")}>Name{sortArrow("name")}</button>
+              </th>
+              <th class="text-left font-medium px-4 py-2" style="width:18%">
+                <button class="uppercase tracking-wide hover:text-text {sortKey === 'rune' ? 'text-text' : ''}" onclick={() => setSort("rune")}>Rune{sortArrow("rune")}</button>
+              </th>
+              <th class="text-left font-medium px-4 py-2" style="width:16%">
+                <button class="uppercase tracking-wide hover:text-text {sortKey === 'status' ? 'text-text' : ''}" onclick={() => setSort("status")}>Status{sortArrow("status")}</button>
+              </th>
               <th class="text-left font-medium px-4 py-2 hidden sm:table-cell" style="width:28%">Ports</th>
               <th class="text-right font-medium px-4 py-2" style="width:16%">Actions</th>
             </tr>
@@ -443,6 +508,10 @@
                         : "Not responding from outside — check the port forward"}
                       >{reach[s.id].reachable ? "🌐" : "🚫"}</span
                     >
+                  {/if}
+                  {#if crashes[s.id] > 0}
+                    <a href={`#/servers/${s.id}`} class="badge bg-warn/20 text-warn ml-1"
+                      title="{crashes[s.id]} unexpected exit{crashes[s.id] === 1 ? '' : 's'} in the last 24h — click for the crash history">⚠ {crashes[s.id]}×</a>
                   {/if}
                 </td>
                 <td class="px-4 py-2 hidden sm:table-cell">
@@ -498,6 +567,10 @@
                       : "Not responding from outside — check the port forward"}
                     >{reach[s.id].reachable ? "🌐" : "🚫"}</span
                   >
+                {/if}
+                {#if crashes[s.id] > 0}
+                  <span class="badge bg-warn/20 text-warn"
+                    title="{crashes[s.id]} unexpected exit{crashes[s.id] === 1 ? '' : 's'} in the last 24h">⚠ {crashes[s.id]}×</span>
                 {/if}
               </div>
             </div>

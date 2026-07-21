@@ -215,6 +215,9 @@
   let modsInstalled = $state([]);
   let modsFolder = $state("");
   let modsLoading = $state(false);
+  // How many installed mods have a newer compatible build on Modrinth — drives the
+  // update badge on the Mods tab (the backend already flags each mod's update_available).
+  const modUpdateCount = $derived(modsInstalled.filter((m) => m.update_available).length);
   let modQuery = $state("");
   let modResults = $state([]);
   let modLoader = $state("");
@@ -318,6 +321,28 @@
   $effect(() => {
     if (showHistory) { metricsHours; loadMetrics(); }
   });
+
+  // Stability: recent unexpected exits (crashes / external stops). Shown only when
+  // there's something to show, so a healthy server stays uncluttered.
+  let crashList = $state([]);
+  async function loadCrashes() {
+    try {
+      crashList = await api.get(`/servers/${id}/crashes`);
+    } catch {
+      crashList = [];
+    }
+  }
+  // Compact "X ago" for a crash timestamp (SQLite UTC "YYYY-MM-DD HH:MM:SS").
+  function crashAgo(iso) {
+    if (!iso) return "";
+    const t = new Date(iso.replace(" ", "T") + (iso.endsWith("Z") ? "" : "Z")).getTime();
+    if (isNaN(t)) return "";
+    const s = (Date.now() - t) / 1000;
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+  }
 
   // Activity feed (parsed admin log — session history)
   let activity = $state({ supported: true, file: "", events: [] });
@@ -980,11 +1005,27 @@
   let cloning = $state(false);
   // Download this server as a portable bundle to import on another panel. The
   // bundle holds decrypted secrets, so it's admin-only and worth a heads-up.
+  let exporting = $state(false);
+  let exportedBytes = $state(0);
   async function exportServer() {
+    if (exporting) return;
+    exporting = true;
+    exportedBytes = 0;
     try {
       const resp = await fetch(`/api/servers/${id}/export`, { credentials: "include" });
       if (!resp.ok) return toast("Export failed", "error");
-      const blob = await resp.blob();
+      // Stream the bundle so a large server shows live progress instead of a
+      // dead button. The tar is gzipped on the fly, so the final size is
+      // unknown up front — we report bytes received as they arrive.
+      const reader = resp.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        exportedBytes += value.length;
+      }
+      const blob = new Blob(chunks, { type: "application/gzip" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `${(server.name || "server").replace(/[^a-z0-9_-]/gi, "-")}.yggserver.tar.gz`;
@@ -992,9 +1033,13 @@
       URL.revokeObjectURL(a.href);
       toast("Exported. The bundle holds this server's secrets — handle it like a credential.", "info");
     } catch (e) {
-      toast(e.message, "error");
+      toast(e.message || "Export failed", "error");
+    } finally {
+      exporting = false;
     }
   }
+  // Human-readable byte count for the live export progress label.
+  const fmtBytes = (n) => (n < 1e6 ? `${(n / 1e3).toFixed(0)} KB` : `${(n / 1e6).toFixed(1)} MB`);
 
   async function cloneServer() {
     const name = prompt("Name for the clone:", `${server.name} (copy)`);
@@ -1092,7 +1137,11 @@
 
   onMount(async () => {
     loadNetwork();
+    loadCrashes();
     await loadServer();
+    // Pre-load installed mods (if this rune supports them) so the "N updates" badge
+    // on the Mods tab is visible without having to open the tab first.
+    if (server?.mods_supported && can("server.files")) loadInstalledMods();
     // Default to the Console tab. Only jump to the install log when an install is
     // actually running right now — otherwise Console is what you want to see on entry.
     if (server && !server.installed && server.install_status === "installing") {
@@ -1198,8 +1247,9 @@
         {cloning ? "Cloning…" : "⧉ Clone"}</button>
     {/if}
     {#if $user?.role === "admin"}
-      <button class="btn-ghost" onclick={exportServer}
-        title="Download this server as a portable bundle (its config, rune and data) to import on another Yggdrasil panel. The bundle contains decrypted secrets — treat it like a credential.">⤓ Export</button>
+      <button class="btn-ghost" disabled={exporting} onclick={exportServer}
+        title="Download this server as a portable bundle (its config, rune and data) to import on another Yggdrasil panel. The bundle contains decrypted secrets — treat it like a credential.">
+        {exporting ? `Exporting… ${fmtBytes(exportedBytes)}` : "⤓ Export"}</button>
     {/if}
     {#if server.wipe_supported && can("server.control")}
       <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}
@@ -1419,6 +1469,32 @@
     {/if}
   </div>
 
+  {#if crashList.length}
+    <div class="card p-4 mb-4 border-l-4 border-warn">
+      <h3 class="text-base font-semibold flex items-center gap-2">
+        ⚠️ Stability
+        <span class="badge bg-warn/20 text-warn">{crashList.length} recent exit{crashList.length === 1 ? "" : "s"}</span>
+      </h3>
+      <p class="text-xs text-muted mt-0.5 mb-3">Unexpected exits the panel caught while this server was running — a crash, an OOM kill, or an external stop. Exit code 0 is a clean external stop; anything else is a fault.</p>
+      <div class="space-y-2">
+        {#each crashList.slice(0, 8) as c}
+          <details class="rounded-md border border-border bg-panel2/40">
+            <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer text-sm select-none">
+              <span class="badge {c.exit_code === 0 ? 'bg-border text-muted' : 'bg-danger/20 text-danger'}">
+                {c.exit_code === 0 ? "stopped" : `exit ${c.exit_code}`}
+              </span>
+              <span class="text-muted">{crashAgo(c.ts)}</span>
+              {#if c.reason}<span class="text-muted/70 ml-auto text-xs">log ▾</span>{/if}
+            </summary>
+            {#if c.reason}
+              <pre class="text-[11px] font-mono whitespace-pre-wrap break-words px-3 py-2 border-t border-border text-muted overflow-x-auto">{c.reason}</pre>
+            {/if}
+          </details>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
   <!-- Shared admin notes -->
   {#if server.notes || editingNotes || can("server.control")}
     <div class="card p-3 mb-4">
@@ -1484,7 +1560,11 @@
             openEdit();
             loadDelegation();
           }
-        }}>{label}</button
+        }}
+        >{label}{#if key === "mcmods" && modUpdateCount > 0}<span
+            class="ml-1.5 badge bg-warn/20 text-warn text-[10px] min-w-4 text-center"
+            title="{modUpdateCount} installed mod{modUpdateCount === 1 ? '' : 's'} {modUpdateCount === 1 ? 'has' : 'have'} a newer build available">{modUpdateCount}</span
+          >{/if}</button
       >
     {/each}
   </div>

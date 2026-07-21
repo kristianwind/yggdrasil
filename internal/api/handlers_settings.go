@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ func (s *Server) handleGetNetworkSettings(w http.ResponseWriter, r *http.Request
 	jsonOK(w, map[string]any{
 		"public_hostname":       host,
 		"detected":              s.detectPublicAddr(),
+		"internal":              localIP(),
 		"effective":             firstNonEmpty(host, s.detectPublicAddr()),
 		"upnp_enabled":          s.getSetting(r.Context(), "upnp_enabled") == "1",
 		"battlemetrics_enabled": s.getSetting(r.Context(), "battlemetrics_token") != "",
@@ -94,6 +96,23 @@ func (s *Server) detectPublicAddr() string {
 		s.extIPAt = time.Now()
 	}
 	return s.extIP
+}
+
+// localIP returns the host's primary LAN IPv4 — the source address it would use
+// to reach the network — for display in Settings so the admin can find the panel
+// on their own network (and know which internal IP to point NPM/port-forwards at).
+// The UDP "dial" sends no packets; it just resolves the routing decision.
+// Best-effort: empty string if it can't be determined.
+func localIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+		return a.IP.String()
+	}
+	return ""
 }
 
 func boolStr(b bool) string {

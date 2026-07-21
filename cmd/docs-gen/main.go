@@ -38,7 +38,7 @@ import (
 
 const (
 	repoURL    = "https://github.com/kristianwind/yggdrasil"
-	discordURL = "https://discord.gg/murNphXV3"
+	discordURL = "https://discord.gg/QM6TmJYvMS"
 	docsOnGH   = repoURL + "/blob/main/docs/"
 	outDir     = "website/docs"
 	srcDir     = "docs"

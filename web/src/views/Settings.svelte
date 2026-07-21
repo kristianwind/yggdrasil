@@ -451,7 +451,7 @@
     }
   }
   // Network (public hostname / connect address)
-  let network = $state({ public_hostname: "", detected: "", effective: "" });
+  let network = $state({ public_hostname: "", detected: "", internal: "", effective: "" });
   let savingNetwork = $state(false);
   async function loadNetwork() {
     try {
@@ -1101,10 +1101,14 @@
     <label class="label" for="pubhost">Public hostname</label>
     <input id="pubhost" class="input" bind:value={network.public_hostname} placeholder="games.example.com" />
     <p class="text-muted text-xs mt-1">
-      Leave empty to auto-detect your external IP{#if network.detected}
-        (currently <span class="font-mono">{network.detected}</span>){/if}. Servers show
+      Leave empty to auto-detect your external IP{#if network.detected}{" "}(currently <span class="font-mono">{network.detected}</span>){/if}. Servers show
       <span class="font-mono">{network.effective || "your-host"}:&lt;port&gt;</span> as the connect address.
     </p>
+    {#if network.internal}
+      <p class="text-muted text-xs mt-1">
+        This panel's internal (LAN) address: <span class="font-mono">{network.internal}</span> — the address to point NPM / port-forwards at.
+      </p>
+    {/if}
   </div>
   <div class="border-t border-border pt-3">
     <label class="inline-flex items-center gap-2 text-sm cursor-pointer">

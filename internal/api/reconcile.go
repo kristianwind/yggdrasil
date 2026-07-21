@@ -3,8 +3,10 @@ package api
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/kristianwind/yggdrasil/internal/docker"
@@ -246,17 +248,59 @@ func (s *Server) reconcileStatuses() {
 	rows.Close()
 
 	for _, x := range list {
-		running, _, err := s.docker.State(context.Background(), x.cid)
+		running, exitCode, err := s.docker.State(context.Background(), x.cid)
 		if err != nil || !running {
 			// Container exited (crash or external stop) — mark stopped and release
 			// any port-forward rules so they don't linger pointing at a dead port.
 			// Drop any watchdog streak so it can't heal a server the user stopped.
+			// When the container is still present (err==nil) we know WHY it exited, so
+			// log it to the stability history first — this is the once-per-transition
+			// signal that a silently-dying server used to leave no trace of.
+			if err == nil {
+				s.recordCrash(x.id, x.cid, exitCode)
+			}
 			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
 			s.clearWatchdog(x.id)
 			s.clearResourceAlarms(x.id)
 			s.stoppedCleanup(x.id)
 		}
 	}
+}
+
+// recordCrash logs an unexpected container exit to the stability history, grabbing
+// the tail of the container log as the likely reason. A non-zero exit code is a
+// real crash and gets a notification (the gap that let today's fleet die in
+// silence); exit 0 is a clean external stop — logged quietly, no alert.
+func (s *Server) recordCrash(serverID, containerID string, exitCode int) {
+	defer recoverLog("recordCrash")
+	reason := s.lastLogLines(containerID, "15")
+	s.db.Exec("INSERT INTO server_crashes (server_id, exit_code, reason) VALUES (?,?,?)", serverID, exitCode, reason)
+	if exitCode != 0 {
+		name := s.serverName(serverID)
+		msg := fmt.Sprintf("💥 %s exited unexpectedly (code %d)", name, exitCode)
+		if reason != "" {
+			msg += "\n```\n" + reason + "\n```"
+		}
+		go s.notifyAll(msg)
+	}
+}
+
+// lastLogLines returns the tail of a container's log, trimmed and length-capped,
+// for the crash-reason snippet. Best-effort: empty string on any error.
+func (s *Server) lastLogLines(containerID, tail string) string {
+	rc, err := s.docker.LogsSnapshot(context.Background(), containerID, tail)
+	if err != nil {
+		return ""
+	}
+	defer rc.Close()
+	var buf bytes.Buffer
+	_ = docker.DemuxCopy(&buf, rc)
+	out := strings.TrimSpace(buf.String())
+	const max = 800
+	if len(out) > max {
+		out = "…" + out[len(out)-max:]
+	}
+	return out
 }
 
 // stoppedCleanup releases UPnP/UniFi port forwards and the NPM proxy host for a

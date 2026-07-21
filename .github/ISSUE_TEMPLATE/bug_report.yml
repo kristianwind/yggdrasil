@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time. If you're not sure whether it's a bug, ask in
-        [Discord](https://discord.gg/murNphXV3) first — that's faster for both of us.
+        [Discord](https://discord.gg/QM6TmJYvMS) first — that's faster for both of us.
 
         **Never paste secrets.** Logs can contain your `secret_key`, RCON passwords, API
         tokens and backup-target credentials. Read what you paste.

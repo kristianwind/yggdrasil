@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -32,6 +33,8 @@ func (s *Server) startMetricsSampler() {
 			s.sampleMetrics()
 			if n++; n%12 == 0 { // ~hourly
 				s.db.Exec("DELETE FROM metrics WHERE ts < datetime('now', ?)", metricsRetention)
+				s.db.Exec("DELETE FROM host_metrics WHERE ts < datetime('now', ?)", metricsRetention)
+				s.db.Exec("DELETE FROM server_crashes WHERE ts < datetime('now', '-30 days')")
 			}
 		}
 	}()
@@ -65,6 +68,24 @@ func (s *Server) sampleMetrics() {
 		s.db.Exec("INSERT INTO metrics (server_id, cpu, mem_mb, players) VALUES (?,?,?,?)", x.id, cpu, mem, players)
 		s.checkResourceAlarms(x.id, cpu, mem) // fire/clear per-server CPU/mem alarms
 	}
+
+	s.sampleHostMetrics()
+}
+
+// sampleHostMetrics records one whole-host sample (CPU/RAM/disk) for the Dashboard
+// trend charts, mirroring the per-server sampler. Reuses the same helpers that
+// feed /system/info, so a point-in-time reading and its history always agree.
+func (s *Server) sampleHostMetrics() {
+	defer recoverLog("sampleHostMetrics")
+	memTotal, memUsed := hostMem()
+	free, diskTotal := diskUsage(filepath.Dir(s.cfg.Database.Path))
+	const mb = 1024 * 1024
+	s.db.Exec(
+		"INSERT INTO host_metrics (cpu, mem_used_mb, mem_total_mb, disk_used_mb, disk_total_mb) VALUES (?,?,?,?,?)",
+		hostCPUPercent(),
+		float64(memUsed)/mb, float64(memTotal)/mb,
+		float64(diskTotal-free)/mb, float64(diskTotal)/mb,
+	)
 }
 
 type metricPoint struct {
@@ -147,6 +168,80 @@ func (s *Server) handleServerMetrics(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var p metricPoint
 		if rows.Scan(&p.TS, &p.CPU, &p.MemMB, &p.Players) == nil {
+			list = append(list, p)
+		}
+	}
+	jsonOK(w, list)
+}
+
+// handleFleetSummary returns live-ish aggregates across all game servers for the
+// Dashboard's fleet strip: how many are up, total players online, and the total
+// CPU/RAM the containers are using. Resource/player figures come from each running
+// server's most recent sample (within the last 15 min, so stopped servers drop out).
+func (s *Server) handleFleetSummary(w http.ResponseWriter, r *http.Request) {
+	var total, running int
+	s.db.QueryRowContext(r.Context(), "SELECT COUNT(*), COALESCE(SUM(status='running'),0) FROM servers").Scan(&total, &running)
+
+	var cpu, mem float64
+	var players int
+	rows, err := s.db.QueryContext(r.Context(), `
+		SELECT m.cpu, m.mem_mb, m.players FROM metrics m
+		JOIN (SELECT server_id, MAX(ts) AS mts FROM metrics
+		      WHERE ts >= datetime('now','-15 minutes') GROUP BY server_id) l
+		  ON m.server_id = l.server_id AND m.ts = l.mts`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var c, mm float64
+			var p int
+			if rows.Scan(&c, &mm, &p) == nil {
+				cpu += c
+				mem += mm
+				if p > 0 {
+					players += p
+				}
+			}
+		}
+	}
+	jsonOK(w, map[string]any{
+		"servers":     total,
+		"running":     running,
+		"players":     players,
+		"cpu_percent": cpu,
+		"mem_mb":      mem,
+	})
+}
+
+type hostMetricPoint struct {
+	TS          string  `json:"ts"`
+	CPU         float64 `json:"cpu"` // -1 when unavailable (non-Linux)
+	MemUsedMB   float64 `json:"mem_used_mb"`
+	MemTotalMB  float64 `json:"mem_total_mb"`
+	DiskUsedMB  float64 `json:"disk_used_mb"`
+	DiskTotalMB float64 `json:"disk_total_mb"`
+}
+
+// handleSystemMetrics returns whole-host samples over the last N hours (default 24,
+// max 168 = 7 days) — the Dashboard equivalent of a server's /metrics.
+func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
+	hours := 24
+	if h := r.URL.Query().Get("hours"); h != "" {
+		if n, err := strconv.Atoi(h); err == nil && n > 0 && n <= 168 {
+			hours = n
+		}
+	}
+	rows, err := s.db.QueryContext(r.Context(),
+		"SELECT ts, cpu, mem_used_mb, mem_total_mb, disk_used_mb, disk_total_mb FROM host_metrics WHERE ts >= datetime('now', ?) ORDER BY ts",
+		fmt.Sprintf("-%d hours", hours))
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	list := []hostMetricPoint{}
+	for rows.Next() {
+		var p hostMetricPoint
+		if rows.Scan(&p.TS, &p.CPU, &p.MemUsedMB, &p.MemTotalMB, &p.DiskUsedMB, &p.DiskTotalMB) == nil {
 			list = append(list, p)
 		}
 	}

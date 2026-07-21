@@ -157,6 +157,29 @@ CREATE TABLE IF NOT EXISTS metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_srv ON metrics(server_id, ts);
 
+-- Whole-host resource history (CPU/RAM/disk), sampled alongside per-server metrics
+-- so the Dashboard can show trend charts for the machine itself, not just point-in-time.
+CREATE TABLE IF NOT EXISTS host_metrics (
+	ts             TEXT NOT NULL DEFAULT (datetime('now')),
+	cpu            REAL NOT NULL DEFAULT -1,  -- host CPU %, -1 when unavailable (non-Linux)
+	mem_used_mb    REAL NOT NULL DEFAULT 0,
+	mem_total_mb   REAL NOT NULL DEFAULT 0,
+	disk_used_mb   REAL NOT NULL DEFAULT 0,
+	disk_total_mb  REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_host_metrics_ts ON host_metrics(ts);
+
+-- Stability log: an unexpected container exit (crash or external stop) the panel
+-- caught while it still thought the server was running. Feeds the crash-history UI
+-- and the "flapping" badge so a silently-dying server is visible, not a mystery.
+CREATE TABLE IF NOT EXISTS server_crashes (
+	server_id  TEXT NOT NULL,
+	ts         TEXT NOT NULL DEFAULT (datetime('now')),
+	exit_code  INTEGER NOT NULL DEFAULT 0,
+	reason     TEXT NOT NULL DEFAULT ''   -- tail of the container log at exit time
+);
+CREATE INDEX IF NOT EXISTS idx_server_crashes ON server_crashes(server_id, ts);
+
 -- Config-file version history: the previous contents of a text file are snapshot
 -- here right before it's overwritten via the file editor, so a change that breaks
 -- a server can be rolled back. Kept to the last few versions per file.

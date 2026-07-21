@@ -6,7 +6,7 @@ install, update and maintain*, and not just for games: run databases and homelab
 apps (Vaultwarden, Gitea, Uptime Kuma, Grafana, WordPress, Nextcloud…) from the
 same one-click "Runes".
 
-[**📖 Documentation**](docs/) · [**🌐 yggdrasilpanel.com**](https://yggdrasilpanel.com) · [**💬 Discord**](https://discord.gg/murNphXV3)
+[**📖 Documentation**](docs/) · [**🌐 yggdrasilpanel.com**](https://yggdrasilpanel.com) · [**💬 Discord**](https://discord.gg/QM6TmJYvMS)
 
 [![Yggdrasil dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
 
@@ -312,7 +312,7 @@ software you accept full responsibility for any consequences.
 
 ## Community
 
-[**Join the Discord**](https://discord.gg/murNphXV3) — questions, help getting a rune working,
+[**Join the Discord**](https://discord.gg/QM6TmJYvMS) — questions, help getting a rune working,
 and news about releases.
 
 **Found a bug?** Please [open an issue](https://github.com/kristianwind/yggdrasil/issues) rather

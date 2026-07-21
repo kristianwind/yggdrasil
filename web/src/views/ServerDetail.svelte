@@ -546,15 +546,35 @@
     }
   }
 
-  async function restoreBackup(b) {
-    if (!confirm("Restore this backup? The server will be stopped and files overwritten.")) return;
+  // Restore is destructive (overwrites the live world/data), so it goes through a
+  // deliberate modal that makes you type the server name — not a one-tap confirm.
+  let restoreTarget = $state(null); // the backup being restored
+  let restoreConfirm = $state(""); // must match the server name to enable Restore
+  let restoring = $state(false);
+  function restoreBackup(b) {
+    restoreTarget = b;
+    restoreConfirm = "";
+  }
+  async function doRestore() {
+    if (!restoreTarget || restoreConfirm !== server.name) return;
+    restoring = true;
     try {
-      await api.post(`/backups/${b.id}/restore`);
-      toast("Restored", "success");
+      await api.post(`/backups/${restoreTarget.id}/restore`);
+      toast("Restored — the server was stopped; start it when ready.", "success");
+      restoreTarget = null;
       await loadServer();
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      restoring = false;
     }
+  }
+  function downloadBackup(b) {
+    // Cookie-auth same-origin download; open in a hidden anchor.
+    const a = document.createElement("a");
+    a.href = `/api/backups/${b.id}/download`;
+    a.rel = "noopener";
+    a.click();
   }
 
   let verifyingId = $state("");
@@ -2189,14 +2209,40 @@
             <button class="btn-ghost" disabled={verifyingId === b.id} onclick={() => verifyBackup(b)}
               title="Download and check this backup decompresses cleanly — confirm it's restorable before you ever need it. Reads the archive but changes nothing.">
               {verifyingId === b.id ? "Verifying…" : "Verify"}</button>
+            <button class="btn-ghost" onclick={() => downloadBackup(b)}
+              title="Download this backup archive to keep a copy off-panel.">Download</button>
             <button class="btn-ghost" onclick={() => restoreBackup(b)}
-              title="Stop the server and overwrite its files with this backup. Current data is replaced — you'll be asked to confirm.">Restore</button>
+              title="Stop the server and overwrite its files with this backup. Current data is replaced — you'll be asked to confirm by typing the server name.">Restore</button>
           {/if}
           <button class="btn-danger" onclick={() => deleteBackup(b)}
             title="Delete this backup archive. Does not affect the running server.">Delete</button>
         </div>
       {/each}
     </div>
+
+    {#if restoreTarget}
+      <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+        <div class="card w-full max-w-md p-5 space-y-3 border-l-4 border-danger">
+          <h2 class="text-lg font-semibold text-danger">⚠️ Restore backup</h2>
+          <p class="text-sm text-muted">
+            This overwrites <b class="text-text">{server.name}</b>'s current world and data with the backup from
+            <b class="text-text">{fmtDate(restoreTarget.created_at)}</b>. The server is stopped first, and
+            <b class="text-text">this cannot be undone</b> — the current data is replaced.
+          </p>
+          <p class="text-xs text-muted">Tip: take a fresh backup first if you might want today's state back.</p>
+          <div>
+            <label class="label" for="restore-confirm">Type <span class="font-mono text-text">{server.name}</span> to confirm</label>
+            <input id="restore-confirm" class="input" bind:value={restoreConfirm} placeholder={server.name} autocomplete="off" />
+          </div>
+          <div class="flex gap-2">
+            <button class="btn-ghost flex-1" onclick={() => (restoreTarget = null)}>Cancel</button>
+            <button class="btn-danger flex-1" disabled={restoring || restoreConfirm !== server.name} onclick={doRestore}>
+              {restoring ? "Restoring…" : "Restore"}
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
   {:else if tab === "mods"}
     <div class="flex items-center justify-between gap-2 mb-1">
       <h3 class="text-lg font-semibold">🧩 Workshop mods</h3>

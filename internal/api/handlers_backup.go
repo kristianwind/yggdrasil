@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -250,6 +251,47 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auditLog(r, "backup.restore", "server:"+serverID, map[string]string{"backup": id})
 	jsonOK(w, map[string]string{"status": "restored"})
+}
+
+// handleDownloadBackup streams a backup archive from its target to the caller, so a
+// copy can be kept off-panel. Same permission as restore (ServerBackup).
+func (s *Server) handleDownloadBackup(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var serverID, targetID, path string
+	if err := s.db.QueryRowContext(r.Context(),
+		"SELECT server_id, COALESCE(target_id,''), COALESCE(path,'') FROM backups WHERE id=?", id).
+		Scan(&serverID, &targetID, &path); err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	if !s.can(w, r, rbac.ServerBackup, s.serverTarget(r.Context(), serverID)) {
+		return
+	}
+	cfg, err := s.loadTargetConfig(r.Context(), targetID)
+	if err != nil {
+		jsonError(w, "target unavailable", http.StatusBadGateway)
+		return
+	}
+	tgt, err := backup.Open(*cfg)
+	if err != nil {
+		jsonError(w, "connect: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer tgt.Close()
+	rc, err := tgt.Get(r.Context(), path)
+	if err != nil {
+		jsonError(w, "fetch backup: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer rc.Close()
+	fname := filepath.Base(path)
+	if fname == "" || fname == "." || fname == "/" {
+		fname = "backup.tar.gz"
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fname))
+	io.Copy(w, rc)
+	s.auditLog(r, "backup.download", "server:"+serverID, map[string]string{"backup": id})
 }
 
 type verifyResult struct {

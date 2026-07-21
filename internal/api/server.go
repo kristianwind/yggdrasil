@@ -289,6 +289,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/backups", s.handleListBackups)
 		r.Post("/api/servers/{id}/backup", s.handleRunBackup)
 		r.Post("/api/backups/{id}/restore", s.handleRestoreBackup)
+		r.Get("/api/backups/{id}/download", s.handleDownloadBackup)
 		r.Post("/api/backups/{id}/verify", s.handleVerifyBackup)
 		r.Get("/api/settings/backup-verify", s.requireAdmin(s.handleGetBackupVerify))
 		r.Put("/api/settings/backup-verify", s.requireAdmin(s.handleSetBackupVerify))

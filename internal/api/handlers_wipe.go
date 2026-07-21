@@ -127,6 +127,6 @@ func (s *Server) handleWipeServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditLog(r, "server.wipe", "server:"+id, map[string]any{"backup_first": req.BackupFirst})
-	s.notifyAll("🧹 " + srv.Name + " wiped")
+	s.notifyServer(id, "🧹 "+srv.Name+" wiped")
 	jsonOK(w, map[string]string{"status": "wiped"})
 }

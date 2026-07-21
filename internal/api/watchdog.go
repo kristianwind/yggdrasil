@@ -159,19 +159,19 @@ func (s *Server) runWatchdog() {
 func (s *Server) watchdogHeal(serverID string, fails int) {
 	defer recoverLog("watchdogHeal")
 	name := s.serverName(serverID)
-	s.notifyAll(fmt.Sprintf("🩺 Watchdog: %s stopped responding (%d failed checks) — auto-restarting", name, fails))
+	s.notifyServer(serverID, fmt.Sprintf("🩺 Watchdog: %s stopped responding (%d failed checks) — auto-restarting", name, fails))
 	if err := s.recreateAndStart(context.Background(), serverID); err != nil {
-		s.notifyAll(fmt.Sprintf("❌ Watchdog: restarting %s failed: %v", name, err))
+		s.notifyServer(serverID, fmt.Sprintf("❌ Watchdog: restarting %s failed: %v", name, err))
 		return
 	}
-	s.notifyAll(fmt.Sprintf("✅ Watchdog: %s restarted", name))
+	s.notifyServer(serverID, fmt.Sprintf("✅ Watchdog: %s restarted", name))
 }
 
 // watchdogQuarantine alerts that auto-heal has given up on a crash-looping server.
 func (s *Server) watchdogQuarantine(serverID string) {
 	defer recoverLog("watchdogQuarantine")
 	name := s.serverName(serverID)
-	s.notifyAll(fmt.Sprintf("🛑 Watchdog: giving up on %s — it kept failing after %d auto-restarts within %d min. "+
+	s.notifyServer(serverID, fmt.Sprintf("🛑 Watchdog: giving up on %s — it kept failing after %d auto-restarts within %d min. "+
 		"Auto-heal is paused; fix the server and start it manually to resume.",
 		name, quarantineThreshold, int(quarantineWindow.Minutes())))
 }

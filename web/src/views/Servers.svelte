@@ -6,6 +6,7 @@
   import { get } from "svelte/store";
   import { user } from "../lib/auth.js";
   import VarForm from "../components/VarForm.svelte";
+  import MiniSpark from "../components/MiniSpark.svelte";
 
   // can(server, perm) — the API attaches each server's effective `perms` for the
   // caller (admins get all). Lets a delegated user see only the actions they hold.
@@ -16,6 +17,7 @@
   let gameskills = $state([]);
   let backupTargets = $state([]);
   let crashes = $state({}); // server_id -> unexpected-exit count in the last 24h
+  let miniMetrics = $state({}); // server_id -> recent CPU series for the inline sparkline
   let loading = $state(true);
 
   // Import a server bundle exported from another panel (admin only).
@@ -136,6 +138,7 @@
         api.get("/backup/targets").catch(() => []), // admin-only; [] for delegates
         api.get("/crashes/summary").catch(() => ({})), // flapping badges; {} if unavailable
       ]);
+      api.get("/fleet/metrics").then((m) => (miniMetrics = m || {})).catch(() => (miniMetrics = {})); // inline sparklines
       loadReach();
     } catch (e) {
       toast(e.message, "error");
@@ -513,6 +516,9 @@
                     <a href={`#/servers/${s.id}`} class="badge bg-warn/20 text-warn ml-1"
                       title="{crashes[s.id]} unexpected exit{crashes[s.id] === 1 ? '' : 's'} in the last 24h — click for the crash history">⚠ {crashes[s.id]}×</a>
                   {/if}
+                  {#if s.status === "running" && miniMetrics[s.id]?.length > 1}
+                    <span class="ml-2" title="CPU, last ~3h"><MiniSpark values={miniMetrics[s.id]} width={44} height={14} /></span>
+                  {/if}
                 </td>
                 <td class="px-4 py-2 hidden sm:table-cell">
                   {#if s.ports && Object.keys(s.ports).length}
@@ -574,7 +580,12 @@
                 {/if}
               </div>
             </div>
-            <div class="text-xs text-muted mt-1">{s.gameskill_id}</div>
+            <div class="flex items-center justify-between gap-2 mt-1">
+              <div class="text-xs text-muted truncate">{s.gameskill_id}</div>
+              {#if s.status === "running" && miniMetrics[s.id]?.length > 1}
+                <span class="shrink-0" title="CPU, last ~3h"><MiniSpark values={miniMetrics[s.id]} /></span>
+              {/if}
+            </div>
             {#if s.tags?.length}
               <div class="flex flex-wrap gap-1 mt-2">
                 {#each s.tags as t}

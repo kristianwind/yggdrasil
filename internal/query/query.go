@@ -35,3 +35,19 @@ func Query(typ, host string, port int, timeout time.Duration) (*Status, error) {
 		return nil, fmt.Errorf("unsupported query type %q", typ)
 	}
 }
+
+// QueryPlayers returns the connected players' names for protocols that expose them
+// (currently A2S / Source games, e.g. DayZ). Minecraft's Server List Ping and
+// Bedrock ping only carry counts, so they return an error and callers fall back to
+// the count from Query.
+func QueryPlayers(typ, host string, port int, timeout time.Duration) ([]string, error) {
+	if timeout == 0 {
+		timeout = 3 * time.Second
+	}
+	switch typ {
+	case "a2s", "source":
+		return queryA2SPlayers(host, port, timeout)
+	default:
+		return nil, fmt.Errorf("player names not available for %q", typ)
+	}
+}

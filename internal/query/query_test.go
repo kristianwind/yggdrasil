@@ -116,3 +116,27 @@ func TestMinecraftJavaQueryE2E(t *testing.T) {
 		t.Errorf("unexpected status: %+v", st)
 	}
 }
+
+func TestParseA2SPlayers(t *testing.T) {
+	var b []byte
+	b = append(b, 0xFF, 0xFF, 0xFF, 0xFF, 0x44) // header + 'D' (player reply)
+	b = append(b, 0x02)                          // 2 players
+	b = append(b, 0x00)                          // index
+	b = append(b, []byte("Alice")...)
+	b = append(b, 0x00)          // name terminator
+	b = append(b, 10, 0, 0, 0)   // score int32
+	b = append(b, 0, 0, 0, 0)    // duration float32
+	b = append(b, 0x01)          // index
+	b = append(b, []byte("Bob")...)
+	b = append(b, 0x00)
+	b = append(b, 5, 0, 0, 0)
+	b = append(b, 0, 0, 0, 0)
+
+	names, err := parseA2SPlayers(b)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 2 || names[0] != "Alice" || names[1] != "Bob" {
+		t.Errorf("parseA2SPlayers = %v, want [Alice Bob]", names)
+	}
+}

@@ -327,6 +327,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''")        // BattleMetrics server id (optional)
 	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")      // open firewall ports on start (UPnP/UniFi)
 	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")           // DayZ Norn loot settings (re-applied after reinstall)
+	addColumnIfMissing(db, "notifications", "server_id", "TEXT")                          // optional: scope a channel to one server (NULL = global)
 	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")           // NPM subdomain label/full domain for HTTP apps (empty = off)
 	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")       // NPM proxy-host id we created (0 = none)
 	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")         // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)

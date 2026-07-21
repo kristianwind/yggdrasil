@@ -115,6 +115,45 @@ func localIP() string {
 	return ""
 }
 
+// handleGetDiscordBot returns the control-bot config — whether a token is set and
+// the control-channel ID. Never returns the token itself.
+func (s *Server) handleGetDiscordBot(w http.ResponseWriter, r *http.Request) {
+	jsonOK(w, map[string]any{
+		"configured":      s.getSetting(r.Context(), "discord_bot_token") != "",
+		"control_channel": s.getSetting(r.Context(), "discord_bot_control_channel"),
+	})
+}
+
+// handleSetDiscordBot updates the bot token (encrypted; only overwritten when a
+// non-null value is sent, so the UI can save the channel without re-entering it)
+// and the control channel, then reconnects the bot with the new config.
+func (s *Server) handleSetDiscordBot(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token          *string `json:"token"`
+		ControlChannel string  `json:"control_channel"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.Token != nil {
+		tok := strings.TrimSpace(*req.Token)
+		if tok == "" {
+			s.setSetting(r.Context(), "discord_bot_token", "")
+		} else if enc, err := s.cipher.Encrypt(tok); err == nil {
+			s.setSetting(r.Context(), "discord_bot_token", enc)
+		}
+	}
+	channel := strings.TrimSpace(req.ControlChannel)
+	s.setSetting(r.Context(), "discord_bot_control_channel", channel)
+	s.auditLog(r, "settings.discord_bot", "discord_bot", map[string]any{"control_channel": channel})
+	go s.startDiscordBot() // reconnect (or disconnect) with the new config
+	jsonOK(w, map[string]any{
+		"configured":      s.getSetting(r.Context(), "discord_bot_token") != "",
+		"control_channel": channel,
+	})
+}
+
 func boolStr(b bool) string {
 	if b {
 		return "1"

@@ -336,7 +336,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	fail := func(msg string) error {
 		s.db.Exec("UPDATE backups SET status='error', error_msg=?, completed_at=? WHERE id=?",
 			msg, time.Now().UTC().Format(time.RFC3339), backupID)
-		s.notifyAll("❌ Backup failed for " + s.serverName(serverID) + ": " + msg)
+		s.notifyServer(serverID, "❌ Backup failed for " + s.serverName(serverID) + ": " + msg)
 		return errors.New(msg)
 	}
 	s.db.Exec("UPDATE backups SET status='running' WHERE id=?", backupID)
@@ -387,7 +387,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 
 	s.db.Exec("UPDATE backups SET status='done', path=?, size_bytes=?, completed_at=? WHERE id=?",
 		name, size, time.Now().UTC().Format(time.RFC3339), backupID)
-	s.notifyAll("✅ Backup complete for " + s.serverName(serverID) + " (" + humanBytes(size) + ")")
+	s.notifyServer(serverID, "✅ Backup complete for " + s.serverName(serverID) + " (" + humanBytes(size) + ")")
 
 	s.applyRetention(ctx, serverID, targetID, tgt)
 	return nil

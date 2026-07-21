@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { api } from "../lib/api.js";
   import { user } from "../lib/auth.js";
   import { navigate } from "../lib/router.js";
@@ -8,6 +8,22 @@
 
   let info = $state(null);
   let fleet = $state(null); // aggregate across game servers: running, players, container CPU/RAM
+  // Who's online right now — live per-server query (names where the protocol exposes
+  // them, e.g. DayZ; a count otherwise). Refreshed on an interval.
+  let whosOnline = $state([]);
+  let whoTimer = null;
+  async function loadWhosOnline() {
+    try {
+      whosOnline = await api.get("/fleet/players");
+    } catch {
+      whosOnline = [];
+    }
+  }
+  onMount(() => {
+    loadWhosOnline();
+    whoTimer = setInterval(loadWhosOnline, 20000);
+  });
+  onDestroy(() => clearInterval(whoTimer));
   let backupCoverage = $state(null);
   let servers = $state([]);
   let gameskills = $state([]);
@@ -448,6 +464,29 @@
         {/each}
       </div>
     {/if}
+  </div>
+{/if}
+
+{#if whosOnline.length}
+  <h2 class="text-lg font-semibold mb-3">Who's online</h2>
+  <div class="card divide-y divide-border mb-8">
+    {#each whosOnline as sp}
+      <div class="px-4 py-3">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-medium truncate">{sp.name}</span>
+          <span class="text-sm text-muted shrink-0">
+            {sp.count < 0 ? "no query" : sp.count === 0 ? "empty" : `${sp.count} online`}
+          </span>
+        </div>
+        {#if sp.names?.length}
+          <div class="flex flex-wrap gap-1 mt-1.5">
+            {#each sp.names as n}
+              <span class="badge bg-panel2 border border-border text-muted">{n}</span>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/each}
   </div>
 {/if}
 

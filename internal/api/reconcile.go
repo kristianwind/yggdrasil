@@ -281,7 +281,7 @@ func (s *Server) recordCrash(serverID, containerID string, exitCode int) {
 		if reason != "" {
 			msg += "\n```\n" + reason + "\n```"
 		}
-		go s.notifyAll(msg)
+		go s.notifyServer(serverID, msg)
 	}
 }
 

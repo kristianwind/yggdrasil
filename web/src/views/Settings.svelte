@@ -322,6 +322,7 @@
 
   // Notifications
   let channels = $state([]);
+  let notifyServers = $state([]); // for the per-channel "scope to a server" picker
   let showNotify = $state(false);
   let notifyForm = $state({
     type: "telegram",
@@ -334,6 +335,7 @@
     password: "",
     from: "",
     to: "",
+    server_id: "",
   });
 
   async function loadTokens() {
@@ -367,6 +369,7 @@
   async function loadChannels() {
     try {
       channels = await api.get("/notifications");
+      notifyServers = await api.get("/servers").catch(() => []);
     } catch (e) {
       toast(e.message, "error");
     }
@@ -376,7 +379,7 @@
       await api.post("/notifications", notifyForm);
       toast("Channel added", "success");
       showNotify = false;
-      notifyForm = { type: "telegram", token: "", chat_id: "", url: "", host: "", port: 587, username: "", password: "", from: "", to: "" };
+      notifyForm = { type: "telegram", token: "", chat_id: "", url: "", host: "", port: 587, username: "", password: "", from: "", to: "", server_id: "" };
       await loadChannels();
     } catch (e) {
       toast(e.message, "error");
@@ -621,6 +624,33 @@
     }
   }
 
+  // Discord control bot (two-way slash commands). Token is write-only; the API
+  // only reports whether one is configured.
+  let bot = $state({ configured: false, control_channel: "" });
+  let botToken = $state("");
+  let savingBot = $state(false);
+  async function loadBot() {
+    try {
+      bot = await api.get("/settings/discord-bot");
+    } catch {
+      /* admin-only; leave defaults */
+    }
+  }
+  async function saveBot() {
+    savingBot = true;
+    try {
+      const body = { control_channel: bot.control_channel || "" };
+      if (botToken.trim()) body.token = botToken.trim();
+      bot = await api.put("/settings/discord-bot", body);
+      botToken = "";
+      toast("Discord bot saved — reconnecting", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingBot = false;
+    }
+  }
+
   let upnpStatus = $state(null);
   let checkingUpnp = $state(false);
   async function checkUpnp() {
@@ -791,6 +821,7 @@
     loadStatusPage();
     loadBeacon();
     loadDiscord();
+    loadBot();
     loadBackupVerify();
     loadUnifi();
     loadNpm();
@@ -1423,6 +1454,46 @@
   </div>
 </div>
 
+<!-- Discord control bot -->
+<h2 class="text-xl font-semibold mb-2">Discord control bot</h2>
+<p class="text-muted mb-4 text-sm">
+  A two-way bot with slash commands: <code>/status</code>, <code>/servers</code> and <code>/players</code>
+  (read-only, anywhere the bot can see) plus <code>/start</code>, <code>/stop</code>, <code>/restart</code>
+  — which only work in the <b>control channel</b> below. Create a bot at
+  <a class="text-accent" href="https://discord.com/developers/applications" target="_blank" rel="noopener">discord.com/developers/applications</a>
+  (Bot → Reset Token), invite it with the <code>bot</code> + <code>applications.commands</code> scopes, then paste its token here.
+  It connects outbound — no port-forward needed.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div>
+    <label class="label" for="bot-token">Bot token</label>
+    <input
+      id="bot-token"
+      class="input"
+      type="password"
+      bind:value={botToken}
+      placeholder={bot.configured ? "•••••••• (saved — paste to replace)" : "paste the bot token"}
+      autocomplete="off"
+    />
+  </div>
+  <div>
+    <label class="label" for="bot-channel">Control channel ID</label>
+    <input id="bot-channel" class="input font-mono" bind:value={bot.control_channel} placeholder="e.g. 1527678395423391957" />
+    <p class="text-muted text-xs mt-1">
+      In Discord, enable Developer Mode (Settings → Advanced), then right-click your control channel → Copy Channel ID.
+      Leave empty to allow <b>read-only commands only</b> — start/stop/restart stay disabled until a channel is set.
+    </p>
+  </div>
+  <div class="flex items-center gap-3">
+    <button class="btn-primary" onclick={saveBot} disabled={savingBot}>
+      {savingBot ? "Saving…" : "Save"}
+    </button>
+    {#if bot.configured}
+      <span class="text-xs text-accent">● Bot configured</span>
+    {/if}
+  </div>
+</div>
+
 <!-- Kvasir — AI assistant (advisory) -->
 <h2 class="text-xl font-semibold mb-2">Kvasir <span class="text-muted font-normal text-base">· AI assistant</span></h2>
 <p class="text-muted mb-4 text-sm">
@@ -1615,7 +1686,14 @@
   {/if}
   {#each channels as c}
     <div class="flex items-center gap-3 px-4 py-3">
-      <div class="flex-1 font-medium capitalize">{c.type}</div>
+      <div class="flex-1 min-w-0">
+        <span class="font-medium capitalize">{c.type}</span>
+        {#if c.server_id}
+          <span class="badge bg-panel2 border border-border text-muted ml-2">{c.server_name || "one server"}</span>
+        {:else}
+          <span class="badge bg-panel2 border border-border text-muted ml-2">Global</span>
+        {/if}
+      </div>
       <button class="btn-ghost" onclick={() => testChannel(c)}>Test</button>
       <button class="btn-danger" onclick={() => deleteChannel(c)}>Delete</button>
     </div>
@@ -1634,6 +1712,14 @@
           <option value="webhook">Generic webhook</option>
           <option value="email">Email (SMTP)</option>
         </select>
+      </div>
+      <div>
+        <label class="label" for="n-scope">Scope</label>
+        <select id="n-scope" class="input" bind:value={notifyForm.server_id}>
+          <option value="">Global — every notification</option>
+          {#each notifyServers as srv}<option value={srv.id}>Only {srv.name}</option>{/each}
+        </select>
+        <p class="text-muted text-xs mt-1">A server-scoped channel only receives that server's events (start/stop, crashes, watchdog, backups, alarms). Global channels still see everything.</p>
       </div>
       {#if notifyForm.type === "telegram"}
         <div>

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -13,14 +14,18 @@ import (
 // Notification channels are global-admin config; secrets are encrypted at rest.
 
 type notifyView struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Enabled bool   `json:"enabled"`
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Enabled    bool   `json:"enabled"`
+	ServerID   string `json:"server_id"`   // "" = global (every notification)
+	ServerName string `json:"server_name"` // resolved for display
 }
 
 func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(),
-		"SELECT id, type, enabled FROM notifications ORDER BY created_at")
+		`SELECT n.id, n.type, n.enabled, COALESCE(n.server_id,''), COALESCE(srv.name,'')
+		 FROM notifications n LEFT JOIN servers srv ON srv.id = n.server_id
+		 ORDER BY n.created_at`)
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -30,7 +35,7 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 	for rows.Next() {
 		var v notifyView
 		var enabled int
-		if err := rows.Scan(&v.ID, &v.Type, &enabled); err != nil {
+		if err := rows.Scan(&v.ID, &v.Type, &enabled, &v.ServerID, &v.ServerName); err != nil {
 			continue
 		}
 		v.Enabled = enabled == 1
@@ -40,11 +45,15 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleCreateNotification(w http.ResponseWriter, r *http.Request) {
-	var cfg notify.Config
-	if err := decodeJSON(r, &cfg); err != nil || cfg.Type == "" {
+	var req struct {
+		notify.Config
+		ServerID string `json:"server_id"` // "" = global
+	}
+	if err := decodeJSON(r, &req); err != nil || req.Type == "" {
 		jsonError(w, "type required", http.StatusBadRequest)
 		return
 	}
+	cfg := req.Config
 	enc, err := s.encryptNotify(cfg)
 	if err != nil {
 		jsonError(w, "encrypt error", http.StatusInternalServerError)
@@ -52,12 +61,12 @@ func (s *Server) handleCreateNotification(w http.ResponseWriter, r *http.Request
 	}
 	id := uuid.New().String()
 	if _, err := s.db.ExecContext(r.Context(),
-		"INSERT INTO notifications (id, type, config_enc, enabled) VALUES (?,?,?,1)",
-		id, cfg.Type, enc); err != nil {
+		"INSERT INTO notifications (id, type, config_enc, server_id, enabled) VALUES (?,?,?,?,1)",
+		id, cfg.Type, enc, nullableStr(strings.TrimSpace(req.ServerID))); err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.auditLog(r, "notification.create", "notification:"+id, map[string]string{"type": cfg.Type})
+	s.auditLog(r, "notification.create", "notification:"+id, map[string]string{"type": cfg.Type, "server_id": req.ServerID})
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, map[string]string{"id": id})
 }
@@ -90,9 +99,24 @@ func (s *Server) handleTestNotification(w http.ResponseWriter, r *http.Request) 
 
 // notifyAll sends text to every enabled channel, in the background. It is the
 // single entry point event hooks call (e.g. backup done/failed, server up/down).
-func (s *Server) notifyAll(text string) {
+// notifyAll sends to every GLOBAL channel (one with no server scope). Use it for
+// host-wide notifications (disk, AI digest, cross-server schedule summaries).
+func (s *Server) notifyAll(text string) { s.notifyChannels("", text) }
+
+// notifyServer sends to the global channels PLUS any channel scoped to serverID —
+// so a per-server channel receives only that server's events, while global channels
+// still see everything. Use it for anything about one specific server.
+func (s *Server) notifyServer(serverID, text string) { s.notifyChannels(serverID, text) }
+
+func (s *Server) notifyChannels(serverID, text string) {
 	go func() {
-		rows, err := s.db.Query("SELECT config_enc FROM notifications WHERE enabled=1")
+		q := "SELECT config_enc FROM notifications WHERE enabled=1 AND COALESCE(server_id,'')=''"
+		var args []any
+		if serverID != "" {
+			q = "SELECT config_enc FROM notifications WHERE enabled=1 AND (COALESCE(server_id,'')='' OR server_id=?)"
+			args = append(args, serverID)
+		}
+		rows, err := s.db.Query(q, args...)
 		if err != nil {
 			return
 		}

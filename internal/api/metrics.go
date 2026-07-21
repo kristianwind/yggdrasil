@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/query"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
 
@@ -210,6 +213,85 @@ func (s *Server) handleFleetSummary(w http.ResponseWriter, r *http.Request) {
 		"cpu_percent": cpu,
 		"mem_mb":      mem,
 	})
+}
+
+// handleFleetPlayers returns who's online right now across running servers — a live
+// query per server (parallel), with player names where the protocol exposes them
+// (A2S/DayZ) and a count otherwise (Minecraft/Bedrock).
+func (s *Server) handleFleetPlayers(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.QueryContext(r.Context(), "SELECT id, name FROM servers WHERE status='running' ORDER BY name COLLATE NOCASE")
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	type sv struct{ id, name string }
+	var list []sv
+	for rows.Next() {
+		var x sv
+		if rows.Scan(&x.id, &x.name) == nil {
+			list = append(list, x)
+		}
+	}
+	rows.Close()
+
+	type serverPlayers struct {
+		Name  string   `json:"name"`
+		Count int      `json:"count"` // -1 when the server has no query protocol
+		Names []string `json:"names"` // empty when names aren't exposed
+	}
+	out := make([]serverPlayers, len(list))
+	var wg sync.WaitGroup
+	for i, x := range list {
+		wg.Add(1)
+		go func(i int, x sv) {
+			defer wg.Done()
+			defer recoverLog("fleetPlayers")
+			sp := serverPlayers{Name: x.name, Count: -1, Names: []string{}}
+			if rt, err := s.loadRuntime(context.Background(), x.id); err == nil && rt.gs.Query != nil {
+				if st, e := query.Query(rt.gs.Query.Type, "127.0.0.1", rt.queryPort(), 3*time.Second); e == nil {
+					sp.Count = st.Players
+				}
+				if names, e := query.QueryPlayers(rt.gs.Query.Type, "127.0.0.1", rt.queryPort(), 3*time.Second); e == nil {
+					for _, n := range names {
+						if strings.TrimSpace(n) != "" {
+							sp.Names = append(sp.Names, n)
+						}
+					}
+				}
+			}
+			out[i] = sp
+		}(i, x)
+	}
+	wg.Wait()
+	jsonOK(w, out)
+}
+
+// handleServersMetricsMini returns a compact recent CPU series per server (last
+// ~3h, capped) for the inline sparklines on the server list — one round-trip
+// instead of one request per row.
+func (s *Server) handleServersMetricsMini(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.QueryContext(r.Context(),
+		"SELECT server_id, cpu FROM metrics WHERE ts >= datetime('now','-3 hours') ORDER BY server_id, ts")
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	out := map[string][]float64{}
+	for rows.Next() {
+		var id string
+		var c float64
+		if rows.Scan(&id, &c) == nil {
+			out[id] = append(out[id], c)
+		}
+	}
+	const cap = 40
+	for id, v := range out {
+		if len(v) > cap {
+			out[id] = v[len(v)-cap:]
+		}
+	}
+	jsonOK(w, out)
 }
 
 type hostMetricPoint struct {

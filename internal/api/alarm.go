@@ -83,16 +83,16 @@ func (s *Server) checkResourceAlarms(serverID string, cpu, memMB float64) {
 	name := s.serverName(serverID)
 	mins := alarmBreaches * int(metricsInterval.Minutes())
 	if cpuFire {
-		s.notifyAll(fmt.Sprintf("⚠️ %s CPU high: %.0f%% (≥ %d%% for ~%d min)", name, cpu, cpuTh, mins))
+		s.notifyServer(serverID, fmt.Sprintf("⚠️ %s CPU high: %.0f%% (≥ %d%% for ~%d min)", name, cpu, cpuTh, mins))
 	}
 	if cpuClear {
-		s.notifyAll(fmt.Sprintf("✅ %s CPU back to normal (%.0f%%)", name, cpu))
+		s.notifyServer(serverID, fmt.Sprintf("✅ %s CPU back to normal (%.0f%%)", name, cpu))
 	}
 	if memFire {
-		s.notifyAll(fmt.Sprintf("⚠️ %s memory high: %.0f MB (≥ %d MB for ~%d min)", name, memMB, memTh, mins))
+		s.notifyServer(serverID, fmt.Sprintf("⚠️ %s memory high: %.0f MB (≥ %d MB for ~%d min)", name, memMB, memTh, mins))
 	}
 	if memClear {
-		s.notifyAll(fmt.Sprintf("✅ %s memory back to normal (%.0f MB)", name, memMB))
+		s.notifyServer(serverID, fmt.Sprintf("✅ %s memory back to normal (%.0f MB)", name, memMB))
 	}
 }
 
@@ -176,10 +176,10 @@ func (s *Server) evalDiskAlarm(serverID string, sizeMB, thresholdMB int64) {
 	s.alarms.mu.Unlock()
 
 	if fire {
-		s.notifyAll(fmt.Sprintf("💾 %s disk usage high: %d MB (≥ %d MB)", s.serverName(serverID), sizeMB, thresholdMB))
+		s.notifyServer(serverID, fmt.Sprintf("💾 %s disk usage high: %d MB (≥ %d MB)", s.serverName(serverID), sizeMB, thresholdMB))
 	}
 	if clear {
-		s.notifyAll(fmt.Sprintf("✅ %s disk back under threshold (%d MB)", s.serverName(serverID), sizeMB))
+		s.notifyServer(serverID, fmt.Sprintf("✅ %s disk back under threshold (%d MB)", s.serverName(serverID), sizeMB))
 	}
 }
 

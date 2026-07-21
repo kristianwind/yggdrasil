@@ -3,6 +3,7 @@ module github.com/kristianwind/yggdrasil
 go 1.26.5
 
 require (
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.7.0
 	github.com/go-chi/chi/v5 v5.3.0

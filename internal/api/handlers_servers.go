@@ -874,7 +874,7 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	s.clearStartWatch(id)
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
-	s.notifyAll("▶️ " + srv.Name + " started")
+	s.notifyServer(id, "▶️ " + srv.Name + " started")
 	jsonOK(w, map[string]string{"status": "starting"})
 }
 
@@ -910,7 +910,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 	go s.npmRemoveServer(id)
 	go s.cfRemoveServer(id)
 	s.auditLog(r, "server.stop", "server:"+id, nil)
-	s.notifyAll("⏹️ " + srv.Name + " stopped")
+	s.notifyServer(id, "⏹️ " + srv.Name + " stopped")
 	jsonOK(w, map[string]string{"status": "stopped"})
 }
 
@@ -941,7 +941,7 @@ func (s *Server) handleRestartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditLog(r, "server.restart", "server:"+id, nil)
-	s.notifyAll("🔄 " + srv.Name + " restarted")
+	s.notifyServer(id, "🔄 " + srv.Name + " restarted")
 	jsonOK(w, map[string]string{"status": "starting"})
 }
 

@@ -41,6 +41,8 @@ type Server struct {
 	startWD    *startState    // start-failure detection: per-server failed-start streaks
 	alarms     *alarmState    // per-server CPU/memory threshold alarms
 	version    string         // build version (set via SetVersion)
+	bot        *discordBot    // two-way Discord control bot (nil when no token configured)
+	botMu      sync.Mutex
 
 	extIP   string // cached external IP (detectPublicAddr)
 	extIPAt time.Time
@@ -90,6 +92,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.startMetricsSampler()
 	s.startBeaconLoop()
 	s.startDiscordStatusLoop()
+	go s.startDiscordBot()
 	s.startBackupVerifyLoop()
 	s.startDiskAlarmLoop()
 	return s
@@ -230,6 +233,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/crashes", s.handleServerCrashes)
 		r.Get("/api/crashes/summary", s.handleCrashesSummary)
 		r.Get("/api/fleet/summary", s.handleFleetSummary)
+		r.Get("/api/fleet/metrics", s.handleServersMetricsMini)
+		r.Get("/api/fleet/players", s.handleFleetPlayers)
 		r.Get("/api/servers/{id}/quiet-hours", s.handleQuietHours)
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)
 		r.Get("/api/servers/{id}/battlemetrics", s.handleServerBattleMetrics)
@@ -324,6 +329,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Discord status board (admin-only)
 		r.Get("/api/settings/discord-status", s.requireAdmin(s.handleGetDiscordStatus))
 		r.Put("/api/settings/discord-status", s.requireAdmin(s.handleSetDiscordStatus))
+		r.Get("/api/settings/discord-bot", s.requireAdmin(s.handleGetDiscordBot))
+		r.Put("/api/settings/discord-bot", s.requireAdmin(s.handleSetDiscordBot))
 		r.Post("/api/settings/discord-status/post", s.requireAdmin(s.handlePostDiscordStatus))
 
 		// Notification channels (admin-only)

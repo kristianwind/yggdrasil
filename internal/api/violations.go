@@ -204,7 +204,7 @@ func (vw *violationWatcher) trigger(r violationRule, serverID, player string) {
 	if r.Action == "kick" {
 		// Best-effort kick via the game's console (Minecraft/Rust style).
 		s.sendToServer(serverID, "kick "+player+" "+r.Name)
-		s.notifyAll("👢 Auto-kicked " + player + " (" + r.Name + ") on " + s.serverName(serverID))
+		s.notifyServer(serverID, "👢 Auto-kicked " + player + " (" + r.Name + ") on " + s.serverName(serverID))
 		return
 	}
 	// Ban: record in the central list (server-scoped or global) and push.
@@ -217,6 +217,6 @@ func (vw *violationWatcher) trigger(r violationRule, serverID, player string) {
 	for _, sid := range s.scopeServers(banScope, "") {
 		s.pushBan(context.Background(), sid, player, "auto: "+r.Name, true)
 	}
-	s.notifyAll("🔨 Auto-banned " + player + " (" + r.Name + ")")
+	s.notifyServer(serverID, "🔨 Auto-banned " + player + " (" + r.Name + ")")
 	log.Printf("auto-ban: %s for rule %q (server %s)", player, r.Name, serverID)
 }

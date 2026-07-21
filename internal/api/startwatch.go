@@ -126,7 +126,7 @@ func (s *Server) notifySlowStart(serverID, containerID string) {
 	if tail := s.startupLogTail(containerID); tail != "" {
 		msg += "\nLatest log:\n" + tail
 	}
-	s.notifyAll(msg)
+	s.notifyServer(serverID, msg)
 }
 
 // notifyStartStalled alerts that a server which was still "starting" when the panel
@@ -140,7 +140,7 @@ func (s *Server) notifyStartStalled(serverID, containerID string) {
 	if tail := s.startupLogTail(containerID); tail != "" {
 		msg += "\nLast log:\n" + tail
 	}
-	s.notifyAll(msg)
+	s.notifyServer(serverID, msg)
 }
 
 // notifyStartGaveUp sends the single actionable "couldn't start" alert, attaching

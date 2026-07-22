@@ -87,6 +87,7 @@ func templatePlayerCmd(tmpl string, vars map[string]string) string {
 type playersResponse struct {
 	Supported    bool         `json:"supported"`
 	Online       bool         `json:"online"`
+	Count        int          `json:"count"` // connected players — may exceed len(Players) when names aren't reported (DayZ over A2S)
 	Players      []playerInfo `json:"players"`
 	CanKick      bool         `json:"can_kick"`
 	CanBroadcast bool         `json:"can_broadcast"`
@@ -132,7 +133,15 @@ func (s *Server) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 						resp.Players = append(resp.Players, playerInfo{Name: n})
 					}
 				}
-				resp.Reason = "Live roster from the Steam query port. Kick, broadcast and lock need BattlEye RCon, which DayZ's Linux server doesn't reliably support."
+				// The A2S_PLAYER count is authoritative even when names come back blank —
+				// DayZ's Linux server reports the count over the Steam query but not names,
+				// so show the count and note the missing names rather than reading "0".
+				resp.Count = len(names)
+				if len(names) > len(resp.Players) {
+					resp.Reason = "Player count from the Steam query port. This DayZ server doesn't report player names over A2S (and its BattlEye RCon, which would, isn't reliable on Linux)."
+				} else {
+					resp.Reason = "Live roster from the Steam query port. Kick, broadcast and lock need BattlEye RCon, which DayZ's Linux server doesn't reliably support."
+				}
 				jsonOK(w, resp)
 				return
 			}
@@ -151,6 +160,7 @@ func (s *Server) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 	if players, perr := parsePlayers(out, pl.PlayerRegex); perr == nil {
 		resp.Players = players
 	}
+	resp.Count = len(resp.Players)
 	jsonOK(w, resp)
 }
 

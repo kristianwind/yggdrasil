@@ -820,6 +820,114 @@
     return setMods(keep);
   }
 
+  // --- DayZ mod manager: paste-by-id, Workshop search, drag-reorder, Kvasir ---
+  let modPasteId = $state("");
+  async function addModById(mid) {
+    const wsid = String(mid || "").trim();
+    if (!wsid) return;
+    modsBusy = true;
+    try {
+      const r = await api.post(`/servers/${id}/dayz/mods`, { id: wsid });
+      toast(`Added ${r.name || wsid} — press Update/Reinstall to download it`, "success");
+      modPasteId = "";
+      await Promise.all([loadServer(), loadMods()]);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modsBusy = false;
+    }
+  }
+  async function removeModById(mid) {
+    modsBusy = true;
+    try {
+      await api.del(`/servers/${id}/dayz/mods?id=${encodeURIComponent(mid)}`);
+      await Promise.all([loadServer(), loadMods()]);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modsBusy = false;
+    }
+  }
+  const configuredIds = $derived(new Set((modStatus?.mods || []).map((m) => m.id)));
+
+  // Workshop search (needs a Steam Web API key configured in Settings).
+  let dzQuery = $state("");
+  let dzResults = $state([]);
+  let dzSearching = $state(false);
+  let modNeedsKey = $state(false);
+  async function dzSearchMods() {
+    const q = dzQuery.trim();
+    if (!q) {
+      dzResults = [];
+      return;
+    }
+    dzSearching = true;
+    try {
+      const r = await api.get(`/servers/${id}/dayz/mods/search?q=${encodeURIComponent(q)}`);
+      dzResults = r.results || [];
+      modNeedsKey = !!r.needs_key;
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      dzSearching = false;
+    }
+  }
+
+  // Drag to reorder the load order (order matters in DayZ).
+  let modDrag = $state(-1);
+  function modDragOver(e, i) {
+    e.preventDefault();
+    if (modDrag < 0 || modDrag === i) return;
+    const arr = modStatus.mods.slice();
+    const [moved] = arr.splice(modDrag, 1);
+    arr.splice(i, 0, moved);
+    modStatus.mods = arr;
+    modDrag = i;
+  }
+  async function saveOrder() {
+    modDrag = -1;
+    modsBusy = true;
+    try {
+      await api.put(`/servers/${id}/dayz/mods/order`, { ids: (modStatus?.mods || []).map((m) => m.id) });
+      toast("Load order saved — applies on the next restart", "success");
+      await loadServer();
+    } catch (e) {
+      toast(e.message, "error");
+      await loadMods();
+    } finally {
+      modsBusy = false;
+    }
+  }
+
+  // Kvasir: suggest missing dependencies + a sane load order.
+  let modSuggest = $state(null);
+  let modSuggesting = $state(false);
+  async function suggestMods() {
+    modSuggesting = true;
+    try {
+      modSuggest = await api.post(`/servers/${id}/dayz/mods/suggest`, {});
+    } catch (e) {
+      toast(e.message, "error");
+      modSuggest = null;
+    } finally {
+      modSuggesting = false;
+    }
+  }
+  async function applySuggestedOrder() {
+    if (!modSuggest?.recommended_order?.length) return;
+    modsBusy = true;
+    try {
+      await api.put(`/servers/${id}/dayz/mods/order`, { ids: modSuggest.recommended_order });
+      toast("Applied Kvasir's load order — applies on the next restart", "success");
+      modSuggest = null;
+      await Promise.all([loadServer(), loadMods()]);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      modsBusy = false;
+    }
+  }
+
   let skill = $state(null); // parsed gameskill (for anti-cheat surface + edit form)
 
   // Edit settings
@@ -1773,7 +1881,7 @@
           {#if !playersData.online}
             {playersData.reason || "Server offline or still starting."}
           {:else}
-            {playersData.players.length} online
+            {playersData.count ?? playersData.players.length} online
             {#if playersData.reason}<span class="text-muted/70"> · {playersData.reason}</span>{/if}
           {/if}
         </span>
@@ -1798,8 +1906,12 @@
         </form>
       {/if}
 
-      {#if playersData.online && playersData.players.length === 0}
+      {#if playersData.online && !(playersData.count ?? playersData.players.length)}
         <div class="card p-4 text-sm text-muted text-center">No players connected.</div>
+      {:else if playersData.online && playersData.players.length === 0}
+        <div class="card p-4 text-sm text-muted text-center">
+          {playersData.count} player{playersData.count === 1 ? "" : "s"} connected — this server doesn't report their names.
+        </div>
       {:else if playersData.players.length}
         <div class="card overflow-x-auto">
           <table class="w-full text-sm">
@@ -2353,23 +2465,91 @@
   {:else if tab === "mods"}
     <div class="flex items-center justify-between gap-2 mb-1">
       <h3 class="text-lg font-semibold">🧩 Workshop mods</h3>
-      <button class="btn-ghost text-xs" onclick={loadMods} disabled={modsBusy}>Refresh</button>
+      <div class="flex gap-2">
+        <button class="btn-ghost text-xs" onclick={suggestMods} disabled={modSuggesting || !(modStatus?.mods || []).length}
+          title="Ask Kvasir to flag missing dependencies (frameworks like CF / Dabs) and a sane load order.">
+          {modSuggesting ? "Kvasir…" : "🧠 Kvasir: check deps + order"}
+        </button>
+        <button class="btn-ghost text-xs" onclick={loadMods} disabled={modsBusy}>Refresh</button>
+      </div>
     </div>
     <p class="text-muted text-sm mb-4">
-      The mods this server loads, in order. Yggdrasil checks each one against the Steam Workshop and
-      against what actually downloaded to disk — so a mod that was removed upstream (or failed to
-      download) shows up here instead of silently dropping out and blocking players from joining.
-      <b>Editing the list takes effect on the next Update/Reinstall.</b>
+      The mods this server loads, <b>in order</b>. Search or paste a Workshop id to add one, drag to
+      reorder (frameworks/dependencies should load first), and remove the ones you don't want.
+      Adds/removes download on the next <b>Update/Reinstall</b>; a reorder applies on the next restart.
     </p>
+
+    {#if can("server.control")}
+      <div class="card p-3 mb-4 space-y-3">
+        <!-- Search the Workshop (needs a Steam Web API key) -->
+        <form class="flex gap-2" onsubmit={(e) => { e.preventDefault(); dzSearchMods(); }}>
+          <input class="input flex-1" placeholder="Search the DayZ Workshop…" bind:value={dzQuery} />
+          <button class="btn-ghost shrink-0" type="submit" disabled={dzSearching}>{dzSearching ? "…" : "Search"}</button>
+        </form>
+        {#if modNeedsKey}
+          <p class="text-xs text-muted">
+            Search needs a Steam Web API key —
+            <button class="text-accent hover:underline" onclick={() => (tab = "settings")}>add one in Settings → Integrations</button>.
+            You can still paste an id below.
+          </p>
+        {/if}
+        {#if dzResults.length}
+          <div class="card divide-y divide-border max-h-72 overflow-y-auto">
+            {#each dzResults as r}
+              <div class="flex items-center gap-3 p-2">
+                <div class="min-w-0 flex-1">
+                  <a class="text-accent hover:underline text-sm truncate block" href={r.url} target="_blank" rel="noopener">{r.title}</a>
+                  <span class="text-muted text-xs font-mono">{r.id}</span>
+                </div>
+                {#if configuredIds.has(r.id)}
+                  <span class="text-xs text-muted shrink-0">added</span>
+                {:else}
+                  <button class="btn-ghost text-xs shrink-0" onclick={() => addModById(r.id)} disabled={modsBusy}>Add</button>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+        <!-- Paste a Workshop id directly -->
+        <form class="flex gap-2" onsubmit={(e) => { e.preventDefault(); addModById(modPasteId); }}>
+          <input class="input flex-1 font-mono" placeholder="…or paste a Workshop id, e.g. 1559212036" bind:value={modPasteId} inputmode="numeric" />
+          <button class="btn-ghost shrink-0" type="submit" disabled={modsBusy || !modPasteId.trim()}>Add id</button>
+        </form>
+      </div>
+    {/if}
+
+    {#if modSuggest}
+      <div class="card border-l-4 border-accent/60 p-3 mb-4 space-y-2">
+        <div class="flex items-center gap-2">
+          <h4 class="text-sm font-semibold">🧠 Kvasir's review</h4>
+          <button class="btn-ghost text-xs ml-auto" onclick={() => (modSuggest = null)}>Dismiss</button>
+        </div>
+        {#if modSuggest.dependencies?.length}
+          <div>
+            <p class="text-xs text-muted mb-1">Possibly missing dependencies:</p>
+            <ul class="text-sm space-y-1">
+              {#each modSuggest.dependencies as d}
+                <li>• <b>{d.name}</b>{d.reason ? ` — ${d.reason}` : ""}</li>
+              {/each}
+            </ul>
+          </div>
+        {:else}
+          <p class="text-sm text-muted">No missing dependencies spotted.</p>
+        {/if}
+        {#if modSuggest.order_note}
+          <p class="text-sm">{modSuggest.order_note}</p>
+        {/if}
+        {#if modSuggest.recommended_order?.length}
+          <button class="btn-ghost text-xs text-accent" onclick={applySuggestedOrder} disabled={modsBusy}>
+            Apply Kvasir's load order
+          </button>
+        {/if}
+        <p class="text-[11px] text-muted">Advisory — Kvasir never edits the list itself. Verify ids on the Workshop before adding.</p>
+      </div>
+    {/if}
 
     {#if !modStatus}
       <div class="text-muted text-sm">Loading…</div>
-    {:else if !modStatus.mods.length && !modStatus.orphans.length}
-      <div class="card text-sm p-3 text-muted">
-        No Workshop mods configured. Add IDs (semicolon-separated, in load order) under
-        <button class="text-accent hover:underline" onclick={() => { tab = "settings"; openEdit(); loadDelegation(); }}>Settings → MODS</button>,
-        then Update/Reinstall.
-      </div>
     {:else}
       {#if modStatus.issues > 0}
         <div class="card border-warn/40 bg-warn/10 p-3 mb-4 flex items-start justify-between gap-3">
@@ -2390,29 +2570,40 @@
 
       {#if modStatus.mods.length}
         <div class="card divide-y divide-border mb-5">
-          {#each modStatus.mods as m, i}
-            <div class="flex items-center gap-3 p-2.5">
+          {#each modStatus.mods as m, i (m.id)}
+            <div class="flex items-center gap-2 sm:gap-3 p-2.5 {modDrag === i ? 'bg-panel2/60' : ''}"
+              role="listitem"
+              draggable={can("server.control") && modStatus.mods.length > 1}
+              ondragstart={() => (modDrag = i)}
+              ondragover={(e) => modDragOver(e, i)}
+              ondragend={saveOrder}
+              ondrop={saveOrder}>
+              {#if can("server.control") && modStatus.mods.length > 1}
+                <span class="text-muted cursor-grab select-none shrink-0" title="Drag to reorder">⠿</span>
+              {/if}
               <span class="text-muted text-xs w-5 text-right shrink-0">{i + 1}</span>
               <div class="min-w-0 flex-1">
                 <a class="text-accent hover:underline font-medium truncate block" href={m.url} target="_blank" rel="noopener">{m.name}</a>
                 <span class="text-muted text-xs font-mono">{m.id}</span>
               </div>
               {#if m.installed}
-                <span class="text-xs px-2 py-0.5 rounded bg-accent2/15 text-accent shrink-0">on disk</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-accent2/15 text-accent shrink-0 hidden sm:inline">on disk</span>
               {:else}
                 <span class="text-xs px-2 py-0.5 rounded bg-warn/15 text-warn shrink-0">not downloaded</span>
               {/if}
               {#if m.workshop === "removed"}
-                <span class="text-xs px-2 py-0.5 rounded bg-danger/15 text-danger shrink-0">removed from Workshop</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-danger/15 text-danger shrink-0">removed</span>
               {:else if m.workshop === "ok"}
-                <span class="text-xs px-2 py-0.5 rounded bg-panel2 text-muted shrink-0">Workshop ✓</span>
-              {:else}
-                <span class="text-xs px-2 py-0.5 rounded bg-panel2 text-muted shrink-0">Workshop ?</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-panel2 text-muted shrink-0 hidden sm:inline">Workshop ✓</span>
               {/if}
-              <button class="btn-ghost text-xs shrink-0" onclick={() => removeMod(m.id)} disabled={modsBusy}>Remove</button>
+              {#if can("server.control")}
+                <button class="btn-ghost text-xs shrink-0" onclick={() => removeModById(m.id)} disabled={modsBusy}>Remove</button>
+              {/if}
             </div>
           {/each}
         </div>
+      {:else}
+        <div class="card text-sm p-3 text-muted mb-4">No mods in the load order yet — search or paste an id above to add one.</div>
       {/if}
 
       {#if modStatus.orphans.length}
@@ -2431,7 +2622,9 @@
               {#if m.workshop === "removed"}
                 <span class="text-xs px-2 py-0.5 rounded bg-danger/15 text-danger shrink-0">removed from Workshop</span>
               {/if}
-              <button class="btn-ghost text-xs shrink-0" onclick={() => addOrphan(m.id)} disabled={modsBusy}>Add to list</button>
+              {#if can("server.control")}
+                <button class="btn-ghost text-xs shrink-0" onclick={() => addModById(m.id)} disabled={modsBusy}>Add to list</button>
+              {/if}
             </div>
           {/each}
         </div>

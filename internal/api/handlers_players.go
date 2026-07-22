@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/query"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
 
@@ -116,11 +118,29 @@ func (s *Server) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.rconExec(r.Context(), id, pl.ListCommand)
 	if err != nil {
-		// Distinguish "server is down" from "server is up but RCON isn't reachable"
-		// (a common DayZ gotcha: BattlEye RConPassword not set/matching), so the tab
-		// gives an actionable message instead of a misleading "offline".
+		// RCON didn't answer. Rather than a dead tab, fall back to the query
+		// protocol's own player list (A2S_PLAYER) when the rune exposes one — that
+		// gives a read-only roster with no RCON at all. This is the reliable path
+		// for DayZ, whose Linux server never answers BattlEye RCon regardless of
+		// config. Kick / broadcast / lock still need RCON, so they stay disabled.
+		if rt.gs.Query != nil {
+			if names, qerr := query.QueryPlayers(rt.gs.Query.Type, "127.0.0.1", rt.queryPort(), 3*time.Second); qerr == nil {
+				resp.Online = true
+				resp.CanKick, resp.CanBroadcast, resp.CanLock = false, false, false
+				for _, n := range names {
+					if n = strings.TrimSpace(n); n != "" {
+						resp.Players = append(resp.Players, playerInfo{Name: n})
+					}
+				}
+				resp.Reason = "Live roster from the Steam query port. Kick, broadcast and lock need BattlEye RCon, which DayZ's Linux server doesn't reliably support."
+				jsonOK(w, resp)
+				return
+			}
+		}
+		// Distinguish "server is down" from "server is up but nothing answered", so
+		// the tab gives an actionable message instead of a misleading "offline".
 		if s.playersOnline(id) >= 0 {
-			resp.Reason = "The server is up, but its RCON didn't respond. For DayZ, set a BattlEye RConPassword in battleye/beserver_x64.cfg that matches the panel's RCON password, then restart."
+			resp.Reason = "The server is up, but neither RCON nor the query port answered. If it just started, give it a moment and refresh."
 		} else {
 			resp.Reason = "Server is offline or still starting."
 		}

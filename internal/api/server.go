@@ -43,6 +43,7 @@ type Server struct {
 	version    string         // build version (set via SetVersion)
 	bot        *discordBot    // two-way Discord control bot (nil when no token configured)
 	botMu      sync.Mutex
+	kvasir     *kvasirState   // proactive AI monitoring: per-server auto-action rate limiting
 
 	extIP   string // cached external IP (detectPublicAddr)
 	extIPAt time.Time
@@ -77,6 +78,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		install: newProgressHub(),
 		cipher:  cipher,
 		wd:      newWatchdogState(),
+		kvasir:  newKvasirState(),
 		startWD: newStartState(),
 		alarms:  newAlarmState(),
 	}
@@ -231,7 +233,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/metrics", s.handleServerMetrics)
 		r.Get("/api/servers/{id}/crashes", s.handleServerCrashes)
+		r.Delete("/api/servers/{id}/crashes", s.handleClearServerCrashes)
 		r.Get("/api/crashes/summary", s.handleCrashesSummary)
+		r.Get("/api/servers/{id}/kvasir-events", s.handleServerKvasirEvents)
+		r.Delete("/api/servers/{id}/kvasir-events", s.handleClearServerKvasirEvents)
 		r.Get("/api/fleet/summary", s.handleFleetSummary)
 		r.Get("/api/fleet/metrics", s.handleServersMetricsMini)
 		r.Get("/api/fleet/players", s.handleFleetPlayers)
@@ -361,7 +366,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		// rename/delete one would let them detach servers + strip realm grants).
 		r.Get("/api/realms", s.handleListRealms)
 		r.Post("/api/realms", s.requireAdmin(s.handleCreateRealm))
+		r.Post("/api/realms/reorder", s.requireAdmin(s.handleReorderRealms))
 		r.Put("/api/realms/{id}", s.requireAdmin(s.handleUpdateRealm))
+		r.Put("/api/realms/{id}/collapsed", s.handleSetRealmCollapsed)
 		r.Delete("/api/realms/{id}", s.requireAdmin(s.handleDeleteRealm))
 
 		// Users (admin only)

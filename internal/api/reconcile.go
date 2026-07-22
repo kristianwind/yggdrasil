@@ -275,14 +275,23 @@ func (s *Server) recordCrash(serverID, containerID string, exitCode int) {
 	defer recoverLog("recordCrash")
 	reason := s.lastLogLines(containerID, "15")
 	s.db.Exec("INSERT INTO server_crashes (server_id, exit_code, reason) VALUES (?,?,?)", serverID, exitCode, reason)
-	if exitCode != 0 {
+	// Only a genuine fault is worth an alert. 0, 143 (SIGTERM) and 130 (SIGINT) are
+	// graceful terminations — a docker stop, a restart, or a host reboot — not crashes.
+	if isCrashExit(exitCode) {
 		name := s.serverName(serverID)
 		msg := fmt.Sprintf("💥 %s exited unexpectedly (code %d)", name, exitCode)
 		if reason != "" {
 			msg += "\n```\n" + reason + "\n```"
 		}
 		go s.notifyServer(serverID, msg)
+		go s.kvasirReact(serverID, "crash", fmt.Sprintf("exit %d", exitCode), reason)
 	}
+}
+
+// isCrashExit reports whether a container exit code is a real fault rather than a
+// graceful stop signal (0 = clean, 143 = SIGTERM, 130 = SIGINT).
+func isCrashExit(code int) bool {
+	return code != 0 && code != 143 && code != 130
 }
 
 // lastLogLines returns the tail of a container's log, trimmed and length-capped,

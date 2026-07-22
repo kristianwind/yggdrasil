@@ -180,6 +180,25 @@ CREATE TABLE IF NOT EXISTS server_crashes (
 );
 CREATE INDEX IF NOT EXISTS idx_server_crashes ON server_crashes(server_id, ts);
 
+-- Proactive Kvasir (AI) reactions: every time Kvasir reacts to an event it records
+-- what it saw, the plain-language explanation, the fix it proposed, and whether it
+-- auto-applied it. This is the in-panel record so proposals aren't only in Discord.
+CREATE TABLE IF NOT EXISTS kvasir_events (
+	id           TEXT PRIMARY KEY,
+	server_id    TEXT NOT NULL DEFAULT '',   -- '' for host-level events
+	ts           TEXT NOT NULL DEFAULT (datetime('now')),
+	event        TEXT NOT NULL DEFAULT '',   -- crash/slowstart/resource/host
+	detail       TEXT NOT NULL DEFAULT '',   -- e.g. "exit 137"
+	explanation  TEXT NOT NULL DEFAULT '',
+	action       TEXT NOT NULL DEFAULT '',   -- proposed action (none/restart/set_memory/…)
+	args         TEXT NOT NULL DEFAULT '',
+	reason       TEXT NOT NULL DEFAULT '',
+	level        INTEGER NOT NULL DEFAULT 0, -- proactive_level at the time
+	applied      INTEGER NOT NULL DEFAULT 0, -- 1 if Kvasir auto-applied the fix
+	apply_status TEXT NOT NULL DEFAULT ''    -- proposed / rate-limited / the runAction status
+);
+CREATE INDEX IF NOT EXISTS idx_kvasir_events ON kvasir_events(server_id, ts);
+
 -- Config-file version history: the previous contents of a text file are snapshot
 -- here right before it's overwritten via the file editor, so a change that breaks
 -- a server can be rolled back. Kept to the last few versions per file.
@@ -328,6 +347,8 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")      // open firewall ports on start (UPnP/UniFi)
 	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")           // DayZ Norn loot settings (re-applied after reinstall)
 	addColumnIfMissing(db, "notifications", "server_id", "TEXT")                          // optional: scope a channel to one server (NULL = global)
+	addColumnIfMissing(db, "realms", "sort_order", "INTEGER NOT NULL DEFAULT 0")          // manual realm order (Settings → Realms)
+	addColumnIfMissing(db, "realms", "collapsed", "INTEGER NOT NULL DEFAULT 0")           // foldable realm groups on the Servers page (server-side so it syncs across devices)
 	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")           // NPM subdomain label/full domain for HTTP apps (empty = off)
 	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")       // NPM proxy-host id we created (0 = none)
 	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")         // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)
@@ -340,6 +361,8 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "ai_config", "digest_hour", "INTEGER NOT NULL DEFAULT 8")     // local hour to send the daily digest
 	addColumnIfMissing(db, "ai_config", "digest_last_day", "TEXT NOT NULL DEFAULT ''")   // once-per-day guard (YYYY-MM-DD)
 	addColumnIfMissing(db, "ai_config", "actions_enabled", "INTEGER NOT NULL DEFAULT 0") // higher tier: let AI PROPOSE server actions (always confirmed); default off
+	addColumnIfMissing(db, "ai_config", "proactive_level", "INTEGER NOT NULL DEFAULT 0")           // Kvasir proactive monitoring: 0 off, 1 passive (explain), 2 active-observe (propose), 3 active-help (safe auto-fix)
+	addColumnIfMissing(db, "ai_config", "proactive_triggers", "TEXT NOT NULL DEFAULT 'crash,slowstart,resource,host'") // which events Kvasir reacts to
 	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")          // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
 	addColumnIfMissing(db, "servers", "status_public", "INTEGER NOT NULL DEFAULT 0")     // show this server on the public /status page (opt-in, default off)
 	addColumnIfMissing(db, "backups", "verified_at", "TEXT NOT NULL DEFAULT ''")         // when this backup's archive was last integrity-checked

@@ -41,6 +41,10 @@ type aiConfig struct {
 	DigestEnabled  bool
 	DigestHour     int
 	ActionsEnabled bool // higher tier: AI may propose server actions (always confirmed)
+	// Kvasir proactive monitoring: 0 off, 1 passive (explain), 2 active-observe
+	// (propose), 3 active-help (safe auto-fix). Triggers = which events it reacts to.
+	ProactiveLevel    int
+	ProactiveTriggers string
 }
 
 // loadAIConfig reads the single ai_config row and decrypts the API key. Returns a
@@ -50,8 +54,8 @@ func (s *Server) loadAIConfig(ctx context.Context) aiConfig {
 	var enc string
 	var enabled, digestEnabled, actionsEnabled int
 	err := s.db.QueryRowContext(ctx,
-		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled, COALESCE(digest_enabled,0), COALESCE(digest_hour,8), COALESCE(actions_enabled,0) FROM ai_config WHERE id=1").
-		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled, &digestEnabled, &c.DigestHour, &actionsEnabled)
+		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled, COALESCE(digest_enabled,0), COALESCE(digest_hour,8), COALESCE(actions_enabled,0), COALESCE(proactive_level,0), COALESCE(proactive_triggers,'') FROM ai_config WHERE id=1").
+		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled, &digestEnabled, &c.DigestHour, &actionsEnabled, &c.ProactiveLevel, &c.ProactiveTriggers)
 	if err != nil {
 		return aiConfig{}
 	}
@@ -84,12 +88,15 @@ type aiConfigView struct {
 	DigestEnabled  bool   `json:"digest_enabled"`  // send a daily ops digest to notification channels
 	DigestHour     int    `json:"digest_hour"`     // 0-23
 	ActionsEnabled bool   `json:"actions_enabled"` // AI may propose server actions (always confirmed)
+	ProactiveLevel    int    `json:"proactive_level"`    // 0 off, 1 passive, 2 active-observe, 3 active-help
+	ProactiveTriggers string `json:"proactive_triggers"` // csv: crash,slowstart,resource,host
 }
 
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	c := s.loadAIConfig(r.Context())
 	v := aiConfigView{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, Enabled: c.Enabled,
-		Configured: c.APIKey != "", DigestEnabled: c.DigestEnabled, DigestHour: c.DigestHour, ActionsEnabled: c.ActionsEnabled}
+		Configured: c.APIKey != "", DigestEnabled: c.DigestEnabled, DigestHour: c.DigestHour, ActionsEnabled: c.ActionsEnabled,
+		ProactiveLevel: c.ProactiveLevel, ProactiveTriggers: firstNonEmpty(c.ProactiveTriggers, "crash,slowstart,resource,host")}
 	if c.Provider == "" {
 		v.Provider = "openai"
 	}
@@ -129,16 +136,25 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if hour < 0 || hour > 23 {
 		hour = 8
 	}
+	level := req.ProactiveLevel
+	if level < 0 || level > 3 {
+		level = 0
+	}
+	triggers := strings.TrimSpace(req.ProactiveTriggers)
+	if triggers == "" {
+		triggers = "crash,slowstart,resource,host"
+	}
 	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, digest_enabled, digest_hour, actions_enabled, updated_at)
-		VALUES (1,?,?,?,?,?,?,?,?,datetime('now'))
+		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, digest_enabled, digest_hour, actions_enabled, proactive_level, proactive_triggers, updated_at)
+		VALUES (1,?,?,?,?,?,?,?,?,?,?,datetime('now'))
 		ON CONFLICT(id) DO UPDATE SET
 			provider=excluded.provider, model=excluded.model, base_url=excluded.base_url,
 			api_key_enc=excluded.api_key_enc, enabled=excluded.enabled,
 			digest_enabled=excluded.digest_enabled, digest_hour=excluded.digest_hour,
-			actions_enabled=excluded.actions_enabled, updated_at=excluded.updated_at`,
+			actions_enabled=excluded.actions_enabled, proactive_level=excluded.proactive_level,
+			proactive_triggers=excluded.proactive_triggers, updated_at=excluded.updated_at`,
 		strings.TrimSpace(req.Provider), strings.TrimSpace(req.Model), strings.TrimSpace(req.BaseURL),
-		keyEnc, boolToInt(req.Enabled), boolToInt(req.DigestEnabled), hour, boolToInt(req.ActionsEnabled))
+		keyEnc, boolToInt(req.Enabled), boolToInt(req.DigestEnabled), hour, boolToInt(req.ActionsEnabled), level, triggers)
 	if err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return

@@ -94,6 +94,9 @@ func (s *Server) checkResourceAlarms(serverID string, cpu, memMB float64) {
 	if memClear {
 		s.notifyServer(serverID, fmt.Sprintf("✅ %s memory back to normal (%.0f MB)", name, memMB))
 	}
+	if cpuFire || memFire {
+		go s.kvasirReact(serverID, "resource", fmt.Sprintf("sustained high CPU %.0f%% / memory %.0f MB", cpu, memMB), "")
+	}
 }
 
 // clearResourceAlarms drops a server's CPU/memory alarm state — called when it

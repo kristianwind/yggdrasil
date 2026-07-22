@@ -28,6 +28,43 @@
       loading = false;
     }
   }
+
+  // Reorder realms — this is the manual order the Servers page and pickers follow.
+  // Persisted server-side (so it's shared across devices); the swap is optimistic.
+  async function persistOrder() {
+    try {
+      await api.post("/realms/reorder", { ids: realms.map((r) => r.id) });
+    } catch (e) {
+      toast(e.message, "error");
+      await load();
+    }
+  }
+  // ▲▼ buttons (touch/keyboard fallback).
+  async function move(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= realms.length) return;
+    const next = [...realms];
+    [next[i], next[j]] = [next[j], next[i]];
+    realms = next;
+    await persistOrder();
+  }
+  // Drag-to-reorder (desktop). Rows reorder live as you drag over them; the new
+  // order is saved on drop.
+  let dragIndex = $state(null);
+  function onDragOver(e, i) {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === i) return;
+    const next = [...realms];
+    const [moved] = next.splice(dragIndex, 1);
+    next.splice(i, 0, moved);
+    realms = next;
+    dragIndex = i;
+  }
+  async function onDrop() {
+    if (dragIndex === null) return;
+    dragIndex = null;
+    await persistOrder();
+  }
   load();
 
   function openCreate() {
@@ -106,9 +143,28 @@
           </tr>
         </thead>
         <tbody>
-          {#each realms as r (r.id)}
-            <tr class="border-t border-border">
-              <td class="py-2 pr-3 font-medium">{r.name}</td>
+          {#each realms as r, i (r.id)}
+            <tr
+              class="border-t border-border {dragIndex === i ? 'opacity-40' : ''}"
+              draggable={realms.length > 1}
+              ondragstart={() => (dragIndex = i)}
+              ondragover={(e) => onDragOver(e, i)}
+              ondragend={onDrop}
+              ondrop={onDrop}
+            >
+              <td class="py-2 pr-3 font-medium">
+                <span class="inline-flex items-center gap-2">
+                  <!-- Desktop: drag handle. Touch: ▲▼ (native drag doesn't work on touch). -->
+                  <span class="hidden sm:inline text-muted cursor-grab select-none" title="Drag to reorder" aria-hidden="true">⠿</span>
+                  <span class="inline-flex flex-col leading-none sm:hidden">
+                    <button class="text-muted hover:text-text disabled:opacity-30 text-xs" disabled={busy || i === 0}
+                      onclick={() => move(i, -1)} title="Move up" aria-label="Move {r.name} up">▲</button>
+                    <button class="text-muted hover:text-text disabled:opacity-30 text-xs" disabled={busy || i === realms.length - 1}
+                      onclick={() => move(i, 1)} title="Move down" aria-label="Move {r.name} down">▼</button>
+                  </span>
+                  {r.name}
+                </span>
+              </td>
               <td class="py-2 pr-3 text-muted">{r.description || "—"}</td>
               <td class="py-2 pr-3">
                 {#if r.server_count}

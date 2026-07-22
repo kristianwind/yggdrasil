@@ -469,9 +469,9 @@
 
 {#if whosOnline.length}
   <h2 class="text-lg font-semibold mb-3">Who's online</h2>
-  <div class="card divide-y divide-border mb-8">
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-8">
     {#each whosOnline as sp}
-      <div class="px-4 py-3">
+      <div class="card px-4 py-3">
         <div class="flex items-center justify-between gap-2">
           <span class="font-medium truncate">{sp.name}</span>
           <span class="text-sm text-muted shrink-0">
@@ -494,7 +494,7 @@
 {#if servers.length === 0}
   <div class="card p-4 text-muted text-sm">No servers yet. Create one from the Servers page.</div>
 {:else}
-  <div class="grid gap-3 lg:grid-cols-2">
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
     {#each servers.slice(0, 8) as s}
       <a href={`#/servers/${s.id}`} class="card flex items-center justify-between gap-3 px-4 py-3 hover:bg-panel2/50">
         <div class="flex items-center gap-3 min-w-0">
@@ -508,10 +508,10 @@
           ></span>
           <div class="min-w-0">
             <div class="font-medium truncate">{s.name}</div>
-            <div class="text-xs text-muted truncate">
-              {skillName(s.gameskill_id)}{#if connectAddr(s)} · <span class="font-mono">{connectAddr(s)}</span>{/if}
-            </div>
-            <div class="text-[11px] text-muted/80 truncate">added {relTime(s.created_at)}</div>
+            <div class="text-xs text-muted truncate">{skillName(s.gameskill_id)} · added {relTime(s.created_at)}</div>
+            {#if connectAddr(s)}
+              <div class="text-xs text-muted/90 font-mono truncate">{connectAddr(s)}</div>
+            {/if}
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">

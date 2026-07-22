@@ -14,6 +14,8 @@ type realm struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	CreatedAt   string `json:"created_at"`
+	SortOrder   int    `json:"sort_order"`
+	Collapsed   bool   `json:"collapsed"`
 	// ServerCount is admin-only: the list itself is readable by anyone signed in
 	// (the create-server form needs it), but how much is in each realm is not
 	// something a delegate needs from a form's dropdown.
@@ -22,11 +24,12 @@ type realm struct {
 
 func (s *Server) handleListRealms(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT r.id, r.name, COALESCE(r.description,''), r.created_at, COUNT(sv.id)
+		SELECT r.id, r.name, COALESCE(r.description,''), r.created_at,
+		       COALESCE(r.sort_order,0), COALESCE(r.collapsed,0), COUNT(sv.id)
 		FROM realms r
 		LEFT JOIN servers sv ON sv.realm_id = r.id
-		GROUP BY r.id, r.name, r.description, r.created_at
-		ORDER BY r.name`)
+		GROUP BY r.id, r.name, r.description, r.created_at, r.sort_order, r.collapsed
+		ORDER BY r.sort_order, r.name`)
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -37,10 +40,11 @@ func (s *Server) handleListRealms(w http.ResponseWriter, r *http.Request) {
 	list := []realm{}
 	for rows.Next() {
 		var rl realm
-		var count int
-		if err := rows.Scan(&rl.ID, &rl.Name, &rl.Description, &rl.CreatedAt, &count); err != nil {
+		var count, collapsed int
+		if err := rows.Scan(&rl.ID, &rl.Name, &rl.Description, &rl.CreatedAt, &rl.SortOrder, &collapsed, &count); err != nil {
 			continue
 		}
+		rl.Collapsed = collapsed == 1
 		if admin {
 			n := count
 			rl.ServerCount = &n
@@ -48,6 +52,39 @@ func (s *Server) handleListRealms(w http.ResponseWriter, r *http.Request) {
 		list = append(list, rl)
 	}
 	jsonOK(w, list)
+}
+
+// handleReorderRealms sets each realm's sort_order to its position in the given id
+// list — the manual order that the Servers page and pickers then follow. Admin.
+func (s *Server) handleReorderRealms(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	for i, id := range req.IDs {
+		s.db.ExecContext(r.Context(), "UPDATE realms SET sort_order=? WHERE id=?", i, id)
+	}
+	s.auditLog(r, "realm.reorder", "realms", map[string]int{"count": len(req.IDs)})
+	jsonOK(w, map[string]string{"status": "reordered"})
+}
+
+// handleSetRealmCollapsed persists a realm group's folded state (server-side so it
+// carries across the devices a user opens Yggdrasil on). Any signed-in user, since
+// it's a view preference the Servers page toggles.
+func (s *Server) handleSetRealmCollapsed(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Collapsed bool `json:"collapsed"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	s.db.ExecContext(r.Context(), "UPDATE realms SET collapsed=? WHERE id=?", boolToInt(req.Collapsed), id)
+	jsonOK(w, map[string]bool{"collapsed": req.Collapsed})
 }
 
 func (s *Server) handleCreateRealm(w http.ResponseWriter, r *http.Request) {

@@ -57,6 +57,7 @@ func (s *Server) startDiskMonitor() {
 				alerted = true
 				s.notifyAll("⚠️ Low disk space: " + strconv.FormatFloat(pct, 'f', 1, 64) +
 					"% free on the Yggdrasil data volume.")
+					go s.kvasirReact("", "host", fmt.Sprintf("low disk: %.1f%% free on the data volume", pct), "")
 			} else if pct >= 15 {
 				alerted = false
 			}

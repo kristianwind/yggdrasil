@@ -34,7 +34,8 @@ type ProxyHost struct {
 }
 
 // CreateOpts tunes a created proxy host. Zero value = sensible defaults
-// (request a fresh Let's Encrypt cert, force SSL, websocket + http2 on).
+// (request a fresh Let's Encrypt cert, force SSL, websocket upgrades on, HTTP/2
+// off — h2 breaks WebSocket proxying, see http2_support below).
 type CreateOpts struct {
 	LEEmail string // Let's Encrypt account email
 	NoSSL   bool   // true = certificate_id 0 (plain http, no cert request)
@@ -145,7 +146,12 @@ func (c *Client) CreateProxyHost(domain, fwdHost string, fwdPort int, opts Creat
 		"ssl_forced":              !opts.NoSSL,
 		"block_exploits":          true,
 		"allow_websocket_upgrade": true,
-		"http2_support":           !opts.NoSSL,
+		// HTTP/2 MUST stay off: with an HTTP/2 client connection nginx leaves
+		// $http_upgrade empty, so the WebSocket upgrade header never reaches the
+		// backend and every WS handshake fails (HTTP 400). Since we enable websocket
+		// upgrades above (game/app consoles and live views need them), HTTP/2 and
+		// websockets are mutually exclusive here — keep h2 off so WS works.
+		"http2_support": false,
 		"hsts_enabled":            false,
 		"caching_enabled":         false,
 		"locations":               []any{},

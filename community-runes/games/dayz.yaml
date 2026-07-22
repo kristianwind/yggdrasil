@@ -4,7 +4,7 @@ gameskill:
   category: "DayZ"
   description: "DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)"
   author: "yggdrasil-core"
-  version: 2
+  version: 3
   icon: "dayz"
 
   # CAVEAT: The DayZ Linux dedicated server is supported via SteamCMD (app 223350)
@@ -180,6 +180,21 @@ gameskill:
       export LD_LIBRARY_PATH="/data:${LD_LIBRARY_PATH:-}"
       chmod +x ./DayZServer 2>/dev/null || true
       [ -f ./CrashReporter ] && chmod +x ./CrashReporter 2>/dev/null || true
+      # Stamp BattlEye's RCon config so the panel's Players tab, console, bans and
+      # restart-warnings can reach the server. DayZ/BattlEye never generate this file
+      # with a usable password on their own, so without it RCon simply never answers.
+      # Re-stamped every start so changing RCON_PASSWORD in the panel takes effect on
+      # a restart (the password is a mutable setting, not an install-only one). We also
+      # drop any BEServer_x64_active_*.cfg: BattlEye copies beserver_x64.cfg to an
+      # "active" file on first run and then reads only that, ignoring later edits —
+      # removing it forces BattlEye to regenerate from the freshly stamped config.
+      mkdir -p /data/battleye
+      cat > /data/battleye/beserver_x64.cfg <<BECFG
+      RConPassword {{RCON_PASSWORD}}
+      RConPort {{GAME_PORT}}
+      RestrictRCon 0
+      BECFG
+      rm -f /data/battleye/BEServer_x64_active_*.cfg 2>/dev/null || true
       # NOTE: do NOT pass -BEpath here. An explicit -BEpath=battleye makes
       # BattlEye init fail and the server abort with "Server creation failed";
       # DayZ finds and initialises BattlEye on its own from the server dir.

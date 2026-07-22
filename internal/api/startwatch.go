@@ -127,6 +127,7 @@ func (s *Server) notifySlowStart(serverID, containerID string) {
 		msg += "\nLatest log:\n" + tail
 	}
 	s.notifyServer(serverID, msg)
+	go s.kvasirReact(serverID, "slowstart", "taking longer than usual to become ready", s.startupLogTail(containerID))
 }
 
 // notifyStartStalled alerts that a server which was still "starting" when the panel
@@ -141,6 +142,7 @@ func (s *Server) notifyStartStalled(serverID, containerID string) {
 		msg += "\nLast log:\n" + tail
 	}
 	s.notifyServer(serverID, msg)
+	go s.kvasirReact(serverID, "slowstart", "taking longer than usual to become ready", s.startupLogTail(containerID))
 }
 
 // notifyStartGaveUp sends the single actionable "couldn't start" alert, attaching

@@ -700,7 +700,20 @@
   }
 
   // AI assistant (advisory features — admin brings their own LLM)
-  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false, digest_enabled: false, digest_hour: 8, actions_enabled: false });
+  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false, digest_enabled: false, digest_hour: 8, actions_enabled: false, proactive_level: 0, proactive_triggers: "crash,slowstart,resource,host" });
+  // Kvasir proactive trigger checkboxes ↔ the csv string on `ai`.
+  const PROACTIVE_TRIGGERS = [
+    ["crash", "Crashes / faults"],
+    ["slowstart", "Slow / failed starts"],
+    ["resource", "Resource alarms"],
+    ["host", "Panel / host problems"],
+  ];
+  function toggleTrigger(key) {
+    const set = new Set((ai.proactive_triggers || "").split(",").map((t) => t.trim()).filter(Boolean));
+    set.has(key) ? set.delete(key) : set.add(key);
+    ai.proactive_triggers = [...set].join(",");
+  }
+  const hasTrigger = (key) => (ai.proactive_triggers || "").split(",").map((t) => t.trim()).includes(key);
   let savingAi = $state(false);
   let testingAi = $state(false);
   const aiProviders = ["openai", "anthropic", "openrouter", "deepseek", "mistral", "ollama", "custom"];
@@ -1497,11 +1510,13 @@
 <!-- Kvasir — AI assistant (advisory) -->
 <h2 class="text-xl font-semibold mb-2">Kvasir <span class="text-muted font-normal text-base">· AI assistant</span></h2>
 <p class="text-muted mb-4 text-sm">
-  Kvasir is the panel's optional, <b>advisory-only</b> AI helper (named after the wisest being in Norse
-  myth) — it powers things like the Activity tab's “what happened while I was away” digest, the log
-  explainer and the ops health briefing. Bring your own provider and key — nothing is sent anywhere you
-  don't configure here, and Kvasir never acts on a server by itself. Log data (player names, events) is
-  sent to the endpoint below only when a summary is requested.
+  Kvasir is the panel's optional AI helper (named after the wisest being in Norse myth) — it powers the
+  “what happened while I was away” digest, the log explainer, the ops health briefing, and (opt-in)
+  proactive monitoring that can explain, propose, or safely fix problems as they happen. Bring your own
+  provider and key — nothing is sent anywhere you don't configure here. By default Kvasir is advisory and
+  <b>never acts on a server by itself</b>; it only takes safe, reversible actions if you turn on Active
+  help below, and never deletes, wipes or reconfigures autonomously. Log data (player names, events) is
+  sent to the endpoint below only when Kvasir needs it.
 </p>
 <div class="card p-4 mb-10 space-y-3">
   <div class="grid sm:grid-cols-2 gap-3">
@@ -1556,6 +1571,39 @@
       <span class="text-muted">server time</span>
     {/if}
   </div>
+
+  <!-- Proactive monitoring -->
+  <div class="border-t border-border pt-3 mt-1">
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <span class="font-medium">Proactive monitoring</span>
+      <select class="input w-auto" bind:value={ai.proactive_level} disabled={!ai.enabled}>
+        <option value={0}>Off</option>
+        <option value={1}>Passive — explain events</option>
+        <option value={2}>Active observe — explain + propose a fix</option>
+        <option value={3}>Active help — apply safe fixes itself</option>
+      </select>
+    </div>
+    <p class="text-muted text-xs mt-1">
+      Kvasir watches for problems and, at your chosen level, explains them, proposes a fix, or applies a
+      <b>safe</b> one itself. At <b>Active help</b> it will restart a stuck server and — after an out-of-memory
+      kill — <b>raise its memory limit and restart it</b> (bounded: never below the current limit, at most 2×,
+      and never above 80% of host RAM). Hard limits at every level: it <b>never</b> deletes, wipes, changes
+      environment variables or other config on its own (those are only ever proposed), auto-fixes are
+      rate-limited, and everything it does is audited and announced. <span class="text-warn">Active help is opt-in.</span>
+    </p>
+    {#if ai.proactive_level > 0}
+      <div class="flex flex-wrap gap-3 mt-2 text-sm">
+        <span class="text-muted">Watch:</span>
+        {#each PROACTIVE_TRIGGERS as [key, label]}
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={hasTrigger(key)} onchange={() => toggleTrigger(key)} disabled={!ai.enabled} />
+            {label}
+          </label>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
   <div class="flex gap-2">
     <button class="btn-primary" onclick={saveAi} disabled={savingAi}>{savingAi ? "Saving…" : "Save"}</button>
     <button class="btn-ghost" onclick={testAi} disabled={testingAi}

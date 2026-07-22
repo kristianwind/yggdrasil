@@ -182,17 +182,39 @@
     );
   }
 
-  let grouped = $derived.by(() => {
-    const byId = Object.fromEntries(realms.map((r) => [r.id, r.name]));
-    const g = {};
+  // Groups in the admin-defined realm order (realms arrive sorted by sort_order),
+  // each carrying its server-side collapsed state; unrealmed servers go last.
+  let groups = $derived.by(() => {
+    const byRealm = {};
+    const ungrouped = [];
+    const realmIds = new Set(realms.map((r) => r.id));
     for (const s of servers) {
       if (!matchesFilters(s)) continue;
-      const key = byId[s.realm_id] || "Ungrouped";
-      (g[key] ||= []).push(s);
+      if (s.realm_id && realmIds.has(s.realm_id)) (byRealm[s.realm_id] ||= []).push(s);
+      else ungrouped.push(s);
     }
-    for (const k in g) g[k] = sortServers(g[k]);
-    return g;
+    const out = [];
+    for (const r of realms) {
+      const list = byRealm[r.id];
+      if (list?.length) out.push({ id: r.id, name: r.name, collapsed: !!r.collapsed, list: sortServers(list) });
+    }
+    if (ungrouped.length) out.push({ id: null, name: "Ungrouped", collapsed: false, list: sortServers(ungrouped) });
+    return out;
   });
+
+  // Fold a realm group. Persisted server-side so it carries across devices; the
+  // local realms state is updated optimistically so the fold is instant.
+  async function toggleRealmCollapse(grp) {
+    if (grp.id == null) return; // "Ungrouped" isn't a real realm
+    const next = !grp.collapsed;
+    realms = realms.map((r) => (r.id === grp.id ? { ...r, collapsed: next } : r));
+    try {
+      await api.put(`/realms/${grp.id}/collapsed`, { collapsed: next });
+    } catch {
+      /* revert on failure */
+      realms = realms.map((r) => (r.id === grp.id ? { ...r, collapsed: !next } : r));
+    }
+  }
 
   // The caller's create-scopes from /auth/me. Create permission is a function of
   // (realm × rune): global = any realm/rune; a realm grant = any rune in that
@@ -355,9 +377,9 @@
   }
 </script>
 
-<div class="flex items-center justify-between mb-6">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-6">
   <h1 class="text-2xl font-semibold">Servers</h1>
-  <div class="flex items-center gap-2">
+  <div class="flex flex-wrap items-center gap-2">
     {#if servers.length > 0}
       <!-- The view toggle is desktop-only; phones are always the card grid. -->
       <div class="hidden sm:inline-flex rounded-md border border-border overflow-hidden">
@@ -458,8 +480,17 @@
     No servers yet. Click <b>New server</b> to deploy one from a Rune.
   </div>
 {:else}
-  {#each Object.entries(grouped) as [realm, list]}
-    <h2 class="text-sm uppercase tracking-wide text-muted mt-6 mb-2">{realm}</h2>
+  {#each groups as grp}
+    <button
+      class="flex items-center gap-1.5 text-sm uppercase tracking-wide text-muted hover:text-text mt-6 mb-2 w-full text-left"
+      onclick={() => toggleRealmCollapse(grp)}
+      disabled={grp.id == null}
+    >
+      <span class="w-3 text-center">{grp.id == null ? "" : grp.collapsed ? "▸" : "▾"}</span>
+      <span>{grp.name}</span>
+      <span class="text-muted/70 normal-case">· {grp.list.length}</span>
+    </button>
+    {#if !grp.collapsed}
     {#if effectiveView === "table"}
       <div class="card overflow-x-auto">
         <!-- Fixed layout + identical column widths so every rune group's table aligns. -->
@@ -480,7 +511,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-border">
-            {#each list as s}
+            {#each grp.list as s}
               <tr class="hover:bg-panel2/40">
                 <td class="px-4 py-2 truncate">
                   <div class="flex items-center gap-2">
@@ -551,8 +582,8 @@
         </table>
       </div>
     {:else}
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {#each list as s}
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {#each grp.list as s}
           <div class="card p-4">
             <div class="flex items-start justify-between">
               <div class="flex items-center gap-2 min-w-0">
@@ -615,6 +646,7 @@
           </div>
         {/each}
       </div>
+    {/if}
     {/if}
   {/each}
 {/if}

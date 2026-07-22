@@ -145,8 +145,9 @@ Yggdrasil proxies to the host port named `web`, or the first TCP port if the run
 A server with no TCP port — a UDP-only game — has nothing to proxy and is skipped entirely.
 
 On start, Yggdrasil creates a proxy host routing the domain to `<internal host>:<port>` over plain
-HTTP, requesting a fresh Let's Encrypt certificate with forced SSL, HTTP/2, websocket upgrades and
-NPM's exploit blocking. If certificate issuance fails — HTTP-01 needs port 80 reachable for that
+HTTP, requesting a fresh Let's Encrypt certificate with forced SSL, websocket upgrades and NPM's
+exploit blocking. **HTTP/2 is deliberately left off** — it is incompatible with WebSocket proxying
+(see below), and consoles and live views need WebSockets. If certificate issuance fails — HTTP-01 needs port 80 reachable for that
 domain — it cleans up the partial host and retries **without SSL**, so routing works and you can
 attach a wildcard certificate later. Changing a server's subdomain drops the old proxy host; the next
 start creates one for the new domain.
@@ -205,7 +206,7 @@ The domain is always recomputed server-side from the stored subdomain and never 
 request, and the probe refuses to connect to anything that resolves to a loopback, private,
 link-local or metadata address.
 
-## Two things that will catch you out
+## Three things that will catch you out
 
 ### A proxied Cloudflare record will not carry a game port
 
@@ -233,6 +234,23 @@ Account-scoped tokens cannot call Cloudflare's `/user/tokens/verify` endpoint �
 misleading "Invalid API Token" for a token that is entirely valid. Yggdrasil's **Test connection**
 therefore never calls it, and reads the tunnel's configuration instead. If Test reports the tunnel
 isn't reachable, check the account ID and tunnel ID first, then the Argo Tunnel permission.
+
+### HTTP/2 and WebSockets do not mix behind Nginx Proxy Manager
+
+If you put the **panel itself** (or any app with a live console, install log, or other WebSocket
+feature) behind an NPM proxy host, the page loads but every WebSocket fails with **HTTP 400** — the
+console shows nothing, install logs never stream. Ordinary requests work, which makes it look like a
+code bug; it isn't.
+
+The cause is **HTTP/2 Support** being enabled on the proxy host. Over an HTTP/2 connection there is no
+`Upgrade` header, so NPM's `proxy_set_header Upgrade $http_upgrade;` forwards an empty value and the
+backend never sees a WebSocket handshake. Enabling "Websockets Support" does not help while HTTP/2 is on.
+
+Fix, on that proxy host: **SSL tab → turn HTTP/2 Support off**; keep **Websockets Support on** (Details
+tab); and set the **Scheme to `http`** if the panel serves plain HTTP (it does by default on `:8080`).
+The panel's own auto-provisioned proxy hosts already ship with HTTP/2 off for this reason — this only
+bites hosts you created by hand. A telltale in the panel log is a `WebSocket … -> 400` with a 12-byte
+"Bad Request" body: the handshake never reached the app.
 
 ## See also
 

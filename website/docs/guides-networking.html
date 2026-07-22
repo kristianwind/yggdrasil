@@ -171,8 +171,9 @@ the feature is off for that server.</p>
 <p>Yggdrasil proxies to the host port named <code>web</code>, or the first TCP port if the rune doesn&rsquo;t name one.
 A server with no TCP port — a UDP-only game — has nothing to proxy and is skipped entirely.</p>
 <p>On start, Yggdrasil creates a proxy host routing the domain to <code>&lt;internal host&gt;:&lt;port&gt;</code> over plain
-HTTP, requesting a fresh Let&rsquo;s Encrypt certificate with forced SSL, HTTP/2, websocket upgrades and
-NPM&rsquo;s exploit blocking. If certificate issuance fails — HTTP-01 needs port 80 reachable for that
+HTTP, requesting a fresh Let&rsquo;s Encrypt certificate with forced SSL, websocket upgrades and NPM&rsquo;s
+exploit blocking. <strong>HTTP/2 is deliberately left off</strong> — it is incompatible with WebSocket proxying
+(see below), and consoles and live views need WebSockets. If certificate issuance fails — HTTP-01 needs port 80 reachable for that
 domain — it cleans up the partial host and retries <strong>without SSL</strong>, so routing works and you can
 attach a wildcard certificate later. Changing a server&rsquo;s subdomain drops the old proxy host; the next
 start creates one for the new domain.</p>
@@ -220,7 +221,7 @@ Results are cached for 30 seconds per server/provider/domain.</p>
 <p>The domain is always recomputed server-side from the stored subdomain and never taken from the
 request, and the probe refuses to connect to anything that resolves to a loopback, private,
 link-local or metadata address.</p>
-<h2 id="two-things-that-will-catch-you-out">Two things that will catch you out</h2>
+<h2 id="three-things-that-will-catch-you-out">Three things that will catch you out</h2>
 <h3 id="a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</h3>
 <p>Cloudflare&rsquo;s <strong>proxied</strong> records — the orange cloud — carry HTTP(S) traffic and nothing else. They
 are exactly right for tunnel-routed web apps, which is why Yggdrasil always creates its tunnel <code>CNAME</code>
@@ -241,6 +242,19 @@ base domain and the token is complete.</p>
 misleading &ldquo;Invalid API Token&rdquo; for a token that is entirely valid. Yggdrasil&rsquo;s <strong>Test connection</strong>
 therefore never calls it, and reads the tunnel&rsquo;s configuration instead. If Test reports the tunnel
 isn&rsquo;t reachable, check the account ID and tunnel ID first, then the Argo Tunnel permission.</p>
+<h3 id="http2-and-websockets-do-not-mix-behind-nginx-proxy-manager">HTTP/2 and WebSockets do not mix behind Nginx Proxy Manager</h3>
+<p>If you put the <strong>panel itself</strong> (or any app with a live console, install log, or other WebSocket
+feature) behind an NPM proxy host, the page loads but every WebSocket fails with <strong>HTTP 400</strong> — the
+console shows nothing, install logs never stream. Ordinary requests work, which makes it look like a
+code bug; it isn&rsquo;t.</p>
+<p>The cause is <strong>HTTP/2 Support</strong> being enabled on the proxy host. Over an HTTP/2 connection there is no
+<code>Upgrade</code> header, so NPM&rsquo;s <code>proxy_set_header Upgrade $http_upgrade;</code> forwards an empty value and the
+backend never sees a WebSocket handshake. Enabling &ldquo;Websockets Support&rdquo; does not help while HTTP/2 is on.</p>
+<p>Fix, on that proxy host: <strong>SSL tab → turn HTTP/2 Support off</strong>; keep <strong>Websockets Support on</strong> (Details
+tab); and set the <strong>Scheme to <code>http</code></strong> if the panel serves plain HTTP (it does by default on <code>:8080</code>).
+The panel&rsquo;s own auto-provisioned proxy hosts already ship with HTTP/2 off for this reason — this only
+bites hosts you created by hand. A telltale in the panel log is a <code>WebSocket … -&gt; 400</code> with a 12-byte
+&ldquo;Bad Request&rdquo; body: the handshake never reached the app.</p>
 <h2 id="see-also">See also</h2>
 <ul>
 <li><a href="guides-servers.html">Servers</a></li>
@@ -256,7 +270,7 @@ isn&rsquo;t reachable, check the account ID and tunnel ID first, then the Argo T
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#port-allocation">Port allocation</a><a class="t2" href="#public-hostname-and-the-external-ip-fallback">Public hostname and the external-IP fallback</a><a class="t2" href="#online-from-outside-reachability">&amp;ldquo;Online from outside&amp;rdquo; reachability</a><a class="t2" href="#per-server-auto-forward">Per-server auto-forward</a><a class="t2" href="#four-ways-to-expose-a-server">Four ways to expose a server</a><a class="t3" href="#upnp">UPnP</a><a class="t3" href="#unifi">UniFi</a><a class="t3" href="#nginx-proxy-manager-subdomains">Nginx Proxy Manager (subdomains)</a><a class="t3" href="#cloudflare-tunnel-subdomains">Cloudflare Tunnel (subdomains)</a><a class="t2" href="#the-domains-page">The Domains page</a><a class="t2" href="#two-things-that-will-catch-you-out">Two things that will catch you out</a><a class="t3" href="#a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</a><a class="t3" href="#the-cloudflare-token-permission-is-called-argo-tunnel-legacy">The Cloudflare token permission is called &amp;ldquo;Argo Tunnel (Legacy)&amp;rdquo;</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#port-allocation">Port allocation</a><a class="t2" href="#public-hostname-and-the-external-ip-fallback">Public hostname and the external-IP fallback</a><a class="t2" href="#online-from-outside-reachability">&amp;ldquo;Online from outside&amp;rdquo; reachability</a><a class="t2" href="#per-server-auto-forward">Per-server auto-forward</a><a class="t2" href="#four-ways-to-expose-a-server">Four ways to expose a server</a><a class="t3" href="#upnp">UPnP</a><a class="t3" href="#unifi">UniFi</a><a class="t3" href="#nginx-proxy-manager-subdomains">Nginx Proxy Manager (subdomains)</a><a class="t3" href="#cloudflare-tunnel-subdomains">Cloudflare Tunnel (subdomains)</a><a class="t2" href="#the-domains-page">The Domains page</a><a class="t2" href="#three-things-that-will-catch-you-out">Three things that will catch you out</a><a class="t3" href="#a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</a><a class="t3" href="#the-cloudflare-token-permission-is-called-argo-tunnel-legacy">The Cloudflare token permission is called &amp;ldquo;Argo Tunnel (Legacy)&amp;rdquo;</a><a class="t3" href="#http2-and-websockets-do-not-mix-behind-nginx-proxy-manager">HTTP/2 and WebSockets do not mix behind Nginx Proxy Manager</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

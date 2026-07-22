@@ -332,6 +332,36 @@
       crashList = [];
     }
   }
+  // 0 = clean stop, 143 = SIGTERM, 130 = SIGINT — graceful terminations, not crashes.
+  const isFault = (code) => code !== 0 && code !== 143 && code !== 130;
+  const faultCount = $derived(crashList.filter((c) => isFault(c.exit_code)).length);
+  async function clearCrashes() {
+    try {
+      await api.del(`/servers/${id}/crashes`);
+      crashList = [];
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  // Kvasir: recent proactive-AI reactions (explanations + proposed/applied fixes).
+  // Shown only when Kvasir has actually reacted, so it stays hidden until in use.
+  let kvasirEvents = $state([]);
+  async function loadKvasirEvents() {
+    try {
+      kvasirEvents = await api.get(`/servers/${id}/kvasir-events`);
+    } catch {
+      kvasirEvents = [];
+    }
+  }
+  async function clearKvasirEvents() {
+    try {
+      await api.del(`/servers/${id}/kvasir-events`);
+      kvasirEvents = [];
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
   // Compact "X ago" for a crash timestamp (SQLite UTC "YYYY-MM-DD HH:MM:SS").
   function crashAgo(iso) {
     if (!iso) return "";
@@ -1144,20 +1174,33 @@
     }
   }
 
-  async function del() {
-    if (!confirm(`Delete "${server.name}"? This removes the container.`)) return;
+  // Delete is irreversible (world, backups list, ports all go), so it uses the same
+  // deliberate type-the-name modal as restore — not a one-tap confirm().
+  let showDelete = $state(false);
+  let deleteConfirm = $state(""); // must match the server name to enable Delete
+  let deleting = $state(false);
+  function del() {
+    deleteConfirm = "";
+    showDelete = true;
+  }
+  async function doDelete() {
+    if (deleteConfirm !== server.name) return;
+    deleting = true;
     try {
       await api.del(`/servers/${id}`);
       toast("Server deleted", "success");
       navigate("/servers");
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      deleting = false;
     }
   }
 
   onMount(async () => {
     loadNetwork();
     loadCrashes();
+    loadKvasirEvents();
     await loadServer();
     // Pre-load installed mods (if this rune supports them) so the "N updates" badge
     // on the Mods tab is visible without having to open the tab first.
@@ -1217,7 +1260,7 @@
   <div class="text-muted text-sm mb-4">{server.gameskill_id}</div>
 
   <!-- Controls + live stats (each gated on the caller's permissions) -->
-  <div class="flex flex-wrap items-center gap-2 mb-4">
+  <div class="action-bar flex flex-wrap items-center gap-1.5 sm:gap-2 mb-4">
     {#if !server.installed}
       {#if can("server.control")}
         <button class="btn-primary" onclick={runInstall} disabled={server.install_status === "installing"}
@@ -1280,6 +1323,29 @@
         title="Permanently delete this server and all its data (world, backups list, ports). Cannot be undone.">Delete</button>
     {/if}
   </div>
+
+  {#if showDelete}
+    <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+      <div class="card w-full max-w-md p-5 space-y-3 border-l-4 border-danger">
+        <h2 class="text-lg font-semibold text-danger">⚠️ Delete server</h2>
+        <p class="text-sm text-muted">
+          This <b class="text-text">permanently deletes</b> <b class="text-text">{server.name}</b> — its container,
+          all its data (world, persistence), its backups list and its ports. <b class="text-text">This cannot be undone.</b>
+        </p>
+        <p class="text-xs text-muted">Tip: Export or back it up first if you might want it again.</p>
+        <div>
+          <label class="label" for="delete-confirm">Type <span class="font-mono text-text">{server.name}</span> to confirm</label>
+          <input id="delete-confirm" class="input" bind:value={deleteConfirm} placeholder={server.name} autocomplete="off" />
+        </div>
+        <div class="flex gap-2">
+          <button class="btn-ghost flex-1" onclick={() => (showDelete = false)}>Cancel</button>
+          <button class="btn-danger flex-1" disabled={deleting || deleteConfirm !== server.name} onclick={doDelete}>
+            {deleting ? "Deleting…" : "Delete server"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   {#if showWipe}
     <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
@@ -1490,18 +1556,25 @@
   </div>
 
   {#if crashList.length}
-    <div class="card p-4 mb-4 border-l-4 border-warn">
+    <div class="card p-4 mb-4 border-l-4 {faultCount ? 'border-warn' : 'border-border'}">
       <h3 class="text-base font-semibold flex items-center gap-2">
-        ⚠️ Stability
-        <span class="badge bg-warn/20 text-warn">{crashList.length} recent exit{crashList.length === 1 ? "" : "s"}</span>
+        {faultCount ? "⚠️" : "📉"} Stability
+        {#if faultCount}
+          <span class="badge bg-warn/20 text-warn">{faultCount} recent fault{faultCount === 1 ? "" : "s"}</span>
+        {:else}
+          <span class="badge bg-border text-muted">{crashList.length} recent stop{crashList.length === 1 ? "" : "s"}</span>
+        {/if}
+        {#if can("server.control")}
+          <button class="btn-ghost text-xs ml-auto" onclick={clearCrashes} title="Clear this stability history.">Clear</button>
+        {/if}
       </h3>
-      <p class="text-xs text-muted mt-0.5 mb-3">Unexpected exits the panel caught while this server was running — a crash, an OOM kill, or an external stop. Exit code 0 is a clean external stop; anything else is a fault.</p>
+      <p class="text-xs text-muted mt-0.5 mb-3">Exits the panel caught while this server was running. A graceful stop/restart (exit 0, 143, 130) is shown in grey; a real fault — a crash or OOM kill — is flagged.</p>
       <div class="space-y-2">
         {#each crashList.slice(0, 8) as c}
           <details class="rounded-md border border-border bg-panel2/40">
             <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer text-sm select-none">
-              <span class="badge {c.exit_code === 0 ? 'bg-border text-muted' : 'bg-danger/20 text-danger'}">
-                {c.exit_code === 0 ? "stopped" : `exit ${c.exit_code}`}
+              <span class="badge {isFault(c.exit_code) ? 'bg-danger/20 text-danger' : 'bg-border text-muted'}">
+                {isFault(c.exit_code) ? `exit ${c.exit_code}` : "stopped"}
               </span>
               <span class="text-muted">{crashAgo(c.ts)}</span>
               {#if c.reason}<span class="text-muted/70 ml-auto text-xs">log ▾</span>{/if}
@@ -1510,6 +1583,39 @@
               <pre class="text-[11px] font-mono whitespace-pre-wrap break-words px-3 py-2 border-t border-border text-muted overflow-x-auto">{c.reason}</pre>
             {/if}
           </details>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  <!-- Kvasir: proactive-AI reactions (surfaced in-panel, not only in Discord) -->
+  {#if kvasirEvents.length}
+    <div class="card p-4 mb-4 border-l-4 border-accent/60">
+      <h3 class="text-base font-semibold flex items-center gap-2">
+        🧠 Kvasir
+        <span class="badge bg-accent/20 text-accent">{kvasirEvents.length} recent</span>
+        {#if can("server.control")}
+          <button class="btn-ghost text-xs ml-auto" onclick={clearKvasirEvents} title="Clear Kvasir's reaction history.">Clear</button>
+        {/if}
+      </h3>
+      <p class="text-xs text-muted mt-0.5 mb-3">What the proactive AI saw and how it responded. Suggested fixes it didn't auto-apply (config changes) are left for you to act on.</p>
+      <div class="space-y-2">
+        {#each kvasirEvents.slice(0, 8) as k}
+          <div class="rounded-md border border-border bg-panel2/40 px-3 py-2">
+            <div class="flex items-center gap-2 text-sm flex-wrap">
+              <span class="badge bg-border text-muted">{k.event}{k.detail ? ` · ${k.detail}` : ""}</span>
+              {#if k.applied}
+                <span class="badge bg-ok/20 text-ok">applied {k.action}{k.apply_status ? ` (${k.apply_status})` : ""}</span>
+              {:else if k.action && k.action !== "none"}
+                <span class="badge bg-warn/20 text-warn">proposed {k.action}{k.args ? ` ${k.args}` : ""}</span>
+              {/if}
+              <span class="text-muted ml-auto text-xs">{crashAgo(k.ts)}</span>
+            </div>
+            <p class="text-sm mt-1">{k.explanation}</p>
+            {#if k.action && k.action !== "none" && !k.applied}
+              <p class="text-xs text-muted mt-1">Suggested fix: <code>{k.action}{k.args ? ` ${k.args}` : ""}</code>{k.reason ? ` — ${k.reason}` : ""}</p>
+            {/if}
+          </div>
         {/each}
       </div>
     </div>
@@ -1567,7 +1673,7 @@
     {#each tabs as [key, label]}
       <button
         title={tabHelp[key] || ""}
-        class="px-4 py-2 text-sm border-b-2 -mb-px shrink-0 whitespace-nowrap {tab === key
+        class="px-3 sm:px-4 py-2 text-sm border-b-2 -mb-px shrink-0 whitespace-nowrap {tab === key
           ? 'border-accent text-text'
           : 'border-transparent text-muted hover:text-text'}"
         onclick={() => {
@@ -1668,6 +1774,7 @@
             {playersData.reason || "Server offline or still starting."}
           {:else}
             {playersData.players.length} online
+            {#if playersData.reason}<span class="text-muted/70"> · {playersData.reason}</span>{/if}
           {/if}
         </span>
         <button class="btn-ghost text-xs ml-auto" disabled={playersBusy} onclick={loadPlayers}

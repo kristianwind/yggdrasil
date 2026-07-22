@@ -1016,7 +1016,7 @@ func (s *Server) handleServerLogs(w http.ResponseWriter, r *http.Request) {
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
-		if err := conn.WriteMessage(websocket.TextMessage, sc.Bytes()); err != nil {
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(stripANSI(sc.Text()))); err != nil {
 			return
 		}
 	}
@@ -1162,7 +1162,7 @@ func (s *Server) showRecentLogs(ctx context.Context, conn *websocket.Conn, conta
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
-		if conn.WriteMessage(websocket.TextMessage, sc.Bytes()) != nil {
+		if conn.WriteMessage(websocket.TextMessage, []byte(stripANSI(sc.Text()))) != nil {
 			return
 		}
 	}

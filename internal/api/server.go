@@ -251,6 +251,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/servers/{id}/mods", s.handleModRemove)      // ?file=<name>.jar
 		r.Get("/api/servers/{id}/dayz/economy", s.handleDayzEconomy)
 		r.Get("/api/servers/{id}/dayz/mods", s.handleDayzMods)
+		r.Post("/api/servers/{id}/dayz/mods", s.handleDayzAddMod)
+		r.Delete("/api/servers/{id}/dayz/mods", s.handleDayzRemoveMod) // ?id=<wsid>
+		r.Put("/api/servers/{id}/dayz/mods/order", s.handleDayzReorderMods)
+		r.Get("/api/servers/{id}/dayz/mods/search", s.handleDayzSearchMods) // ?q=
+		r.Post("/api/servers/{id}/dayz/mods/suggest", s.handleDayzSuggestMods)
 		r.Post("/api/servers/{id}/dayz/min-lifetime", s.handleDayzMinLifetime)
 		r.Post("/api/servers/{id}/dayz/globals", s.handleDayzGlobals)
 		r.Post("/api/servers/{id}/dayz/register-types", s.handleDayzRegisterTypes)
@@ -327,6 +332,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/ai/plan/execute", s.handleAIPlanExecute) // run confirmed actions (re-checks RBAC)
 
 		// Beacon (voluntary install ping) — config + collected stats (admin-only)
+		r.Get("/api/settings/steam-web-api-key", s.requireAdmin(s.handleGetSteamKey))
+		r.Put("/api/settings/steam-web-api-key", s.requireAdmin(s.handleSetSteamKey))
 		r.Get("/api/settings/beacon", s.requireAdmin(s.handleGetBeaconSettings))
 		r.Put("/api/settings/beacon", s.requireAdmin(s.handleSetBeaconSettings))
 		r.Post("/api/settings/beacon/test", s.requireAdmin(s.handleTestBeacon))

@@ -315,6 +315,27 @@
     }
   }
 
+  // Steam Web API key — for DayZ Workshop mod search (write-only; separate from the
+  // SteamCMD login above, which downloads mods).
+  let steamKey = $state({ configured: false });
+  let steamKeyInput = $state("");
+  let steamKeyBusy = $state(false);
+  async function loadSteamKey() {
+    steamKey = await api.get("/settings/steam-web-api-key").catch(() => ({ configured: false }));
+  }
+  async function saveSteamKey() {
+    steamKeyBusy = true;
+    try {
+      steamKey = await api.put("/settings/steam-web-api-key", { key: steamKeyInput.trim() });
+      steamKeyInput = "";
+      toast(steamKey.configured ? "Steam Web API key saved" : "Steam Web API key cleared", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      steamKeyBusy = false;
+    }
+  }
+
   // API tokens
   let tokens = $state([]);
   let newTokenName = $state("");
@@ -825,6 +846,7 @@
     loadTokens();
     loadChannels();
     loadSteam();
+    loadSteamKey();
     load2fa();
     loadPasskeys();
     loadBuild();
@@ -1667,6 +1689,26 @@
       <button class="btn-ghost" onclick={() => { steamStep = 1; steamForm.guard_code = ''; }}>Back</button>
     </div>
   {/if}
+</div>
+
+<h2 class="text-xl font-semibold mb-2">Steam Web API key</h2>
+<p class="text-muted mb-4 text-sm">
+  Optional. Lets the <b>DayZ Mods</b> tab search the Steam Workshop by name. Get a free key at
+  <a class="text-accent hover:underline" href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener">steamcommunity.com/dev/apikey</a>.
+  Without it you can still add mods by pasting their Workshop id. Separate from the SteamCMD login above
+  (which downloads mods). Stored encrypted, write-only.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div class="text-sm">
+    Status: {#if steamKey.configured}<span class="text-accent">a key is configured</span>{:else}<span class="text-muted">no key set</span>{/if}
+  </div>
+  <div class="flex gap-2">
+    <input class="input flex-1 font-mono" type="password" placeholder={steamKey.configured ? "Enter a new key to replace it" : "Paste your Steam Web API key"} bind:value={steamKeyInput} autocomplete="off" />
+    <button class="btn-primary shrink-0" onclick={saveSteamKey} disabled={steamKeyBusy || !steamKeyInput.trim()}>Save</button>
+    {#if steamKey.configured}
+      <button class="btn-ghost shrink-0" onclick={() => { steamKeyInput = ''; saveSteamKey(); }} disabled={steamKeyBusy}>Clear</button>
+    {/if}
+  </div>
 </div>
 
 <div class="flex items-center justify-between mb-2">

@@ -102,7 +102,7 @@ func (w hubWriter) Write(p []byte) (int, error) {
 	sc := bufio.NewScanner(strings.NewReader(string(p)))
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
-		w.hub.publish(w.id, sc.Text())
+		w.hub.publish(w.id, stripANSI(sc.Text()))
 	}
 	return len(p), nil
 }

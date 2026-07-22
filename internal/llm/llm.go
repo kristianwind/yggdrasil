@@ -111,11 +111,19 @@ func completeOpenAI(ctx context.Context, cfg Config, base string, messages []Mes
 	for _, m := range messages {
 		ms = append(ms, msg{Role: m.Role, Content: m.Content})
 	}
-	body, _ := json.Marshal(map[string]any{
+	reqBody := map[string]any{
 		"model":      cfg.Model,
 		"messages":   ms,
 		"max_tokens": maxTokens,
-	})
+	}
+	// Local "thinking" models (Qwen/Gemma via vLLM/llama.cpp) otherwise spend the
+	// whole token budget on hidden reasoning and return empty content (finish_reason
+	// "length", no answer). Disabling thinking via chat_template_kwargs gives a
+	// direct answer. Skip it for real OpenAI, which 400s on unknown request fields.
+	if !strings.Contains(strings.ToLower(base), "openai.com") {
+		reqBody["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
+	}
+	body, _ := json.Marshal(reqBody)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return "", err

@@ -101,12 +101,39 @@ default layout.
 - Once the new host is confirmed healthy, retire the old one. Don't run both
   against the same game servers or backup targets at once.
 
-## Exporting one server
+## Moving one server
 
-Moving a single server between two panels that both stay running isn't covered by
-the whole-panel tools above — the server's configuration (its rune, variables and
-ports) lives in the source panel's database, and a plain data backup doesn't carry
-it. A dedicated per-server export/import is the right tool for that; until it
-lands, the manual route is: recreate the server on the target panel with the same
-rune and variables, then restore its data from a shared backup target (see
-[Backups](backups-and-schedules.md)).
+Moving a single server between two panels that both stay running is built in:
+every server page has **Export**, and the Servers page has **Import server**.
+
+The bundle carries the whole habitat, not just the animal: the server's data
+directory, its rune (the target doesn't need it pre-installed), variables with
+their secrets, resource limits, host mounts, its group, its host ports — plus
+the server's **schedules, watchers, notification routing and subdomain**. On
+import the target re-encrypts the secrets with its own key, keeps the source's
+host ports so NPM/tunnel/DNS forwarding survives (a port is reallocated only on
+a real collision, and the response tells you which), and keeps the subdomain
+unless another server on the target already claims it.
+
+Because the bundle contains the server's secrets in recoverable form, both ends
+are admin-only — treat the file like a password.
+
+## Moving your settings
+
+**Settings → System → Host migration** moves the panel's configuration — not
+its servers — to another running panel. Pick the groups to export (notification
+channels, Kvasir/AI configuration, integrations such as the Steam and Discord
+keys, network integrations, rune repositories, global watchers, users and
+permissions), download the bundle, and import it on the target.
+
+The import **merges**: nothing on the target is deleted, and an existing user,
+channel, repository or watcher is skipped rather than overwritten. Two things
+are applied rather than merged, because moving them is the point: the Kvasir/AI
+configuration and the selected integration keys. Every secret in the bundle is
+re-encrypted with the target's key on arrival.
+
+Not carried, deliberately: **API tokens** (each panel signs its own — recreate
+them on the target), the **beacon identity** (per-install by design), and
+**passkeys** (re-register them on the target in seconds). The bundle contains
+decrypted secrets — same rule as above: treat the file like a password, delete
+it after the move.

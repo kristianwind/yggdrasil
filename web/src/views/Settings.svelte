@@ -932,6 +932,47 @@
     }
   }
 
+  // Host migration — export/import a panel-settings bundle (Settings → System).
+  const MIGRATE_GROUPS = [
+    ["channels", "Notification channels"],
+    ["ai", "Kvasir / AI config"],
+    ["integrations", "Integrations (Steam, Discord, BattleMetrics)"],
+    ["network", "Network (NPM, Cloudflare, UniFi, domains)"],
+    ["rune_repos", "Rune repositories"],
+    ["watchers", "Global watchers"],
+    ["users", "Users & permissions"],
+  ];
+  let migrateSel = $state({ channels: true, ai: true, integrations: true, network: false, rune_repos: true, watchers: true, users: false });
+  let migrateResult = $state(null);
+  async function exportPanelSettings() {
+    const include = Object.entries(migrateSel).filter(([, v]) => v).map(([k]) => k).join(",");
+    try {
+      const res = await fetch(`/api/panel/export?include=${include}`, { credentials: "same-origin" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "panel-settings.yggpanel.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("Bundle downloaded — it contains secrets, treat it like a password", "info");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function importPanelSettings(ev) {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!file) return;
+    try {
+      const bundle = JSON.parse(await file.text());
+      migrateResult = await api.post("/panel/import", bundle);
+      toast("Settings bundle merged", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   onMount(() => {
     load();
     loadTemplates();
@@ -1250,6 +1291,39 @@
   </button>
 </div>
 
+<!-- Host migration: move this panel's configuration to another Yggdrasil host -->
+<h2 class="text-xl font-semibold mb-2">Host migration <span class="text-muted font-normal text-base">· move settings to another panel</span></h2>
+<p class="text-muted mb-4 text-sm">
+  Export the groups you pick as a settings bundle and import it on another running Yggdrasil host — it
+  <b>merges</b> (nothing on the target is deleted; existing users/channels/repos are skipped, integrations
+  and Kvasir config are applied). Secrets travel decrypted inside the file and are re-encrypted by the
+  target, so <b>treat the file like a password</b>. Servers move individually with each server's
+  Export/Import buttons — they carry their schedules, watchers and notification routing along. API tokens
+  can't move (each panel signs its own); recreate them on the target. For a byte-for-byte whole-panel move
+  incl. all server data, use <code>yggdrasil migrate</code> from the terminal.
+</p>
+<div class="card p-4 mb-10 space-y-4">
+  <div class="flex flex-wrap gap-x-5 gap-y-2">
+    {#each MIGRATE_GROUPS as g}
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input type="checkbox" bind:checked={migrateSel[g[0]]} /> {g[1]}
+      </label>
+    {/each}
+  </div>
+  <div class="flex items-center gap-3 flex-wrap">
+    <button class="btn-primary text-sm" onclick={exportPanelSettings} disabled={!Object.values(migrateSel).some(Boolean)}>⬇ Export selected</button>
+    <span class="text-xs text-muted">— or on the receiving panel —</span>
+    <label class="btn-ghost text-sm cursor-pointer">
+      ⬆ Import bundle…
+      <input type="file" accept=".json,application/json" class="hidden" onchange={importPanelSettings} />
+    </label>
+  </div>
+  {#if migrateResult}
+    <div class="text-sm text-muted">
+      Imported: {Object.entries(migrateResult).map(([k, v]) => `${k.replaceAll("_", " ")}: ${v}`).join(" · ") || "nothing new"}
+    </div>
+  {/if}
+</div>
 {/if}
 
 {#if tab === "network"}

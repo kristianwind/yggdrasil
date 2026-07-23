@@ -180,6 +180,9 @@ func (s *Server) handlePanelExport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if include["users"] {
+		// Two passes: collect users, close the rows, THEN their permissions. The DB
+		// pool is capped at one connection (SQLite writer serialization), so a
+		// nested query inside an open rows iterator deadlocks the whole panel.
 		rows, err := s.db.QueryContext(ctx,
 			`SELECT id, username, password_hash, role, disabled, COALESCE(totp_enabled,0), COALESCE(totp_secret,'') FROM users`)
 		if err == nil {
@@ -193,20 +196,23 @@ func (s *Server) handlePanelExport(w http.ResponseWriter, r *http.Request) {
 						u.TOTPSecret = plain
 					}
 				}
-				prows, perr := s.db.QueryContext(ctx,
-					"SELECT scope_type, COALESCE(scope_id,''), perms FROM permissions WHERE user_id=?", u.ID)
-				if perr == nil {
-					for prows.Next() {
-						var st, sid, pm string
-						if prows.Scan(&st, &sid, &pm) == nil {
-							u.Permissions = append(u.Permissions, st+"|"+sid+"|"+pm)
-						}
-					}
-					prows.Close()
-				}
 				b.Users = append(b.Users, u)
 			}
 			rows.Close()
+		}
+		for i := range b.Users {
+			prows, perr := s.db.QueryContext(ctx,
+				"SELECT scope_type, COALESCE(scope_id,''), perms FROM permissions WHERE user_id=?", b.Users[i].ID)
+			if perr != nil {
+				continue
+			}
+			for prows.Next() {
+				var st, sid, pm string
+				if prows.Scan(&st, &sid, &pm) == nil {
+					b.Users[i].Permissions = append(b.Users[i].Permissions, st+"|"+sid+"|"+pm)
+				}
+			}
+			prows.Close()
 		}
 	}
 

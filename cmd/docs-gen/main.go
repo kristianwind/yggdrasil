@@ -708,7 +708,7 @@ func indexPage() string {
 </head>
 <body>
 ` + topNav() + `
-<div class="shell">
+<div class="shell no-toc">
 ` + sidebar("") + `
 <main>
   ` + searchBox() + `

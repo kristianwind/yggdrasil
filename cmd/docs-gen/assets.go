@@ -49,6 +49,8 @@ a.brand:hover{text-decoration:none;opacity:.85}
 /* ---- three-column shell ---- */
 .shell{max-width:1080px;margin:0 auto;padding:0 1.25rem;display:grid;
   grid-template-columns:var(--side) minmax(0,1fr) var(--toc);gap:2.5rem;align-items:start}
+/* The docs index has no per-page TOC — don't reserve the empty right column. */
+.shell.no-toc{grid-template-columns:var(--side) minmax(0,1fr)}
 
 /* ---- sidebar ---- */
 .side{position:sticky;top:60px;max-height:calc(100vh - 60px);overflow-y:auto;

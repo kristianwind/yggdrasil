@@ -728,6 +728,7 @@
     ["slowstart", "Slow / failed starts"],
     ["resource", "Resource alarms"],
     ["host", "Panel / host problems"],
+    ["anomaly", "Player / traffic anomalies"],
   ];
   function toggleTrigger(key) {
     const set = new Set((ai.proactive_triggers || "").split(",").map((t) => t.trim()).filter(Boolean));

@@ -43,7 +43,8 @@ type Server struct {
 	version    string         // build version (set via SetVersion)
 	bot        *discordBot    // two-way Discord control bot (nil when no token configured)
 	botMu      sync.Mutex
-	kvasir     *kvasirState   // proactive AI monitoring: per-server auto-action rate limiting
+	kvasir     *kvasirState  // proactive AI monitoring: per-server auto-action rate limiting
+	anomalies  *anomalyState // player/traffic anomaly baselines + cooldowns
 
 	extIP   string // cached external IP (detectPublicAddr)
 	extIPAt time.Time
@@ -71,16 +72,17 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	}
 
 	s := &Server{
-		cfg:     cfg,
-		db:      db,
-		docker:  dc,
-		webFS:   subFS,
-		install: newProgressHub(),
-		cipher:  cipher,
-		wd:      newWatchdogState(),
-		kvasir:  newKvasirState(),
-		startWD: newStartState(),
-		alarms:  newAlarmState(),
+		cfg:       cfg,
+		db:        db,
+		docker:    dc,
+		webFS:     subFS,
+		install:   newProgressHub(),
+		cipher:    cipher,
+		wd:        newWatchdogState(),
+		kvasir:    newKvasirState(),
+		anomalies: newAnomalyState(),
+		startWD:   newStartState(),
+		alarms:    newAlarmState(),
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()
@@ -98,6 +100,8 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	s.startBackupVerifyLoop()
 	s.startDiskAlarmLoop()
 	s.startWatcherLoop()
+	s.startAnomalyLoop()
+	s.startAnomalyLoop()
 	return s
 }
 

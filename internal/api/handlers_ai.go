@@ -79,17 +79,17 @@ func (s *Server) aiEnabled(ctx context.Context) bool {
 }
 
 type aiConfigView struct {
-	Provider       string `json:"provider"`
-	Model          string `json:"model"`
-	BaseURL        string `json:"base_url"`
-	APIKey         string `json:"api_key"` // masked on GET; secretMask means "keep existing" on PUT
-	Enabled        bool   `json:"enabled"`
-	Configured     bool   `json:"configured"`      // an API key is stored
-	DigestEnabled  bool   `json:"digest_enabled"`  // send a daily ops digest to notification channels
-	DigestHour     int    `json:"digest_hour"`     // 0-23
-	ActionsEnabled bool   `json:"actions_enabled"` // AI may propose server actions (always confirmed)
+	Provider          string `json:"provider"`
+	Model             string `json:"model"`
+	BaseURL           string `json:"base_url"`
+	APIKey            string `json:"api_key"` // masked on GET; secretMask means "keep existing" on PUT
+	Enabled           bool   `json:"enabled"`
+	Configured        bool   `json:"configured"`         // an API key is stored
+	DigestEnabled     bool   `json:"digest_enabled"`     // send a daily ops digest to notification channels
+	DigestHour        int    `json:"digest_hour"`        // 0-23
+	ActionsEnabled    bool   `json:"actions_enabled"`    // AI may propose server actions (always confirmed)
 	ProactiveLevel    int    `json:"proactive_level"`    // 0 off, 1 passive, 2 active-observe, 3 active-help
-	ProactiveTriggers string `json:"proactive_triggers"` // csv: crash,slowstart,resource,host
+	ProactiveTriggers string `json:"proactive_triggers"` // csv: crash,slowstart,resource,host,anomaly (anomaly is opt-in, not in the default)
 }
 
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {

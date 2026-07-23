@@ -26,7 +26,7 @@ code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 /* ---- top nav (mirrors the landing page) ---- */
 header.nav{position:sticky;top:0;z-index:30;background:rgba(11,15,20,.85);backdrop-filter:blur(8px);
   border-bottom:1px solid var(--border)}
-.navwrap{max-width:1400px;margin:0 auto;padding:0 1.25rem;display:flex;align-items:center;gap:1rem;height:60px}
+.navwrap{max-width:1080px;margin:0 auto;padding:0 1.25rem;display:flex;align-items:center;gap:1rem;height:60px}
 .brand{font-weight:700;font-size:1.15rem;display:flex;align-items:center;gap:.5rem;color:var(--fg)}
 a.brand:hover{text-decoration:none;opacity:.85}
 .nav nav{margin-left:auto;display:flex;gap:1.25rem;align-items:center}
@@ -42,7 +42,7 @@ a.brand:hover{text-decoration:none;opacity:.85}
 .sidebtn{display:none}
 
 /* ---- three-column shell ---- */
-.shell{max-width:1400px;margin:0 auto;padding:0 1.25rem;display:grid;
+.shell{max-width:1080px;margin:0 auto;padding:0 1.25rem;display:grid;
   grid-template-columns:var(--side) minmax(0,1fr) var(--toc);gap:2.5rem;align-items:start}
 
 /* ---- sidebar ---- */

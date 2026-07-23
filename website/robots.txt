@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://yggdrasilpanel.com/sitemap.xml

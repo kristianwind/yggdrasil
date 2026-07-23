@@ -76,7 +76,12 @@ const head = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supported apps &amp; games — Yggdrasil Panel</title>
-<meta name="description" content="%d self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta name="description" content="%[1]d self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<link rel="canonical" href="https://yggdrasilpanel.com/apps/">
+<meta property="og:title" content="Supported apps &amp; games — Yggdrasil Panel">
+<meta property="og:description" content="%[1]d self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://yggdrasilpanel.com/apps/">
 <link rel="icon" href="data:image/svg+xml,%%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%%3E%%3Ctext y='.9em' font-size='90'%%3E%%F0%%9F%%8C%%B3%%3C/text%%3E%%3C/svg%%3E">
 <style>
 :root{--bg:#0b0f14;--bg2:#10161e;--card:#141b24;--card2:#1b2530;--bd:#243040;--tx:#e6edf3;--mut:#9aa7b4;--grn:#22c55e;--grn2:#34d399}
@@ -109,6 +114,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
   <a href="/#features">Features</a>
   <a href="/apps">Apps &amp; games</a>
   <a href="/docs/">Docs</a>
+  <a href="/#install">Install</a>
   <a href="https://discord.gg/QM6TmJYvMS" target="_blank" rel="noopener">Discord</a>
   <span class="sp"></span>
   <a href="https://github.com/kristianwind/yggdrasil" target="_blank" rel="noopener">GitHub</a>

@@ -43,6 +43,7 @@ const (
 	outDir     = "website/docs"
 	srcDir     = "docs"
 	siteTitle  = "Yggdrasil Panel docs"
+	siteURL    = "https://yggdrasilpanel.com" // canonical origin for <link rel=canonical> + the sitemap
 )
 
 // Page is one markdown file in docs/.
@@ -131,6 +132,9 @@ func run() error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(outDir, "docs.js"), []byte(js), 0o644); err != nil {
+		return err
+	}
+	if err := writeSitemap(built); err != nil {
 		return err
 	}
 	if err := writeSearchIndex(built); err != nil {
@@ -568,7 +572,7 @@ func topNav() string {
     <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
     <nav>
       <a href="/#features">Features</a>
-      <a href="/#screens">Screenshots</a>
+      <a href="/apps">Apps &amp; games</a>
       <a href="/docs/" class="on">Docs</a>
       <a href="/#install">Install</a>
       <a href="` + discordURL + `" target="_blank" rel="noopener">Discord</a>
@@ -593,6 +597,11 @@ func shell(b built) string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>` + html.EscapeString(b.title) + ` — ` + siteTitle + `</title>
 <meta name="description" content="` + html.EscapeString(firstSentence(b.text)) + `" />
+<link rel="canonical" href="` + siteURL + `/docs/` + b.page.slug() + `.html" />
+<meta property="og:title" content="` + html.EscapeString(b.title) + `" />
+<meta property="og:description" content="` + html.EscapeString(firstSentence(b.text)) + `" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="` + siteURL + `/docs/` + b.page.slug() + `.html" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
 <link rel="stylesheet" href="docs.css" />
 </head>
@@ -693,6 +702,7 @@ func indexPage() string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>` + siteTitle + `</title>
 <meta name="description" content="Documentation for Yggdrasil Panel — install, run and manage game and app servers on your own Debian/Ubuntu box." />
+<link rel="canonical" href="` + siteURL + `/docs/" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
 <link rel="stylesheet" href="docs.css" />
 </head>
@@ -711,4 +721,25 @@ func indexPage() string {
 </body>
 </html>
 `
+}
+
+// writeSitemap emits website/sitemap.xml covering the whole static site: the
+// front page, the apps showcase and every published docs page. Lives here
+// because docs-gen is the one generator that runs on every docs change, so the
+// sitemap can't go stale quietly.
+func writeSitemap(built []built) error {
+	var sb strings.Builder
+	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	sb.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	add := func(path string) {
+		sb.WriteString("  <url><loc>" + siteURL + path + "</loc></url>\n")
+	}
+	add("/")
+	add("/apps/")
+	add("/docs/")
+	for _, b := range built {
+		add("/docs/" + b.page.slug() + ".html")
+	}
+	sb.WriteString("</urlset>\n")
+	return os.WriteFile(filepath.Join(outDir, "..", "sitemap.xml"), []byte(sb.String()), 0o644)
 }

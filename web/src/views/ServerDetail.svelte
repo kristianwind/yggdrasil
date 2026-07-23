@@ -173,6 +173,22 @@
     }
   }
 
+  async function banPlayer(p) {
+    if (!confirm(`Ban ${p.name}?\n\nThey're added to ban.txt and refused on their next join. A player already in-game can't be kicked without RCon (which DayZ-Linux lacks), so they stay until they disconnect.`)) return;
+    const reason = prompt(`Ban ${p.name}? Optional reason (for the audit log):`, "");
+    if (reason === null) return;
+    playersBusy = true;
+    try {
+      const r = await api.post(`/servers/${id}/players/ban`, { id: p.id || p.guid, name: p.name, reason });
+      toast(r.message || `Banned ${p.name}`, "success");
+      setTimeout(loadPlayers, 800);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      playersBusy = false;
+    }
+  }
+
   async function sendBroadcast() {
     if (!broadcastMsg.trim()) return;
     playersBusy = true;
@@ -342,6 +358,12 @@
     } catch (e) {
       toast(e.message, "error");
     }
+  }
+
+  // Minecraft server-jar update check (Paper/Purpur builds).
+  let jarStatus = $state(null);
+  async function loadJarUpdate() {
+    jarStatus = await api.get(`/servers/${id}/jar-update`).catch(() => null);
   }
 
   // Kvasir: recent proactive-AI reactions (explanations + proposed/applied fixes).
@@ -1313,6 +1335,7 @@
     // Pre-load installed mods (if this rune supports them) so the "N updates" badge
     // on the Mods tab is visible without having to open the tab first.
     if (server?.mods_supported && can("server.files")) loadInstalledMods();
+    if (server?.gameskill_id === "minecraft-java" && server?.installed) loadJarUpdate();
     // Default to the Console tab. Only jump to the install log when an install is
     // actually running right now — otherwise Console is what you want to see on entry.
     if (server && !server.installed && server.install_status === "installing") {
@@ -1431,6 +1454,21 @@
         title="Permanently delete this server and all its data (world, backups list, ports). Cannot be undone.">Delete</button>
     {/if}
   </div>
+
+  {#if jarStatus?.update_available}
+    <div class="card border-l-4 border-accent2 bg-accent2/5 p-3 mb-4 flex items-center gap-3 flex-wrap">
+      <span class="text-sm">
+        🧩 A newer <b>{jarStatus.type}</b> build is available for {jarStatus.version} —
+        <span class="font-mono">{jarStatus.current_build}</span> → <span class="font-mono text-accent">{jarStatus.latest_build}</span>.
+      </span>
+      {#if can("server.control")}
+        <button class="btn-primary text-xs ml-auto" onclick={() => runInstall(true)} disabled={server.install_status === 'installing'}
+          title="Download the latest server jar (re-runs Install: your world and configs are kept, the jar and any regenerated defaults refresh). Back up first if unsure.">
+          {server.install_status === "installing" ? "Updating…" : "Update jar"}
+        </button>
+      {/if}
+    </div>
+  {/if}
 
   {#if showDelete}
     <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
@@ -1921,20 +1959,26 @@
                 <th class="text-left px-3 py-2">Name</th>
                 <th class="text-left px-3 py-2">Ping</th>
                 <th class="text-left px-3 py-2 hidden sm:table-cell">GUID</th>
-                {#if playersData.can_kick}<th class="px-3 py-2"></th>{/if}
+                {#if playersData.can_kick || playersData.can_ban}<th class="px-3 py-2"></th>{/if}
               </tr>
             </thead>
             <tbody>
-              {#each playersData.players as p}
+              {#each playersData.players as p, i}
                 <tr class="border-b border-border/50">
-                  <td class="px-3 py-2 font-mono text-muted">{p.id || "—"}</td>
+                  <td class="px-3 py-2 font-mono text-muted">{p.id || i + 1}</td>
                   <td class="px-3 py-2 font-medium">{p.name}</td>
                   <td class="px-3 py-2 text-muted">{p.ping || "—"}</td>
                   <td class="px-3 py-2 font-mono text-xs text-muted hidden sm:table-cell truncate max-w-[12rem]">{p.guid || "—"}</td>
-                  {#if playersData.can_kick}
-                    <td class="px-3 py-2 text-right">
-                      <button class="btn-ghost text-xs text-warn" disabled={playersBusy} onclick={() => kickPlayer(p)}
-                        title="Disconnect this player now (they can rejoin). You'll be asked for an optional reason. To block them permanently, use Bans.">Kick</button>
+                  {#if playersData.can_kick || playersData.can_ban}
+                    <td class="px-3 py-2 text-right whitespace-nowrap">
+                      {#if playersData.can_kick}
+                        <button class="btn-ghost text-xs text-warn" disabled={playersBusy} onclick={() => kickPlayer(p)}
+                          title="Disconnect this player now (they can rejoin). You'll be asked for an optional reason.">Kick</button>
+                      {/if}
+                      {#if playersData.can_ban}
+                        <button class="btn-ghost text-xs text-danger" disabled={playersBusy} onclick={() => banPlayer(p)}
+                          title="Ban this player (adds them to ban.txt). Takes effect on their next join — DayZ-Linux can't remove a player who's already in-game without RCon.">Ban</button>
+                      {/if}
                     </td>
                   {/if}
                 </tr>

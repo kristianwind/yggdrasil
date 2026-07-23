@@ -73,6 +73,7 @@ gameskill:
 
       TYPE="{{SERVER_TYPE}}"
       VER="{{MC_VERSION}}"
+      BUILD=""
       MANIFEST=https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
 
       latest_vanilla() { curl -fsSL "$MANIFEST" | jq -r '.latest.release'; }
@@ -88,6 +89,7 @@ gameskill:
           SRV_URL=$(curl -fsSL "$VER_URL" | jq -r '.downloads.server.url')
           need "$SRV_URL" "no server download for $VER"
           curl -fsSL -o server.jar "$SRV_URL"
+          BUILD="$VER"
           ;;
         paper)
           # Paper v3 (fill) API — v2 is frozen at 1.21.x. Newest version is the
@@ -97,14 +99,16 @@ gameskill:
             VER=$(curl -fsSL -A "$UA" https://fill.papermc.io/v3/projects/paper | jq -r '.versions | to_entries[0].value[0]')
           fi
           need "$VER" "could not resolve Paper version"
-          URL=$(curl -fsSL -A "$UA" "https://fill.papermc.io/v3/projects/paper/versions/$VER/builds/latest" \
-            | jq -r '.downloads["server:default"].url')
+          BJSON=$(curl -fsSL -A "$UA" "https://fill.papermc.io/v3/projects/paper/versions/$VER/builds/latest")
+          URL=$(echo "$BJSON" | jq -r '.downloads["server:default"].url')
+          BUILD=$(echo "$BJSON" | jq -r '.id // .build // empty')
           need "$URL" "no Paper build for $VER"
           curl -fsSL -A "$UA" -o server.jar "$URL"
           ;;
         purpur)
           [ "$VER" = "latest" ] && VER=$(curl -fsSL https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
           need "$VER" "could not resolve Purpur version"
+          BUILD=$(curl -fsSL "https://api.purpurmc.org/v2/purpur/$VER/latest" | jq -r '.build // empty')
           curl -fsSL -o server.jar "https://api.purpurmc.org/v2/purpur/$VER/latest/download"
           ;;
         fabric)
@@ -116,6 +120,7 @@ gameskill:
           need "$INSTALLER" "no Fabric installer"
           curl -fsSL -o server.jar \
             "https://meta.fabricmc.net/v2/versions/loader/$VER/$LOADER/$INSTALLER/server/jar"
+          BUILD="$LOADER"
           ;;
         forge)
           echo "Forge requires running its installer; install the Forge universal jar"
@@ -128,6 +133,10 @@ gameskill:
 
       # Make sure we actually got a jar.
       [ -s server.jar ] || { echo "download produced no server.jar"; exit 1; }
+
+      # Record what we installed so the panel can tell when a newer build exists
+      # (the jar-update check reads this: "<type> <version> <build>").
+      echo "$TYPE $VER $BUILD" > .ygg_jar
 
       echo "eula={{EULA}}" > eula.txt
 

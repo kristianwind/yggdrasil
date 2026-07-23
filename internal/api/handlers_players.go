@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -92,6 +93,7 @@ type playersResponse struct {
 	CanKick      bool         `json:"can_kick"`
 	CanBroadcast bool         `json:"can_broadcast"`
 	CanLock      bool         `json:"can_lock"`
+	CanBan       bool         `json:"can_ban"` // DayZ: ban by writing ban.txt (effective on rejoin)
 	Reason       string       `json:"reason,omitempty"` // why the list is unavailable (offline vs. RCON down)
 }
 
@@ -128,19 +130,34 @@ func (s *Server) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 			if names, qerr := query.QueryPlayers(rt.gs.Query.Type, "127.0.0.1", rt.queryPort(), 3*time.Second); qerr == nil {
 				resp.Online = true
 				resp.CanKick, resp.CanBroadcast, resp.CanLock = false, false, false
-				for _, n := range names {
-					if n = strings.TrimSpace(n); n != "" {
-						resp.Players = append(resp.Players, playerInfo{Name: n})
-					}
-				}
-				// The A2S_PLAYER count is authoritative even when names come back blank —
-				// DayZ's Linux server reports the count over the Steam query but not names,
-				// so show the count and note the missing names rather than reading "0".
+				// The A2S_PLAYER count is authoritative even when names come back blank.
 				resp.Count = len(names)
-				if len(names) > len(resp.Players) {
-					resp.Reason = "Player count from the Steam query port. This DayZ server doesn't report player names over A2S (and its BattlEye RCon, which would, isn't reliable on Linux)."
+				// DayZ's Linux server returns blank A2S names, but its admin log (.ADM)
+				// records every join/leave with the real name + id. Replay it for a true
+				// roster and enable banning (ban.txt, effective on rejoin).
+				var dataDir string
+				s.db.QueryRowContext(r.Context(), "SELECT data_dir FROM servers WHERE id=?", id).Scan(&dataDir)
+				if roster := dayzADMRoster(dataDir); len(roster) > 0 {
+					for _, p := range roster {
+						resp.Players = append(resp.Players, playerInfo{Name: p.Name, ID: p.ID, GUID: p.ID})
+					}
+					resp.CanBan = true
+					if len(roster) > resp.Count {
+						resp.Count = len(roster)
+					}
+					resp.Reason = "Live roster from the DayZ admin log. Ban writes the player to ban.txt (effective on their next join — DayZ-Linux can't kick a player who's already in-game without RCon)."
 				} else {
-					resp.Reason = "Live roster from the Steam query port. Kick, broadcast and lock need BattlEye RCon, which DayZ's Linux server doesn't reliably support."
+					// No admin-log names available — fall back to any non-blank A2S names.
+					for _, n := range names {
+						if n = strings.TrimSpace(n); n != "" {
+							resp.Players = append(resp.Players, playerInfo{Name: n})
+						}
+					}
+					if len(names) > len(resp.Players) {
+						resp.Reason = "Player count from the Steam query port. This DayZ server isn't reporting player names right now (the admin log has no active session, and BattlEye RCon isn't reliable on Linux)."
+					} else {
+						resp.Reason = "Live roster from the Steam query port."
+					}
 				}
 				jsonOK(w, resp)
 				return
@@ -162,6 +179,48 @@ func (s *Server) handleListPlayers(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Count = len(resp.Players)
 	jsonOK(w, resp)
+}
+
+// handleDayzBan bans a DayZ player by adding their id to the server's ban.txt. DayZ
+// reads it on connect, so the ban stops them rejoining; it can't remove a player
+// already in-game (that needs RCon, which DayZ-Linux lacks). Same gate as kick.
+func (s *Server) handleDayzBan(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !s.can(w, r, rbac.ServerConsole, s.serverTarget(r.Context(), id)) {
+		return
+	}
+	var req struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Reason string `json:"reason"`
+	}
+	if decodeJSON(r, &req) != nil || strings.TrimSpace(req.ID) == "" {
+		jsonError(w, "player id required", http.StatusBadRequest)
+		return
+	}
+	var gameskillID, dataDir string
+	if s.db.QueryRowContext(r.Context(), "SELECT gameskill_id, data_dir FROM servers WHERE id=?", id).Scan(&gameskillID, &dataDir) != nil || gameskillID != "dayz" {
+		jsonError(w, "not a DayZ server", http.StatusBadRequest)
+		return
+	}
+	added, err := dayzBanID(dataDir, strings.TrimSpace(req.ID))
+	if err != nil {
+		jsonError(w, "could not write ban.txt: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	name := req.Name
+	if name == "" {
+		name = req.ID
+	}
+	s.auditLog(r, "dayz.ban", "server:"+id, map[string]string{"id": req.ID, "name": req.Name, "reason": req.Reason})
+	if added {
+		go s.notifyServer(id, fmt.Sprintf("🔨 Banned %s — added to ban.txt, effective on their next join", name))
+	}
+	msg := "Ban added — it takes effect on their next join (a player already in-game can't be kicked without RCon)."
+	if !added {
+		msg = "That player is already in ban.txt."
+	}
+	jsonOK(w, map[string]any{"banned": req.ID, "added": added, "message": msg})
 }
 
 func (s *Server) handleKickPlayer(w http.ResponseWriter, r *http.Request) {

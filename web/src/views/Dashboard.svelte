@@ -133,7 +133,7 @@
     }
   }
   $effect(() => {
-    if (showHostHistory && $user.role === "admin") {
+    if (showHostHistory && $user.role === "admin" && !modLayout.hidden.includes("hosthistory")) {
       hostHours; // track for reload on window change
       loadHostMetrics();
     }
@@ -238,6 +238,84 @@
     }
     return `${n.toFixed(1)} ${u[i]}`;
   }
+  // --- Customizable module layout: sort + show/hide the dashboard sections ---
+  // Per-browser preference (localStorage), like the host-history fold and the
+  // sidebar collapse. Each module still applies its own visibility conditions
+  // (admin-only, AI enabled, non-empty) — hiding here is on top of those.
+  const MODULES = [
+    { id: "fleet", label: "Fleet summary", icon: "📊" },
+    { id: "cards", label: "Stat cards", icon: "🧮" },
+    { id: "hosthistory", label: "Host history", icon: "📈" },
+    { id: "opsdigest", label: "Kvasir · Ops digest", icon: "🤖" },
+    { id: "askkvasir", label: "Ask Kvasir", icon: "💬" },
+    { id: "whosonline", label: "Who's online", icon: "👥" },
+    { id: "recent", label: "Recent servers", icon: "🕘" },
+  ];
+  const MODULE_LABEL = Object.fromEntries(MODULES.map((m) => [m.id, m]));
+  const DEFAULT_ORDER = MODULES.map((m) => m.id);
+  const MODULES_KEY = "ygg_dash_modules";
+  function loadModLayout() {
+    try {
+      const s = JSON.parse(localStorage.getItem(MODULES_KEY)) || {};
+      const known = new Set(DEFAULT_ORDER);
+      // Keep the saved order for ids that still exist; append any module added
+      // since the layout was saved, in its default position among the leftovers.
+      const order = (s.order || []).filter((id) => known.has(id));
+      for (const id of DEFAULT_ORDER) if (!order.includes(id)) order.push(id);
+      const hidden = (s.hidden || []).filter((id) => known.has(id));
+      return { order, hidden };
+    } catch {
+      return { order: [...DEFAULT_ORDER], hidden: [] };
+    }
+  }
+  let modLayout = $state(loadModLayout());
+  function saveModLayout() {
+    try {
+      localStorage.setItem(MODULES_KEY, JSON.stringify(modLayout));
+    } catch {
+      /* ignore */
+    }
+  }
+  let showCustomize = $state(false);
+  function toggleModule(id) {
+    modLayout.hidden = modLayout.hidden.includes(id)
+      ? modLayout.hidden.filter((h) => h !== id)
+      : [...modLayout.hidden, id];
+    saveModLayout();
+  }
+  function moveModule(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= modLayout.order.length) return;
+    const next = [...modLayout.order];
+    [next[i], next[j]] = [next[j], next[i]];
+    modLayout.order = next;
+    saveModLayout();
+  }
+  // Drag-to-reorder (desktop) — same pattern as the realm manager: rows reorder
+  // live as you drag over them, the result is saved on drop.
+  let modDragIndex = $state(null);
+  function onModDragOver(e, i) {
+    e.preventDefault();
+    if (modDragIndex === null || modDragIndex === i) return;
+    const next = [...modLayout.order];
+    const [moved] = next.splice(modDragIndex, 1);
+    next.splice(i, 0, moved);
+    modLayout.order = next;
+    modDragIndex = i;
+  }
+  function onModDrop() {
+    if (modDragIndex === null) return;
+    modDragIndex = null;
+    saveModLayout();
+  }
+  function resetModLayout() {
+    modLayout = { order: [...DEFAULT_ORDER], hidden: [] };
+    saveModLayout();
+  }
+  let modCustomized = $derived(
+    modLayout.hidden.length > 0 || modLayout.order.join() !== DEFAULT_ORDER.join(),
+  );
+
   let cards = $derived.by(() => {
     if (!info) {
       return [stat("Servers", servers.length, `${servers.filter((s) => s.status === "running").length} running`)];
@@ -272,11 +350,64 @@
     <h1 class="text-2xl font-semibold mb-1">Dashboard</h1>
     <p class="text-muted">Welcome back, {$user.username}.</p>
   </div>
-  {#if $user.can_create}
-    <button class="btn-primary shrink-0" onclick={() => navigate("/servers?new=1")}>+ New Server</button>
-  {/if}
+  <div class="flex items-center gap-2 shrink-0">
+    <button
+      class="btn-ghost text-sm {showCustomize ? 'bg-panel2' : ''}"
+      title="Reorder or hide the dashboard sections. Saved in this browser."
+      onclick={() => (showCustomize = !showCustomize)}>⚙ Customize</button>
+    {#if $user.can_create}
+      <button class="btn-primary" onclick={() => navigate("/servers?new=1")}>+ New Server</button>
+    {/if}
+  </div>
 </div>
 
+{#if showCustomize}
+  <div class="card p-4 mb-6">
+    <div class="flex items-center gap-2 mb-2">
+      <h2 class="text-sm font-semibold">Dashboard layout</h2>
+      <span class="text-xs text-muted">drag (or ▲▼) to reorder · untick to hide · saved in this browser</span>
+      <div class="ml-auto flex items-center gap-2">
+        {#if modCustomized}
+          <button class="btn-ghost text-xs" onclick={resetModLayout}>Reset to default</button>
+        {/if}
+        <button class="btn-ghost text-xs" onclick={() => (showCustomize = false)}>Done</button>
+      </div>
+    </div>
+    <div class="divide-y divide-border">
+      {#each modLayout.order as id, i (id)}
+        <div
+          class="flex items-center gap-3 py-1.5 text-sm {modDragIndex === i ? 'opacity-40' : ''}"
+          draggable={modLayout.order.length > 1}
+          ondragstart={() => (modDragIndex = i)}
+          ondragover={(e) => onModDragOver(e, i)}
+          ondragend={onModDrop}
+          role="listitem"
+        >
+          <!-- Desktop: drag handle. Touch: ▲▼ (native drag doesn't work on touch). -->
+          <span class="hidden sm:inline text-muted cursor-grab select-none" title="Drag to reorder" aria-hidden="true">⠿</span>
+          <button class="px-1 text-muted hover:text-text disabled:opacity-30" disabled={i === 0}
+            onclick={() => moveModule(i, -1)} title="Move up" aria-label="Move {MODULE_LABEL[id].label} up">▲</button>
+          <button class="px-1 text-muted hover:text-text disabled:opacity-30" disabled={i === modLayout.order.length - 1}
+            onclick={() => moveModule(i, 1)} title="Move down" aria-label="Move {MODULE_LABEL[id].label} down">▼</button>
+          <label class="flex items-center gap-2 cursor-pointer min-w-0 {modLayout.hidden.includes(id) ? 'text-muted' : ''}">
+            <input type="checkbox" checked={!modLayout.hidden.includes(id)} onchange={() => toggleModule(id)} />
+            <span aria-hidden="true">{MODULE_LABEL[id].icon}</span>
+            <span class="truncate">{MODULE_LABEL[id].label}</span>
+          </label>
+        </div>
+      {/each}
+    </div>
+    <p class="text-[10px] text-muted mt-2">
+      Sections only appear when they apply — e.g. Host history is admin-only and the Kvasir sections need AI configured —
+      so a ticked section can still be absent.
+    </p>
+  </div>
+{/if}
+
+<!-- The dashboard sections ("modules") are declared as snippets and rendered by
+     the ordered loop at the bottom, so the user can sort and hide them. Snippet
+     declarations render nothing where they stand — only the loop's order matters. -->
+{#snippet modFleet()}
 {#if fleet && fleet.servers > 0}
   <div class="card px-4 py-2.5 mb-6 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
     <a href="#/servers" class="flex items-center gap-1.5 hover:text-text">
@@ -297,11 +428,13 @@
     </span>
   </div>
 {/if}
+{/snippet}
 
 {#if error}
   <div class="card border-danger p-3 text-danger text-sm mb-4">{error}</div>
 {/if}
 
+{#snippet modCards()}
 <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 mb-8">
   {#each cards as c}
     <svelte:element
@@ -315,7 +448,9 @@
     </svelte:element>
   {/each}
 </div>
+{/snippet}
 
+{#snippet modHostHistory()}
 {#if $user.role === "admin" && info}
   <div class="mb-8">
     <div class="flex items-center gap-2">
@@ -344,6 +479,7 @@
     {/if}
   </div>
 {/if}
+{/snippet}
 
 {#if showBackupWarning}
   <div class="card p-4 mb-8 border-l-4 border-warn relative">
@@ -398,6 +534,7 @@
   </div>
 {/if}
 
+{#snippet modOpsDigest()}
 {#if info?.ai_enabled}
   <div class="card p-4 mb-8">
     <div class="flex items-center gap-2">
@@ -414,7 +551,9 @@
     {/if}
   </div>
 {/if}
+{/snippet}
 
+{#snippet modAskKvasir()}
 {#if info?.ai_actions_enabled}
   <div class="card p-4 mb-8 space-y-3">
     <div class="flex items-center gap-2">
@@ -466,7 +605,9 @@
     {/if}
   </div>
 {/if}
+{/snippet}
 
+{#snippet modWhosOnline()}
 {#if whosOnline.length}
   <h2 class="text-lg font-semibold mb-3">Who's online</h2>
   <div class="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-8">
@@ -489,12 +630,14 @@
     {/each}
   </div>
 {/if}
+{/snippet}
 
+{#snippet modRecent()}
 <h2 class="text-lg font-semibold mb-3">Recent servers</h2>
 {#if servers.length === 0}
-  <div class="card p-4 text-muted text-sm">No servers yet. Create one from the Servers page.</div>
+  <div class="card p-4 mb-8 text-muted text-sm">No servers yet. Create one from the Servers page.</div>
 {:else}
-  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-8">
     {#each servers.slice(0, 8) as s}
       <a href={`#/servers/${s.id}`} class="card flex items-center justify-between gap-3 px-4 py-3 hover:bg-panel2/50">
         <div class="flex items-center gap-3 min-w-0">
@@ -530,3 +673,19 @@
     {/each}
   </div>
 {/if}
+{/snippet}
+
+{#snippet modBody(id)}
+  {#if id === "fleet"}{@render modFleet()}
+  {:else if id === "cards"}{@render modCards()}
+  {:else if id === "hosthistory"}{@render modHostHistory()}
+  {:else if id === "opsdigest"}{@render modOpsDigest()}
+  {:else if id === "askkvasir"}{@render modAskKvasir()}
+  {:else if id === "whosonline"}{@render modWhosOnline()}
+  {:else if id === "recent"}{@render modRecent()}
+  {/if}
+{/snippet}
+
+{#each modLayout.order as id (id)}
+  {#if !modLayout.hidden.includes(id)}{@render modBody(id)}{/if}
+{/each}

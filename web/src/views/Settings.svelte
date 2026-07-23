@@ -968,27 +968,28 @@
     if (migrateExporting) return;
     const include = Object.entries(migrateSel).filter(([, v]) => v).map(([k]) => k).join(",");
     const servers = Object.entries(migrateSrvSel).filter(([, v]) => v).map(([k]) => k).join(",");
-    // Servers selected → the combined migration archive; settings only → the JSON bundle.
-    const url = servers
-      ? `/api/migration/export?include=${include}&servers=${servers}`
-      : `/api/panel/export?include=${include}`;
+    if (servers) {
+      // The archive can be many gigabytes. Buffering it in page memory kills the
+      // tab (Safari reloaded a real 9 GB export), so hand it to the browser's own
+      // download manager via plain navigation — it streams to disk and shows its
+      // own progress. The cookie rides along; Content-Disposition makes it save.
+      const a = document.createElement("a");
+      a.href = `/api/migration/export?include=${include}&servers=${servers}`;
+      a.download = "panel-migration.ygg.tar.gz";
+      a.click();
+      toast("Download started — follow it in the browser's download list. The file holds secrets; treat it like a password.", "info");
+      return;
+    }
+    // Settings-only bundles are tiny — fetch keeps the nicer error handling.
     migrateExporting = true;
     migrateExportedBytes = 0;
     try {
-      const res = await fetch(url, { credentials: "same-origin" });
+      const res = await fetch(`/api/panel/export?include=${include}`, { credentials: "same-origin" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
-      const reader = res.body.getReader();
-      const chunks = [];
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        migrateExportedBytes += value.length;
-      }
-      const blob = new Blob(chunks, { type: servers ? "application/gzip" : "application/json" });
+      const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = servers ? "panel-migration.ygg.tar.gz" : "panel-settings.yggpanel.json";
+      a.download = "panel-settings.yggpanel.json";
       a.click();
       URL.revokeObjectURL(a.href);
       toast("Bundle downloaded — it contains secrets, treat it like a password", "info");

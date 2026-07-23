@@ -340,6 +340,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/ai/health-digest", s.requireAdmin(s.handleHealthDigest))
 		r.Post("/api/ai/plan", s.handleAIPlan)                // propose actions from natural language (never executes)
 		r.Post("/api/ai/plan/execute", s.handleAIPlanExecute) // run confirmed actions (re-checks RBAC)
+		r.Get("/api/ai/chat/ws", s.handleAIChatWS)            // Dashboard Kvasir chat (streams; proposals confirmed via plan/execute)
 
 		// Beacon (voluntary install ping) — config + collected stats (admin-only)
 		r.Get("/api/settings/steam-web-api-key", s.requireAdmin(s.handleGetSteamKey))

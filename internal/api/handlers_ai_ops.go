@@ -98,32 +98,9 @@ func (s *Server) handleAIPlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	parsed, note := parseAIPlan(out)
-	// Validate + resolve every proposed action against the real, controllable set.
-	byName := map[string]serverRow{}
-	for _, srv := range servers {
-		byName[strings.ToLower(srv.Name)] = srv
-	}
-	result := []aiPlanAction{}
-	for _, a := range parsed {
-		a.Action = strings.ToLower(strings.TrimSpace(a.Action))
-		if !aiAllowedActions[a.Action] {
-			a.OK = false
-			a.Problem = "action not allowed"
-			result = append(result, a)
-			continue
-		}
-		srv, ok := byName[strings.ToLower(strings.TrimSpace(a.Server))]
-		if !ok {
-			a.OK = false
-			a.Problem = "unknown or not-controllable server"
-			result = append(result, a)
-			continue
-		}
-		a.ServerID = srv.ID
-		a.Server = srv.Name // canonical casing
-		a.OK = true
-		result = append(result, a)
-	}
+	// Validate + resolve every proposed action against the real, controllable set
+	// (same policy the chat's proposals go through).
+	result := validatePlanActions(parsed, servers)
 	jsonOK(w, map[string]any{"actions": result, "note": note})
 }
 

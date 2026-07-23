@@ -191,41 +191,102 @@
     }
   }
 
-  // AI actions (Phase 4 — natural language → propose → confirm → run)
-  let opsRequest = $state("");
-  let planBusy = $state(false);
-  let plan = $state(null); // { actions:[{action,server,server_id,ok,problem,reason}], note }
-  let execBusy = $state(false);
-  let execResults = $state(null); // [{server,action,status,detail}]
-  async function proposePlan() {
-    if (!opsRequest.trim()) return;
-    planBusy = true;
-    execResults = null;
+  // Kvasir chat — a panel-grounded conversation over a WebSocket. The server
+  // keeps no state (the visible history is sent each turn) and streams the reply
+  // back as delta frames. Actions the AI proposes arrive validated and run only
+  // through the same confirmed /ai/plan/execute path as before.
+  let chatMsgs = $state([]); // {role, content, streamRaw?, actions?, results?, running?}
+  let chatInput = $state("");
+  let chatBusy = $state(false);
+  let chatErr = $state("");
+  let chatWS = null;
+  let chatBox = $state(null);
+  function chatScroll() {
+    queueMicrotask(() => chatBox?.scrollTo(0, chatBox.scrollHeight));
+  }
+  function chatSocket() {
+    return new Promise((resolve, reject) => {
+      if (chatWS && chatWS.readyState === WebSocket.OPEN) return resolve(chatWS);
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/api/ai/chat/ws`);
+      ws.onopen = () => {
+        chatWS = ws;
+        resolve(ws);
+      };
+      ws.onerror = () => reject(new Error("could not open the chat connection"));
+      ws.onmessage = (ev) => {
+        try {
+          chatFrame(JSON.parse(ev.data));
+        } catch {
+          /* keepalive/noise */
+        }
+      };
+      ws.onclose = () => {
+        if (chatWS === ws) chatWS = null;
+        if (chatBusy) {
+          chatBusy = false;
+          chatErr = "the chat connection dropped — send again to reconnect";
+        }
+      };
+    });
+  }
+  function chatFrame(f) {
+    const last = chatMsgs[chatMsgs.length - 1];
+    if (!last || last.role !== "assistant") return;
+    if (f.type === "delta") {
+      last.streamRaw = (last.streamRaw || "") + f.text;
+      // Hide the trailing ```actions block while it streams — it becomes buttons.
+      const cut = last.streamRaw.indexOf("```actions");
+      last.content = cut >= 0 ? last.streamRaw.slice(0, cut) : last.streamRaw;
+    } else if (f.type === "done") {
+      last.content = f.text;
+      last.actions = (f.actions || []).filter((a) => a.ok);
+      chatBusy = false;
+    } else if (f.type === "error") {
+      chatErr = f.error;
+      if (!last.content) chatMsgs.pop(); // don't leave an empty bubble behind
+      chatBusy = false;
+    }
+    chatScroll();
+  }
+  async function chatSend() {
+    const text = chatInput.trim();
+    if (!text || chatBusy) return;
+    chatErr = "";
+    chatMsgs.push({ role: "user", content: text });
+    chatInput = "";
+    chatBusy = true;
+    chatScroll();
+    // History = everything up to and including the new user turn (not the
+    // placeholder the reply streams into).
+    const history = chatMsgs
+      .map((m) => ({ role: m.role, content: m.content }))
+      .slice(-16);
+    chatMsgs.push({ role: "assistant", content: "" });
     try {
-      plan = await api.post("/ai/plan", { request: opsRequest });
+      const ws = await chatSocket();
+      ws.send(JSON.stringify({ messages: history }));
     } catch (e) {
-      error = e.message;
-      plan = null;
-    } finally {
-      planBusy = false;
+      chatErr = e.message;
+      chatBusy = false;
+      chatMsgs.pop();
     }
   }
-  let planOkActions = $derived((plan?.actions || []).filter((a) => a.ok));
-  async function runPlan() {
-    const actions = planOkActions.map((a) => ({ action: a.action, server_id: a.server_id }));
+  async function chatRun(msg) {
+    const actions = (msg.actions || []).map((a) => ({ action: a.action, server_id: a.server_id }));
     if (!actions.length) return;
-    execBusy = true;
+    msg.running = true;
     try {
       const r = await api.post("/ai/plan/execute", { actions });
-      execResults = r.results || [];
-      plan = null;
-      opsRequest = "";
+      msg.results = r.results || [];
+      msg.actions = [];
     } catch (e) {
-      error = e.message;
+      chatErr = e.message;
     } finally {
-      execBusy = false;
+      msg.running = false;
     }
   }
+  onDestroy(() => chatWS?.close());
 
   const stat = (label, value, sub, link) => ({ label, value, sub, link });
   function fmtBytes(n) {
@@ -554,55 +615,66 @@
 {/snippet}
 
 {#snippet modAskKvasir()}
-{#if info?.ai_actions_enabled}
+{#if info?.ai_enabled}
   <div class="card p-4 mb-8 space-y-3">
     <div class="flex items-center gap-2">
-      <h2 class="text-lg font-semibold">🤖 Ask Kvasir</h2>
-      <span class="text-xs text-muted">propose → you confirm → run</span>
-    </div>
-    <form onsubmit={(e) => { e.preventDefault(); proposePlan(); }} class="flex gap-2">
-      <input class="input" bind:value={opsRequest} disabled={planBusy}
-        placeholder="e.g. safely restart all Minecraft servers; players may be online" />
-      <button class="btn-primary shrink-0" disabled={planBusy || !opsRequest.trim()}>{planBusy ? "Thinking…" : "Propose"}</button>
-    </form>
-
-    {#if plan}
-      {#if plan.note}<div class="text-sm text-muted">{plan.note}</div>{/if}
-      {#if plan.actions?.length}
-        <div class="card divide-y divide-border">
-          {#each plan.actions as a}
-            <div class="flex items-center gap-3 px-3 py-2 text-sm {a.ok ? '' : 'opacity-60'}">
-              <span class="shrink-0">{a.ok ? "✅" : "🚫"}</span>
-              <span class="font-medium">{a.action}</span>
-              <span class="text-muted">→ {a.server}</span>
-              <span class="text-xs text-muted ml-auto">{a.ok ? a.reason : a.problem}</span>
-            </div>
-          {/each}
-        </div>
+      <h2 class="text-lg font-semibold">🤖 Kvasir</h2>
+      <span class="text-xs text-muted">chat · knows only this panel · actions always confirmed</span>
+      {#if chatMsgs.length}
+        <button class="btn-ghost text-xs ml-auto" onclick={() => { chatMsgs = []; chatErr = ""; }}>Clear</button>
       {/if}
-      <div class="flex gap-2">
-        {#if planOkActions.length}
-          <button class="btn-primary" disabled={execBusy} onclick={runPlan}>
-            {execBusy ? "Running…" : `Confirm & run ${planOkActions.length} action${planOkActions.length > 1 ? "s" : ""}`}
-          </button>
-        {/if}
-        <button class="btn-ghost" disabled={execBusy} onclick={() => (plan = null)}>Cancel</button>
-      </div>
-      <div class="text-[10px] text-muted">The AI can only propose restart / safe-restart / stop / start, on servers you control — never wipe, delete or reconfigure. Nothing runs until you confirm.</div>
-    {/if}
+    </div>
 
-    {#if execResults}
-      <div class="card divide-y divide-border">
-        {#each execResults as r}
-          <div class="flex items-center gap-3 px-3 py-2 text-sm">
-            <span class="shrink-0">{r.status === "ok" ? "✅" : r.status === "skipped" ? "⏭️" : "❌"}</span>
-            <span class="font-medium">{r.action}</span>
-            <span class="text-muted">→ {r.server}</span>
-            <span class="text-xs text-muted ml-auto">{r.detail}</span>
-          </div>
+    {#if chatMsgs.length}
+      <div class="space-y-2 max-h-96 overflow-y-auto pr-1" bind:this={chatBox}>
+        {#each chatMsgs as m, i}
+          {#if m.role === "user"}
+            <div class="flex justify-end">
+              <div class="bg-accent/15 rounded-lg px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap break-words">{m.content}</div>
+            </div>
+          {:else}
+            <div class="flex">
+              <div class="bg-panel2 rounded-lg px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap break-words">
+                {m.content}{#if chatBusy && i === chatMsgs.length - 1}<span class="animate-pulse">▍</span>{/if}
+                {#if m.actions?.length}
+                  <div class="mt-2 space-y-1 border-t border-border pt-2">
+                    {#each m.actions as a}
+                      <div class="text-xs">▸ <span class="font-medium">{a.action}</span> → {a.server}{#if a.reason}<span class="text-muted"> · {a.reason}</span>{/if}</div>
+                    {/each}
+                    <button class="btn-primary text-xs mt-1" disabled={m.running} onclick={() => chatRun(m)}>
+                      {m.running ? "Running…" : `Confirm & run ${m.actions.length} action${m.actions.length > 1 ? "s" : ""}`}
+                    </button>
+                  </div>
+                {/if}
+                {#if m.results?.length}
+                  <div class="mt-2 space-y-0.5 border-t border-border pt-2">
+                    {#each m.results as r}
+                      <div class="text-xs">{r.status === "ok" ? "✅" : r.status === "skipped" ? "⏭️" : "❌"} {r.action} → {r.server}{#if r.detail}<span class="text-muted"> · {r.detail}</span>{/if}</div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
         {/each}
       </div>
+    {:else}
+      <p class="text-muted text-sm">
+        Ask about your servers — status, trouble, history, "why did X crash?". Kvasir knows only this
+        panel, and anything it proposes runs only after you confirm.
+      </p>
     {/if}
+
+    {#if chatErr}<div class="text-danger text-sm">{chatErr}</div>{/if}
+    <form onsubmit={(e) => { e.preventDefault(); chatSend(); }} class="flex gap-2">
+      <input class="input" bind:value={chatInput} disabled={chatBusy}
+        placeholder="e.g. anything need my attention today?" />
+      <button class="btn-primary shrink-0" disabled={chatBusy || !chatInput.trim()}>{chatBusy ? "…" : "Send"}</button>
+    </form>
+    <div class="text-[10px] text-muted">
+      Kvasir can only propose restart / safe-restart / stop / start on servers you control — never wipe,
+      delete or reconfigure — and nothing runs until you confirm. AI-generated; may contain mistakes.
+    </div>
   </div>
 {/if}
 {/snippet}

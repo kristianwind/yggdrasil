@@ -136,6 +136,33 @@ The flow is two endpoints, deliberately:
    **This endpoint never executes anything.**
 2. `POST /api/ai/plan/execute` — runs only the actions you confirmed.
 
+## Proactive monitoring
+
+Beyond answering when asked, Kvasir can watch for trouble on its own. **Settings → Kvasir** has a
+proactive level — off / passive (explain what happened) / active-observe (also propose a fix) /
+active-help (apply the safe fixes automatically) — and a set of trigger checkboxes deciding what it
+reacts to:
+
+- **Crashes / faults** — a container that died unexpectedly.
+- **Slow / failed starts** — a server stuck or giving up during start.
+- **Resource alarms** — a tripped CPU/RAM/disk threshold.
+- **Panel / host problems** — e.g. the host running low on disk.
+- **Player / traffic anomalies** *(opt-in, not on by default)* — activity being wrong rather than a
+  log line matching. Every ~5 minutes each running server is checked for three things: a **mass
+  disconnect** (from 4+ players, 75% or more gone between samples while the server stayed up), a
+  **player influx** above the server's own 14-day high (from 8+ players), and a **log-volume spike**
+  (the container suddenly logging 5× its own recent baseline; the baseline warms up for ~30 minutes
+  and quiet logs never alert). A detected anomaly is always notified as plain fact; the AI
+  explanation on top follows the proactive level. At most one alert per hour per server per kind.
+
+Log-pattern watching — regex rules over any server's log — is its own feature with its own guide
+section: see Kvasir Watchers in the monitoring guide. A watcher with action *Kvasir* is its own
+opt-in and doesn't need a trigger checkbox here.
+
+At active-help, only `restart` and `safe_restart` run without confirmation (plus the clamped
+memory raise after an out-of-memory crash); anything touching config or data stays propose-only.
+Automatic actions are rate-limited to 3 per 30 minutes per server and audited as actor `kvasir`.
+
 ## The safety model
 
 Each of these is enforced in the panel, not in the prompt:

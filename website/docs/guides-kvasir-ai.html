@@ -169,6 +169,30 @@ allow-list and resolved to a real server; rejected rows come back marked with wh
 <strong>This endpoint never executes anything.</strong></li>
 <li><code>POST /api/ai/plan/execute</code> — runs only the actions you confirmed.</li>
 </ol>
+<h2 id="proactive-monitoring">Proactive monitoring</h2>
+<p>Beyond answering when asked, Kvasir can watch for trouble on its own. <strong>Settings → Kvasir</strong> has a
+proactive level — off / passive (explain what happened) / active-observe (also propose a fix) /
+active-help (apply the safe fixes automatically) — and a set of trigger checkboxes deciding what it
+reacts to:</p>
+<ul>
+<li><strong>Crashes / faults</strong> — a container that died unexpectedly.</li>
+<li><strong>Slow / failed starts</strong> — a server stuck or giving up during start.</li>
+<li><strong>Resource alarms</strong> — a tripped CPU/RAM/disk threshold.</li>
+<li><strong>Panel / host problems</strong> — e.g. the host running low on disk.</li>
+<li><strong>Player / traffic anomalies</strong> <em>(opt-in, not on by default)</em> — activity being wrong rather than a
+log line matching. Every ~5 minutes each running server is checked for three things: a <strong>mass
+disconnect</strong> (from 4+ players, 75% or more gone between samples while the server stayed up), a
+<strong>player influx</strong> above the server&rsquo;s own 14-day high (from 8+ players), and a <strong>log-volume spike</strong>
+(the container suddenly logging 5× its own recent baseline; the baseline warms up for ~30 minutes
+and quiet logs never alert). A detected anomaly is always notified as plain fact; the AI
+explanation on top follows the proactive level. At most one alert per hour per server per kind.</li>
+</ul>
+<p>Log-pattern watching — regex rules over any server&rsquo;s log — is its own feature with its own guide
+section: see Kvasir Watchers in the monitoring guide. A watcher with action <em>Kvasir</em> is its own
+opt-in and doesn&rsquo;t need a trigger checkbox here.</p>
+<p>At active-help, only <code>restart</code> and <code>safe_restart</code> run without confirmation (plus the clamped
+memory raise after an out-of-memory crash); anything touching config or data stays propose-only.
+Automatic actions are rate-limited to 3 per 30 minutes per server and audited as actor <code>kvasir</code>.</p>
 <h2 id="the-safety-model">The safety model</h2>
 <p>Each of these is enforced in the panel, not in the prompt:</p>
 <ul>
@@ -249,7 +273,7 @@ the whole loop on your own hardware.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#it-is-off-by-default">It is off by default</a><a class="t2" href="#choosing-a-provider">Choosing a provider</a><a class="t2" href="#the-two-tiers">The two tiers</a><a class="t2" href="#what-shipped">What shipped</a><a class="t3" href="#ops-digest">Ops digest</a><a class="t3" href="#error-explainer">Error explainer</a><a class="t3" href="#config-advisor">Config advisor</a><a class="t3" href="#activity-digest">Activity digest</a><a class="t3" href="#daily-digest-to-notifications">Daily digest to notifications</a><a class="t3" href="#natural-language-ops">Natural-language ops</a><a class="t2" href="#the-safety-model">The safety model</a><a class="t2" href="#what-leaves-your-host">What leaves your host</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#it-is-off-by-default">It is off by default</a><a class="t2" href="#choosing-a-provider">Choosing a provider</a><a class="t2" href="#the-two-tiers">The two tiers</a><a class="t2" href="#what-shipped">What shipped</a><a class="t3" href="#ops-digest">Ops digest</a><a class="t3" href="#error-explainer">Error explainer</a><a class="t3" href="#config-advisor">Config advisor</a><a class="t3" href="#activity-digest">Activity digest</a><a class="t3" href="#daily-digest-to-notifications">Daily digest to notifications</a><a class="t3" href="#natural-language-ops">Natural-language ops</a><a class="t2" href="#proactive-monitoring">Proactive monitoring</a><a class="t2" href="#the-safety-model">The safety model</a><a class="t2" href="#what-leaves-your-host">What leaves your host</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

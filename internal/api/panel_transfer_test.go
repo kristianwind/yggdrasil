@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/db"
@@ -141,5 +144,35 @@ func TestPanelImportMergesWithoutClobbering(t *testing.T) {
 	sum2 := dst.applyPanelBundle(ctx, bundle)
 	if sum2["channels_added"] != 0 || sum2["users_added"] != 0 || sum2["rune_repos_added"] != 0 {
 		t.Fatalf("second import was not idempotent: %v", sum2)
+	}
+}
+
+// TestPanelExportUsersNoDeadlock guards the single-connection trap: the test DB
+// also caps the pool at one connection, so a nested permissions query inside the
+// open users iterator hangs this test forever instead of passing.
+func TestPanelExportUsersNoDeadlock(t *testing.T) {
+	s := transferTestServer(t, "target-key-fedcba9876543210-abc")
+	s.db.Exec("INSERT INTO users (id, username, password_hash, role) VALUES ('u1','a','h','admin')")
+	s.db.Exec("INSERT INTO users (id, username, password_hash, role) VALUES ('u2','b','h','user')")
+	s.db.Exec("INSERT INTO permissions (id, user_id, scope_type, scope_id, perms) VALUES ('p1','u2','server','s1','server.view')")
+
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/panel/export?include=users", nil)
+		s.handlePanelExport(rec, req)
+		done <- rec
+	}()
+	select {
+	case rec := <-done:
+		var b panelBundle
+		if err := json.Unmarshal(rec.Body.Bytes(), &b); err != nil {
+			t.Fatalf("bad export json: %v", err)
+		}
+		if len(b.Users) != 2 || len(b.Users[1].Permissions)+len(b.Users[0].Permissions) != 1 {
+			t.Fatalf("users/permissions not exported: %+v", b.Users)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("export deadlocked on the single-connection pool")
 	}
 }

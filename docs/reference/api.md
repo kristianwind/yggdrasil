@@ -298,6 +298,8 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `PUT` | `/api/servers/{id}` | `server.control` | Edit name, variable values, resource caps, `notes`, `notes_markdown`. Changing `realm_id` or `host_mounts` requires admin — both are privilege-scoping fields |
 | `DELETE` | `/api/servers/{id}` | `server.delete` | Delete the server |
 | `POST` | `/api/servers/{id}/clone` | `server.view` + `server.create` | Copy a server's setup into a fresh server with new ports and an empty data dir |
+| `GET` | `/api/servers/{id}/import-data` | `server.view` | Whether the rune supports data import and the inputs it expects |
+| `POST` | `/api/servers/{id}/import-data` | Admin | Import an existing deployment: multipart upload of the rune's declared inputs, run in one-shot containers streamed to the build log |
 | `POST` | `/api/servers/{id}/install` | `server.control` | Run or re-run the install in the background |
 | `POST` | `/api/servers/{id}/start` | `server.control` | Start the container |
 | `POST` | `/api/servers/{id}/stop` | `server.control` | Stop the container |

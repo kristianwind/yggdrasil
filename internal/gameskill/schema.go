@@ -23,6 +23,7 @@ type Gameskill struct {
 	Docker      Docker     `yaml:"docker"      json:"docker"`
 	Variables   []Variable `yaml:"variables"   json:"variables"`
 	Install     *Install   `yaml:"install"     json:"install,omitempty"`
+	Import      *Importer  `yaml:"import,omitempty" json:"import,omitempty"`
 	Startup     Startup    `yaml:"startup"     json:"startup"`
 	Query       *Query     `yaml:"query"       json:"query,omitempty"`
 	RCON        *RCON      `yaml:"rcon"        json:"rcon,omitempty"`
@@ -49,11 +50,11 @@ type Gameskill struct {
 // A rune with services turns one panel "server" into a small app stack (e.g. Immich =
 // server + machine-learning + postgres + redis, Paperless = app + redis).
 type Service struct {
-	Name     string            `yaml:"name"     json:"name"`               // DNS alias on the stack network, e.g. "db", "redis"
+	Name     string            `yaml:"name"     json:"name"` // DNS alias on the stack network, e.g. "db", "redis"
 	Image    string            `yaml:"image"    json:"image"`
-	Env      map[string]string `yaml:"env,omitempty"      json:"env,omitempty"`      // values may reference {{VARS}}
+	Env      map[string]string `yaml:"env,omitempty"      json:"env,omitempty"`        // values may reference {{VARS}}
 	DataPath string            `yaml:"data_path,omitempty" json:"data_path,omitempty"` // persisted mount inside the sidecar
-	Command  []string          `yaml:"command,omitempty"  json:"command,omitempty"`  // optional command override (argv)
+	Command  []string          `yaml:"command,omitempty"  json:"command,omitempty"`    // optional command override (argv)
 }
 
 // Watcher declares a default Kvasir log-watcher the rune ships with — the app
@@ -64,10 +65,10 @@ type Service struct {
 // admin to invent the right regex themselves.
 type Watcher struct {
 	Name       string `yaml:"name"                  json:"name"`
-	Pattern    string `yaml:"pattern"               json:"pattern"`                // regex matched per log line
-	Threshold  int    `yaml:"threshold,omitempty"   json:"threshold,omitempty"`    // N matches within the window (default 1)
-	WindowSecs int    `yaml:"window_secs,omitempty" json:"window_secs,omitempty"`  // default 60, clamped to 3600
-	Action     string `yaml:"action,omitempty"      json:"action,omitempty"`       // notify (default) | kvasir
+	Pattern    string `yaml:"pattern"               json:"pattern"`               // regex matched per log line
+	Threshold  int    `yaml:"threshold,omitempty"   json:"threshold,omitempty"`   // N matches within the window (default 1)
+	WindowSecs int    `yaml:"window_secs,omitempty" json:"window_secs,omitempty"` // default 60, clamped to 3600
+	Action     string `yaml:"action,omitempty"      json:"action,omitempty"`      // notify (default) | kvasir
 }
 
 // AdminLog declares how to surface a game's admin/activity log as a parsed feed
@@ -189,6 +190,46 @@ type Variable struct {
 type Install struct {
 	Image  string `yaml:"image"  json:"image"`
 	Script string `yaml:"script" json:"script"`
+}
+
+// Importer declares how to bring an EXISTING deployment of this app into a
+// Yggdrasil server — the onboarding counterpart to migration (which moves
+// between panels). The admin uploads the app's own data (a site archive, a
+// database dump) and the panel runs the declared steps against the server's
+// data dir and, for app-stacks, its database sidecar. Everything runs in
+// one-shot containers, streamed to the install log; the server is stopped
+// during the import and started after. First mover: WordPress (webroot + SQL).
+type Importer struct {
+	Inputs []ImportInput `yaml:"inputs" json:"inputs"`
+	Steps  []ImportStep  `yaml:"steps"  json:"steps"`
+}
+
+type ImportInput struct {
+	Key      string `yaml:"key"      json:"key"`                        // form field + step reference
+	Label    string `yaml:"label"    json:"label"`                      // shown in the UI
+	Accept   string `yaml:"accept,omitempty"   json:"accept,omitempty"` // e.g. ".sql,.sql.gz"
+	Optional bool   `yaml:"optional,omitempty" json:"optional,omitempty"`
+}
+
+// ImportStep is one action. Exactly one verb is set per step:
+//
+//	unpack:    extract an archive input into the data dir (at `to`, default ".")
+//	db_import: pipe a .sql/.sql.gz input into a database sidecar via a one-shot
+//	           client container on the stack network (image + command below)
+//	script:    run a shell snippet in the app's own image against the data dir
+//	           (e.g. rewrite wp-config.php) — {{VARS}} + $YGG_INPUT_<KEY> paths
+type ImportStep struct {
+	Unpack   string    `yaml:"unpack,omitempty"    json:"unpack,omitempty"` // input key
+	To       string    `yaml:"to,omitempty"        json:"to,omitempty"`     // unpack destination within the data dir
+	DBImport *DBImport `yaml:"db_import,omitempty" json:"db_import,omitempty"`
+	Script   string    `yaml:"script,omitempty"    json:"script,omitempty"`
+}
+
+type DBImport struct {
+	Input   string `yaml:"input"   json:"input"`   // the dump input key
+	Service string `yaml:"service" json:"service"` // stack service (sidecar) name, e.g. "db"
+	Image   string `yaml:"image"   json:"image"`   // client image, e.g. "mariadb:11" or "postgres:16"
+	Command string `yaml:"command" json:"command"` // shell run inside it; {{VARS}} templated, dump on stdin
 }
 
 type Startup struct {
@@ -399,6 +440,47 @@ func validate(gs *Gameskill) error {
 			}
 			if _, err := regexp.Compile(e.Regex); err != nil {
 				return fmt.Errorf("gameskill.admin_log.events %q regex does not compile: %w", e.Type, err)
+			}
+		}
+	}
+
+	if gs.Import != nil {
+		if len(gs.Import.Steps) == 0 {
+			return fmt.Errorf("gameskill.import.steps is required when import is set")
+		}
+		keys := map[string]bool{}
+		for _, in := range gs.Import.Inputs {
+			if strings.TrimSpace(in.Key) == "" {
+				return fmt.Errorf("gameskill.import.inputs entry missing key")
+			}
+			keys[in.Key] = true
+		}
+		for i, st := range gs.Import.Steps {
+			verbs := 0
+			if st.Unpack != "" {
+				verbs++
+				if !keys[st.Unpack] {
+					return fmt.Errorf("gameskill.import.steps[%d] unpack references unknown input %q", i, st.Unpack)
+				}
+				if strings.Contains(st.To, "..") {
+					return fmt.Errorf("gameskill.import.steps[%d] unpack 'to' must not contain ..", i)
+				}
+			}
+			if st.DBImport != nil {
+				verbs++
+				d := st.DBImport
+				if !keys[d.Input] {
+					return fmt.Errorf("gameskill.import.steps[%d] db_import references unknown input %q", i, d.Input)
+				}
+				if strings.TrimSpace(d.Service) == "" || strings.TrimSpace(d.Image) == "" || strings.TrimSpace(d.Command) == "" {
+					return fmt.Errorf("gameskill.import.steps[%d] db_import needs service, image and command", i)
+				}
+			}
+			if st.Script != "" {
+				verbs++
+			}
+			if verbs != 1 {
+				return fmt.Errorf("gameskill.import.steps[%d] must set exactly one of unpack/db_import/script", i)
 			}
 		}
 	}

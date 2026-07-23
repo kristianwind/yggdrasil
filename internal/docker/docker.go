@@ -564,12 +564,14 @@ func (c *Client) FindByLabel(ctx context.Context, key, value string) ([]types.Co
 
 // EphemeralOptions configures a one-shot container run.
 type EphemeralOptions struct {
-	Image       string
-	DataDir     string // bind-mounted to /data (optional)
-	Env         []string
-	Script      string            // run via /bin/sh -c
-	ExtraMounts map[string]string // host path -> container path (e.g. Steam cache)
-	User        string            // optional "uid:gid"; e.g. "0:0" to force root for chown
+	Image        string
+	DataDir      string // bind-mounted to /data (optional)
+	Env          []string
+	Script       string            // run via /bin/sh -c
+	ExtraMounts  map[string]string // host path -> container path (e.g. Steam cache)
+	User         string            // optional "uid:gid"; e.g. "0:0" to force root for chown
+	Network      string            // optional network to join (e.g. a stack net, to reach a db sidecar by name)
+	NetworkAlias string            // DNS alias on that network
 }
 
 // RunEphemeral runs a one-shot container (e.g. a gameskill install script),
@@ -604,7 +606,7 @@ func (c *Client) RunEphemeralOpts(ctx context.Context, opts EphemeralOptions, ou
 	}, &container.HostConfig{
 		Mounts:    mounts,
 		Resources: container.Resources{PidsLimit: defaultPidsLimit()},
-	}, nil, nil, "")
+	}, netConfig(CreateOptions{Network: opts.Network, NetworkAlias: opts.NetworkAlias}), nil, "")
 	if err != nil {
 		return fmt.Errorf("create ephemeral container: %w", err)
 	}

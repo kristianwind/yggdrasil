@@ -611,6 +611,42 @@ sends each `msg` that long before the restart. `at` is a Go duration (`15m`, `60
 to something greater than zero. `msg` is a complete broadcast command for the game, delivered over
 RCON or stdin — not just the text.
 
+## `import`
+
+Declares how to bring an **existing** deployment of this app into a Yggdrasil server — the onboarding
+counterpart to migration (which moves servers between panels). The admin uploads the app's own data
+(a site archive, a database dump) via a 📥 Import data button, and the panel runs the declared steps
+against the server's data dir and, for app-stacks, its database sidecar. Everything runs in one-shot
+containers streamed to the build log; the server is stopped for the import and started after.
+
+```yaml
+import:
+  inputs:
+    - key: files
+      label: "Site archive (webroot)"
+      accept: ".tar.gz,.zip"
+      optional: true
+    - key: db
+      label: "Database dump (.sql or .sql.gz)"
+      accept: ".sql,.sql.gz"
+  steps:
+    - unpack: files          # extract an archive input into the data dir (`to:` subdir, default ".")
+    - db_import:             # pipe a dump into a stack database sidecar
+        input: db
+        service: db          # the services: sidecar name
+        image: "mariadb:lts" # a client image
+        command: "mariadb -h db -u {{DB_USER}} -p{{DB_PASSWORD}} {{DB_NAME}}"
+    - script: "…"            # run a shell snippet in the app's own image against /data
+```
+
+Each `inputs` entry is a file the form accepts (`accept` is a hint; `optional` lets it be skipped).
+Each step sets exactly one verb: `unpack` extracts a `.tar`/`.tar.gz`/`.zip` (jailed to the data dir,
+`to` can't contain `..`); `db_import` runs a one-shot client on the stack network that pipes the dump
+(gzip auto-detected) into the named sidecar; `script` runs a `{{VAR}}`-templated shell snippet in the
+app's image with uploads exposed as `$YGG_INPUT_<KEY>`. Admin-only, because a script runs code in the
+app's image. **Big uploads must go over the LAN** — a reverse proxy like Cloudflare caps request
+bodies (100 MB on the free plan).
+
 ## `backup`
 
 ```yaml

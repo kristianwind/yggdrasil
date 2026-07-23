@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 5
+  version: 6
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -87,6 +87,42 @@ gameskill:
 
   backup:
     include: ["."]
+
+  # Bring an existing WordPress site in: upload the webroot (wp-content etc.) and
+  # a MySQL dump from the old host. The archive lands in the data dir, the dump is
+  # loaded into the stack's MariaDB sidecar, and wp-config.php is rewritten to this
+  # server's DB credentials so the site comes up against the panel's database.
+  import:
+    inputs:
+      - key: files
+        label: "Site archive (webroot: wp-content, uploads, …)"
+        accept: ".tar.gz,.tgz,.tar,.zip"
+        optional: true
+      - key: db
+        label: "Database dump (mysqldump .sql or .sql.gz)"
+        accept: ".sql,.sql.gz,.gz"
+    steps:
+      - unpack: files
+        to: "."
+      - db_import:
+          input: db
+          service: db
+          image: "mariadb:lts"
+          command: "mariadb -h db -u {{DB_USER}} -p{{DB_PASSWORD}} {{DB_NAME}}"
+      - script: |
+          set -e
+          # Point the imported wp-config.php at this server's stack DB (the old
+          # host's credentials won't match). Leaves everything else untouched.
+          cfg=/data/wp-config.php
+          if [ -f "$cfg" ]; then
+            sed -i "s/define( *'DB_NAME'.*/define('DB_NAME', '{{DB_NAME}}');/" "$cfg"
+            sed -i "s/define( *'DB_USER'.*/define('DB_USER', '{{DB_USER}}');/" "$cfg"
+            sed -i "s/define( *'DB_PASSWORD'.*/define('DB_PASSWORD', '{{DB_PASSWORD}}');/" "$cfg"
+            sed -i "s/define( *'DB_HOST'.*/define('DB_HOST', 'db');/" "$cfg"
+            echo "wp-config.php repointed to the panel database"
+          else
+            echo "no wp-config.php in the archive — the image will generate one on first boot"
+          fi
 
   # Default Kvasir watchers — seeded per server as editable rules.
   watchers:

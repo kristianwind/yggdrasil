@@ -19,6 +19,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
@@ -77,6 +78,11 @@ type CreateOptions struct {
 	// /mnt/mediaserver → /media). Admin-set per server, validated + read-only by
 	// default — NEVER sourced from rune YAML (a rune can't mount the host fs).
 	HostMounts []HostMount
+	// Network attaches the container to a user-defined bridge network (instead of
+	// the default bridge) so an app stack's containers can reach each other by name.
+	// NetworkAlias is this container's DNS name on it. Empty = default bridge.
+	Network      string
+	NetworkAlias string
 }
 
 // HostMount is an admin-configured bind of a host path into a container.
@@ -287,11 +293,42 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 			Devices:   parseDeviceMappings(opts.Devices),
 			PidsLimit: defaultPidsLimit(), // cap process count to blunt fork bombs
 		},
-	}, nil, nil, opts.Name)
+	}, netConfig(opts), nil, opts.Name)
 	if err != nil {
 		return "", fmt.Errorf("create container: %w", err)
 	}
 	return resp.ID, nil
+}
+
+// netConfig attaches the container to a user-defined network with a DNS alias, so
+// an app stack's containers resolve each other by service name. nil (default
+// bridge) when no network is requested.
+func netConfig(opts CreateOptions) *network.NetworkingConfig {
+	if opts.Network == "" {
+		return nil
+	}
+	ep := &network.EndpointSettings{}
+	if opts.NetworkAlias != "" {
+		ep.Aliases = []string{opts.NetworkAlias}
+	}
+	return &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{opts.Network: ep},
+	}
+}
+
+// EnsureNetwork creates a user-defined bridge network if it doesn't already exist.
+func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
+	if _, err := c.dc.NetworkInspect(ctx, name, network.InspectOptions{}); err == nil {
+		return nil
+	}
+	_, err := c.dc.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge"})
+	return err
+}
+
+// RemoveNetwork deletes a stack network (best-effort; fails harmlessly if it still
+// has endpoints or is already gone).
+func (c *Client) RemoveNetwork(ctx context.Context, name string) error {
+	return c.dc.NetworkRemove(ctx, name)
 }
 
 // writePasswdFile writes a minimal /etc/passwd (root + the run-as user + nobody)

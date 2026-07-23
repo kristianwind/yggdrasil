@@ -1,0 +1,75 @@
+gameskill:
+  id: immich
+  name: "Immich"
+  category: "Apps"
+  description: "Self-hosted photo & video backup — a Google Photos alternative with mobile apps, timeline, search and face recognition. A four-container app stack the panel wires together on a private network: the server, its machine-learning worker, a Postgres database (with the vector extension Immich needs) and Redis. Point the mobile app at this server's address. NOTE: the machine-learning image and the models it downloads are large (several GB); first start takes a while. Photos are stored in the panel volume, so back it up."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "ghcr.io/immich-app/immich-server:release"
+    data_path: /usr/src/app/upload
+    keep_entrypoint: true
+    user: "0:0"
+    # Fixed wiring to the sidecars (service name == DNS alias on the stack network).
+    env:
+      DB_HOSTNAME: "database"
+      DB_USERNAME: "{{DB_USERNAME}}"
+      DB_PASSWORD: "{{DB_PASSWORD}}"
+      DB_DATABASE_NAME: "{{DB_DATABASE_NAME}}"
+      REDIS_HOSTNAME: "redis"
+      IMMICH_MACHINE_LEARNING_URL: "http://immich-machine-learning:3003"
+      TZ: "{{TZ}}"
+
+  variables:
+    - key: DB_USERNAME
+      name: "Database username"
+      type: string
+      default: "postgres"
+    - key: DB_PASSWORD
+      name: "Database password (change this)"
+      type: string
+      default: "change-me"
+    - key: DB_DATABASE_NAME
+      name: "Database name"
+      type: string
+      default: "immich"
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  services:
+    # Postgres with the pgvector/vectorchord extension Immich requires (the stock
+    # postgres image will NOT work). Tag tracks Immich's current requirement.
+    - name: database
+      image: "ghcr.io/immich-app/postgres:14-vectorchord0.3.0"
+      data_path: /var/lib/postgresql/data
+      env:
+        POSTGRES_PASSWORD: "{{DB_PASSWORD}}"
+        POSTGRES_USER: "{{DB_USERNAME}}"
+        POSTGRES_DB: "{{DB_DATABASE_NAME}}"
+        POSTGRES_INITDB_ARGS: "--data-checksums"
+    - name: redis
+      image: "docker.io/redis:6.2-alpine"
+      data_path: /data
+    - name: immich-machine-learning
+      image: "ghcr.io/immich-app/immich-machine-learning:release"
+      data_path: /cache
+
+  install:
+    image: "ghcr.io/immich-app/immich-server:release"
+    script: |
+      mkdir -p /data
+      echo "Immich upload directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Immich Server is listening'
+
+  ports:
+    - { name: web, default: 2283, protocol: tcp }
+
+  backup:
+    include: ["."]

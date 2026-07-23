@@ -2,9 +2,9 @@ gameskill:
   id: wordpress
   name: "WordPress"
   category: "Apps"
-  description: "The world's most popular website/CMS (needs a MariaDB or MySQL rune)"
+  description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 3
+  version: 4
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -14,30 +14,42 @@ gameskill:
     data_path: /var/www/html
     keep_entrypoint: true
     user: "0:0"
+    # Fixed wiring to the bundled MariaDB sidecar (service name "db" = its DNS alias).
+    env:
+      WORDPRESS_DB_HOST: "db"
+      WORDPRESS_DB_USER: "{{DB_USER}}"
+      WORDPRESS_DB_PASSWORD: "{{DB_PASSWORD}}"
+      WORDPRESS_DB_NAME: "{{DB_NAME}}"
 
   variables:
-    # IMPORTANT: create a MariaDB (or MySQL) rune FIRST, then point these at it.
-    # Yggdrasil publishes each DB container's 3306 on a RANDOM host port (see the
-    # DB server's Ports, e.g. db:25003) — containers reach each other via the host's
-    # LAN IP + that published port, NOT :3306. So the host is "<LAN-IP>:<db port>".
-    # User/password/name must match the DB rune's MARIADB_USER / MARIADB_PASSWORD
-    # (the app user — NOT the root password) / MARIADB_DATABASE.
-    - key: WORDPRESS_DB_HOST
-      name: "DB host:port — DB server's LAN IP + its published port (e.g. 192.168.1.50:25003), NOT 3306"
+    - key: DB_NAME
+      name: "Database name"
       type: string
-      default: ""
-    - key: WORDPRESS_DB_USER
-      name: "DB user — the DB rune's MARIADB_USER (app user, not root)"
+      default: "wordpress"
+    - key: DB_USER
+      name: "Database user"
       type: string
-      default: ""
-    - key: WORDPRESS_DB_PASSWORD
-      name: "DB password — the DB rune's MARIADB_PASSWORD (not the root password)"
+      default: "wordpress"
+    - key: DB_PASSWORD
+      name: "Database password (change this)"
       type: string
-      default: ""
-    - key: WORDPRESS_DB_NAME
-      name: "DB name — the DB rune's MARIADB_DATABASE"
+      default: "change-me"
+    - key: DB_ROOT_PASSWORD
+      name: "Database root password (change this)"
       type: string
-      default: ""
+      default: "change-me-root"
+
+  # The bundled database — reached by the app as "db". Its data lives in the panel
+  # volume (under .stack/db), so a backup of this server captures the database too.
+  services:
+    - name: db
+      image: "mariadb:lts"
+      data_path: /var/lib/mysql
+      env:
+        MARIADB_DATABASE: "{{DB_NAME}}"
+        MARIADB_USER: "{{DB_USER}}"
+        MARIADB_PASSWORD: "{{DB_PASSWORD}}"
+        MARIADB_ROOT_PASSWORD: "{{DB_ROOT_PASSWORD}}"
 
   install:
     image: "wordpress:latest"

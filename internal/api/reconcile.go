@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -36,6 +37,11 @@ func (s *Server) watchStartupReadyFrom(serverID, containerID, doneRegex string, 
 	if doneRegex != "" {
 		re, _ = regexp.Compile(doneRegex)
 	}
+	// For web apps, a connectable "web" TCP port is a reliable readiness signal —
+	// more so than a log line, which chatty apps (Immich, NestJS) bury or format in
+	// ways a rune's regex misses. 0 for games (they expose game/query, not web), so
+	// their behavior is unchanged. Used as a supplement to the log regex.
+	webPort := s.firstWebHostPort(serverID)
 	deadline := start.Add(startupReadyDeadline)
 	warnedSlow := false
 	for time.Now().Before(deadline) {
@@ -67,7 +73,18 @@ func (s *Server) watchStartupReadyFrom(serverID, containerID, doneRegex string, 
 			var buf bytes.Buffer
 			_ = docker.DemuxCopy(&buf, rc)
 			rc.Close()
-			if re.Match(buf.Bytes()) {
+			// Strip ANSI so a rune's regex isn't defeated by colour codes an app wraps
+			// its log lines in (NestJS/Immich do this heavily).
+			if re.Match([]byte(stripANSI(buf.String()))) {
+				s.markStarted(serverID)
+				return
+			}
+		}
+		// App-readiness fallback: the web port is now serving.
+		if webPort > 0 {
+			conn, derr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", webPort), time.Second)
+			if derr == nil {
+				conn.Close()
 				s.markStarted(serverID)
 				return
 			}
@@ -77,6 +94,28 @@ func (s *Server) watchStartupReadyFrom(serverID, containerID, doneRegex string, 
 	if running, _, _ := s.docker.State(context.Background(), containerID); running {
 		s.markStarted(serverID)
 	}
+}
+
+// firstWebHostPort returns the host port of a rune's TCP port named "web" (0 if
+// none). Games expose game/query ports, not web, so this is zero for them and the
+// TCP readiness fallback only ever applies to web apps.
+func (s *Server) firstWebHostPort(serverID string) int {
+	rt, err := s.loadRuntime(context.Background(), serverID)
+	if err != nil {
+		return 0
+	}
+	for _, p := range rt.gs.Ports {
+		proto := p.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		if p.Name == "web" && proto == "tcp" {
+			if hp, ok := rt.ports["web"]; ok {
+				return hp
+			}
+		}
+	}
+	return 0
 }
 
 // resumeStartingWatchers re-attaches readiness detection to servers left in

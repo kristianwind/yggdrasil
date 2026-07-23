@@ -39,7 +39,7 @@ forward it / reverse-proxy it as you like.
 | `n8n.yaml` | n8nio/n8n | 5678 | workflow automation |
 | `grafana.yaml` | grafana/grafana | 3000 | dashboards (admin pw via env) |
 | `jellyfin.yaml` | jellyfin/jellyfin | 8096 | media server (add a `/media` mount via Files/edit) |
-| `wordpress.yaml` | wordpress | 80 | website/CMS — **needs a MariaDB rune** |
+| `wordpress.yaml` | wordpress | 80 | **app stack** — website/CMS; the panel bundles its MariaDB database, no separate DB rune needed |
 | `nextcloud.yaml` | lscr.io/linuxserver/nextcloud | 443 | files/cloud over HTTPS (self-signed); SQLite by default. Set PUID/PGID to the data-dir owner (default 999:982) |
 | `phpmyadmin.yaml` | phpmyadmin | 80 | web UI for MySQL/MariaDB — point it at a MariaDB rune (PMA_ARBITRARY=1 = type any host at login) |
 | `adminer.yaml` | adminer | 8080 | lightweight single-file DB manager (MySQL/Postgres/SQLite); enter the DB host at login |

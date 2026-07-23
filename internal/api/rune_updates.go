@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -45,37 +47,17 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 		CheckedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Reuse the browser's listing and its 10-minute cache, so opening the Runes
-	// page doesn't spend GitHub's rate limit.
-	cacheKey := defaultRuneRepo + "|" + defaultRunePath + "|"
-	ghRunesMu.Lock()
-	cached, ok := ghRunesCache[cacheKey]
-	ghRunesMu.Unlock()
-
-	var runes []ghRune
-	if ok && time.Since(cached.at) < 10*time.Minute {
-		runes = cached.runes
-	} else {
-		var err error
-		runes, err = fetchGithubRunes(r.Context(), defaultRuneRepo, defaultRunePath, "")
-		if err != nil {
-			out.Note = "Could not reach the rune catalog on GitHub: " + err.Error()
-			jsonOK(w, out)
-			return
-		}
-		ghRunesMu.Lock()
-		ghRunesCache[cacheKey] = ghRunesEntry{at: time.Now(), runes: runes}
-		ghRunesMu.Unlock()
-	}
-
-	// Installed, non-builtin runes and their versions.
+	// Installed, non-builtin runes, each with the source it came from. Runes without
+	// a recorded source (uploaded by hand) fall back to the default catalog by id,
+	// which is right for the ones that actually came from there.
 	type local struct {
-		name    string
-		version int
+		name              string
+		version           int
+		repo, path, ref   string
 	}
 	installed := map[string]local{}
 	rows, err := s.db.QueryContext(r.Context(),
-		"SELECT id, name, version FROM gameskills WHERE builtin=0")
+		"SELECT id, name, version, COALESCE(source_repo,''), COALESCE(source_path,''), COALESCE(source_ref,'') FROM gameskills WHERE builtin=0")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -83,31 +65,77 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id string
 		var l local
-		if rows.Scan(&id, &l.name, &l.version) == nil {
+		if rows.Scan(&id, &l.name, &l.version, &l.repo, &l.path, &l.ref) == nil {
 			installed[id] = l
 		}
 	}
 	rows.Close()
 
-	for _, g := range runes {
-		if g.ID == "" || g.ParseError != "" {
-			continue // a rune we couldn't read says nothing about the local copy
+	// Group installed runes by the source they should be checked against, so each
+	// distinct repo is fetched once. Empty source → the default catalog.
+	type src struct{ repo, path, ref string }
+	bysource := map[src][]string{} // source → rune ids
+	for id, l := range installed {
+		key := src{l.repo, l.path, l.ref}
+		if key.repo == "" {
+			key = src{defaultRuneRepo, defaultRunePath, ""}
 		}
-		l, have := installed[g.ID]
-		if !have || g.Version <= l.version {
+		bysource[key] = append(bysource[key], id)
+	}
+
+	var notes []string
+	for source, ids := range bysource {
+		runes, err := s.cachedGithubRunes(r.Context(), source.repo, source.path, source.ref)
+		if err != nil {
+			notes = append(notes, source.repo+": "+err.Error())
 			continue
 		}
-		name := l.name
-		if name == "" {
-			name = g.Name
+		repoVer := map[string]ghRune{}
+		for _, g := range runes {
+			if g.ID != "" && g.ParseError == "" {
+				repoVer[g.ID] = g
+			}
 		}
-		out.Updates = append(out.Updates, runeUpdate{
-			ID:               g.ID,
-			Name:             name,
-			InstalledVersion: l.version,
-			AvailableVersion: g.Version,
-			DownloadURL:      g.DownloadURL,
-		})
+		for _, id := range ids {
+			l := installed[id]
+			g, ok := repoVer[id]
+			if !ok || g.Version <= l.version {
+				continue
+			}
+			name := l.name
+			if name == "" {
+				name = g.Name
+			}
+			out.Updates = append(out.Updates, runeUpdate{
+				ID:               id,
+				Name:             name,
+				InstalledVersion: l.version,
+				AvailableVersion: g.Version,
+				DownloadURL:      g.DownloadURL,
+			})
+		}
+	}
+	if len(notes) > 0 {
+		out.Note = "Some sources couldn't be reached: " + strings.Join(notes, "; ")
 	}
 	jsonOK(w, out)
+}
+
+// cachedGithubRunes lists a repo's runes, reusing the browser's 10-minute cache.
+func (s *Server) cachedGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, error) {
+	cacheKey := repo + "|" + path + "|" + ref
+	ghRunesMu.Lock()
+	cached, ok := ghRunesCache[cacheKey]
+	ghRunesMu.Unlock()
+	if ok && time.Since(cached.at) < 10*time.Minute {
+		return cached.runes, nil
+	}
+	runes, err := fetchGithubRunes(ctx, repo, path, ref)
+	if err != nil {
+		return nil, err
+	}
+	ghRunesMu.Lock()
+	ghRunesCache[cacheKey] = ghRunesEntry{at: time.Now(), runes: runes}
+	ghRunesMu.Unlock()
+	return runes, nil
 }

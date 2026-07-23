@@ -73,8 +73,14 @@ func TestMigrationArchiveRoundTrip(t *testing.T) {
 		}
 		entries = append(entries, hdr.Name)
 	}
-	if len(entries) != 2 || entries[0] != "panel.json" || entries[1] != "servers/Valhal.yggserver.tar.gz" {
+	want := []string{"panel.json", "servers/Valhal/manifest.json", "servers/Valhal/data/world.txt"}
+	if len(entries) != len(want) {
 		t.Fatalf("unexpected archive entries: %v", entries)
+	}
+	for i := range want {
+		if entries[i] != want[i] {
+			t.Fatalf("entry %d: got %q want %q", i, entries[i], want[i])
+		}
 	}
 
 	// Import on a target (different key) that already has a "Valhal" — with

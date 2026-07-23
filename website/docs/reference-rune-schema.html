@@ -815,6 +815,24 @@ can&rsquo;t contain <code>..</code>. <code>events</code> is required and each en
 <code>regex</code> that compiles; an optional <code>(?P&lt;name&gt;...)</code> group names the player. The first rule that
 matches a line wins, and unmatched lines are dropped. <code>time_regex</code> pulls a timestamp off the front
 of the line — its <code>time</code> group if it has one, otherwise the whole match.</p>
+<h2 id="watchers"><code>watchers</code></h2>
+<p>Default Kvasir log-watchers the rune ships with — your knowledge of what the app&rsquo;s log looks like
+when something is wrong, so watching works before the admin writes a single regex.</p>
+<pre><code class="language-yaml">watchers:
+  - name: &quot;PHP fatal errors&quot;
+    pattern: &quot;PHP Fatal error&quot;
+    threshold: 1        # optional, default 1
+    window_secs: 300    # optional, default 60, max 3600
+    action: kvasir      # optional: notify (default) | kvasir
+</code></pre>
+<p>Each entry needs a <code>name</code> and a <code>pattern</code> that compiles (Go/RE2 syntax, matched per log line of the
+container&rsquo;s stdout/stderr). A watcher fires when the pattern matches at least <code>threshold</code> lines
+within the last <code>window_secs</code> seconds; <code>action: notify</code> sends a notification with the matched lines,
+<code>action: kvasir</code> also hands them to the AI to explain and propose a fix (needs Kvasir configured).</p>
+<p>At server create and (re)install the entries are <strong>seeded as ordinary per-server watchers</strong> the
+admin can edit, disable or delete under Settings → Kvasir Watchers — they&rsquo;re defaults, not live
+rune state. A resync never touches a rule that already exists, so edits and disables stick;
+deleting one and reinstalling restores the rune&rsquo;s default, the same contract as config files.</p>
 <h2 id="wipe"><code>wipe</code></h2>
 <pre><code class="language-yaml">wipe:
   paths: [&quot;mpmissions/*/storage_*&quot;]
@@ -1148,7 +1166,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

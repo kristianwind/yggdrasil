@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 4
+  version: 5
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -87,3 +87,21 @@ gameskill:
 
   backup:
     include: ["."]
+
+  # Default Kvasir watchers — seeded per server as editable rules.
+  watchers:
+    - name: "PHP fatal errors"
+      pattern: "PHP Fatal error"
+      threshold: 1
+      window_secs: 300
+      action: kvasir
+    - name: "Login brute force"
+      pattern: "POST /wp-login\\.php"
+      threshold: 20
+      window_secs: 120
+      action: kvasir
+    - name: "HTTP 5xx spike"
+      pattern: '" 5\d\d '
+      threshold: 10
+      window_secs: 60
+      action: kvasir

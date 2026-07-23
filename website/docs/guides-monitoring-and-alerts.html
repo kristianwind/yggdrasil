@@ -169,6 +169,33 @@ Yggdrasil re-attaches to it. A container that has been up well past the readines
 signalled ready — the game process died but its wrapper stayed alive — is marked stopped, and you
 get an alert with the log tail.</li>
 </ul>
+<h2 id="kvasir-watchers">Kvasir Watchers</h2>
+<p>A <strong>watcher</strong> is a log rule: <em>if this pattern matches at least N lines within the last W seconds of
+a server&rsquo;s log, act</em>. It reads the container&rsquo;s own stdout/stderr, so the same mechanism covers a
+game server&rsquo;s crash spam, a WordPress failed-login burst, a database&rsquo;s error storm or an HTTP 5xx
+spike. Watchers live under <strong>Settings → Kvasir Watchers</strong> (admin only).</p>
+<ul>
+<li>Every running server is scanned about every <strong>30 seconds</strong>; a watcher fires at most <strong>once per
+10 minutes</strong> so a sustained condition doesn&rsquo;t flood you.</li>
+<li>A watcher is scoped to <strong>one server or to every server</strong>.</li>
+<li>Action <strong>Notify</strong> sends the matched lines to your notification channels. Action <strong>Notify +
+Kvasir</strong> also hands them to the AI to explain what&rsquo;s happening and propose a fix — it needs a
+configured provider and proactive monitoring on (see the Kvasir guide).</li>
+</ul>
+<p>You rarely have to start from nothing:</p>
+<ul>
+<li><strong>Runes ship defaults.</strong> A rune can declare <code>watchers:</code> — the author&rsquo;s knowledge of what its log
+looks like when things go wrong. They&rsquo;re seeded per server at create and (re)install as ordinary
+rules (marked <em>ᚱ rune</em> in the list) that you can edit, disable or delete. Your changes
+stick across reinstalls; deleting one and reinstalling restores the default.</li>
+<li><strong>Kvasir can suggest rules.</strong> Pick a server under Settings → Kvasir Watchers and press
+<strong>Suggest</strong>: the AI reads the server&rsquo;s app type and a sample of its recent log and proposes up to
+five rules, each with its reasoning. Every proposal is validated (the pattern must be a working
+regex, bounds are clamped) and nothing is created until you add it.</li>
+</ul>
+<p>Patterns are Go/RE2 regular expressions matched per line. Prefer patterns anchored in how <em>your</em>
+log actually formats trouble — the suggestion flow exists precisely because a generic pattern
+either misses or matches routine lines.</p>
 <h2 id="host-system-info">Host system info</h2>
 <p><code>GET /api/system/info</code> backs the dashboard&rsquo;s host panel (admin only):</p>
 <ul>
@@ -244,7 +271,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

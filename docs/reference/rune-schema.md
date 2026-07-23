@@ -560,6 +560,30 @@ can't contain `..`. `events` is required and each entry needs a `type` (your own
 matches a line wins, and unmatched lines are dropped. `time_regex` pulls a timestamp off the front
 of the line — its `time` group if it has one, otherwise the whole match.
 
+## `watchers`
+
+Default Kvasir log-watchers the rune ships with — your knowledge of what the app's log looks like
+when something is wrong, so watching works before the admin writes a single regex.
+
+```yaml
+watchers:
+  - name: "PHP fatal errors"
+    pattern: "PHP Fatal error"
+    threshold: 1        # optional, default 1
+    window_secs: 300    # optional, default 60, max 3600
+    action: kvasir      # optional: notify (default) | kvasir
+```
+
+Each entry needs a `name` and a `pattern` that compiles (Go/RE2 syntax, matched per log line of the
+container's stdout/stderr). A watcher fires when the pattern matches at least `threshold` lines
+within the last `window_secs` seconds; `action: notify` sends a notification with the matched lines,
+`action: kvasir` also hands them to the AI to explain and propose a fix (needs Kvasir configured).
+
+At server create and (re)install the entries are **seeded as ordinary per-server watchers** the
+admin can edit, disable or delete under Settings → Kvasir Watchers — they're defaults, not live
+rune state. A resync never touches a rule that already exists, so edits and disables stick;
+deleting one and reinstalling restores the rune's default, the same contract as config files.
+
 ## `wipe`
 
 ```yaml

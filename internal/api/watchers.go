@@ -186,12 +186,13 @@ type watcherDTO struct {
 	Action     string `json:"action"`
 	Enabled    bool   `json:"enabled"`
 	LastFired  string `json:"last_fired,omitempty"`
+	Source     string `json:"source,omitempty"` // '' = user-made, 'rune' = seeded from the rune
 }
 
 // handleListWatchers lists watchers (admin only — they read logs across servers).
 func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("server_id")
-	q := "SELECT id, server_id, name, pattern, threshold, window_secs, action, enabled, COALESCE(last_fired,'') FROM log_watchers"
+	q := "SELECT id, server_id, name, pattern, threshold, window_secs, action, enabled, COALESCE(last_fired,''), COALESCE(source,'') FROM log_watchers"
 	args := []any{}
 	if sid != "" {
 		q += " WHERE server_id=? OR server_id=''"
@@ -208,7 +209,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var d watcherDTO
 		var en int
-		if rows.Scan(&d.ID, &d.ServerID, &d.Name, &d.Pattern, &d.Threshold, &d.WindowSecs, &d.Action, &en, &d.LastFired) == nil {
+		if rows.Scan(&d.ID, &d.ServerID, &d.Name, &d.Pattern, &d.Threshold, &d.WindowSecs, &d.Action, &en, &d.LastFired, &d.Source) == nil {
 			d.Enabled = en == 1
 			list = append(list, d)
 		}

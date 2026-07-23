@@ -384,6 +384,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.auditLog(r, "server.create", "server:"+serverID, map[string]string{"name": req.Name})
+	s.syncRuneWatchers(r.Context(), serverID, gs)
 
 	// Kick off the install (download/build) immediately; progress streams over
 	// the install/log WebSocket. The server can't start until this finishes.

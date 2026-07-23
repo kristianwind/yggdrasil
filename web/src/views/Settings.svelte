@@ -894,6 +894,37 @@
   async function loadWatcherServers() {
     watcherServers = await api.get("/servers").then((r) => r.map((s) => ({ id: s.id, name: s.name }))).catch(() => []);
   }
+  // Kvasir watcher suggestions — the AI reads one server's rune type + recent log
+  // and proposes rules; each is added explicitly, nothing is created on its own.
+  let suggestServerId = $state("");
+  let suggestBusy = $state(false);
+  let watcherSuggestions = $state(null); // null = nothing requested yet, [] = none found
+  async function suggestWatchers() {
+    if (!suggestServerId) return;
+    suggestBusy = true;
+    watcherSuggestions = null;
+    try {
+      const r = await api.post(`/servers/${suggestServerId}/watchers/suggest`);
+      watcherSuggestions = r.suggestions || [];
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      suggestBusy = false;
+    }
+  }
+  async function addSuggestion(sg) {
+    try {
+      await api.post("/watchers", {
+        server_id: suggestServerId, name: sg.name, pattern: sg.pattern,
+        threshold: sg.threshold, window_secs: sg.window_secs, action: sg.action, enabled: true,
+      });
+      watcherSuggestions = watcherSuggestions.filter((x) => x !== sg);
+      toast("Watcher added", "success");
+      await loadWatchers();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
 
   onMount(() => {
     load();
@@ -1707,6 +1738,41 @@
     {/each}
   </div>
 
+  <!-- Kvasir suggestions: pick a server, the AI reads its rune type + recent log
+       and proposes tailored rules. Nothing is added without a click. -->
+  <div class="flex items-center gap-2 flex-wrap">
+    <span class="text-sm">✨ Let Kvasir suggest rules for</span>
+    <select class="input w-auto text-sm" bind:value={suggestServerId}>
+      <option value="">choose a server…</option>
+      {#each watcherServers as sv}<option value={sv.id}>{sv.name}</option>{/each}
+    </select>
+    <button class="btn-ghost text-sm" onclick={suggestWatchers} disabled={suggestBusy || !suggestServerId}
+      title="Kvasir reads the server's app type and a sample of its recent log, and proposes watcher rules. Needs the AI configured above.">
+      {suggestBusy ? "Reading the log…" : "Suggest"}</button>
+  </div>
+  {#if watcherSuggestions !== null}
+    {#if watcherSuggestions.length}
+      <div class="card divide-y divide-border">
+        {#each watcherSuggestions as sg}
+          <div class="flex items-center gap-3 px-3 py-2 flex-wrap">
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium flex items-center gap-2">
+                {sg.name}
+                {#if sg.action === "kvasir"}<span class="badge bg-accent/20 text-accent">🧠 Kvasir</span>{/if}
+              </div>
+              <div class="text-xs text-muted font-mono truncate">{sg.pattern}</div>
+              <div class="text-[11px] text-muted">{sg.threshold}× in {sg.window_secs}s · {sg.reason}</div>
+            </div>
+            <button class="btn-primary text-xs" onclick={() => addSuggestion(sg)}>+ Add</button>
+          </div>
+        {/each}
+      </div>
+      <p class="text-[11px] text-muted">Suggestions are validated (the pattern must be a working regex) but AI-written — skim before adding.</p>
+    {:else}
+      <div class="text-sm text-muted">Kvasir had nothing to add for this server.</div>
+    {/if}
+  {/if}
+
   {#if watcherForm}
     <div class="card p-3 border-l-4 border-accent space-y-3 bg-panel2/40">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1757,6 +1823,7 @@
               {w.name}
               {#if !w.enabled}<span class="badge bg-border text-muted">off</span>{/if}
               {#if w.action === "kvasir"}<span class="badge bg-accent/20 text-accent">🧠 Kvasir</span>{/if}
+              {#if w.source === "rune"}<span class="badge bg-panel2 border border-border text-muted" title="Shipped by this server's rune — edit or disable freely; a reinstall only restores it if deleted.">ᚱ rune</span>{/if}
             </div>
             <div class="text-xs text-muted font-mono truncate">{w.pattern}</div>
             <div class="text-[11px] text-muted">

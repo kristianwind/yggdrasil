@@ -410,6 +410,10 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "gameskills", "source_repo", "TEXT NOT NULL DEFAULT ''")      // owner/repo
 	addColumnIfMissing(db, "gameskills", "source_path", "TEXT NOT NULL DEFAULT ''")      // dir within the repo
 	addColumnIfMissing(db, "gameskills", "source_ref", "TEXT NOT NULL DEFAULT ''")       // branch/tag
+	// Where a watcher came from: '' = user-made, 'rune' = seeded from the rune's
+	// watchers: block (kept distinct so a reinstall can top up missing rune defaults
+	// without ever touching rules the user made or edited).
+	addColumnIfMissing(db, "log_watchers", "source", "TEXT NOT NULL DEFAULT ''")
 	return nil
 }
 

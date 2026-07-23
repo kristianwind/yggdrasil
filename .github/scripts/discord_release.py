@@ -14,6 +14,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 # Discord's documented ceilings. Exceeding one is a 400, not a truncation, so
 # clamp rather than hope the notes are short.
@@ -79,6 +80,36 @@ def build_embed(tag: str, repo: str, notes: str) -> dict:
     }
 
 
+def another_release_today(repo: str, tag: str) -> bool:
+    """True when a different release was already published today (UTC).
+
+    The #announcements channel gets at most one post per day: on a multi-release
+    day the first release announces and the rest ship quietly — every release is
+    still on GitHub, and the daily post carries the install command either way.
+    Fails open: if the check itself errors, announce rather than go silent.
+    """
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/releases?per_page=10",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "Yggdrasil-Panel-Release (+https://github.com/kristianwind/yggdrasil)",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            releases = json.load(resp)
+    except Exception as e:  # noqa: BLE001 — a failed check must not block the announcement
+        print(f"Could not check today's releases ({type(e).__name__}) — announcing anyway.")
+        return False
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return any(
+        not r.get("draft")
+        and r.get("tag_name") != tag
+        and str(r.get("published_at") or "").startswith(today)
+        for r in releases
+    )
+
+
 def main() -> int:
     webhook = os.environ.get("WEBHOOK", "").strip()
     if not webhook:
@@ -88,6 +119,10 @@ def main() -> int:
     tag = os.environ.get("TAG", "").strip() or "dev"
     repo = os.environ.get("REPO", "kristianwind/yggdrasil").strip()
     notes = sys.stdin.read()
+
+    if another_release_today(repo, tag):
+        print(f"A release was already announced today — shipping {tag} without a Discord post.")
+        return 0
 
     payload = {
         "username": "Yggdrasil Panel",

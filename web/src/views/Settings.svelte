@@ -840,6 +840,61 @@
     }
   }
 
+  // Kvasir Watchers — log-pattern rules.
+  let watchers = $state([]);
+  let watcherServers = $state([]); // for the per-server scope dropdown
+  const WATCHER_PRESETS = [
+    { name: "Failed logins", pattern: "(?i)failed (login|password|authentication)|authentication failure|invalid user", threshold: 5, window_secs: 120, action: "kvasir" },
+    { name: "HTTP 5xx spike", pattern: "\" 5\\d\\d ", threshold: 10, window_secs: 60, action: "kvasir" },
+    { name: "Database errors", pattern: "(?i)(deadlock|too many connections|out of memory|corrupt|SQLSTATE|slow query)", threshold: 3, window_secs: 120, action: "kvasir" },
+    { name: "DayZ: suspicious admin log", pattern: "(?i)(hit by Player|killed by Player).*", threshold: 8, window_secs: 60, action: "notify" },
+    { name: "Out of memory", pattern: "(?i)(out of memory|OOM|java.lang.OutOfMemoryError|Killed process)", threshold: 1, window_secs: 300, action: "kvasir" },
+  ];
+  let watcherForm = $state(null); // null = closed; else the editing/creating object
+  let watcherBusy = $state(false);
+  async function loadWatchers() {
+    watchers = await api.get("/watchers").catch(() => []);
+  }
+  function newWatcher(preset) {
+    watcherForm = {
+      id: "", server_id: "", name: "", pattern: "", threshold: 3, window_secs: 60, action: "kvasir", enabled: true,
+      ...(preset || {}),
+    };
+  }
+  function editWatcher(w) {
+    watcherForm = { ...w };
+  }
+  async function saveWatcher() {
+    if (!watcherForm.name.trim() || !watcherForm.pattern.trim()) {
+      toast("Name and pattern are required", "error");
+      return;
+    }
+    watcherBusy = true;
+    try {
+      if (watcherForm.id) await api.put(`/watchers/${watcherForm.id}`, watcherForm);
+      else await api.post("/watchers", watcherForm);
+      toast("Watcher saved", "success");
+      watcherForm = null;
+      await loadWatchers();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      watcherBusy = false;
+    }
+  }
+  async function deleteWatcher(w) {
+    if (!confirm(`Delete watcher "${w.name}"?`)) return;
+    try {
+      await api.del(`/watchers/${w.id}`);
+      await loadWatchers();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  async function loadWatcherServers() {
+    watcherServers = await api.get("/servers").then((r) => r.map((s) => ({ id: s.id, name: s.name }))).catch(() => []);
+  }
+
   onMount(() => {
     load();
     loadTemplates();
@@ -847,6 +902,8 @@
     loadChannels();
     loadSteam();
     loadSteamKey();
+    loadWatchers();
+    loadWatcherServers();
     load2fa();
     loadPasskeys();
     loadBuild();
@@ -1631,6 +1688,90 @@
     <button class="btn-ghost" onclick={testAi} disabled={testingAi}
       title="Send a tiny test prompt using the saved config to verify the key and endpoint. Save first.">{testingAi ? "Testing…" : "Test connection"}</button>
   </div>
+</div>
+
+<!-- Kvasir Watchers -->
+<h2 class="text-xl font-semibold mb-2">Kvasir Watchers <span class="text-muted font-normal text-base">· proactive log rules</span></h2>
+<p class="text-muted mb-4 text-sm">
+  Watch any server's log for a pattern — a burst of failed logins, an HTTP 5xx spike, a database error, an
+  out-of-memory line — and act when it appears too often in a window. A watcher <b>notifies</b>, and with
+  action <b>Kvasir</b> it also hands the matched lines to the AI to explain what's happening and propose a
+  fix. Reads the container's own log, so it works for apps and games alike. Scanned every ~30s.
+</p>
+<div class="card p-4 mb-10 space-y-4">
+  <div class="flex items-center gap-2 flex-wrap">
+    <button class="btn-primary text-sm" onclick={() => newWatcher()}>+ New watcher</button>
+    <span class="text-xs text-muted">Presets:</span>
+    {#each WATCHER_PRESETS as p}
+      <button class="btn-ghost text-xs" onclick={() => newWatcher(p)}>{p.name}</button>
+    {/each}
+  </div>
+
+  {#if watcherForm}
+    <div class="card p-3 border-l-4 border-accent space-y-3 bg-panel2/40">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label class="text-sm">Name
+          <input class="input mt-1" bind:value={watcherForm.name} placeholder="Failed logins" />
+        </label>
+        <label class="text-sm">Applies to
+          <select class="input mt-1" bind:value={watcherForm.server_id}>
+            <option value="">Every server</option>
+            {#each watcherServers as sv}<option value={sv.id}>{sv.name}</option>{/each}
+          </select>
+        </label>
+      </div>
+      <label class="text-sm block">Pattern <span class="text-muted">(regular expression, matched per log line)</span>
+        <input class="input mt-1 font-mono text-xs" bind:value={watcherForm.pattern} placeholder="(?i)failed login|authentication failure" />
+      </label>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+        <label class="text-sm">Threshold
+          <input class="input mt-1" type="number" min="1" bind:value={watcherForm.threshold} />
+        </label>
+        <label class="text-sm">Window (s)
+          <input class="input mt-1" type="number" min="1" bind:value={watcherForm.window_secs} />
+        </label>
+        <label class="text-sm">Action
+          <select class="input mt-1" bind:value={watcherForm.action}>
+            <option value="notify">Notify</option>
+            <option value="kvasir">Notify + Kvasir</option>
+          </select>
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm pb-2">
+          <input type="checkbox" bind:checked={watcherForm.enabled} /> Enabled
+        </label>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn-primary text-sm" onclick={saveWatcher} disabled={watcherBusy}>{watcherBusy ? "Saving…" : "Save watcher"}</button>
+        <button class="btn-ghost text-sm" onclick={() => (watcherForm = null)}>Cancel</button>
+      </div>
+      <p class="text-[11px] text-muted">Fires at most once per 10 min per watcher. "Notify + Kvasir" needs the AI configured above and proactive monitoring on.</p>
+    </div>
+  {/if}
+
+  {#if watchers.length}
+    <div class="divide-y divide-border">
+      {#each watchers as w}
+        <div class="flex items-center gap-3 py-2 flex-wrap">
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium flex items-center gap-2">
+              {w.name}
+              {#if !w.enabled}<span class="badge bg-border text-muted">off</span>{/if}
+              {#if w.action === "kvasir"}<span class="badge bg-accent/20 text-accent">🧠 Kvasir</span>{/if}
+            </div>
+            <div class="text-xs text-muted font-mono truncate">{w.pattern}</div>
+            <div class="text-[11px] text-muted">
+              {w.threshold}× in {w.window_secs}s · {w.server_id ? (watcherServers.find((s) => s.id === w.server_id)?.name || "one server") : "every server"}
+              {#if w.last_fired}· last fired {w.last_fired}{/if}
+            </div>
+          </div>
+          <button class="btn-ghost text-xs" onclick={() => editWatcher(w)}>Edit</button>
+          <button class="btn-ghost text-xs text-danger" onclick={() => deleteWatcher(w)}>Delete</button>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <div class="text-sm text-muted">No watchers yet — add one, or start from a preset.</div>
+  {/if}
 </div>
 
 <!-- Steam authorization -->

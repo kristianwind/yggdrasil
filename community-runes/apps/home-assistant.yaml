@@ -1,0 +1,40 @@
+gameskill:
+  id: home-assistant
+  name: "Home Assistant"
+  category: "Apps"
+  description: "Open-source home automation hub. The dashboard runs on the panel-allocated web port; first launch walks you through onboarding. NOTE: it runs bridged, not host-network, so the cloud/API integrations work but local auto-discovery (mDNS) and directly-attached USB radios (Zigbee/Z-Wave dongles) are not available through the panel's per-server model — use network-based integrations, or run those on a host-network deployment."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Home Assistant runs via the image's own init (keep the entrypoint, run as root).
+  # All state lives in /config, which is the panel volume.
+  docker:
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    script: |
+      mkdir -p /data
+      echo "Home Assistant config directory ready"
+
+  startup:
+    command: ""
+    # HA takes a while on first boot (it installs Python deps); this line marks a
+    # fully-started instance.
+    done_regex: 'Home Assistant initialized in'
+
+  ports:
+    - { name: web, default: 8123, protocol: tcp }
+
+  backup:
+    include: ["."]

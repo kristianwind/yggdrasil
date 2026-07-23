@@ -199,6 +199,24 @@ CREATE TABLE IF NOT EXISTS kvasir_events (
 );
 CREATE INDEX IF NOT EXISTS idx_kvasir_events ON kvasir_events(server_id, ts);
 
+-- Kvasir Watchers: user-defined rules that scan a server's log for a pattern and
+-- fire when it appears too often in a window — a failed-login burst, a 5xx spike,
+-- a slow query, griefing in a game admin log. Firing notifies and (action=kvasir)
+-- hands the matched lines to the AI to explain + propose. server_id '' = all.
+CREATE TABLE IF NOT EXISTS log_watchers (
+	id          TEXT PRIMARY KEY,
+	server_id   TEXT NOT NULL DEFAULT '',       -- '' = every server
+	name        TEXT NOT NULL DEFAULT '',
+	pattern     TEXT NOT NULL DEFAULT '',        -- regex matched per log line
+	threshold   INTEGER NOT NULL DEFAULT 1,      -- N matches in the window trips it
+	window_secs INTEGER NOT NULL DEFAULT 60,
+	action      TEXT NOT NULL DEFAULT 'notify',  -- notify | kvasir
+	enabled     INTEGER NOT NULL DEFAULT 1,
+	last_fired  TEXT NOT NULL DEFAULT '',        -- cooldown bookkeeping
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_log_watchers ON log_watchers(server_id, enabled);
+
 -- Config-file version history: the previous contents of a text file are snapshot
 -- here right before it's overwritten via the file editor, so a change that breaks
 -- a server can be rolled back. Kept to the last few versions per file.

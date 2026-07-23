@@ -237,6 +237,11 @@ func (s *Server) kvasirApplyMemory(serverID string, dec kvasirDecision, body str
 }
 
 func kvasirTriggerOn(triggers, event string) bool {
+	// A watcher is its own opt-in (the admin created it and set action=kvasir), so
+	// it isn't gated on the proactive_triggers list the automatic events use.
+	if event == "watcher" {
+		return true
+	}
 	if triggers == "" {
 		triggers = "crash,slowstart,resource,host"
 	}

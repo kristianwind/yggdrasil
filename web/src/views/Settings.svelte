@@ -954,17 +954,38 @@
     for (const sv of watcherServers) next[sv.id] = on;
     migrateSrvSel = next;
   }
+  // Export/import progress — an archive can be gigabytes, so a dead button reads
+  // as a hang. Export streams (bytes received); import uses XHR for real upload
+  // percentage, then a processing phase while the target unpacks.
+  let migrateExporting = $state(false);
+  let migrateExportedBytes = $state(0);
+  let migrateImporting = $state(""); // "" | "uploading" | "processing"
+  let migrateUploadPct = $state(0);
+  function fmtMB(n) {
+    return `${(n / 1048576).toFixed(1)} MB`;
+  }
   async function exportPanelSettings() {
+    if (migrateExporting) return;
     const include = Object.entries(migrateSel).filter(([, v]) => v).map(([k]) => k).join(",");
     const servers = Object.entries(migrateSrvSel).filter(([, v]) => v).map(([k]) => k).join(",");
     // Servers selected → the combined migration archive; settings only → the JSON bundle.
     const url = servers
       ? `/api/migration/export?include=${include}&servers=${servers}`
       : `/api/panel/export?include=${include}`;
+    migrateExporting = true;
+    migrateExportedBytes = 0;
     try {
       const res = await fetch(url, { credentials: "same-origin" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
-      const blob = await res.blob();
+      const reader = res.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        migrateExportedBytes += value.length;
+      }
+      const blob = new Blob(chunks, { type: servers ? "application/gzip" : "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = servers ? "panel-migration.ygg.tar.gz" : "panel-settings.yggpanel.json";
@@ -973,6 +994,8 @@
       toast("Bundle downloaded — it contains secrets, treat it like a password", "info");
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      migrateExporting = false;
     }
   }
   async function importPanelSettings(ev) {
@@ -987,17 +1010,34 @@
         migrateResult = await api.post("/panel/import", bundle);
         toast("Settings bundle merged", "success");
       } else {
-        const res = await fetch(`/api/migration/import?skip_existing=${migrateSkipExisting ? 1 : 0}`, {
-          method: "POST", credentials: "same-origin", body: file,
+        migrateImporting = "uploading";
+        migrateUploadPct = 0;
+        const data = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", `/api/migration/import?skip_existing=${migrateSkipExisting ? 1 : 0}`);
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) migrateUploadPct = Math.round((e.loaded / e.total) * 100);
+            if (e.loaded >= e.total) migrateImporting = "processing"; // upload done; target is unpacking
+          };
+          xhr.onload = () => {
+            try {
+              const d = JSON.parse(xhr.responseText);
+              xhr.status < 400 ? resolve(d) : reject(new Error(d.error || `HTTP ${xhr.status}`));
+            } catch {
+              reject(new Error(`HTTP ${xhr.status}`));
+            }
+          };
+          xhr.onerror = () => reject(new Error("upload failed"));
+          xhr.send(file);
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         migrateResult = data.panel || null;
         migrateServersResult = data.servers || [];
         toast("Migration archive imported", "success");
       }
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      migrateImporting = "";
     }
   }
 
@@ -1355,11 +1395,15 @@
     </div>
   {/if}
   <div class="flex items-center gap-3 flex-wrap">
-    <button class="btn-primary text-sm" onclick={exportPanelSettings} disabled={!Object.values(migrateSel).some(Boolean) && !Object.values(migrateSrvSel).some(Boolean)}>⬇ Export selected</button>
+    <button class="btn-primary text-sm" onclick={exportPanelSettings}
+      disabled={migrateExporting || (!Object.values(migrateSel).some(Boolean) && !Object.values(migrateSrvSel).some(Boolean))}>
+      {migrateExporting ? `Exporting… ${fmtMB(migrateExportedBytes)}` : "⬇ Export selected"}</button>
     <span class="text-xs text-muted">— or on the receiving panel —</span>
-    <label class="btn-ghost text-sm cursor-pointer">
-      ⬆ Import bundle…
-      <input type="file" accept=".json,.gz,application/json,application/gzip" class="hidden" onchange={importPanelSettings} />
+    <label class="btn-ghost text-sm cursor-pointer {migrateImporting ? 'opacity-60 pointer-events-none' : ''}">
+      {migrateImporting === "uploading" ? `⬆ Uploading… ${migrateUploadPct}%`
+        : migrateImporting === "processing" ? "⏳ Importing on this panel…"
+        : "⬆ Import bundle…"}
+      <input type="file" accept=".json,.gz,application/json,application/gzip" class="hidden" onchange={importPanelSettings} disabled={!!migrateImporting} />
     </label>
     <label class="inline-flex items-center gap-2 text-xs text-muted">
       <input type="checkbox" bind:checked={migrateSkipExisting} /> skip servers that already exist here

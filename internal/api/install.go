@@ -137,6 +137,7 @@ func (s *Server) runInstall(serverID string) error {
 	if rt.gs.Install == nil {
 		// Nothing to install; mark ready immediately.
 		s.db.ExecContext(ctx, "UPDATE servers SET installed=1, install_status='done' WHERE id=?", serverID)
+		s.syncRuneWatchers(ctx, serverID, rt.gs)
 		return nil
 	}
 
@@ -220,6 +221,9 @@ func (s *Server) runInstall(serverID string) error {
 	}
 
 	s.db.ExecContext(ctx, "UPDATE servers SET installed=1, install_status='done' WHERE id=?", serverID)
+	// A (re)install tops up any rune watchers added since the server was created
+	// (or restores deleted ones — same restore-defaults contract as config files).
+	s.syncRuneWatchers(ctx, serverID, rt.gs)
 	// A (re)install regenerates the vanilla DayZ mission economy — re-apply any saved
 	// Norn loot settings so the admin's tuning survives updates. No-op otherwise.
 	s.dayzReapplyNorn(serverID)

@@ -439,6 +439,19 @@ both build the candidate set from the servers the caller holds `server.control` 
 step re-derives that set server-side rather than trusting the posted plan. Both refuse with `400`
 unless an admin has enabled AI actions.
 
+### Watchers
+
+Log-pattern rules scanned against running servers' container logs (see the monitoring guide). All
+admin-only — watchers read logs across servers.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/watchers` | Admin | List watchers; `?server_id=` narrows to one server plus the global rules |
+| `POST` | `/api/watchers` | Admin | Create a watcher (the pattern must compile) |
+| `PUT` | `/api/watchers/{id}` | Admin | Update a watcher |
+| `DELETE` | `/api/watchers/{id}` | Admin | Delete a watcher |
+| `POST` | `/api/servers/{id}/watchers/suggest` | Admin | Ask Kvasir for watcher rules from the server's rune type and recent log; returns validated proposals, creates nothing |
+
 ### Norn
 
 Norn is the DayZ loot-economy tool. Reading the economy needs `server.view`; changing it needs

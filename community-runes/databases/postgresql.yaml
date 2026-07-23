@@ -4,7 +4,7 @@ gameskill:
   category: "Databases"
   description: "PostgreSQL database server (official image) — a backing store for other runes/apps"
   author: "yggdrasil-core"
-  version: 1
+  version: 2
   icon: "database"
 
   docker:
@@ -43,3 +43,11 @@ gameskill:
 
   backup:
     include: ["pgdata"]
+
+  # Default Kvasir watchers — seeded per server as editable rules.
+  watchers:
+    - name: "Database errors"
+      pattern: "(?i)FATAL:|PANIC:|deadlock detected"
+      threshold: 3
+      window_secs: 120
+      action: kvasir

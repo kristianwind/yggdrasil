@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 7
+  version: 8
   icon: "minecraft"
 
   docker:
@@ -239,3 +239,16 @@ gameskill:
       - { at: "15m", msg: "say ⚠ Server restart in 15 minutes." }
       - { at: "5m",  msg: "say ⚠ Server restart in 5 minutes." }
       - { at: "1m",  msg: "say ⚠ Restarting in 1 minute — find a safe spot!" }
+
+  # Default Kvasir watchers — seeded per server as editable rules.
+  watchers:
+    - name: "Server can't keep up (lag)"
+      pattern: "Can't keep up!"
+      threshold: 3
+      window_secs: 300
+      action: kvasir
+    - name: "Out of memory"
+      pattern: "java\\.lang\\.OutOfMemoryError"
+      threshold: 1
+      window_secs: 300
+      action: kvasir

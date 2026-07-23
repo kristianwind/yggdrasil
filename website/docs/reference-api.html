@@ -1124,6 +1124,51 @@ admin-only; the advisory endpoints gate on the permission that matches what they
 both build the candidate set from the servers the caller holds <code>server.control</code> on, and the execute
 step re-derives that set server-side rather than trusting the posted plan. Both refuse with <code>400</code>
 unless an admin has enabled AI actions.</p>
+<h3 id="watchers">Watchers</h3>
+<p>Log-pattern rules scanned against running servers&rsquo; container logs (see the monitoring guide). All
+admin-only — watchers read logs across servers.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/watchers</code></td>
+<td>Admin</td>
+<td>List watchers; <code>?server_id=</code> narrows to one server plus the global rules</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/watchers</code></td>
+<td>Admin</td>
+<td>Create a watcher (the pattern must compile)</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/watchers/{id}</code></td>
+<td>Admin</td>
+<td>Update a watcher</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/watchers/{id}</code></td>
+<td>Admin</td>
+<td>Delete a watcher</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/watchers/suggest</code></td>
+<td>Admin</td>
+<td>Ask Kvasir for watcher rules from the server&rsquo;s rune type and recent log; returns validated proposals, creates nothing</td>
+</tr>
+</tbody>
+</table>
 <h3 id="norn">Norn</h3>
 <p>Norn is the DayZ loot-economy tool. Reading the economy needs <code>server.view</code>; changing it needs
 <code>server.control</code>, because these routes rewrite mission files.</p>
@@ -1556,7 +1601,7 @@ progress; the install itself runs in the background and does not block the POST.
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#watchers">Watchers</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

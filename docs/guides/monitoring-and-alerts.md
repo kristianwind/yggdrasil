@@ -144,6 +144,35 @@ Two adjacent cases are covered by the same machinery:
   signalled ready — the game process died but its wrapper stayed alive — is marked stopped, and you
   get an alert with the log tail.
 
+## Kvasir Watchers
+
+A **watcher** is a log rule: *if this pattern matches at least N lines within the last W seconds of
+a server's log, act*. It reads the container's own stdout/stderr, so the same mechanism covers a
+game server's crash spam, a WordPress failed-login burst, a database's error storm or an HTTP 5xx
+spike. Watchers live under **Settings → Kvasir Watchers** (admin only).
+
+- Every running server is scanned about every **30 seconds**; a watcher fires at most **once per
+  10 minutes** so a sustained condition doesn't flood you.
+- A watcher is scoped to **one server or to every server**.
+- Action **Notify** sends the matched lines to your notification channels. Action **Notify +
+  Kvasir** also hands them to the AI to explain what's happening and propose a fix — it needs a
+  configured provider and proactive monitoring on (see the Kvasir guide).
+
+You rarely have to start from nothing:
+
+- **Runes ship defaults.** A rune can declare `watchers:` — the author's knowledge of what its log
+  looks like when things go wrong. They're seeded per server at create and (re)install as ordinary
+  rules (marked <em>ᚱ rune</em> in the list) that you can edit, disable or delete. Your changes
+  stick across reinstalls; deleting one and reinstalling restores the default.
+- **Kvasir can suggest rules.** Pick a server under Settings → Kvasir Watchers and press
+  **Suggest**: the AI reads the server's app type and a sample of its recent log and proposes up to
+  five rules, each with its reasoning. Every proposal is validated (the pattern must be a working
+  regex, bounds are clamped) and nothing is created until you add it.
+
+Patterns are Go/RE2 regular expressions matched per line. Prefer patterns anchored in how *your*
+log actually formats trouble — the suggestion flow exists precisely because a generic pattern
+either misses or matches routine lines.
+
 ## Host system info
 
 `GET /api/system/info` backs the dashboard's host panel (admin only):

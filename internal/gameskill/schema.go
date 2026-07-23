@@ -37,6 +37,7 @@ type Gameskill struct {
 	Players     *Players   `yaml:"players"     json:"players,omitempty"`
 	AdminLog    *AdminLog  `yaml:"admin_log"   json:"admin_log,omitempty"`
 	Services    []Service  `yaml:"services,omitempty" json:"services,omitempty"`
+	Watchers    []Watcher  `yaml:"watchers,omitempty" json:"watchers,omitempty"`
 }
 
 // Service is a sidecar container an app depends on — a database, a cache, a worker
@@ -53,6 +54,20 @@ type Service struct {
 	Env      map[string]string `yaml:"env,omitempty"      json:"env,omitempty"`      // values may reference {{VARS}}
 	DataPath string            `yaml:"data_path,omitempty" json:"data_path,omitempty"` // persisted mount inside the sidecar
 	Command  []string          `yaml:"command,omitempty"  json:"command,omitempty"`  // optional command override (argv)
+}
+
+// Watcher declares a default Kvasir log-watcher the rune ships with — the app
+// author's knowledge of what its log looks like when something is wrong ("PHP
+// Fatal error", "Can't keep up!", a failed-login burst). Seeded per server at
+// create/install as an editable rule (never silently re-enabled once the user
+// touches it), so watching works out of the box instead of requiring every
+// admin to invent the right regex themselves.
+type Watcher struct {
+	Name       string `yaml:"name"                  json:"name"`
+	Pattern    string `yaml:"pattern"               json:"pattern"`                // regex matched per log line
+	Threshold  int    `yaml:"threshold,omitempty"   json:"threshold,omitempty"`    // N matches within the window (default 1)
+	WindowSecs int    `yaml:"window_secs,omitempty" json:"window_secs,omitempty"`  // default 60, clamped to 3600
+	Action     string `yaml:"action,omitempty"      json:"action,omitempty"`       // notify (default) | kvasir
 }
 
 // AdminLog declares how to surface a game's admin/activity log as a parsed feed
@@ -385,6 +400,21 @@ func validate(gs *Gameskill) error {
 			if _, err := regexp.Compile(e.Regex); err != nil {
 				return fmt.Errorf("gameskill.admin_log.events %q regex does not compile: %w", e.Type, err)
 			}
+		}
+	}
+
+	for i, w := range gs.Watchers {
+		if strings.TrimSpace(w.Name) == "" || strings.TrimSpace(w.Pattern) == "" {
+			return fmt.Errorf("gameskill.watchers entry %d needs both name and pattern", i+1)
+		}
+		if _, err := regexp.Compile(w.Pattern); err != nil {
+			return fmt.Errorf("gameskill.watchers %q pattern does not compile: %w", w.Name, err)
+		}
+		if w.Action != "" && w.Action != "notify" && w.Action != "kvasir" {
+			return fmt.Errorf("gameskill.watchers %q action must be notify or kvasir", w.Name)
+		}
+		if w.Threshold < 0 || w.WindowSecs < 0 || w.WindowSecs > 3600 {
+			return fmt.Errorf("gameskill.watchers %q threshold/window_secs out of range (window max 3600)", w.Name)
 		}
 	}
 

@@ -4,7 +4,7 @@ gameskill:
   category: "Databases"
   description: "MariaDB (MySQL-compatible) database server (official image) — a backing store for other runes/apps"
   author: "yggdrasil-core"
-  version: 1
+  version: 2
   icon: "database"
 
   docker:
@@ -47,3 +47,11 @@ gameskill:
 
   backup:
     include: ["mysql"]
+
+  # Default Kvasir watchers — seeded per server as editable rules.
+  watchers:
+    - name: "Database errors"
+      pattern: "(?i)\\[ERROR\\]|too many connections|deadlock found"
+      threshold: 3
+      window_secs: 120
+      action: kvasir

@@ -344,6 +344,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/watchers", s.requireAdmin(s.handleCreateWatcher))
 		r.Put("/api/watchers/{id}", s.requireAdmin(s.handleUpdateWatcher))
 		r.Delete("/api/watchers/{id}", s.requireAdmin(s.handleDeleteWatcher))
+		r.Post("/api/servers/{id}/watchers/suggest", s.requireAdmin(s.handleSuggestWatchers))
 		r.Get("/api/settings/beacon", s.requireAdmin(s.handleGetBeaconSettings))
 		r.Put("/api/settings/beacon", s.requireAdmin(s.handleSetBeaconSettings))
 		r.Post("/api/settings/beacon/test", s.requireAdmin(s.handleTestBeacon))

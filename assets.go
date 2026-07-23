@@ -17,3 +17,11 @@ var WebFS embed.FS
 //
 //go:embed builtin-runes/*.yaml
 var GameskillsFS embed.FS
+
+// DocsFS carries the user documentation (getting started, guides, reference) so
+// the Kvasir chat can ground its guidance in the real docs — retrieval happens
+// per question, only excerpts ever reach the model. Design notes in docs/ are
+// deliberately not embedded.
+//
+//go:embed docs/getting-started.md docs/guides/*.md docs/reference/*.md
+var DocsFS embed.FS

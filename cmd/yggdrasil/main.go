@@ -129,7 +129,7 @@ func run(cfgPath string) error {
 	}
 	cancel()
 
-	srv := api.New(cfg, database, dc, yggdrasil.WebFS)
+	srv := api.New(cfg, database, dc, yggdrasil.WebFS, yggdrasil.DocsFS)
 	srv.SetVersion(version)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

@@ -217,6 +217,18 @@ CREATE TABLE IF NOT EXISTS log_watchers (
 );
 CREATE INDEX IF NOT EXISTS idx_log_watchers ON log_watchers(server_id, enabled);
 
+-- Rune repositories the user has added on top of the built-in community catalog,
+-- so they can browse/install from several sources and switch between them. The
+-- default catalog is always available and isn't stored here.
+CREATE TABLE IF NOT EXISTS rune_repos (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL DEFAULT '',
+	repo       TEXT NOT NULL DEFAULT '',       -- owner/repo
+	path       TEXT NOT NULL DEFAULT '',       -- dir within the repo (e.g. "community-runes")
+	ref        TEXT NOT NULL DEFAULT 'main',   -- branch/tag
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Config-file version history: the previous contents of a text file are snapshot
 -- here right before it's overwritten via the file editor, so a change that breaks
 -- a server can be rolled back. Kept to the last few versions per file.
@@ -393,6 +405,11 @@ func migrate(db *sql.DB) error {
 	// turning this on is a choice rather than a surprise reformat.
 	addColumnIfMissing(db, "servers", "notes_markdown", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "servers", "tags", "TEXT NOT NULL DEFAULT ''")                // normalized comma-separated labels for grouping/filtering
+	// Where an imported rune came from, so the update check can compare against its
+	// own source repo (not just the default catalog). Empty = installed by upload/paste.
+	addColumnIfMissing(db, "gameskills", "source_repo", "TEXT NOT NULL DEFAULT ''")      // owner/repo
+	addColumnIfMissing(db, "gameskills", "source_path", "TEXT NOT NULL DEFAULT ''")      // dir within the repo
+	addColumnIfMissing(db, "gameskills", "source_ref", "TEXT NOT NULL DEFAULT ''")       // branch/tag
 	return nil
 }
 

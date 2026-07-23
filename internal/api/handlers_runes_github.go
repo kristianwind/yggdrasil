@@ -38,6 +38,30 @@ var ghAllowedHosts = map[string]bool{
 var ghRepoRe = regexp.MustCompile(`^[\w.-]+/[\w.-]+$`)
 var ghRefRe = regexp.MustCompile(`^[\w./-]+$`)
 
+// parseRawGithubSource pulls the owner/repo, directory and ref out of a raw
+// GitHub download URL (https://raw.githubusercontent.com/owner/repo/ref/dir/file).
+// Returns empty strings if it isn't a recognizable raw URL (e.g. a hand-uploaded
+// rune), in which case the rune simply isn't checked against a source repo.
+func parseRawGithubSource(raw string) (repo, path, ref string) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host != "raw.githubusercontent.com" {
+		return "", "", ""
+	}
+	seg := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(seg) < 4 { // owner, repo, ref, file (path optional)
+		return "", "", ""
+	}
+	repo = seg[0] + "/" + seg[1]
+	ref = seg[2]
+	if len(seg) > 4 { // everything between the ref and the filename is the dir
+		path = strings.Join(seg[3:len(seg)-1], "/")
+	}
+	if !ghRepoRe.MatchString(repo) || !ghRefRe.MatchString(ref) {
+		return "", "", ""
+	}
+	return repo, path, ref
+}
+
 type ghRune struct {
 	Filename    string `json:"filename"`
 	DownloadURL string `json:"download_url"`
@@ -307,13 +331,17 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 		jsonError(w, "cannot overwrite a built-in rune; use a different id", http.StatusConflict)
 		return
 	}
+	// Record where this came from so the update check can compare against its own
+	// source repo — works for any repo, not just the default catalog.
+	srcRepo, srcPath, srcRef := parseRawGithubSource(req.DownloadURL)
 	_, err = s.db.ExecContext(r.Context(), `
-		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin)
-		VALUES (?,?,?,?,?,0)
+		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin, source_repo, source_path, source_ref)
+		VALUES (?,?,?,?,?,0,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, category=excluded.category,
-			version=excluded.version, yaml_blob=excluded.yaml_blob
-	`, gs.ID, gs.Name, gs.Category, gs.Version, string(data))
+			version=excluded.version, yaml_blob=excluded.yaml_blob,
+			source_repo=excluded.source_repo, source_path=excluded.source_path, source_ref=excluded.source_ref
+	`, gs.ID, gs.Name, gs.Category, gs.Version, string(data), srcRepo, srcPath, srcRef)
 	if err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return

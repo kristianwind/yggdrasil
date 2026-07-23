@@ -167,6 +167,9 @@
   let ghBusy = $state(""); // download_url currently installing
   let ghRepo = $state("kristianwind/yggdrasil");
   let ghPath = $state("community-runes");
+  let ghRef = $state("main");
+  let repos = $state([]); // saved repositories (incl. the built-in catalog)
+  let savingRepo = $state(false);
   let ghFilter = $state("");
   let ghFiltered = $derived(
     ((ghData && ghData.runes) || []).filter((r) => {
@@ -180,12 +183,47 @@
 
   function openGithub() {
     ghOpen = true;
+    loadRepos();
     if (!ghData) loadGithub(false);
   }
+  async function loadRepos() {
+    repos = await api.get("/rune-repos").catch(() => []);
+  }
+  function pickRepo(rp) {
+    ghRepo = rp.repo;
+    ghPath = rp.path;
+    ghRef = rp.ref || "main";
+    loadGithub(false);
+  }
+  async function saveRepo() {
+    savingRepo = true;
+    try {
+      await api.post("/rune-repos", { name: ghRepo.trim(), repo: ghRepo.trim(), path: ghPath.trim(), ref: ghRef.trim() });
+      toast("Repository saved", "success");
+      await loadRepos();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingRepo = false;
+    }
+  }
+  async function removeRepo(rp) {
+    if (!confirm(`Remove repository "${rp.name}"?`)) return;
+    try {
+      await api.del(`/rune-repos/${rp.id}`);
+      await loadRepos();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  const repoSaved = $derived(
+    repos.some((rp) => rp.repo === ghRepo.trim() && rp.path === ghPath.trim()),
+  );
   async function loadGithub(refresh) {
     ghLoading = true;
     try {
       const q = new URLSearchParams({ repo: ghRepo.trim(), path: ghPath.trim() });
+      if (ghRef.trim()) q.set("ref", ghRef.trim());
       if (refresh) q.set("refresh", "1");
       ghData = await api.get(`/gameskills/github?${q}`);
     } catch (e) {
@@ -362,19 +400,45 @@
       </div>
       <p class="text-muted text-sm">
         Install community runes directly from a repo's folder of YAML files — no manual download.
+        Runes remember where they came from, so you're told when any of their source repos has a newer version.
       </p>
+
+      <!-- Saved repositories: pick one to switch sources, or save the current one -->
+      {#if repos.length}
+        <div class="flex flex-wrap gap-1.5 items-center">
+          <span class="text-xs text-muted">Repositories:</span>
+          {#each repos as rp}
+            <span class="inline-flex items-center rounded-full border border-border text-xs overflow-hidden">
+              <button class="px-2.5 py-1 hover:bg-panel2 {ghRepo === rp.repo && ghPath === rp.path ? 'bg-accent/15 text-accent' : ''}"
+                onclick={() => pickRepo(rp)} title="{rp.repo}/{rp.path} @ {rp.ref}">{rp.name}</button>
+              {#if !rp.default}
+                <button class="px-1.5 py-1 text-muted hover:text-danger border-l border-border" title="Remove this repository" onclick={() => removeRepo(rp)}>✕</button>
+              {/if}
+            </span>
+          {/each}
+        </div>
+      {/if}
+
       <div class="flex flex-wrap gap-2 items-end">
-        <div class="flex-1 min-w-[12rem]">
+        <div class="flex-1 min-w-[10rem]">
           <label class="label" for="ghRepo">Repository (owner/name)</label>
           <input id="ghRepo" class="input" bind:value={ghRepo} placeholder="kristianwind/yggdrasil" />
         </div>
-        <div class="flex-1 min-w-[10rem]">
+        <div class="flex-1 min-w-[8rem]">
           <label class="label" for="ghPath">Folder</label>
           <input id="ghPath" class="input" bind:value={ghPath} placeholder="community-runes" />
+        </div>
+        <div class="w-24">
+          <label class="label" for="ghRef">Branch</label>
+          <input id="ghRef" class="input" bind:value={ghRef} placeholder="main" />
         </div>
         <button class="btn-ghost" onclick={() => loadGithub(true)} disabled={ghLoading}>
           {ghLoading ? "Loading…" : "Reload"}
         </button>
+        {#if !repoSaved && ghRepo.trim()}
+          <button class="btn-ghost" onclick={saveRepo} disabled={savingRepo}
+            title="Save this repository so you can switch back to it later.">{savingRepo ? "Saving…" : "＋ Save repo"}</button>
+        {/if}
       </div>
 
       {#if ghLoading}

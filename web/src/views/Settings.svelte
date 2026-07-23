@@ -899,15 +899,20 @@
   let suggestServerId = $state("");
   let suggestBusy = $state(false);
   let watcherSuggestions = $state(null); // null = nothing requested yet, [] = none found
+  // The server the current suggestions belong to — captured at request time, so a
+  // later dropdown change can't silently re-target where "+ Add" lands.
+  let suggestedFor = $state(null); // { id, name }
   async function suggestWatchers() {
     if (!suggestServerId) return;
     suggestBusy = true;
     watcherSuggestions = null;
+    suggestedFor = { id: suggestServerId, name: watcherServers.find((s) => s.id === suggestServerId)?.name || "server" };
     try {
       const r = await api.post(`/servers/${suggestServerId}/watchers/suggest`);
       watcherSuggestions = r.suggestions || [];
     } catch (e) {
       toast(e.message, "error");
+      suggestedFor = null;
     } finally {
       suggestBusy = false;
     }
@@ -915,11 +920,11 @@
   async function addSuggestion(sg) {
     try {
       await api.post("/watchers", {
-        server_id: suggestServerId, name: sg.name, pattern: sg.pattern,
+        server_id: suggestedFor.id, name: sg.name, pattern: sg.pattern,
         threshold: sg.threshold, window_secs: sg.window_secs, action: sg.action, enabled: true,
       });
       watcherSuggestions = watcherSuggestions.filter((x) => x !== sg);
-      toast("Watcher added", "success");
+      toast(`Watcher added to ${suggestedFor.name}`, "success");
       await loadWatchers();
     } catch (e) {
       toast(e.message, "error");
@@ -1750,8 +1755,9 @@
       title="Kvasir reads the server's app type and a sample of its recent log, and proposes watcher rules. Needs the AI configured above.">
       {suggestBusy ? "Reading the log…" : "Suggest"}</button>
   </div>
-  {#if watcherSuggestions !== null}
+  {#if watcherSuggestions !== null && suggestedFor}
     {#if watcherSuggestions.length}
+      <div class="text-sm font-medium">Kvasir's suggestions for <span class="text-accent">{suggestedFor.name}</span>:</div>
       <div class="card divide-y divide-border">
         {#each watcherSuggestions as sg}
           <div class="flex items-center gap-3 px-3 py-2 flex-wrap">
@@ -1763,13 +1769,13 @@
               <div class="text-xs text-muted font-mono truncate">{sg.pattern}</div>
               <div class="text-[11px] text-muted">{sg.threshold}× in {sg.window_secs}s · {sg.reason}</div>
             </div>
-            <button class="btn-primary text-xs" onclick={() => addSuggestion(sg)}>+ Add</button>
+            <button class="btn-primary text-xs" onclick={() => addSuggestion(sg)} title="Add this watcher to {suggestedFor.name}">+ Add to {suggestedFor.name}</button>
           </div>
         {/each}
       </div>
       <p class="text-[11px] text-muted">Suggestions are validated (the pattern must be a working regex) but AI-written — skim before adding.</p>
     {:else}
-      <div class="text-sm text-muted">Kvasir had nothing to add for this server.</div>
+      <div class="text-sm text-muted">Kvasir had nothing to add for <b>{suggestedFor.name}</b> — its existing rules may already cover the log (duplicates are dropped). Trying again can turn up different ideas.</div>
     {/if}
   {/if}
 

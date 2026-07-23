@@ -612,11 +612,18 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	// Capture the gameskill image now (DB row still present) in case we need a
 	// root container to delete root-owned files left by a failed install.
 	var rmImage string
+	var rmGS *gameskill.Gameskill
 	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
 		rmImage = rt.gs.Docker.Image
+		rmGS = rt.gs
 	}
 	if srv.ContainerID != "" {
 		_ = s.docker.Remove(r.Context(), srv.ContainerID)
+	}
+	// Tear down any app-stack sidecars + their network (no-op for single-container
+	// runes). The sidecars' data dirs live under the server data dir removed below.
+	if rmGS != nil {
+		s.removeStack(r.Context(), id, rmGS)
 	}
 	s.db.ExecContext(r.Context(), "DELETE FROM port_allocations WHERE server_id=?", id)
 	s.db.ExecContext(r.Context(), "DELETE FROM servers WHERE id=?", id)
@@ -743,6 +750,11 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	// Build docker env slice (server vars + PORT_<name> helpers). HOME=/data gives
 	// the (non-root) runtime user a writable home for caches.
 	envSlice := []string{"HOME=/data"}
+	// Fixed rune env (e.g. an app stack's connection strings) first, so a user
+	// variable of the same key overrides it.
+	for k, v := range gs.Docker.Env {
+		envSlice = append(envSlice, fmt.Sprintf("%s=%s", k, gameskill.ApplyTemplate(v, env)))
+	}
 	for k, v := range env {
 		envSlice = append(envSlice, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -792,6 +804,17 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	s.docker.Remove(ctx, containerName)
 	s.docker.PullImage(ctx, image, io.Discard)
 
+	// App stacks: bring up the sidecar dependencies (db, cache) on a private network
+	// first, and join the main container to it so it resolves them by name. A no-op
+	// for ordinary single-container runes (len(Services) == 0).
+	stackNet := ""
+	if len(gs.Services) > 0 {
+		if err := s.startStack(ctx, id, srv.DataDir, gs, env); err != nil {
+			return fmt.Errorf("start stack: %w", err)
+		}
+		stackNet = stackNetworkName(id)
+	}
+
 	runtimeUser := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
 	if gs.Docker.User != "" {
 		runtimeUser = gameskill.ApplyTemplate(gs.Docker.User, env)
@@ -815,6 +838,7 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 		CPUPercent:     cpuLimit,
 		MemoryMB:       memLimit,
 		Labels:         map[string]string{"yggdrasil.server_id": id},
+		Network:        stackNet, // "" for single-container runes = default bridge
 	})
 	if err != nil {
 		return fmt.Errorf("create container: %w", err)
@@ -896,6 +920,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 				jsonError(w, "stop failed: "+err.Error(), http.StatusBadGateway)
 				return
 			}
+			s.stopStack(r.Context(), id, rt.gs) // bring down sidecars too (no-op if none)
 		} else if err := s.docker.Stop(r.Context(), srv.ContainerID, defaultStopTimeout); err != nil {
 			jsonError(w, "stop failed: "+err.Error(), http.StatusBadGateway)
 			return

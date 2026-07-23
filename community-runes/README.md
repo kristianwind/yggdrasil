@@ -47,6 +47,8 @@ forward it / reverse-proxy it as you like.
 | `pihole.yaml` | pihole/pihole | 80 + 53 | ad-blocker; admin UI at `/admin/`. DNS (:53) lands on a high panel-allocated port, so it's not usable as your real DNS without a fixed/host-network mapping |
 | `adguardhome.yaml` | adguard/adguardhome | 3000 + 53 | ad-blocker / DNS with a nicer UI than Pi-hole; first launch is a setup wizard. Same DNS caveat as Pi-hole (:53 lands on a high port) |
 | `home-assistant.yaml` | ghcr.io/home-assistant/home-assistant | 8123 | home automation hub. Runs bridged, so network integrations work but local mDNS auto-discovery and USB radios (Zigbee/Z-Wave) aren't available through the panel's per-server model |
+| `paperless-ngx.yaml` | ghcr.io/paperless-ngx/paperless-ngx | 8000 | **app stack** — document manager with OCR + full-text search; the panel runs it with its required Redis sidecar. SQLite DB (fine for personal use) |
+| `immich.yaml` | ghcr.io/immich-app/immich-server | 2283 | **app stack** — self-hosted photo/video backup (Google Photos alternative); the panel wires up server + machine-learning + Postgres (vector) + Redis. ML image + models are several GB |
 | `memos.yaml` | neosmemo/memos | 5230 | lightweight notes / knowledge base |
 | `homepage.yaml` | gethomepage/homepage | 3000 | homelab start page (set allowed hosts) |
 | `it-tools.yaml` | corentinth/it-tools | 80 | big collection of dev/sysadmin tools (static) |

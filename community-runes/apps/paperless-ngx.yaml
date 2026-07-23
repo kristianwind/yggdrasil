@@ -1,0 +1,69 @@
+gameskill:
+  id: paperless-ngx
+  name: "Paperless-ngx"
+  category: "Apps"
+  description: "Scan, index and archive your documents with full-text search and OCR. An app stack: the panel runs Paperless plus its required Redis broker together on a private network. Uses SQLite by default (fine for personal use). First launch creates the admin user from the variables below; drop files into the consume volume (Files tab → consume) to import them."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "ghcr.io/paperless-ngx/paperless-ngx:latest"
+    data_path: /usr/src/paperless/data
+    extra_volumes:
+      - /usr/src/paperless/media
+      - /usr/src/paperless/consume
+      - /usr/src/paperless/export
+    keep_entrypoint: true
+    user: "0:0"
+    # Fixed wiring to the redis sidecar (its service name is its DNS alias).
+    env:
+      PAPERLESS_REDIS: "redis://redis:6379"
+
+  variables:
+    - key: PAPERLESS_ADMIN_USER
+      name: "Admin username"
+      type: string
+      default: "admin"
+    - key: PAPERLESS_ADMIN_PASSWORD
+      name: "Admin password"
+      type: string
+      default: "change-me"
+    - key: PAPERLESS_SECRET_KEY
+      name: "Secret key (change to a long random string)"
+      type: string
+      default: "change-me-to-a-long-random-string"
+    - key: PAPERLESS_OCR_LANGUAGE
+      name: "OCR language(s) (e.g. eng, deu, eng+dan)"
+      type: string
+      default: "eng"
+    - key: PAPERLESS_TIME_ZONE
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+    - key: PAPERLESS_URL
+      name: "Public URL (for reverse proxy; blank if local only)"
+      type: string
+      default: ""
+
+  # A stack sidecar: Redis is Paperless's task broker (required).
+  services:
+    - name: redis
+      image: "docker.io/redis:7"
+      data_path: /data
+
+  install:
+    image: "ghcr.io/paperless-ngx/paperless-ngx:latest"
+    script: |
+      mkdir -p /data
+      echo "Paperless-ngx data directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Listening at'
+
+  ports:
+    - { name: web, default: 8000, protocol: tcp }
+
+  backup:
+    include: ["."]

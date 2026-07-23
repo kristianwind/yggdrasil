@@ -36,6 +36,23 @@ type Gameskill struct {
 	Restart     *Restart   `yaml:"restart"     json:"restart,omitempty"`
 	Players     *Players   `yaml:"players"     json:"players,omitempty"`
 	AdminLog    *AdminLog  `yaml:"admin_log"   json:"admin_log,omitempty"`
+	Services    []Service  `yaml:"services,omitempty" json:"services,omitempty"`
+}
+
+// Service is a sidecar container an app depends on — a database, a cache, a worker
+// — that the panel runs alongside the main container on a private per-server bridge
+// network. The main container (and other sidecars) reach it by Name, which is its
+// DNS alias on that network: an app sets DB_HOST=db when its rune declares a service
+// named "db". Sidecars publish no host ports (they're internal), run their own image
+// entrypoint, and each get their own persisted directory under the server's data dir.
+// A rune with services turns one panel "server" into a small app stack (e.g. Immich =
+// server + machine-learning + postgres + redis, Paperless = app + redis).
+type Service struct {
+	Name     string            `yaml:"name"     json:"name"`               // DNS alias on the stack network, e.g. "db", "redis"
+	Image    string            `yaml:"image"    json:"image"`
+	Env      map[string]string `yaml:"env,omitempty"      json:"env,omitempty"`      // values may reference {{VARS}}
+	DataPath string            `yaml:"data_path,omitempty" json:"data_path,omitempty"` // persisted mount inside the sidecar
+	Command  []string          `yaml:"command,omitempty"  json:"command,omitempty"`  // optional command override (argv)
 }
 
 // AdminLog declares how to surface a game's admin/activity log as a parsed feed
@@ -132,6 +149,11 @@ type Docker struct {
 	// Sysctls are kernel params set in the container's namespace, e.g.
 	// {"net.ipv4.ip_forward":"1"} for subnet routing / exit nodes.
 	Sysctls map[string]string `yaml:"sysctls,omitempty" json:"sysctls,omitempty"`
+	// Env is fixed container environment the rune sets that isn't a user Variable —
+	// e.g. an app stack's connection strings (REDIS host, DB host) that are fixed by
+	// the rune's own service names. Values may reference {{VARS}}. User variables win
+	// on a key clash.
+	Env map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
 }
 
 type Variable struct {
@@ -425,14 +447,23 @@ func validateExtraVolumeTarget(p string) error {
 		return fmt.Errorf("docker.extra_volumes: %q must not contain ..", p)
 	}
 	clean := "/" + strings.Trim(filepath.Clean(p), "/")
-	// Exact-match denies (but allow subpaths, e.g. /etc/letsencrypt for NPM).
-	for _, deny := range []string{"/", "/etc", "/var", "/var/run", "/run", "/home"} {
+	// Exact-match denies (but allow subpaths, e.g. /etc/letsencrypt for NPM). /usr is
+	// here (bare /usr would shadow everything) but its data subdirs are allowed below.
+	for _, deny := range []string{"/", "/etc", "/var", "/var/run", "/run", "/home", "/usr"} {
 		if clean == deny {
 			return fmt.Errorf("docker.extra_volumes: %q shadows a sensitive container path", p)
 		}
 	}
-	// Prefix denies: shadowing system binaries / kernel pseudo-fs is never legitimate.
-	for _, deny := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev", "/boot", "/root"} {
+	// Prefix denies: shadowing system binaries / libraries / kernel pseudo-fs is never
+	// legitimate. App data dirs under /usr/src or /usr/share are fine (Paperless,
+	// Immich and many app images install and store there), so /usr is not blanket-denied
+	// — only its executable/library subtrees are. The mount source is always a
+	// panel-created empty dir, so this guards against a broken config, not injection.
+	for _, deny := range []string{
+		"/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev", "/boot", "/root",
+		"/usr/bin", "/usr/sbin", "/usr/lib", "/usr/lib64", "/usr/libexec",
+		"/usr/local/bin", "/usr/local/sbin", "/usr/local/lib",
+	} {
 		if clean == deny || strings.HasPrefix(clean, deny+"/") {
 			return fmt.Errorf("docker.extra_volumes: %q shadows a sensitive container path", p)
 		}

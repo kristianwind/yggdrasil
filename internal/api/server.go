@@ -20,6 +20,7 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/config"
 	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/docker"
+	"github.com/kristianwind/yggdrasil/internal/docskb"
 )
 
 type Server struct {
@@ -28,6 +29,7 @@ type Server struct {
 	docker  *docker.Client
 	router  *chi.Mux
 	webFS   fs.FS
+	docsKB  *docskb.KB    // embedded user docs, retrieval-grounding for the Kvasir chat
 	install *progressHub  // live install/build output, keyed by server id
 	osUpd   osUpdateCache // host OS update status, refreshed on a TTL
 
@@ -62,7 +64,7 @@ type Server struct {
 // SetVersion records the build version so it can be surfaced in the UI.
 func (s *Server) SetVersion(v string) { s.version = v }
 
-func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Server {
+func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docsFS fs.FS) *Server {
 	subFS, _ := fs.Sub(webFS, "web/dist")
 	// Fail closed: a bad/empty secret key means credentials can't be safely encrypted,
 	// so refuse to start rather than silently run with a known/weak key.
@@ -80,6 +82,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 		cipher:    cipher,
 		wd:        newWatchdogState(),
 		kvasir:    newKvasirState(),
+		docsKB:    docskb.Load(docsFS),
 		anomalies: newAnomalyState(),
 		startWD:   newStartState(),
 		alarms:    newAlarmState(),

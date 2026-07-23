@@ -35,7 +35,7 @@ func TestBuildChatMessagesClamps(t *testing.T) {
 	for i := 0; i < chatMaxTurns+5; i++ {
 		history = append(history, llm.Message{Role: "user", Content: strings.Repeat("x", chatMaxMsgLen+100)})
 	}
-	msgs := buildChatMessages(history, servers, true)
+	msgs := buildChatMessages(history, servers, true, "")
 	if msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "Heimdal") {
 		t.Fatal("system grounding missing the fleet")
 	}
@@ -50,9 +50,14 @@ func TestBuildChatMessagesClamps(t *testing.T) {
 			t.Fatal("oversized message not truncated")
 		}
 	}
+	// Docs excerpts land in the system prompt when provided.
+	withDocs := buildChatMessages(nil, servers, true, "--- Docs › Backups ---\nRun backups nightly.")[0].Content
+	if !strings.Contains(withDocs, "Run backups nightly") {
+		t.Fatal("docs excerpts missing from the system prompt")
+	}
 	// Actions gate flips the instructions.
-	on := buildChatMessages(nil, servers, true)[0].Content
-	off := buildChatMessages(nil, servers, false)[0].Content
+	on := buildChatMessages(nil, servers, true, "")[0].Content
+	off := buildChatMessages(nil, servers, false, "")[0].Content
 	if !strings.Contains(on, "```actions") || strings.Contains(off, "```actions") {
 		t.Fatal("actions instructions don't follow the actionsEnabled flag")
 	}

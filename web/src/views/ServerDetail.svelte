@@ -981,6 +981,45 @@
   }
   const addMount = () => (hostMounts = [...hostMounts, { host: "", container: "", rw: false }]);
   const removeMount = (i) => (hostMounts = hostMounts.filter((_, j) => j !== i));
+
+  // Host browser — pick a mount source path instead of typing it blind.
+  let browseFor = $state(-1); // which host-mount row we're picking for; -1 = closed
+  let browseDrives = $state([]);
+  let browseData = $state(null); // { path, parent, entries }
+  let browseBusy = $state(false);
+  async function openBrowse(i) {
+    browseFor = i;
+    browseData = null;
+    browseBusy = true;
+    try {
+      browseDrives = await api.get("/host/mounts");
+    } catch (e) {
+      toast(e.message, "error");
+      browseDrives = [];
+    } finally {
+      browseBusy = false;
+    }
+  }
+  async function browseTo(path) {
+    browseBusy = true;
+    try {
+      browseData = await api.get(`/host/browse?path=${encodeURIComponent(path)}`);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      browseBusy = false;
+    }
+  }
+  function pickPath(path) {
+    if (browseFor >= 0 && hostMounts[browseFor]) {
+      hostMounts[browseFor].host = path;
+      hostMounts = [...hostMounts];
+    }
+    browseFor = -1;
+  }
+  function fmtGB(b) {
+    return b ? (b / 1024 / 1024 / 1024).toFixed(0) + " GB" : "";
+  }
   async function saveEdit() {
     savingEdit = true;
     try {
@@ -1489,6 +1528,55 @@
             {deleting ? "Deleting…" : "Delete server"}
           </button>
         </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if browseFor >= 0}
+    <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+      <div class="card w-full max-w-2xl max-h-[85vh] overflow-auto p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Browse host</h2>
+          <button class="btn-ghost px-2 py-1" onclick={() => (browseFor = -1)}>✕</button>
+        </div>
+        {#if !browseData}
+          <p class="text-muted text-sm">Pick a drive to browse into, then choose a folder to mount.</p>
+          <div class="divide-y divide-border">
+            {#each browseDrives as d}
+              <button class="w-full flex items-center justify-between gap-3 py-2 text-left hover:bg-panel2/50 px-2 rounded" onclick={() => browseTo(d.mountpoint)}>
+                <div class="min-w-0">
+                  <div class="font-mono text-sm truncate">{d.mountpoint}</div>
+                  <div class="text-xs text-muted truncate">{d.device} · {d.fstype}</div>
+                </div>
+                {#if d.total_bytes}<div class="text-xs text-muted shrink-0">{fmtGB(d.free_bytes)} free / {fmtGB(d.total_bytes)}</div>{/if}
+              </button>
+            {:else}
+              <div class="text-muted text-sm py-2">No mounted drives found (or not a Linux host).</div>
+            {/each}
+          </div>
+        {:else}
+          <div class="flex items-center gap-2 text-sm flex-wrap">
+            <button class="btn-ghost text-xs" onclick={() => browseTo(browseData.parent)} disabled={browseBusy || browseData.path === "/"}>⬆ Up</button>
+            <span class="font-mono text-xs text-muted truncate flex-1 min-w-0">{browseData.path}</span>
+            <button class="btn-primary text-xs" onclick={() => pickPath(browseData.path)}>Use this folder</button>
+          </div>
+          <div class="divide-y divide-border max-h-[50vh] overflow-auto">
+            {#each browseData.entries as e}
+              <div class="flex items-center gap-2 py-1.5 px-2 text-sm">
+                <span class="shrink-0">{e.is_dir ? "📁" : "📄"}</span>
+                {#if e.is_dir}
+                  <button class="font-mono text-xs text-accent hover:underline truncate flex-1 text-left" onclick={() => browseTo(e.path)}>{e.name}/</button>
+                  <button class="btn-ghost text-[11px] px-1.5 py-0.5" onclick={() => pickPath(e.path)}>Use</button>
+                {:else}
+                  <span class="font-mono text-xs text-muted truncate flex-1">{e.name}</span>
+                {/if}
+              </div>
+            {:else}
+              <div class="text-muted text-sm py-2">Empty folder.</div>
+            {/each}
+          </div>
+        {/if}
+        {#if browseBusy}<div class="text-muted text-xs">Loading…</div>{/if}
       </div>
     </div>
   {/if}
@@ -2284,7 +2372,10 @@
             <div class="space-y-2">
               {#each hostMounts as m, i}
                 <div class="flex flex-wrap items-center gap-2">
-                  <input class="input flex-1 min-w-[10rem] font-mono text-xs" placeholder="/mnt/mediaserver" bind:value={m.host} />
+                  <div class="flex-1 min-w-[10rem] flex gap-1">
+                    <input class="input flex-1 font-mono text-xs" placeholder="/mnt/mediaserver" bind:value={m.host} />
+                    <button class="btn-ghost px-2 py-1 text-xs" title="Browse the host's drives to pick this path" onclick={() => openBrowse(i)}>📁</button>
+                  </div>
                   <span class="text-muted">→</span>
                   <input class="input flex-1 min-w-[8rem] font-mono text-xs" placeholder="/media" bind:value={m.container} />
                   <label class="inline-flex items-center gap-1 text-xs text-muted" title="Allow the container to write to this path">

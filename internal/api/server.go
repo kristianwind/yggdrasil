@@ -244,6 +244,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/query", s.handleServerQuery)
 		r.Get("/api/servers/{id}/battlemetrics", s.handleServerBattleMetrics)
 		r.Get("/api/servers/{id}/reachability", s.handleServerReachability)
+		r.Get("/api/servers/{id}/jar-update", s.handleJarUpdate)
 		r.Get("/api/servers/{id}/mods", s.handleModList)
 		r.Get("/api/servers/{id}/mods/search", s.handleModSearch)
 		r.Post("/api/servers/{id}/mods/install", s.handleModInstall)
@@ -269,6 +270,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/config-advice", s.handleConfigAdvice)
 		r.Get("/api/servers/{id}/players", s.handleListPlayers)
 		r.Post("/api/servers/{id}/players/kick", s.handleKickPlayer)
+		r.Post("/api/servers/{id}/players/ban", s.handleDayzBan)
 		r.Post("/api/servers/{id}/players/broadcast", s.handleBroadcast)
 		r.Post("/api/servers/{id}/players/lock", s.handleLockServer)
 		r.Get("/api/servers/{id}/logs", s.handleServerLogs) // WebSocket

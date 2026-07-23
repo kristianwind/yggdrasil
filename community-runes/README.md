@@ -45,6 +45,8 @@ forward it / reverse-proxy it as you like.
 | `adminer.yaml` | adminer | 8080 | lightweight single-file DB manager (MySQL/Postgres/SQLite); enter the DB host at login |
 | `portainer.yaml` | portainer/portainer-ce | 9443 | Docker UI over HTTPS. Managing the LOCAL Docker needs `/var/run/docker.sock` mounted (not auto-mounted) — use remote endpoints/agents or add the socket manually |
 | `pihole.yaml` | pihole/pihole | 80 + 53 | ad-blocker; admin UI at `/admin/`. DNS (:53) lands on a high panel-allocated port, so it's not usable as your real DNS without a fixed/host-network mapping |
+| `adguardhome.yaml` | adguard/adguardhome | 3000 + 53 | ad-blocker / DNS with a nicer UI than Pi-hole; first launch is a setup wizard. Same DNS caveat as Pi-hole (:53 lands on a high port) |
+| `home-assistant.yaml` | ghcr.io/home-assistant/home-assistant | 8123 | home automation hub. Runs bridged, so network integrations work but local mDNS auto-discovery and USB radios (Zigbee/Z-Wave) aren't available through the panel's per-server model |
 | `memos.yaml` | neosmemo/memos | 5230 | lightweight notes / knowledge base |
 | `homepage.yaml` | gethomepage/homepage | 3000 | homelab start page (set allowed hosts) |
 | `it-tools.yaml` | corentinth/it-tools | 80 | big collection of dev/sysadmin tools (static) |

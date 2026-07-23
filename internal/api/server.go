@@ -97,6 +97,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS) *Ser
 	go s.startDiscordBot()
 	s.startBackupVerifyLoop()
 	s.startDiskAlarmLoop()
+	s.startWatcherLoop()
 	return s
 }
 
@@ -336,6 +337,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Beacon (voluntary install ping) — config + collected stats (admin-only)
 		r.Get("/api/settings/steam-web-api-key", s.requireAdmin(s.handleGetSteamKey))
 		r.Put("/api/settings/steam-web-api-key", s.requireAdmin(s.handleSetSteamKey))
+		r.Get("/api/watchers", s.requireAdmin(s.handleListWatchers)) // ?server_id=
+		r.Post("/api/watchers", s.requireAdmin(s.handleCreateWatcher))
+		r.Put("/api/watchers/{id}", s.requireAdmin(s.handleUpdateWatcher))
+		r.Delete("/api/watchers/{id}", s.requireAdmin(s.handleDeleteWatcher))
 		r.Get("/api/settings/beacon", s.requireAdmin(s.handleGetBeaconSettings))
 		r.Put("/api/settings/beacon", s.requireAdmin(s.handleSetBeaconSettings))
 		r.Post("/api/settings/beacon/test", s.requireAdmin(s.handleTestBeacon))

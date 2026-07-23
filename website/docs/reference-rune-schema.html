@@ -857,6 +857,37 @@ the server, deletes the matches, and restarts it if it was running.</p>
 sends each <code>msg</code> that long before the restart. <code>at</code> is a Go duration (<code>15m</code>, <code>60s</code>) and must parse
 to something greater than zero. <code>msg</code> is a complete broadcast command for the game, delivered over
 RCON or stdin — not just the text.</p>
+<h2 id="import"><code>import</code></h2>
+<p>Declares how to bring an <strong>existing</strong> deployment of this app into a Yggdrasil server — the onboarding
+counterpart to migration (which moves servers between panels). The admin uploads the app&rsquo;s own data
+(a site archive, a database dump) via a 📥 Import data button, and the panel runs the declared steps
+against the server&rsquo;s data dir and, for app-stacks, its database sidecar. Everything runs in one-shot
+containers streamed to the build log; the server is stopped for the import and started after.</p>
+<pre><code class="language-yaml">import:
+  inputs:
+    - key: files
+      label: &quot;Site archive (webroot)&quot;
+      accept: &quot;.tar.gz,.zip&quot;
+      optional: true
+    - key: db
+      label: &quot;Database dump (.sql or .sql.gz)&quot;
+      accept: &quot;.sql,.sql.gz&quot;
+  steps:
+    - unpack: files          # extract an archive input into the data dir (`to:` subdir, default &quot;.&quot;)
+    - db_import:             # pipe a dump into a stack database sidecar
+        input: db
+        service: db          # the services: sidecar name
+        image: &quot;mariadb:lts&quot; # a client image
+        command: &quot;mariadb -h db -u {{DB_USER}} -p{{DB_PASSWORD}} {{DB_NAME}}&quot;
+    - script: &quot;…&quot;            # run a shell snippet in the app's own image against /data
+</code></pre>
+<p>Each <code>inputs</code> entry is a file the form accepts (<code>accept</code> is a hint; <code>optional</code> lets it be skipped).
+Each step sets exactly one verb: <code>unpack</code> extracts a <code>.tar</code>/<code>.tar.gz</code>/<code>.zip</code> (jailed to the data dir,
+<code>to</code> can&rsquo;t contain <code>..</code>); <code>db_import</code> runs a one-shot client on the stack network that pipes the dump
+(gzip auto-detected) into the named sidecar; <code>script</code> runs a <code>{{VAR}}</code>-templated shell snippet in the
+app&rsquo;s image with uploads exposed as <code>$YGG_INPUT_&lt;KEY&gt;</code>. Admin-only, because a script runs code in the
+app&rsquo;s image. <strong>Big uploads must go over the LAN</strong> — a reverse proxy like Cloudflare caps request
+bodies (100 MB on the free plan).</p>
 <h2 id="backup"><code>backup</code></h2>
 <pre><code class="language-yaml">backup:
   include: [&quot;world&quot;, &quot;world_nether&quot;, &quot;server.properties&quot;, &quot;plugins&quot;]
@@ -1171,7 +1202,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

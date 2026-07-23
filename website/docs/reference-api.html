@@ -544,6 +544,18 @@ create-server form needs it; everything that changes the catalogue is admin-only
 <td>Copy a server&rsquo;s setup into a fresh server with new ports and an empty data dir</td>
 </tr>
 <tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/import-data</code></td>
+<td><code>server.view</code></td>
+<td>Whether the rune supports data import and the inputs it expects</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/import-data</code></td>
+<td>Admin</td>
+<td>Import an existing deployment: multipart upload of the rune&rsquo;s declared inputs, run in one-shot containers streamed to the build log</td>
+</tr>
+<tr>
 <td><code>POST</code></td>
 <td><code>/api/servers/{id}/install</code></td>
 <td><code>server.control</code></td>

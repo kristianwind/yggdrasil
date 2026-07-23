@@ -1222,6 +1222,35 @@
   }
 
   let cloning = $state(false);
+  // App-data import — onboarding an existing deployment into this server.
+  let importInfo = $state(null); // { supported, inputs: [{key,label,accept,optional}] }
+  let showImportData = $state(false);
+  let importFiles = $state({}); // key -> File
+  let importing = $state(false);
+  async function loadImportInfo() {
+    importInfo = await api.get(`/servers/${id}/import-data`).catch(() => null);
+  }
+  async function submitImportData() {
+    const missing = (importInfo?.inputs || []).filter((i) => !i.optional && !importFiles[i.key]);
+    if (missing.length) return toast(`Choose a file for: ${missing.map((i) => i.label).join(", ")}`, "error");
+    importing = true;
+    try {
+      const fd = new FormData();
+      for (const i of importInfo.inputs) if (importFiles[i.key]) fd.append(i.key, importFiles[i.key]);
+      const res = await fetch(`/api/servers/${id}/import-data`, { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      showImportData = false;
+      importFiles = {};
+      tab = "install"; // the import streams to the install/build log
+      if (!installWs) connectInstallLog();
+      toast("Import started — follow it in the build log below.", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      importing = false;
+    }
+  }
+
   // Download this server as a portable bundle to import on another panel. The
   // bundle holds decrypted secrets, so it's admin-only and worth a heads-up.
   let exporting = $state(false);
@@ -1370,6 +1399,7 @@
     loadNetwork();
     loadCrashes();
     loadKvasirEvents();
+    loadImportInfo();
     await loadServer();
     // Pre-load installed mods (if this rune supports them) so the "N updates" badge
     // on the Mods tab is visible without having to open the tab first.
@@ -1484,6 +1514,11 @@
         title="Download this server as a portable bundle (its config, rune and data) to import on another Yggdrasil panel. The bundle contains decrypted secrets — treat it like a credential.">
         {exporting ? `Exporting… ${fmtBytes(exportedBytes)}` : "⤓ Export"}</button>
     {/if}
+    {#if $user?.role === "admin" && importInfo?.supported}
+      <button class="btn-ghost" onclick={() => (showImportData = true)}
+        title="Bring an existing deployment of this app into this server — upload its data and database dump and the panel loads them in.">
+        📥 Import data</button>
+    {/if}
     {#if server.wipe_supported && can("server.control")}
       <button class="btn-ghost text-warn {can('server.delete') ? '' : 'ml-auto'}" onclick={() => { showWipe = true; if (!backupTargets.length) loadBackups(); }}
         title="Reset the world / persistence (loot, bases, progress) as defined by the rune. Opens a confirmation dialog with a backup-first option — it does not wipe until you confirm. Runs immediately once confirmed (it is not a schedule). Config and mods are kept.">🧹 Wipe</button>
@@ -1577,6 +1612,32 @@
           </div>
         {/if}
         {#if browseBusy}<div class="text-muted text-xs">Loading…</div>{/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if showImportData && importInfo?.supported}
+    <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
+      <div class="card p-5 w-full max-w-lg space-y-4">
+        <h2 class="text-lg font-semibold">📥 Import data into {server.name}</h2>
+        <p class="text-sm text-muted">
+          Bring an existing deployment of this app in. Upload its data below — the server stops, the panel
+          loads it (into the data dir and the bundled database), then starts again. Progress streams to the
+          build log. <b>Large files:</b> import over the LAN (a proxy like Cloudflare caps uploads).
+        </p>
+        {#each importInfo.inputs as inp}
+          <div>
+            <label class="label" for={`imp-${inp.key}`}>{inp.label}{inp.optional ? " (optional)" : ""}</label>
+            <input id={`imp-${inp.key}`} type="file" accept={inp.accept || ""} class="text-sm"
+              onchange={(e) => (importFiles[inp.key] = e.target.files?.[0] || null)} />
+          </div>
+        {/each}
+        <div class="flex gap-2 pt-1">
+          <button class="btn-ghost flex-1" disabled={importing} onclick={() => (showImportData = false)}>Cancel</button>
+          <button class="btn-primary flex-1" disabled={importing} onclick={submitImportData}>
+            {importing ? "Uploading…" : "Import"}
+          </button>
+        </div>
       </div>
     </div>
   {/if}

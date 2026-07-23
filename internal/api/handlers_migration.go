@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Migration archive — level 2 of host migration: the panel-settings bundle plus
@@ -83,11 +85,13 @@ func (s *Server) handleMigrationExport(w http.ResponseWriter, r *http.Request) {
 		tw.Write(pj)                                                                       //nolint:errcheck
 	}
 
-	// A tar header needs the entry size up front, and a server bundle's size is
-	// unknowable until written — so each is spooled to a temp file, sized, copied
-	// in and deleted. One server at a time keeps the footprint at max(bundle).
+	// Servers are written EXPANDED — servers/<name>/manifest.json followed by the
+	// raw data files — never as a nested spooled archive. Every file's size is
+	// known from stat, so the stream flows continuously: no temp spool, no silent
+	// minutes that a reverse proxy (or an anxious admin) reads as a hang. That
+	// silence killed real exports through NPM's idle timeout.
 	for _, id := range serverIDs {
-		if err := s.spoolServerBundle(ctx, tw, id, names[id]); err != nil {
+		if err := s.writeServerEntries(ctx, tw, id, names[id]); err != nil {
 			break // stream is already committed; truncation is the failure signal
 		}
 	}
@@ -97,30 +101,27 @@ func (s *Server) handleMigrationExport(w http.ResponseWriter, r *http.Request) {
 		"groups": r.URL.Query().Get("include"), "servers": len(serverIDs)})
 }
 
-// spoolServerBundle writes one server's bundle into the archive via a temp
-// file (tar needs the size before the content).
-func (s *Server) spoolServerBundle(ctx context.Context, tw *tar.Writer, id, name string) error {
-	tmp, err := os.CreateTemp("", tempSpoolPattern)
+// writeServerEntries writes one server into the archive in expanded form:
+// servers/<name>/manifest.json, then servers/<name>/data/**.
+func (s *Server) writeServerEntries(ctx context.Context, tw *tar.Writer, id, name string) error {
+	man, dataDir, err := s.buildTransferManifest(ctx, id)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
-	if err := s.writeServerBundle(ctx, tmp, id); err != nil {
+	prefix := "servers/" + safeFilename(name) + "/"
+	manJSON, _ := json.MarshalIndent(man, "", "  ")
+	if err := tw.WriteHeader(&tar.Header{Name: prefix + "manifest.json", Mode: 0o600, Size: int64(len(manJSON))}); err != nil {
 		return err
 	}
-	size, err := tmp.Seek(0, io.SeekEnd)
-	if err != nil {
+	if _, err := tw.Write(manJSON); err != nil {
 		return err
 	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return err
+	if dataDir != "" {
+		if fi, err := os.Stat(dataDir); err == nil && fi.IsDir() {
+			tarDataDir(tw, dataDir, prefix+"data/")
+		}
 	}
-	if err := tw.WriteHeader(&tar.Header{Name: fmtEntryName(name), Mode: 0o600, Size: size}); err != nil {
-		return err
-	}
-	_, err = io.Copy(tw, tmp)
-	return err
+	return nil
 }
 
 // handleMigrationImport reads the archive and merges it: panel.json first, then
@@ -139,16 +140,51 @@ func (s *Server) handleMigrationImport(w http.ResponseWriter, r *http.Request) {
 	var panelSummary map[string]int
 	servers := []map[string]any{}
 	sawAI := false
+
+	// Expanded-layout state: the server currently being unpacked. Its manifest
+	// arrives first (our exporter guarantees the order), data files follow, and
+	// the next manifest — or EOF — finalizes it.
+	type pending struct {
+		man     *transferManifest
+		id      string
+		dataDir string
+		prefix  string
+		skip    bool
+	}
+	var pend *pending
+	finalize := func() {
+		if pend == nil {
+			return
+		}
+		if pend.skip {
+			servers = append(servers, map[string]any{"name": pend.man.Name, "skipped": true,
+				"reason": "a server with this name already exists"})
+		} else if res, err := s.finalizeServerImport(ctx, pend.man, pend.id, pend.dataDir); err != nil {
+			os.RemoveAll(pend.dataDir)
+			servers = append(servers, map[string]any{"name": pend.man.Name, "error": err.Error()})
+		} else {
+			servers = append(servers, res)
+		}
+		pend = nil
+	}
+
+	base := s.cfg.Database.Path[:len(s.cfg.Database.Path)-len(filepath.Base(s.cfg.Database.Path))]
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
+			if pend != nil && !pend.skip {
+				os.RemoveAll(pend.dataDir)
+			}
 			jsonError(w, "corrupt archive", http.StatusBadRequest)
 			return
 		}
 		name := filepath.Clean(hdr.Name)
+		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			continue
+		}
 		switch {
 		case name == "panel.json":
 			var b panelBundle
@@ -159,7 +195,38 @@ func (s *Server) handleMigrationImport(w http.ResponseWriter, r *http.Request) {
 			}
 			panelSummary = s.applyPanelBundle(ctx, b)
 			sawAI = b.AIConfig != nil
+		case strings.HasPrefix(name, "servers/") && strings.HasSuffix(name, "/manifest.json"):
+			finalize()
+			var m transferManifest
+			if json.NewDecoder(io.LimitReader(tr, 16<<20)).Decode(&m) != nil ||
+				m.Version < 1 || m.Version > transferVersion {
+				servers = append(servers, map[string]any{"bundle": name, "error": "unsupported bundle version"})
+				continue
+			}
+			pend = &pending{man: &m, prefix: strings.TrimSuffix(name, "manifest.json")}
+			if skipExisting && s.serverNameTaken(ctx, m.Name) {
+				pend.skip = true
+				continue
+			}
+			pend.id = uuid.New().String()
+			pend.dataDir = filepath.Join(base, "servers", pend.id)
+		case pend != nil && strings.HasPrefix(name, pend.prefix+"data/"):
+			if pend.skip {
+				continue // drain without writing
+			}
+			rel := strings.TrimPrefix(name, pend.prefix+"data/")
+			dest := filepath.Join(pend.dataDir, filepath.Clean("/"+rel))
+			if hdr.Typeflag == tar.TypeDir {
+				os.MkdirAll(dest, 0o755)
+				continue
+			}
+			os.MkdirAll(filepath.Dir(dest), 0o755)
+			if f, ferr := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode()); ferr == nil {
+				io.Copy(f, tr) //nolint:errcheck
+				f.Close()
+			}
 		case strings.HasPrefix(name, "servers/") && strings.HasSuffix(name, ".tar.gz"):
+			// Older archives carried each server as a nested bundle.
 			res, ierr := s.importServerBundle(ctx, tr, skipExisting)
 			if ierr != nil {
 				servers = append(servers, map[string]any{
@@ -172,6 +239,7 @@ func (s *Server) handleMigrationImport(w http.ResponseWriter, r *http.Request) {
 			// importable here for the parts this panel understands.
 		}
 	}
+	finalize()
 	if sawAI {
 		s.startDiscordBot()
 	}
@@ -181,11 +249,4 @@ func (s *Server) handleMigrationImport(w http.ResponseWriter, r *http.Request) {
 		resp["panel"] = panelSummary
 	}
 	jsonOK(w, resp)
-}
-
-// tempSpoolPattern keeps migration spool files identifiable (and sweepable).
-const tempSpoolPattern = "ygg-migrate-*.tar.gz"
-
-func fmtEntryName(name string) string {
-	return "servers/" + safeFilename(name) + ".yggserver.tar.gz"
 }

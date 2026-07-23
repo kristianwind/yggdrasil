@@ -92,12 +92,12 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 	s.auditLog(r, "server.export", "server:"+id, map[string]string{"name": src.Name})
 }
 
-// writeServerBundle streams one server's portable bundle (manifest + data dir)
-// to w. The shared core of the single-server download and the migration archive.
-func (s *Server) writeServerBundle(ctx context.Context, out io.Writer, id string) error {
+// buildTransferManifest assembles a server's portable manifest (secrets
+// decrypted) and returns it with the server's data dir.
+func (s *Server) buildTransferManifest(ctx context.Context, id string) (*transferManifest, string, error) {
 	src, err := s.getServer(ctx, id)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 
 	var envJSON, hostMounts, yamlBlob, realmName string
@@ -110,11 +110,11 @@ func (s *Server) writeServerBundle(ctx context.Context, out io.Writer, id string
 		FROM servers s JOIN gameskills g ON g.id=s.gameskill_id
 		LEFT JOIN realms rlm ON rlm.id=s.realm_id WHERE s.id=?`, id).
 		Scan(&envJSON, &hostMounts, &cpu, &mem, &autostart, &autoForward, &watchdog, &yamlBlob, &realmName); err != nil {
-		return err
+		return nil, "", err
 	}
 	gs, err := gameskill.Parse([]byte(yamlBlob))
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	env := map[string]string{}
 	json.Unmarshal([]byte(envJSON), &env)
@@ -127,15 +127,24 @@ func (s *Server) writeServerBundle(ctx context.Context, out io.Writer, id string
 		Subdomain: src.Subdomain,
 	}
 	s.collectServerTail(ctx, id, &man)
+	return &man, src.DataDir, nil
+}
 
+// writeServerBundle streams one server's portable bundle (manifest + data dir)
+// to w — the single-server download format.
+func (s *Server) writeServerBundle(ctx context.Context, out io.Writer, id string) error {
+	man, dataDir, err := s.buildTransferManifest(ctx, id)
+	if err != nil {
+		return err
+	}
 	gz := gzip.NewWriter(out)
 	tw := tar.NewWriter(gz)
 	manJSON, _ := json.MarshalIndent(man, "", "  ")
 	tw.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0o644, Size: int64(len(manJSON))})
 	tw.Write(manJSON)
-	if src.DataDir != "" {
-		if fi, err := os.Stat(src.DataDir); err == nil && fi.IsDir() {
-			tarDataDir(tw, src.DataDir) // best-effort; a read error just truncates the data
+	if dataDir != "" {
+		if fi, err := os.Stat(dataDir); err == nil && fi.IsDir() {
+			tarDataDir(tw, dataDir, "data/") // best-effort; a read error just truncates the data
 		}
 	}
 	tw.Close()
@@ -236,7 +245,12 @@ func (s *Server) importServerBundle(ctx context.Context, body io.Reader, skipExi
 		os.RemoveAll(dataDir)
 		return map[string]any{"name": man.Name, "skipped": true, "reason": "a server with this name already exists"}, nil
 	}
+	return s.finalizeServerImport(ctx, man, newID, dataDir)
+}
 
+// finalizeServerImport turns an unpacked manifest + data dir into a real server
+// row: rune ensured, ports picked, secrets re-encrypted, tail restored.
+func (s *Server) finalizeServerImport(ctx context.Context, man *transferManifest, newID, dataDir string) (map[string]any, error) {
 	// Ensure the rune exists — add it (as a community rune) when the target panel
 	// doesn't already have it.
 	gs, err := gameskill.Parse([]byte(man.RuneYAML))
@@ -394,8 +408,8 @@ func safeFilename(name string) string {
 	return b.String()
 }
 
-// tarDataDir walks a data directory into the tar under data/.
-func tarDataDir(tw *tar.Writer, root string) {
+// tarDataDir walks a data directory into the tar under the given prefix.
+func tarDataDir(tw *tar.Writer, root, prefix string) {
 	filepath.Walk(root, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return nil // skip unreadable entries rather than abort the export
@@ -404,7 +418,7 @@ func tarDataDir(tw *tar.Writer, root string) {
 		if err != nil || rel == "." {
 			return nil
 		}
-		name := "data/" + filepath.ToSlash(rel)
+		name := prefix + filepath.ToSlash(rel)
 		link := ""
 		if fi.Mode()&os.ModeSymlink != 0 {
 			link, _ = os.Readlink(path)

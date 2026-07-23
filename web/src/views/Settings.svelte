@@ -943,16 +943,31 @@
     ["users", "Users & permissions"],
   ];
   let migrateSel = $state({ channels: true, ai: true, integrations: true, network: false, rune_repos: true, watchers: true, users: false });
-  let migrateResult = $state(null);
+  let migrateSrvSel = $state({}); // server id -> include in the archive
+  let migrateSkipExisting = $state(true);
+  let migrateResult = $state(null); // settings summary (json import)
+  let migrateServersResult = $state(null); // per-server rows (archive import)
+  let migrateAllServers = $derived(watcherServers.length > 0 && watcherServers.every((sv) => migrateSrvSel[sv.id]));
+  function toggleAllMigrateServers() {
+    const on = !migrateAllServers;
+    const next = {};
+    for (const sv of watcherServers) next[sv.id] = on;
+    migrateSrvSel = next;
+  }
   async function exportPanelSettings() {
     const include = Object.entries(migrateSel).filter(([, v]) => v).map(([k]) => k).join(",");
+    const servers = Object.entries(migrateSrvSel).filter(([, v]) => v).map(([k]) => k).join(",");
+    // Servers selected → the combined migration archive; settings only → the JSON bundle.
+    const url = servers
+      ? `/api/migration/export?include=${include}&servers=${servers}`
+      : `/api/panel/export?include=${include}`;
     try {
-      const res = await fetch(`/api/panel/export?include=${include}`, { credentials: "same-origin" });
+      const res = await fetch(url, { credentials: "same-origin" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "panel-settings.yggpanel.json";
+      a.download = servers ? "panel-migration.ygg.tar.gz" : "panel-settings.yggpanel.json";
       a.click();
       URL.revokeObjectURL(a.href);
       toast("Bundle downloaded — it contains secrets, treat it like a password", "info");
@@ -964,10 +979,23 @@
     const file = ev.target.files?.[0];
     ev.target.value = "";
     if (!file) return;
+    migrateResult = null;
+    migrateServersResult = null;
     try {
-      const bundle = JSON.parse(await file.text());
-      migrateResult = await api.post("/panel/import", bundle);
-      toast("Settings bundle merged", "success");
+      if (file.name.endsWith(".json")) {
+        const bundle = JSON.parse(await file.text());
+        migrateResult = await api.post("/panel/import", bundle);
+        toast("Settings bundle merged", "success");
+      } else {
+        const res = await fetch(`/api/migration/import?skip_existing=${migrateSkipExisting ? 1 : 0}`, {
+          method: "POST", credentials: "same-origin", body: file,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        migrateResult = data.panel || null;
+        migrateServersResult = data.servers || [];
+        toast("Migration archive imported", "success");
+      }
     } catch (e) {
       toast(e.message, "error");
     }
@@ -1310,17 +1338,50 @@
       </label>
     {/each}
   </div>
+  {#if watcherServers.length}
+    <div>
+      <div class="flex items-center gap-3 mb-1">
+        <span class="text-sm font-medium">Servers to include</span>
+        <button class="btn-ghost text-xs" onclick={toggleAllMigrateServers}>{migrateAllServers ? "None" : "All"}</button>
+        <span class="text-[11px] text-muted">none selected = settings-only bundle</span>
+      </div>
+      <div class="flex flex-wrap gap-x-5 gap-y-1">
+        {#each watcherServers as sv}
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" bind:checked={migrateSrvSel[sv.id]} /> {sv.name}
+          </label>
+        {/each}
+      </div>
+    </div>
+  {/if}
   <div class="flex items-center gap-3 flex-wrap">
-    <button class="btn-primary text-sm" onclick={exportPanelSettings} disabled={!Object.values(migrateSel).some(Boolean)}>⬇ Export selected</button>
+    <button class="btn-primary text-sm" onclick={exportPanelSettings} disabled={!Object.values(migrateSel).some(Boolean) && !Object.values(migrateSrvSel).some(Boolean)}>⬇ Export selected</button>
     <span class="text-xs text-muted">— or on the receiving panel —</span>
     <label class="btn-ghost text-sm cursor-pointer">
       ⬆ Import bundle…
-      <input type="file" accept=".json,application/json" class="hidden" onchange={importPanelSettings} />
+      <input type="file" accept=".json,.gz,application/json,application/gzip" class="hidden" onchange={importPanelSettings} />
+    </label>
+    <label class="inline-flex items-center gap-2 text-xs text-muted">
+      <input type="checkbox" bind:checked={migrateSkipExisting} /> skip servers that already exist here
     </label>
   </div>
   {#if migrateResult}
     <div class="text-sm text-muted">
-      Imported: {Object.entries(migrateResult).map(([k, v]) => `${k.replaceAll("_", " ")}: ${v}`).join(" · ") || "nothing new"}
+      Settings: {Object.entries(migrateResult).map(([k, v]) => `${k.replaceAll("_", " ")}: ${v}`).join(" · ") || "nothing new"}
+    </div>
+  {/if}
+  {#if migrateServersResult}
+    <div class="card divide-y divide-border">
+      {#each migrateServersResult as row}
+        <div class="flex items-center gap-3 px-3 py-2 text-sm flex-wrap">
+          <span class="shrink-0">{row.error ? "❌" : row.skipped ? "⏭️" : "✅"}</span>
+          <span class="font-medium">{row.name || row.bundle}</span>
+          <span class="text-xs text-muted ml-auto">
+            {row.error || (row.skipped ? row.reason : [row.restored?.join(", "), row.ports_changed ? `ports: ${row.ports_changed.join(", ")}` : "", row.subdomain_dropped ? `subdomain dropped: ${row.subdomain_dropped}` : ""].filter(Boolean).join(" · ") || "imported")}
+          </span>
+        </div>
+      {/each}
+      {#if !migrateServersResult.length}<div class="px-3 py-2 text-sm text-muted">No servers in the archive.</div>{/if}
     </div>
   {/if}
 </div>

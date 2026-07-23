@@ -331,6 +331,8 @@ is admin-only and the files should be treated like passwords.
 | `POST` | `/api/servers/import` | Admin | Create a server from an exported bundle. Keeps the source's host ports when free (reports `ports_changed` otherwise) and the subdomain unless taken (`subdomain_dropped`) |
 | `GET` | `/api/panel/export` | Admin | Panel configuration as JSON. `?include=` any of `channels,ai,integrations,network,rune_repos,watchers,users` |
 | `POST` | `/api/panel/import` | Admin | Merge a panel-settings bundle: existing rows are skipped, never overwritten; AI config and integration keys are applied; returns a per-category summary. API tokens, beacon identity and passkeys never transfer |
+| `GET` | `/api/migration/export` | Admin | One archive of settings + servers: `?include=` settings groups, `?servers=` ids or `all` |
+| `POST` | `/api/migration/import` | Admin | Merge a migration archive: settings first, then each server; `?skip_existing=1` skips name clashes; returns the settings summary plus a per-server report |
 
 ### Players and moderation
 

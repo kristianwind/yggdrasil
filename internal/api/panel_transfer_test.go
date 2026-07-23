@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kristianwind/yggdrasil/internal/config"
 	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/db"
 )
@@ -27,7 +28,10 @@ func transferTestServer(t *testing.T, key string) *Server {
 	if err != nil {
 		t.Fatalf("cipher: %v", err)
 	}
-	return &Server{db: database, cipher: cipher}
+	cfg := &config.Config{}
+	cfg.Database.Path = dbPath // imports derive the servers/ dir from this
+	cfg.Ports.RangeMin, cfg.Ports.RangeMax = 25000, 25100
+	return &Server{db: database, cipher: cipher, cfg: cfg}
 }
 
 func TestServerTransferTailRoundTrip(t *testing.T) {

@@ -128,6 +128,23 @@ a real collision, and the response tells you which), and keeps the subdomain
 unless another server on the target already claims it.</p>
 <p>Because the bundle contains the server&rsquo;s secrets in recoverable form, both ends
 are admin-only — treat the file like a password.</p>
+<h2 id="moving-settings-and-servers-together">Moving settings and servers together</h2>
+<p>The same Host migration section can bundle <strong>settings plus any selection of
+servers</strong> into one archive: tick the groups, tick the servers (or <strong>All</strong>), and
+Export produces a single <code>.tar.gz</code> holding the settings bundle and one server
+bundle per selection. Import it on the target in one upload: settings merge
+first, then each server lands with its full habitat, and the result is a
+per-server report — imported, skipped, ports moved, subdomain dropped.</p>
+<p>Two knobs matter on import: <strong>skip servers that already exist here</strong> (on by
+default) makes re-imports idempotent — a server whose name is already present
+is reported and left alone, so you can re-run an archive after a partial
+transfer without duplicating anything. With it off, a name clash imports the
+copy as &ldquo;<name> (imported)&rdquo;. An imported server always arrives <strong>stopped</strong>.</p>
+<p>Selecting every server plus every settings group is a whole-panel <strong>copy</strong> onto
+a target that keeps its own identity. It differs from <code>migrate import</code> (below)
+on exactly one axis: the target&rsquo;s own database survives — nothing is
+overwritten, and the target keeps its own secret key, so API tokens still need
+recreating there.</p>
 <h2 id="moving-your-settings">Moving your settings</h2>
 <p><strong>Settings → System → Host migration</strong> moves the panel&rsquo;s configuration — not
 its servers — to another running panel. Pick the groups to export (notification
@@ -150,7 +167,7 @@ it after the move.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-actually-makes-up-a-panel">What actually makes up a panel</a><a class="t2" href="#the-easy-way-migrate-export--migrate-import">The easy way: migrate export / migrate import</a><a class="t2" href="#the-manual-way-rsync">The manual way: rsync</a><a class="t2" href="#after-the-move">After the move</a><a class="t2" href="#moving-one-server">Moving one server</a><a class="t2" href="#moving-your-settings">Moving your settings</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-actually-makes-up-a-panel">What actually makes up a panel</a><a class="t2" href="#the-easy-way-migrate-export--migrate-import">The easy way: migrate export / migrate import</a><a class="t2" href="#the-manual-way-rsync">The manual way: rsync</a><a class="t2" href="#after-the-move">After the move</a><a class="t2" href="#moving-one-server">Moving one server</a><a class="t2" href="#moving-settings-and-servers-together">Moving settings and servers together</a><a class="t2" href="#moving-your-settings">Moving your settings</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

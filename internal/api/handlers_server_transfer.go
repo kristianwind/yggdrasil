@@ -84,24 +84,37 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "forbidden: exporting a server exposes its secrets (admin only)", http.StatusForbidden)
 		return
 	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", safeFilename(src.Name)+".yggserver.tar.gz"))
+	if err := s.writeServerBundle(r.Context(), w, id); err != nil {
+		return // headers are gone; the truncated stream is the only signal left
+	}
+	s.auditLog(r, "server.export", "server:"+id, map[string]string{"name": src.Name})
+}
+
+// writeServerBundle streams one server's portable bundle (manifest + data dir)
+// to w. The shared core of the single-server download and the migration archive.
+func (s *Server) writeServerBundle(ctx context.Context, out io.Writer, id string) error {
+	src, err := s.getServer(ctx, id)
+	if err != nil {
+		return err
+	}
 
 	var envJSON, hostMounts, yamlBlob, realmName string
 	var cpu float64
 	var mem int64
 	var autostart, autoForward, watchdog int
-	if err := s.db.QueryRowContext(r.Context(), `
+	if err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(s.env_json,'{}'), COALESCE(s.host_mounts,''), COALESCE(s.cpu_limit,0), COALESCE(s.mem_limit_mb,0),
 		       COALESCE(s.autostart,1), COALESCE(s.auto_forward,1), COALESCE(s.watchdog,0), g.yaml_blob, COALESCE(rlm.name,'')
 		FROM servers s JOIN gameskills g ON g.id=s.gameskill_id
 		LEFT JOIN realms rlm ON rlm.id=s.realm_id WHERE s.id=?`, id).
 		Scan(&envJSON, &hostMounts, &cpu, &mem, &autostart, &autoForward, &watchdog, &yamlBlob, &realmName); err != nil {
-		jsonError(w, "source read failed", http.StatusInternalServerError)
-		return
+		return err
 	}
 	gs, err := gameskill.Parse([]byte(yamlBlob))
 	if err != nil {
-		jsonError(w, "gameskill parse error", http.StatusInternalServerError)
-		return
+		return err
 	}
 	env := map[string]string{}
 	json.Unmarshal([]byte(envJSON), &env)
@@ -113,11 +126,9 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 		Autostart: autostart, AutoForward: autoForward, Watchdog: watchdog,
 		Subdomain: src.Subdomain,
 	}
-	s.collectServerTail(r.Context(), id, &man)
+	s.collectServerTail(ctx, id, &man)
 
-	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", safeFilename(src.Name)+".yggserver.tar.gz"))
-	gz := gzip.NewWriter(w)
+	gz := gzip.NewWriter(out)
 	tw := tar.NewWriter(gz)
 	manJSON, _ := json.MarshalIndent(man, "", "  ")
 	tw.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0o644, Size: int64(len(manJSON))})
@@ -128,8 +139,7 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	tw.Close()
-	gz.Close()
-	s.auditLog(r, "server.export", "server:"+id, map[string]string{"name": src.Name})
+	return gz.Close()
 }
 
 // handleServerImport creates a new server on this panel from an exported bundle:
@@ -141,10 +151,29 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	gz, err := gzip.NewReader(io.LimitReader(r.Body, 8<<30))
+	resp, err := s.importServerBundle(r.Context(), io.LimitReader(r.Body, 8<<30), false)
 	if err != nil {
-		jsonError(w, "not a valid bundle", http.StatusBadRequest)
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if resp["skipped"] == true {
+		jsonOK(w, resp)
+		return
+	}
+	s.auditLog(r, "server.import", "server:"+fmt.Sprint(resp["id"]), map[string]string{"name": fmt.Sprint(resp["name"])})
+	w.WriteHeader(http.StatusCreated)
+	jsonOK(w, resp)
+}
+
+// importServerBundle reads one .yggserver.tar.gz stream and creates the server.
+// skipExisting makes it a no-op (reported, not an error) when a server of the
+// bundle's name already lives here — the bulk migration wants idempotence. The
+// imported server keeps its own name when free; only a clash appends
+// " (imported)".
+func (s *Server) importServerBundle(ctx context.Context, body io.Reader, skipExisting bool) (map[string]any, error) {
+	gz, err := gzip.NewReader(body)
+	if err != nil {
+		return nil, fmt.Errorf("not a valid bundle")
 	}
 	tr := tar.NewReader(gz)
 
@@ -153,29 +182,37 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	dataDir := filepath.Join(base, "servers", newID)
 
 	var man *transferManifest
+	skipData := false
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			jsonError(w, "corrupt bundle", http.StatusBadRequest)
-			return
+			os.RemoveAll(dataDir)
+			return nil, fmt.Errorf("corrupt bundle")
 		}
 		name := filepath.Clean(hdr.Name)
 		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
-			jsonError(w, "unsafe bundle entry", http.StatusBadRequest)
-			return
+			os.RemoveAll(dataDir)
+			return nil, fmt.Errorf("unsafe bundle entry")
 		}
 		if name == "manifest.json" {
 			b, _ := io.ReadAll(tr)
 			var m transferManifest
 			if json.Unmarshal(b, &m) != nil || m.Version < 1 || m.Version > transferVersion {
-				jsonError(w, "unsupported bundle version", http.StatusBadRequest)
-				return
+				return nil, fmt.Errorf("unsupported bundle version")
 			}
 			man = &m
+			// The manifest precedes data/ in our bundles, so the skip decision can
+			// land before gigabytes of data are unpacked for nothing.
+			if skipExisting && s.serverNameTaken(ctx, m.Name) {
+				skipData = true
+			}
 			continue
+		}
+		if skipData {
+			continue // drain without writing; the archive reader must still advance
 		}
 		if rel := strings.TrimPrefix(name, "data/"); rel != name {
 			dest := filepath.Join(dataDir, filepath.Clean("/"+rel))
@@ -193,8 +230,11 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	}
 	if man == nil {
 		os.RemoveAll(dataDir)
-		jsonError(w, "no manifest in bundle", http.StatusBadRequest)
-		return
+		return nil, fmt.Errorf("no manifest in bundle")
+	}
+	if skipData {
+		os.RemoveAll(dataDir)
+		return map[string]any{"name": man.Name, "skipped": true, "reason": "a server with this name already exists"}, nil
 	}
 
 	// Ensure the rune exists — add it (as a community rune) when the target panel
@@ -202,19 +242,18 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	gs, err := gameskill.Parse([]byte(man.RuneYAML))
 	if err != nil {
 		os.RemoveAll(dataDir)
-		jsonError(w, "bundle rune parse error", http.StatusBadRequest)
-		return
+		return nil, fmt.Errorf("bundle rune parse error")
 	}
 	var have int
-	s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM gameskills WHERE id=?", man.GameskillID).Scan(&have)
+	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gameskills WHERE id=?", man.GameskillID).Scan(&have)
 	if have == 0 {
-		s.db.ExecContext(r.Context(),
+		s.db.ExecContext(ctx,
 			"INSERT INTO gameskills (id,name,category,version,yaml_blob,builtin) VALUES (?,?,?,?,?,0)",
 			gs.ID, gs.Name, gs.Category, gs.Version, man.RuneYAML)
 	} else {
 		// Parse the panel's existing copy — its ports/secret-keys are what we honour.
 		var yb string
-		s.db.QueryRowContext(r.Context(), "SELECT yaml_blob FROM gameskills WHERE id=?", man.GameskillID).Scan(&yb)
+		s.db.QueryRowContext(ctx, "SELECT yaml_blob FROM gameskills WHERE id=?", man.GameskillID).Scan(&yb)
 		if g2, e := gameskill.Parse([]byte(yb)); e == nil {
 			gs = g2
 		}
@@ -224,14 +263,13 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	// migration must preserve game.host:PORT so NPM/tunnel/DNS forwarding survives
 	// untouched. Only a real collision forces a fresh port, and those are reported
 	// back so the admin can repoint just those.
-	taken, _ := s.docker.UsedHostPorts(r.Context())
+	taken, _ := s.docker.UsedHostPorts(ctx)
 	allocated, moved, err := pickTransferPorts(gs.Ports, man.Ports, taken,
 		s.cfg.Ports.RangeMin, s.cfg.Ports.RangeMax,
-		func(port int) bool { return s.portAvailable(r.Context(), port) })
+		func(port int) bool { return s.portAvailable(ctx, port) })
 	if err != nil {
 		os.RemoveAll(dataDir)
-		jsonError(w, "port allocation failed: "+err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("port allocation failed: %v", err)
 	}
 
 	// Re-encrypt secrets with THIS panel's key.
@@ -250,17 +288,20 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	if realmName == "" {
 		realmName = gs.Category
 	}
-	realmID := s.ensureRealm(r.Context(), realmName)
+	realmID := s.ensureRealm(ctx, realmName)
 
-	if _, err := s.db.ExecContext(r.Context(), `
+	finalName := man.Name
+	if s.serverNameTaken(ctx, finalName) {
+		finalName = man.Name + " (imported)"
+	}
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO servers (id, name, gameskill_id, realm_id, status, env_json, ports_json, cpu_limit, mem_limit_mb,
 		                     data_dir, host_mounts, autostart, auto_forward, watchdog, installed, install_status)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'done')`,
-		newID, man.Name+" (imported)", man.GameskillID, nullableStr(realmID), "stopped", string(envJSON), string(portsJSON),
+		newID, finalName, man.GameskillID, nullableStr(realmID), "stopped", string(envJSON), string(portsJSON),
 		man.CPULimit, man.MemLimitMB, dataDir, man.HostMounts, man.Autostart, man.AutoForward, man.Watchdog); err != nil {
 		os.RemoveAll(dataDir)
-		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("db error: %v", err)
 	}
 	for portName, hostPort := range allocated {
 		proto := "tcp"
@@ -269,13 +310,11 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 				proto = p.Protocol
 			}
 		}
-		s.db.ExecContext(r.Context(), "INSERT INTO port_allocations (port, server_id, protocol, name) VALUES (?,?,?,?)",
+		s.db.ExecContext(ctx, "INSERT INTO port_allocations (port, server_id, protocol, name) VALUES (?,?,?,?)",
 			hostPort, newID, proto, portName)
 	}
-	restored, subdomainDropped := s.restoreServerTail(r.Context(), newID, man)
-	s.auditLog(r, "server.import", "server:"+newID, map[string]string{"name": man.Name})
-	w.WriteHeader(http.StatusCreated)
-	resp := map[string]interface{}{"id": newID, "name": man.Name + " (imported)", "status": "stopped"}
+	restored, subdomainDropped := s.restoreServerTail(ctx, newID, man)
+	resp := map[string]any{"id": newID, "name": finalName, "status": "stopped"}
 	if len(moved) > 0 {
 		resp["ports_changed"] = moved // "game 25081→25000" — these need forwarding repointed
 	}
@@ -285,7 +324,15 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	if subdomainDropped != "" {
 		resp["subdomain_dropped"] = subdomainDropped // already taken here — repoint by hand
 	}
-	jsonOK(w, resp)
+	return resp, nil
+}
+
+// serverNameTaken reports whether a server already uses this name (or its
+// "(imported)" alias from an earlier move).
+func (s *Server) serverNameTaken(ctx context.Context, name string) bool {
+	var n int
+	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM servers WHERE name=? OR name=?", name, name+" (imported)").Scan(&n)
+	return n > 0
 }
 
 // pickTransferPorts maps each rune port to a host port, preferring the source's

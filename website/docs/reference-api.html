@@ -703,6 +703,18 @@ is admin-only and the files should be treated like passwords.</p>
 <td>Admin</td>
 <td>Merge a panel-settings bundle: existing rows are skipped, never overwritten; AI config and integration keys are applied; returns a per-category summary. API tokens, beacon identity and passkeys never transfer</td>
 </tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/migration/export</code></td>
+<td>Admin</td>
+<td>One archive of settings + servers: <code>?include=</code> settings groups, <code>?servers=</code> ids or <code>all</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/migration/import</code></td>
+<td>Admin</td>
+<td>Merge a migration archive: settings first, then each server; <code>?skip_existing=1</code> skips name clashes; returns the settings summary plus a per-server report</td>
+</tr>
 </tbody>
 </table>
 <h3 id="players-and-moderation">Players and moderation</h3>

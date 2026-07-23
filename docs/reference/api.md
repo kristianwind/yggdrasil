@@ -319,6 +319,19 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `GET` | `/api/servers/{id}/delegates` | Admin | Every user holding a server-scoped grant on this server |
 | `PUT` | `/api/servers/{id}/delegates` | Admin | Replace the full set of server-scoped grants on this server |
 
+### Host migration
+
+Move things between two running panels. Both bundle formats carry secrets in
+recoverable form (the target re-encrypts them with its own key), so every route
+is admin-only and the files should be treated like passwords.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/servers/{id}/export` | Admin | One server as a portable `.tar.gz`: data dir, rune, variables (secrets decrypted), limits, ports, group, schedules, watchers, notification routing, subdomain |
+| `POST` | `/api/servers/import` | Admin | Create a server from an exported bundle. Keeps the source's host ports when free (reports `ports_changed` otherwise) and the subdomain unless taken (`subdomain_dropped`) |
+| `GET` | `/api/panel/export` | Admin | Panel configuration as JSON. `?include=` any of `channels,ai,integrations,network,rune_repos,watchers,users` |
+| `POST` | `/api/panel/import` | Admin | Merge a panel-settings bundle: existing rows are skipped, never overwritten; AI config and integration keys are applied; returns a per-category summary. API tokens, beacon identity and passkeys never transfer |
+
 ### Players and moderation
 
 Player actions run over RCON, so they gate on `server.console` rather than `server.control`.

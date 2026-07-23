@@ -665,6 +665,46 @@ create-server form needs it; everything that changes the catalogue is admin-only
 </tr>
 </tbody>
 </table>
+<h3 id="host-migration">Host migration</h3>
+<p>Move things between two running panels. Both bundle formats carry secrets in
+recoverable form (the target re-encrypts them with its own key), so every route
+is admin-only and the files should be treated like passwords.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/export</code></td>
+<td>Admin</td>
+<td>One server as a portable <code>.tar.gz</code>: data dir, rune, variables (secrets decrypted), limits, ports, group, schedules, watchers, notification routing, subdomain</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/import</code></td>
+<td>Admin</td>
+<td>Create a server from an exported bundle. Keeps the source&rsquo;s host ports when free (reports <code>ports_changed</code> otherwise) and the subdomain unless taken (<code>subdomain_dropped</code>)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/panel/export</code></td>
+<td>Admin</td>
+<td>Panel configuration as JSON. <code>?include=</code> any of <code>channels,ai,integrations,network,rune_repos,watchers,users</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/panel/import</code></td>
+<td>Admin</td>
+<td>Merge a panel-settings bundle: existing rows are skipped, never overwritten; AI config and integration keys are applied; returns a per-category summary. API tokens, beacon identity and passkeys never transfer</td>
+</tr>
+</tbody>
+</table>
 <h3 id="players-and-moderation">Players and moderation</h3>
 <p>Player actions run over RCON, so they gate on <code>server.console</code> rather than <code>server.control</code>.</p>
 <table>
@@ -1606,7 +1646,7 @@ progress; the install itself runs in the background and does not block the POST.
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#watchers">Watchers</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#host-migration">Host migration</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#watchers">Watchers</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,7 +17,7 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
-const transferVersion = 1
+const transferVersion = 2 // v2 adds schedules, watchers, notification routing and subdomain
 
 // transferManifest is a single server's portable setup: enough to recreate it on
 // another panel, plus the rune so the target doesn't need it pre-installed. Env
@@ -37,6 +38,36 @@ type transferManifest struct {
 	Autostart   int               `json:"autostart"`
 	AutoForward int               `json:"auto_forward"`
 	Watchdog    int               `json:"watchdog"`
+	// v2: the server's operational tail — everything an admin set up around the
+	// server, so a move carries the whole habitat, not just the animal.
+	Subdomain string             `json:"subdomain,omitempty"`
+	Schedules []transferSchedule `json:"schedules,omitempty"`
+	Watchers  []transferWatcher  `json:"watchers,omitempty"`
+	Channels  []transferChannel  `json:"channels,omitempty"` // server-scoped notification channels; config DECRYPTED like env secrets
+}
+
+type transferSchedule struct {
+	Name     string `json:"name"`
+	CronExpr string `json:"cron_expr"`
+	Action   string `json:"action"`
+	ArgsJSON string `json:"args_json"`
+	Enabled  int    `json:"enabled"`
+}
+
+type transferWatcher struct {
+	Name       string `json:"name"`
+	Pattern    string `json:"pattern"`
+	Threshold  int    `json:"threshold"`
+	WindowSecs int    `json:"window_secs"`
+	Action     string `json:"action"`
+	Enabled    int    `json:"enabled"`
+	Source     string `json:"source,omitempty"`
+}
+
+type transferChannel struct {
+	Type    string `json:"type"`
+	Config  string `json:"config"` // decrypted; the target re-encrypts
+	Enabled int    `json:"enabled"`
 }
 
 // handleServerExport streams one server as a portable bundle: its config (with
@@ -80,7 +111,9 @@ func (s *Server) handleServerExport(w http.ResponseWriter, r *http.Request) {
 		Version: transferVersion, Name: src.Name, GameskillID: src.GameskillID, RealmName: realmName, RuneYAML: yamlBlob,
 		Env: env, Ports: src.Ports, CPULimit: cpu, MemLimitMB: mem, HostMounts: hostMounts,
 		Autostart: autostart, AutoForward: autoForward, Watchdog: watchdog,
+		Subdomain: src.Subdomain,
 	}
+	s.collectServerTail(r.Context(), id, &man)
 
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", safeFilename(src.Name)+".yggserver.tar.gz"))
@@ -137,7 +170,7 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 		if name == "manifest.json" {
 			b, _ := io.ReadAll(tr)
 			var m transferManifest
-			if json.Unmarshal(b, &m) != nil || m.Version != transferVersion {
+			if json.Unmarshal(b, &m) != nil || m.Version < 1 || m.Version > transferVersion {
 				jsonError(w, "unsupported bundle version", http.StatusBadRequest)
 				return
 			}
@@ -239,11 +272,18 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 		s.db.ExecContext(r.Context(), "INSERT INTO port_allocations (port, server_id, protocol, name) VALUES (?,?,?,?)",
 			hostPort, newID, proto, portName)
 	}
+	restored, subdomainDropped := s.restoreServerTail(r.Context(), newID, man)
 	s.auditLog(r, "server.import", "server:"+newID, map[string]string{"name": man.Name})
 	w.WriteHeader(http.StatusCreated)
 	resp := map[string]interface{}{"id": newID, "name": man.Name + " (imported)", "status": "stopped"}
 	if len(moved) > 0 {
 		resp["ports_changed"] = moved // "game 25081→25000" — these need forwarding repointed
+	}
+	if len(restored) > 0 {
+		resp["restored"] = restored // e.g. "2 schedules, 3 watchers"
+	}
+	if subdomainDropped != "" {
+		resp["subdomain_dropped"] = subdomainDropped // already taken here — repoint by hand
 	}
 	jsonOK(w, resp)
 }
@@ -340,4 +380,93 @@ func tarDataDir(tw *tar.Writer, root string) {
 		}
 		return nil
 	})
+}
+
+// collectServerTail fills the v2 manifest fields: the server's schedules,
+// watchers and notification channels (config decrypted — the bundle is already
+// a credential by virtue of the env secrets).
+func (s *Server) collectServerTail(ctx context.Context, serverID string, man *transferManifest) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT name, cron_expr, action, COALESCE(args_json,'{}'), enabled FROM schedules WHERE server_id=?", serverID)
+	if err == nil {
+		for rows.Next() {
+			var t transferSchedule
+			if rows.Scan(&t.Name, &t.CronExpr, &t.Action, &t.ArgsJSON, &t.Enabled) == nil {
+				man.Schedules = append(man.Schedules, t)
+			}
+		}
+		rows.Close()
+	}
+	rows, err = s.db.QueryContext(ctx,
+		"SELECT name, pattern, threshold, window_secs, action, enabled, COALESCE(source,'') FROM log_watchers WHERE server_id=?", serverID)
+	if err == nil {
+		for rows.Next() {
+			var t transferWatcher
+			if rows.Scan(&t.Name, &t.Pattern, &t.Threshold, &t.WindowSecs, &t.Action, &t.Enabled, &t.Source) == nil {
+				man.Watchers = append(man.Watchers, t)
+			}
+		}
+		rows.Close()
+	}
+	rows, err = s.db.QueryContext(ctx,
+		"SELECT type, config_enc, enabled FROM notifications WHERE server_id=?", serverID)
+	if err == nil {
+		for rows.Next() {
+			var t transferChannel
+			if rows.Scan(&t.Type, &t.Config, &t.Enabled) == nil {
+				if plain, derr := s.cipher.Decrypt(t.Config); derr == nil {
+					t.Config = plain
+				}
+				man.Channels = append(man.Channels, t)
+			}
+		}
+		rows.Close()
+	}
+}
+
+// restoreServerTail recreates the v2 tail on the imported server, re-encrypting
+// channel configs with this panel's key. The subdomain is kept only when free
+// here; a clash reports it back rather than silently stealing the route.
+func (s *Server) restoreServerTail(ctx context.Context, serverID string, man *transferManifest) ([]string, string) {
+	var restored []string
+	for _, t := range man.Schedules {
+		s.db.ExecContext(ctx,
+			"INSERT INTO schedules (id, name, server_id, cron_expr, action, args_json, enabled) VALUES (?,?,?,?,?,?,?)",
+			uuid.New().String(), t.Name, serverID, t.CronExpr, t.Action, t.ArgsJSON, t.Enabled)
+	}
+	if n := len(man.Schedules); n > 0 {
+		restored = append(restored, fmt.Sprintf("%d schedules", n))
+	}
+	for _, t := range man.Watchers {
+		s.db.ExecContext(ctx,
+			"INSERT INTO log_watchers (id, server_id, name, pattern, threshold, window_secs, action, enabled, source) VALUES (?,?,?,?,?,?,?,?,?)",
+			uuid.New().String(), serverID, t.Name, t.Pattern, t.Threshold, t.WindowSecs, t.Action, t.Enabled, t.Source)
+	}
+	if n := len(man.Watchers); n > 0 {
+		restored = append(restored, fmt.Sprintf("%d watchers", n))
+	}
+	for _, t := range man.Channels {
+		enc, err := s.cipher.Encrypt(t.Config)
+		if err != nil {
+			continue
+		}
+		s.db.ExecContext(ctx,
+			"INSERT INTO notifications (id, type, config_enc, enabled, server_id) VALUES (?,?,?,?,?)",
+			uuid.New().String(), t.Type, enc, t.Enabled, serverID)
+	}
+	if n := len(man.Channels); n > 0 {
+		restored = append(restored, fmt.Sprintf("%d notification channels", n))
+	}
+	subdomainDropped := ""
+	if man.Subdomain != "" {
+		var taken int
+		s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM servers WHERE subdomain=? AND id<>?", man.Subdomain, serverID).Scan(&taken)
+		if taken == 0 {
+			s.db.ExecContext(ctx, "UPDATE servers SET subdomain=? WHERE id=?", man.Subdomain, serverID)
+			restored = append(restored, "subdomain "+man.Subdomain)
+		} else {
+			subdomainDropped = man.Subdomain
+		}
+	}
+	return restored, subdomainDropped
 }

@@ -627,6 +627,9 @@ func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 		s.removeStack(r.Context(), id, rmGS)
 	}
 	s.db.ExecContext(r.Context(), "DELETE FROM port_allocations WHERE server_id=?", id)
+	// Server-scoped watchers go with the server (rune-seeded and hand-made alike) —
+	// otherwise they linger as orphans that scan nothing and clutter the list.
+	s.db.ExecContext(r.Context(), "DELETE FROM log_watchers WHERE server_id=?", id)
 	s.db.ExecContext(r.Context(), "DELETE FROM servers WHERE id=?", id)
 	s.clearWatchdog(id)
 	s.clearStartWatch(id)

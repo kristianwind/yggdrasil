@@ -806,7 +806,7 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	// Clear any orphaned container with our deterministic name so Create can't fail
 	// on a name conflict (the container is always recreated fresh; state is in /data).
 	s.docker.Remove(ctx, containerName)
-	s.docker.PullImage(ctx, image, io.Discard)
+	s.pullImageRetry(ctx, image)
 
 	// App stacks: bring up the sidecar dependencies (db, cache) on a private network
 	// first, and join the main container to it so it resolves them by name. A no-op
@@ -902,7 +902,7 @@ func (s *Server) handleStartServer(w http.ResponseWriter, r *http.Request) {
 	s.clearStartWatch(id)
 
 	s.auditLog(r, "server.start", "server:"+id, nil)
-	s.notifyServer(id, "▶️ " + srv.Name + " started")
+	s.notifyServer(id, "▶️ "+srv.Name+" started")
 	jsonOK(w, map[string]string{"status": "starting"})
 }
 
@@ -939,7 +939,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 	go s.npmRemoveServer(id)
 	go s.cfRemoveServer(id)
 	s.auditLog(r, "server.stop", "server:"+id, nil)
-	s.notifyServer(id, "⏹️ " + srv.Name + " stopped")
+	s.notifyServer(id, "⏹️ "+srv.Name+" stopped")
 	jsonOK(w, map[string]string{"status": "stopped"})
 }
 
@@ -970,7 +970,7 @@ func (s *Server) handleRestartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditLog(r, "server.restart", "server:"+id, nil)
-	s.notifyServer(id, "🔄 " + srv.Name + " restarted")
+	s.notifyServer(id, "🔄 "+srv.Name+" restarted")
 	jsonOK(w, map[string]string{"status": "starting"})
 }
 

@@ -100,7 +100,16 @@ func (s *Server) handlePanelExport(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "pick at least one group to export", http.StatusBadRequest)
 		return
 	}
-	ctx := r.Context()
+	b := s.buildPanelBundle(r.Context(), include)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="panel-settings.yggpanel.json"`)
+	json.NewEncoder(w).Encode(b) //nolint:errcheck
+	s.auditLog(r, "panel.export", "panel", map[string]any{"groups": r.URL.Query().Get("include")})
+}
+
+// buildPanelBundle assembles the selected configuration groups with secrets
+// decrypted — shared by the settings-only download and the migration archive.
+func (s *Server) buildPanelBundle(ctx context.Context, include map[string]bool) panelBundle {
 	b := panelBundle{Version: panelBundleVersion}
 
 	if include["channels"] {
@@ -216,10 +225,7 @@ func (s *Server) handlePanelExport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", `attachment; filename="panel-settings.yggpanel.json"`)
-	json.NewEncoder(w).Encode(b) //nolint:errcheck
-	s.auditLog(r, "panel.export", "panel", map[string]any{"groups": r.URL.Query().Get("include")})
+	return b
 }
 
 // handlePanelImport merges a settings bundle into this panel. Additive by

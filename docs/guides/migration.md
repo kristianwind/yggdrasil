@@ -118,6 +118,27 @@ unless another server on the target already claims it.
 Because the bundle contains the server's secrets in recoverable form, both ends
 are admin-only — treat the file like a password.
 
+## Moving settings and servers together
+
+The same Host migration section can bundle **settings plus any selection of
+servers** into one archive: tick the groups, tick the servers (or **All**), and
+Export produces a single `.tar.gz` holding the settings bundle and one server
+bundle per selection. Import it on the target in one upload: settings merge
+first, then each server lands with its full habitat, and the result is a
+per-server report — imported, skipped, ports moved, subdomain dropped.
+
+Two knobs matter on import: **skip servers that already exist here** (on by
+default) makes re-imports idempotent — a server whose name is already present
+is reported and left alone, so you can re-run an archive after a partial
+transfer without duplicating anything. With it off, a name clash imports the
+copy as "<name> (imported)". An imported server always arrives **stopped**.
+
+Selecting every server plus every settings group is a whole-panel **copy** onto
+a target that keeps its own identity. It differs from `migrate import` (below)
+on exactly one axis: the target's own database survives — nothing is
+overwritten, and the target keeps its own secret key, so API tokens still need
+recreating there.
+
 ## Moving your settings
 
 **Settings → System → Host migration** moves the panel's configuration — not

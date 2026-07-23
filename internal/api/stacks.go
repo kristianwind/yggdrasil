@@ -20,8 +20,8 @@ import (
 // data dir. Everything is gated on len(gs.Services) > 0, so ordinary single-container
 // servers take exactly the same path they always did.
 
-func stackNetworkName(id string) string   { return "ygg-net-" + id[:8] }
-func sidecarName(id, svc string) string    { return fmt.Sprintf("ygg-%s-%s", id[:8], svc) }
+func stackNetworkName(id string) string       { return "ygg-net-" + id[:8] }
+func sidecarName(id, svc string) string       { return fmt.Sprintf("ygg-%s-%s", id[:8], svc) }
 func stackDataDir(dataDir, svc string) string { return filepath.Join(dataDir, ".stack", svc) }
 
 // startStack ensures the per-server network exists and (re)creates every sidecar on
@@ -59,7 +59,7 @@ func (s *Server) startStack(ctx context.Context, id, dataDir string, gs *gameski
 			cmd = append(cmd, gameskill.ApplyTemplate(a, env))
 		}
 		image := gameskill.ApplyTemplate(svc.Image, env)
-		s.docker.PullImage(ctx, image, io.Discard)
+		s.pullImageRetry(ctx, image)
 
 		cid, err := s.docker.Create(ctx, docker.CreateOptions{
 			Name:           name,
@@ -97,5 +97,15 @@ func (s *Server) removeStack(ctx context.Context, id string, gs *gameskill.Games
 	s.stopStack(ctx, id, gs)
 	if len(gs.Services) > 0 {
 		s.docker.RemoveNetwork(ctx, stackNetworkName(id))
+	}
+}
+
+// pullImageRetry pulls an image with one retry. A broken multi-gigabyte pull
+// otherwise surfaces minutes later as a cryptic "No such image" when the
+// container is created — seen live when a Pi's machine-learning image download
+// broke mid-transfer and took the whole stack start with it.
+func (s *Server) pullImageRetry(ctx context.Context, image string) {
+	if err := s.docker.PullImage(ctx, image, io.Discard); err != nil {
+		s.docker.PullImage(ctx, image, io.Discard) //nolint:errcheck // second failure surfaces at create
 	}
 }

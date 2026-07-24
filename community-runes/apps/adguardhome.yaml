@@ -4,15 +4,18 @@ gameskill:
   category: "Apps"
   description: "Network-wide ad & tracker blocker + local DNS, with a friendlier UI than Pi-hole. The admin UI runs on the panel-allocated web port; first launch shows a setup wizard. NOTE: the DNS service lands on the panel-allocated high port, not :53 — to use it as your real network DNS you need a fixed/host port mapping, which the panel's per-server port model doesn't provide."
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # AdGuard Home runs its own binary via the image entrypoint (keep it, run as root
-  # so it can bind the DNS port). Both config and data live under /opt/adguardhome,
-  # so the whole tree is the panel volume.
+  # so it can bind the DNS port). The binary lives at /opt/adguardhome/AdGuardHome,
+  # so we must NOT mount over /opt/adguardhome itself (that hides the binary → "no
+  # such file or directory"). Persist only AdGuard's own two data dirs, work + conf.
   docker:
     image: "adguard/adguardhome:latest"
-    data_path: /opt/adguardhome
+    data_path: /opt/adguardhome/work
+    extra_volumes:
+      - /opt/adguardhome/conf
     keep_entrypoint: true
     user: "0:0"
 
@@ -23,10 +26,10 @@ gameskill:
       default: "Europe/Copenhagen"
 
   install:
-    image: "adguard/adguardhome:latest"
+    image: "busybox:latest"
     script: |
-      mkdir -p /data/work /data/conf
-      echo "AdGuard Home data directories ready"
+      mkdir -p /data
+      echo "AdGuard Home data directory ready"
 
   startup:
     command: ""

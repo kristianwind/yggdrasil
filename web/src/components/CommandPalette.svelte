@@ -7,6 +7,17 @@
   import { user, logout } from "../lib/auth.js";
   import { toggleTheme } from "../lib/theme.js";
   import { api } from "../lib/api.js";
+  import { toast } from "../lib/toast.js";
+
+  const can = (s, p) => s?.perms?.includes(p) ?? false;
+  async function serverAction(s, verb, label) {
+    try {
+      await api.post(`/servers/${s.id}/${verb}`);
+      toast(`${label} — ${s.name}`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
 
   let open = $state(false);
   let query = $state("");
@@ -58,9 +69,24 @@
     }
     for (const s of servers) {
       out.push({ icon: "🖥️", label: s.name, hint: s.status, run: () => navigate(`/servers/${s.id}`) });
+      // Control verbs for servers the caller can operate, offered by current state.
+      if (s.installed && can(s, "server.control")) {
+        const running = s.status === "running" || s.status === "starting";
+        if (running) {
+          out.push({ icon: "🔄", label: `Restart ${s.name}`, hint: "Action", run: () => serverAction(s, "restart", "Restarting") });
+          out.push({ icon: "⏹️", label: `Stop ${s.name}`, hint: "Action", run: () => serverAction(s, "stop", "Stopping") });
+        } else {
+          out.push({ icon: "▶️", label: `Start ${s.name}`, hint: "Action", run: () => serverAction(s, "start", "Starting") });
+        }
+      }
     }
     if ($user?.can_create) {
       out.push({ icon: "➕", label: "New server", hint: "Action", run: () => navigate("/servers?new=1") });
+    }
+    if (isAdmin) {
+      out.push({ icon: "👥", label: "New user", hint: "Action", run: () => navigate("/users") });
+      out.push({ icon: "⏰", label: "New schedule", hint: "Action", run: () => navigate("/schedules") });
+      out.push({ icon: "ᚱ", label: "Browse & install runes", hint: "Action", run: () => navigate("/runes") });
     }
     out.push({ icon: "🌓", label: "Toggle theme", hint: "Action", run: () => toggleTheme() });
     out.push({ icon: "🚪", label: "Sign out", hint: "Action", run: () => logout() });

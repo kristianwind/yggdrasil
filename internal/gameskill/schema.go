@@ -246,6 +246,12 @@ type DBImport struct {
 	Service string `yaml:"service" json:"service"` // stack service (sidecar) name, e.g. "db"
 	Image   string `yaml:"image"   json:"image"`   // client image, e.g. "mariadb:11" or "postgres:16"
 	Command string `yaml:"command" json:"command"` // shell run inside it; {{VARS}} templated, dump on stdin
+	// Reset drops every table in the target database before loading the dump, so
+	// the import is authoritative and idempotent. Without it, re-importing over a
+	// database WordPress has already touched (its first web request writes default
+	// wp_options — template, active_plugins) leaves those defaults in place because
+	// the dump's INSERTs collide on existing primary keys. MySQL/MariaDB only.
+	Reset bool `yaml:"reset,omitempty" json:"reset,omitempty"`
 }
 
 type Startup struct {

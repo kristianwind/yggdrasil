@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 8
+  version: 9
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -65,7 +65,7 @@ gameskill:
           echo "<IfModule mod_php.c>"
           echo "php_value upload_max_filesize 128M"
           echo "php_value post_max_size 128M"
-          echo "php_value memory_limit 256M"
+          echo "php_value memory_limit 512M"
           echo "php_value max_execution_time 300"
           echo "php_value max_input_time 300"
           echo "</IfModule>"
@@ -147,6 +147,33 @@ gameskill:
           else
             echo "no wp-config.php in the archive — the image will generate one on first boot"
           fi
+          # Pretty permalinks need WordPress's mod_rewrite block, but an import
+          # never triggers a permalink save and AIO's archive carries no root
+          # .htaccess — so without this every sub-page/login 404s. Add it once,
+          # below the upload-limits block install already wrote.
+          ht=/data/.htaccess
+          touch "$ht"
+          if ! grep -q "BEGIN WordPress" "$ht"; then
+            cat >> "$ht" <<'HT'
+
+          # BEGIN WordPress
+          <IfModule mod_rewrite.c>
+          RewriteEngine On
+          RewriteBase /
+          RewriteRule ^index\.php$ - [L]
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule . /index.php [L]
+          </IfModule>
+          # END WordPress
+          HT
+            echo "added WordPress rewrite rules to .htaccess"
+          fi
+          # The app serves as www-data (uid 33); imported files land owned by the
+          # panel user, so uploads, caches, wflogs and .htaccess aren't writable.
+          # Hand the whole tree to www-data.
+          chown -R www-data:www-data /data
+          echo "ownership handed to www-data"
 
   # Default Kvasir watchers — seeded per server as editable rules.
   watchers:

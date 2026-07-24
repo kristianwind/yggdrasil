@@ -262,6 +262,7 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		Subdomain   string            `json:"subdomain"`   // NPM subdomain for HTTP apps (empty = off)
 		HostMounts  []hostMount       `json:"host_mounts"` // admin-only host bind mounts
 		Autostart   *bool             `json:"autostart"`   // start on boot; nil = default on
+		Ports       map[string]int    `json:"ports"`       // optional explicit host port per rune port name; empty = auto-allocate
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -327,6 +328,17 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		taken = map[int]bool{}
 	}
 	for _, p := range gs.Ports {
+		// An explicit user-chosen host port is honoured when free (even outside the
+		// auto range — see validatePortChoice); otherwise auto-allocate.
+		if desired := req.Ports[p.Name]; desired > 0 {
+			if err := s.validatePortChoice(r.Context(), desired, taken); err != nil {
+				jsonError(w, fmt.Sprintf("port %d for %q: %s", desired, p.Name, err), http.StatusBadRequest)
+				return
+			}
+			allocatedPorts[p.Name] = desired
+			taken[desired] = true
+			continue
+		}
 		hostPort, err := s.allocatePort(r.Context(), p.Default, taken)
 		if err != nil {
 			jsonError(w, "port allocation failed: "+err.Error(), http.StatusInternalServerError)

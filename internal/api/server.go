@@ -246,6 +246,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/auto-restart", s.handleGetAutoRestart)
 		r.Put("/api/servers/{id}/auto-restart", s.handleSetAutoRestart)
 		r.Put("/api/servers/{id}/watchdog", s.handleSetWatchdog)
+		r.Put("/api/servers/{id}/ports", s.requireAdmin(s.handleUpdateServerPorts))
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/metrics", s.handleServerMetrics)

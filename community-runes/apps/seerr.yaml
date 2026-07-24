@@ -1,0 +1,43 @@
+gameskill:
+  id: seerr
+  name: "Seerr"
+  category: "Apps"
+  description: "Request-management and media-discovery for Plex, Jellyfin and Emby — the official successor that merged Overseerr and Jellyseerr into one app. Users request movies/TV; it hands them to Sonarr/Radarr. Migrates an existing Overseerr or Jellyseerr config automatically on first start."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "ghcr.io/seerr-team/seerr:latest"
+    # Config + its SQLite database live in /app/config. Run as root so the app can
+    # write the panel-owned data dir.
+    data_path: /app/config
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+    - key: LOG_LEVEL
+      name: "Log level (debug, info, warn, error)"
+      type: string
+      default: "info"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Seerr config directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Server ready'
+
+  # First-run: point Seerr at your Plex/Jellyfin/Emby server and your Sonarr/Radarr
+  # from its own web UI. MIGRATING from Overseerr/Jellyseerr? Copy your old config
+  # into this server's data dir (its /app/config) via the Files tab — Seerr runs an
+  # automatic migration on first start. No host mounts otherwise; it stores only config.
+  backup:
+    include: ["."]

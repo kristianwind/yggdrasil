@@ -55,6 +55,11 @@ type Service struct {
 	Env      map[string]string `yaml:"env,omitempty"      json:"env,omitempty"`        // values may reference {{VARS}}
 	DataPath string            `yaml:"data_path,omitempty" json:"data_path,omitempty"` // persisted mount inside the sidecar
 	Command  []string          `yaml:"command,omitempty"  json:"command,omitempty"`    // optional command override (argv)
+	// Ports a sidecar publishes to the host — for a stack with more than one web UI
+	// (e.g. TeslaMate = app + its own Grafana). Most sidecars (databases, caches)
+	// declare none: they're reached internally by service name. Each port is host-
+	// allocated once and reused across restarts, and shows in the server's port list.
+	Ports []Port `yaml:"ports,omitempty" json:"ports,omitempty"`
 }
 
 // Watcher declares a default Kvasir log-watcher the rune ships with — the app

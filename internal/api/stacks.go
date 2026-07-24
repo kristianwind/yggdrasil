@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -61,11 +62,16 @@ func (s *Server) startStack(ctx context.Context, id, dataDir string, gs *gameski
 		image := gameskill.ApplyTemplate(svc.Image, env)
 		s.pullImageRetry(ctx, image)
 
+		// Publish any host ports this sidecar declares (e.g. TeslaMate's Grafana).
+		// Allocated once and reused, so the port is stable across restarts.
+		ports := s.sidecarPorts(ctx, id, svc)
+
 		cid, err := s.docker.Create(ctx, docker.CreateOptions{
 			Name:           name,
 			Image:          image,
 			Env:            envSlice,
 			Cmd:            cmd,
+			Ports:          ports,
 			DataDir:        srcDir,       // "" = no volume (e.g. a stateless worker)
 			DataMount:      svc.DataPath, // the image's own data path
 			KeepEntrypoint: true,         // sidecars run their image entrypoint (initdb etc.)
@@ -98,6 +104,59 @@ func (s *Server) removeStack(ctx context.Context, id string, gs *gameskill.Games
 	if len(gs.Services) > 0 {
 		s.docker.RemoveNetwork(ctx, stackNetworkName(id))
 	}
+}
+
+// sidecarPorts resolves the host ports a sidecar publishes, allocating each one
+// the first time and reusing it afterwards (keyed "<service>.<portname>" in
+// port_allocations, cleaned up with the server on delete). It also records each
+// mapping in the server's ports_json under the same key so the UI lists it, e.g.
+// "grafana.web": 25012. Returns nothing for the common no-ports sidecar.
+func (s *Server) sidecarPorts(ctx context.Context, id string, svc gameskill.Service) []docker.PortMapping {
+	if len(svc.Ports) == 0 {
+		return nil
+	}
+	// Load the server's current port map so new allocations can be merged in.
+	var portsJSON string
+	s.db.QueryRowContext(ctx, "SELECT COALESCE(ports_json,'{}') FROM servers WHERE id=?", id).Scan(&portsJSON)
+	ports := map[string]int{}
+	json.Unmarshal([]byte(portsJSON), &ports) //nolint:errcheck
+
+	var out []docker.PortMapping
+	changed := false
+	for _, p := range svc.Ports {
+		key := svc.Name + "." + p.Name
+		var hostPort int
+		s.db.QueryRowContext(ctx, "SELECT port FROM port_allocations WHERE server_id=? AND name=?", id, key).Scan(&hostPort)
+		if hostPort == 0 {
+			taken, _ := s.docker.UsedHostPorts(ctx)
+			hp, err := s.allocatePort(ctx, p.Default, taken)
+			if err != nil {
+				continue // no free port — skip publishing this one rather than fail the stack
+			}
+			hostPort = hp
+			proto := p.Protocol
+			if proto == "" {
+				proto = "tcp"
+			}
+			s.db.ExecContext(ctx, "INSERT INTO port_allocations (port, server_id, protocol, name) VALUES (?,?,?,?)",
+				hostPort, id, proto, key)
+		}
+		if ports[key] != hostPort {
+			ports[key] = hostPort
+			changed = true
+		}
+		proto := p.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		out = append(out, docker.PortMapping{HostPort: hostPort, ContainerPort: p.Default, Protocol: proto})
+	}
+	if changed {
+		if b, err := json.Marshal(ports); err == nil {
+			s.db.ExecContext(ctx, "UPDATE servers SET ports_json=? WHERE id=?", string(b), id)
+		}
+	}
+	return out
 }
 
 // pullImageRetry pulls an image with one retry. A broken multi-gigabyte pull

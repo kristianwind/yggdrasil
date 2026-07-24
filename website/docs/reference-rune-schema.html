@@ -681,6 +681,68 @@ advertised port all have to be the same number. This is what makes <code>-port={
 a Steam rune&rsquo;s startup command.</p>
 <p>Three names are load-bearing. <code>game</code> is the fallback for both query and RCON. <code>query</code> is preferred
 by the query poller if present. <code>rcon</code> is preferred by the console if present.</p>
+<h2 id="services--app-stacks"><code>services</code> — app stacks</h2>
+<p>A rune with a <code>services:</code> block is a small multi-container app: the panel runs each sidecar on a
+private per-server bridge network, using its <code>name</code> as a DNS alias, and joins the main container to
+the same network. So the main app reaches its database by service name — set <code>DB_HOST: db</code> when a
+service is named <code>db</code>. Sidecars keep their image&rsquo;s entrypoint and each persist to a subdirectory of
+the server&rsquo;s data dir (<code>.stack/&lt;name&gt;</code>). Immich, Paperless, WordPress and TeslaMate are stacks.</p>
+<pre><code class="language-yaml">services:
+  - name: db                      # DNS alias on the stack network
+    image: &quot;postgres:17&quot;
+    data_path: /var/lib/postgresql/data
+    env: { POSTGRES_PASSWORD: &quot;{{DB_PASS}}&quot; }   # values may reference {{VARS}}
+  - name: grafana
+    image: &quot;teslamate/grafana:latest&quot;
+    data_path: /var/lib/grafana
+    ports:                        # a sidecar with its OWN web UI
+      - { name: web, default: 3000, protocol: tcp }
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td><strong>Required.</strong> DNS alias on the stack network.</td>
+</tr>
+<tr>
+<td><code>image</code></td>
+<td>string</td>
+<td><strong>Required.</strong></td>
+</tr>
+<tr>
+<td><code>env</code></td>
+<td>map</td>
+<td>Fixed environment; values may reference <code>{{VARS}}</code>.</td>
+</tr>
+<tr>
+<td><code>data_path</code></td>
+<td>string</td>
+<td>Mount for the sidecar&rsquo;s own persisted directory. Omit for a stateless worker.</td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td>list</td>
+<td>Optional argv override.</td>
+</tr>
+<tr>
+<td><code>ports</code></td>
+<td>list</td>
+<td>Host ports this sidecar publishes — same shape as top-level <code>ports</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Most sidecars (databases, caches, workers) publish <strong>no</strong> ports: they&rsquo;re internal, reached by name.
+Declare <code>ports</code> only when a sidecar has its own UI the user must open — TeslaMate&rsquo;s Grafana is the
+example. Each such port is host-allocated once and reused across restarts, and appears in the
+server&rsquo;s port list under a <code>&lt;service&gt;.&lt;name&gt;</code> key (e.g. <code>grafana.web</code>).</p>
 <h2 id="query"><code>query</code></h2>
 <pre><code class="language-yaml">query:
   type: minecraft
@@ -1202,7 +1264,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

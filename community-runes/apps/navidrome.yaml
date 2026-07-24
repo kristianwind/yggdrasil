@@ -31,7 +31,7 @@ gameskill:
 
   startup:
     command: ""
-    done_regex: 'accepting requests|Started Navidrome'
+    done_regex: 'Navidrome server is ready'
 
   ports:
     - { name: web, default: 4533, protocol: tcp }

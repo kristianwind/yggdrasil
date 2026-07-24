@@ -1,0 +1,36 @@
+gameskill:
+  id: beszel
+  name: "Beszel"
+  category: "Apps"
+  description: "Lightweight server and Docker monitoring with a clean dashboard, historical CPU/memory/disk/network charts and configurable alerts. This is the Beszel hub (web UI + datastore, built on PocketBase). To monitor a machine, install the Beszel agent on it and add it from this UI with the key the hub shows. Very low overhead."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "henrygd/beszel:latest"
+    data_path: /beszel_data
+    keep_entrypoint: true
+
+  variables:
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Beszel data directory ready"
+
+  # The hub is a PocketBase app; it logs "Server started" once the UI is up.
+  startup:
+    command: ""
+    done_regex: 'Server started|Starting Beszel'
+
+  ports:
+    - { name: web, default: 8090, protocol: tcp }
+
+  backup:
+    include: ["."]

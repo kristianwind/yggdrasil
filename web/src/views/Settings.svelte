@@ -586,6 +586,35 @@
   }
 
   // Nightly backup verification
+  // Panel-wide nightly backup policy (a managed global backup schedule).
+  let backupPolicy = $state({ enabled: false, hour: 3, target_id: "" });
+  let savingBackupPolicy = $state(false);
+  async function loadBackupPolicy() {
+    try {
+      backupPolicy = await api.get("/backup-policy");
+    } catch {
+      /* non-fatal */
+    }
+  }
+  async function saveBackupPolicy() {
+    if (backupPolicy.enabled && !backupPolicy.target_id) {
+      return toast("Pick a backup target first", "warn");
+    }
+    savingBackupPolicy = true;
+    try {
+      backupPolicy = await api.put("/backup-policy", {
+        enabled: !!backupPolicy.enabled,
+        hour: Number(backupPolicy.hour) || 0,
+        target_id: backupPolicy.target_id || "",
+      });
+      toast("Backup policy saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingBackupPolicy = false;
+    }
+  }
+
   let backupVerify = $state({ enabled: false, last_run: "" });
   let savingBackupVerify = $state(false);
   async function loadBackupVerify() {
@@ -1062,6 +1091,7 @@
     loadDiscord();
     loadBot();
     loadBackupVerify();
+    loadBackupPolicy();
     loadUnifi();
     loadNpm();
     loadCf();
@@ -2137,6 +2167,46 @@
       <button class="btn-danger" onclick={() => del(t)}>Delete</button>
     </div>
   {/each}
+</div>
+
+<!-- Panel-wide nightly backup policy -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Backup policy</h2>
+<p class="text-muted mb-4 text-sm">
+  Back up <b>every server</b> once a night to one target — no per-server setup. This is a shortcut for a
+  single global backup schedule; for different times, targets or excluded servers, use
+  <a href="#/schedules" class="underline">Schedules</a> directly. Retention follows the target's own settings.
+</p>
+<div class="card p-4 space-y-3">
+  <label class="flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={backupPolicy.enabled} />
+    Back up all servers nightly
+  </label>
+  {#if backupPolicy.enabled}
+    <div class="flex flex-wrap gap-4">
+      <div>
+        <label class="label" for="bp-hour">At (hour)</label>
+        <select id="bp-hour" class="input w-auto" bind:value={backupPolicy.hour}>
+          {#each Array(24) as _, h}
+            <option value={h}>{String(h).padStart(2, "0")}:00</option>
+          {/each}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="bp-target">Target</label>
+        <select id="bp-target" class="input w-auto" bind:value={backupPolicy.target_id}>
+          <option value="">Select a target…</option>
+          {#each targets as t}
+            <option value={t.id}>{t.name} ({t.type})</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+    {#if targets.length === 0}
+      <p class="text-xs text-warn">Add a backup target above first.</p>
+    {/if}
+  {/if}
+  <button class="btn-primary" onclick={saveBackupPolicy} disabled={savingBackupPolicy}>
+    {savingBackupPolicy ? "Saving…" : "Save policy"}</button>
 </div>
 
 <!-- Nightly backup verification -->

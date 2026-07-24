@@ -37,7 +37,7 @@ func TestReaderWalksArchive(t *testing.T) {
 	var arc bytes.Buffer
 	arc.Write(buildEntry("package.json", ".", `{"SiteURL":"https://old.example"}`))
 	arc.Write(buildEntry("style.css", "themes/mytheme", "body{}"))
-	arc.Write(buildEntry("database.sql", ".", "CREATE TABLE SERVMASK_PREFIXposts (id int);"))
+	arc.Write(buildEntry("database.sql", ".", "CREATE TABLE `SERVMASK_PREFIX_posts` (id int);\n"))
 	arc.Write(make([]byte, headerLen)) // EOF marker
 
 	r := NewReader(&arc)
@@ -53,16 +53,35 @@ func TestReaderWalksArchive(t *testing.T) {
 		}
 		got = append(got, e.Path)
 		if e.Path == "database.sql" {
-			b, _ := io.ReadAll(PrefixReplacer(e.Body, "wp_"))
-			dbBody = string(b)
+			var sb bytes.Buffer
+			SanitizeDump(&sb, e.Body, "wp_") //nolint:errcheck
+			dbBody = sb.String()
 		}
 	}
 	want := []string{"package.json", "themes/mytheme/style.css", "database.sql"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("paths: got %v want %v", got, want)
 	}
-	if dbBody != "CREATE TABLE wp_posts (id int);" {
+	if dbBody != "CREATE TABLE `wp_posts` (id int);\n" {
 		t.Fatalf("prefix not replaced: %q", dbBody)
+	}
+}
+
+func TestSanitizeDump(t *testing.T) {
+	in := "INSERT INTO `SERVMASK_PREFIX_wfconfig` VALUES ('a',0x3139,'yes');\n" +
+		"INSERT INTO `SERVMASK_PREFIX_wfconfig` VALUES ('b',0x,'yes');\n" +
+		"INSERT INTO `SERVMASK_PREFIX_wfconfig` VALUES ('c',0x,0x,'yes');\n"
+	var out bytes.Buffer
+	if err := SanitizeDump(&out, strings.NewReader(in), "wp_"); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	// Prefix restored to a single underscore, real hex kept, bare 0x → '' (incl. consecutive).
+	want := "INSERT INTO `wp_wfconfig` VALUES ('a',0x3139,'yes');\n" +
+		"INSERT INTO `wp_wfconfig` VALUES ('b','','yes');\n" +
+		"INSERT INTO `wp_wfconfig` VALUES ('c','','','yes');\n"
+	if got != want {
+		t.Fatalf("sanitize wrong:\n got: %q\nwant: %q", got, want)
 	}
 }
 
@@ -95,15 +114,13 @@ func TestReaderRejectsTraversal(t *testing.T) {
 	}
 }
 
-func TestPrefixReplacerAcrossChunks(t *testing.T) {
-	// Token split across the 64K chunk boundary must still be replaced.
-	pad := strings.Repeat("x", (64<<10)-8)
-	in := pad + "SERVMASK_PREFIXusers"
-	out, _ := io.ReadAll(PrefixReplacer(strings.NewReader(in), "wp_"))
-	if !strings.HasSuffix(string(out), "wp_users") {
-		t.Fatalf("split token not replaced (tail: %q)", string(out[len(out)-30:]))
-	}
-	if len(out) != len(pad)+len("wp_users") {
-		t.Fatalf("length wrong: %d", len(out))
+func TestSanitizeLargeLine(t *testing.T) {
+	// A statement line far larger than the reader buffer must sanitize whole.
+	pad := strings.Repeat("x", (1<<20)+5000)
+	in := "INSERT INTO `SERVMASK_PREFIX_posts` VALUES ('" + pad + "',0x,'y');\n"
+	var out bytes.Buffer
+	SanitizeDump(&out, strings.NewReader(in), "wp_") //nolint:errcheck
+	if !strings.Contains(out.String(), "`wp_posts`") || !strings.Contains(out.String(), ",'','y')") {
+		t.Fatalf("large line not sanitized (len %d)", out.Len())
 	}
 }

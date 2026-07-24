@@ -13,10 +13,12 @@
 package wpress
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -100,50 +102,43 @@ func isAllZero(b []byte) bool {
 	return true
 }
 
-// PrefixReplacer streams src replacing every SERVMASK_PREFIX (the masked table
-// prefix All-in-One writes into database.sql) with the real prefix. It carries
-// a small tail across chunk boundaries so a token split between reads is still
-// caught — a plain chunked replace would silently corrupt exactly those tables.
-func PrefixReplacer(src io.Reader, prefix string) io.Reader {
-	return &replaceReader{src: src, old: []byte("SERVMASK_PREFIX"), new: []byte(prefix)}
-}
+// emptyHexRe matches a bare hex literal `0x` NOT followed by a hex digit — the
+// empty-blob token All-in-One writes (e.g. Wordfence config: `('key',0x,'yes')`).
+// Modern MariaDB rejects a digitless `0x` ("Unknown column '0x'"), so it must
+// become an empty string. Consumes the one trailing byte to disambiguate; a real
+// `0x3139…` value is left untouched because its next byte IS a hex digit.
+var emptyHexRe = regexp.MustCompile(`0x([^0-9A-Fa-f])`)
 
-type replaceReader struct {
-	src  io.Reader
-	old  []byte
-	new  []byte
-	buf  []byte // pending output
-	tail []byte // unemitted trailing bytes that could start a token
-	done bool
-}
-
-func (r *replaceReader) Read(p []byte) (int, error) {
-	for len(r.buf) == 0 && !r.done {
-		chunk := make([]byte, 64<<10)
-		n, err := r.src.Read(chunk)
-		data := append(r.tail, chunk[:n]...) //nolint:gocritic // fresh slice each round
+// SanitizeDump rewrites an All-in-One database.sql so a fresh WordPress on this
+// panel can load it via a plain mariadb client. Two fixes, line by line (the
+// dump writes one statement per line):
+//
+//   - the masked table prefix `SERVMASK_PREFIX_` becomes targetPrefix (wp_), so
+//     tables match the fresh install's default prefix;
+//   - bare `0x` empty-hex literals become '' (newer MariaDB rejects a digitless
+//     0x).
+//
+// Line-oriented so neither the prefix token nor a 0x literal can straddle a read
+// boundary. A statement line can be several MB (a wide INSERT), which is fine for
+// an ~100 MB dump.
+func SanitizeDump(w io.Writer, src io.Reader, targetPrefix string) error {
+	br := bufio.NewReaderSize(src, 1<<20)
+	tok := []byte("SERVMASK_PREFIX_")
+	rep := []byte(targetPrefix)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			line = bytes.ReplaceAll(line, tok, rep)
+			line = emptyHexRe.ReplaceAll(line, []byte("''$1"))
+			if _, werr := w.Write(line); werr != nil {
+				return werr
+			}
+		}
 		if err == io.EOF {
-			r.done = true
-			r.buf = bytes.ReplaceAll(data, r.old, r.new)
-			r.tail = nil
-			break
+			return nil
 		}
 		if err != nil {
-			return 0, err
+			return err
 		}
-		data = bytes.ReplaceAll(data, r.old, r.new)
-		// Hold back len(old)-1 bytes: they may be the start of a split token.
-		keep := len(r.old) - 1
-		if keep > len(data) {
-			keep = len(data)
-		}
-		r.buf = data[:len(data)-keep]
-		r.tail = append([]byte(nil), data[len(data)-keep:]...)
 	}
-	if len(r.buf) == 0 && r.done {
-		return 0, io.EOF
-	}
-	n := copy(p, r.buf)
-	r.buf = r.buf[n:]
-	return n, nil
 }

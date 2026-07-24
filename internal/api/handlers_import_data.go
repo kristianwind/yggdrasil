@@ -334,7 +334,7 @@ func (s *Server) runWpressStep(ctx context.Context, dataDir string, st *gameskil
 			}
 			// The dump masks the table prefix; the panel's generated wp-config
 			// uses WordPress's default wp_.
-			if _, cerr := io.Copy(out, wpress.PrefixReplacer(e.Body, "wp_")); cerr != nil {
+			if cerr := wpress.SanitizeDump(out, e.Body, "wp_"); cerr != nil {
 				out.Close()
 				return cerr
 			}

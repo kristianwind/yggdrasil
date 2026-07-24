@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { confirmDialog } from "../lib/dialog.js";
   import PermissionEditor from "../components/PermissionEditor.svelte";
   import PasswordField from "../components/PasswordField.svelte";
 
@@ -64,7 +65,7 @@
   }
 
   async function del(u) {
-    if (!confirm(`Delete user "${u.username}"?`)) return;
+    if (!(await confirmDialog({ title: "Delete user", body: `Delete "${u.username}"? This permanently removes the account.`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/users/${u.id}`);
       toast("User deleted", "success");

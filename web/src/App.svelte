@@ -7,6 +7,7 @@
   import { DISCORD_INVITE } from "./lib/links.js";
   import Toasts from "./components/Toasts.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
+  import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import Login from "./views/Login.svelte";
   import Dashboard from "./views/Dashboard.svelte";
   import Servers from "./views/Servers.svelte";
@@ -96,6 +97,7 @@
 </script>
 
 <Toasts />
+<ConfirmDialog />
 
 {#if !ready}
   <div class="h-screen grid place-items-center text-muted">Loading…</div>

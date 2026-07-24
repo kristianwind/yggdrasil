@@ -9,6 +9,7 @@
   // is usually somewhere to tidy up rather than somewhere to start.
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { confirmDialog } from "../lib/dialog.js";
 
   let realms = $state([]);
   let loading = $state(true);
@@ -105,7 +106,7 @@
       n > 0
         ? `Delete realm "${r.name}"?\n\n${n} server${n === 1 ? "" : "s"} will be moved out of it. The servers themselves are not deleted.\n\nAny permission granted against this realm stops applying.`
         : `Delete realm "${r.name}"?`;
-    if (!confirm(warning)) return;
+    if (!(await confirmDialog({ title: "Delete realm", body: warning, danger: true, confirmText: "Delete" }))) return;
     busy = true;
     try {
       await api.del(`/realms/${r.id}`);

@@ -3,6 +3,7 @@
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
   import { formatTime } from "../lib/time.js";
+  import { confirmDialog } from "../lib/dialog.js";
 
   let bans = $state([]);
   let servers = $state([]);
@@ -55,7 +56,7 @@
     }
   }
   async function deleteRule(rl) {
-    if (!confirm(`Delete rule "${rl.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Delete rule", body: `Delete "${rl.name}"?`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/violations/${rl.id}`);
       await load();
@@ -78,7 +79,7 @@
   }
 
   async function unban(b) {
-    if (!confirm(`Unban ${b.player_name}?`)) return;
+    if (!(await confirmDialog({ title: "Unban player", body: `Unban ${b.player_name}?`, confirmText: "Unban" }))) return;
     try {
       const res = await api.del(`/bans/${b.id}`);
       toast(`Unbanned (pushed to ${res.pushed} server${res.pushed === 1 ? "" : "s"})`, "success");

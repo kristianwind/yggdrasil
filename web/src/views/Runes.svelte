@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { navigate } from "../lib/router.js";
   import { user } from "../lib/auth.js";
 
@@ -51,12 +52,15 @@
 
   async function updateRune(u) {
     if (
-      !confirm(
-        `Update ${u.name} from v${u.installed_version} to v${u.available_version}?\n\n` +
+      !(await confirmDialog({
+        title: `Update ${u.name}`,
+        body:
+          `Update from v${u.installed_version} to v${u.available_version}?\n\n` +
           `This replaces the rune definition. Existing servers keep their own settings, ` +
           `but they are built from this rune — so the new version applies the next time one ` +
           `is started, restarted or reinstalled.`,
-      )
+        confirmText: "Update",
+      }))
     )
       return;
     updatingRune = u.id;
@@ -187,7 +191,7 @@
     const extra = r.builtin
       ? " This is a built-in default rune — it won't be re-added on restart."
       : "";
-    if (!confirm(`Delete rune "${r.name}"?${extra}`)) return;
+    if (!(await confirmDialog({ title: "Delete rune", body: `Delete "${r.name}"?${extra}`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/gameskills/${r.id}`);
       toast("Rune deleted", "success");
@@ -245,7 +249,7 @@
     }
   }
   async function removeRepo(rp) {
-    if (!confirm(`Remove repository "${rp.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Remove repository", body: `Remove "${rp.name}"?`, danger: true, confirmText: "Remove" }))) return;
     try {
       await api.del(`/rune-repos/${rp.id}`);
       await loadRepos();

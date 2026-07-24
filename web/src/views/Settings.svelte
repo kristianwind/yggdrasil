@@ -3,6 +3,7 @@
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
   import { formatTime } from "../lib/time.js";
+  import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { registerPasskey, passkeysSupported } from "../lib/webauthn.js";
   import RealmManager from "../components/RealmManager.svelte";
 
@@ -92,7 +93,7 @@
   }
   async function doUpdate() {
     if (!build?.latest) return;
-    if (!confirm(`Update Yggdrasil to ${build.latest}? The panel will restart briefly.`)) return;
+    if (!(await confirmDialog({ title: "Update Yggdrasil", body: `Update to ${build.latest}? The panel will restart briefly.`, confirmText: "Update" }))) return;
     updating = true;
     try {
       await api.post("/system/update", {});
@@ -174,7 +175,7 @@
     pkBusy = true;
     try {
       const res = await registerPasskey();
-      const name = prompt("Name this passkey (e.g. 'MacBook Touch ID'):", "passkey");
+      const name = await promptDialog({ title: "Name this passkey", label: "Name", value: "passkey", placeholder: "e.g. MacBook Touch ID" });
       if (name && name.trim() && name.trim() !== "passkey" && res?.id) {
         try {
           await api.put(`/auth/passkey/credentials/${res.id}`, { name: name.trim() });
@@ -196,7 +197,7 @@
   }
 
   async function renamePasskey(pk) {
-    const name = prompt("Rename passkey:", pk.name);
+    const name = await promptDialog({ title: "Rename passkey", label: "Name", value: pk.name });
     if (name === null) return;
     try {
       await api.put(`/auth/passkey/credentials/${pk.id}`, { name: name.trim() || "passkey" });
@@ -206,7 +207,7 @@
     }
   }
   async function delPasskey(pk) {
-    if (!confirm(`Remove passkey "${pk.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Remove passkey", body: `Remove "${pk.name}"?`, danger: true, confirmText: "Remove" }))) return;
     try {
       await api.del(`/auth/passkey/credentials/${pk.id}`);
       toast("Passkey removed", "success");
@@ -242,7 +243,7 @@
     }
   }
   async function disable2fa() {
-    const c = prompt("Enter a current 2FA code to disable:");
+    const c = await promptDialog({ title: "Disable 2FA", label: "Enter a current 2FA code", placeholder: "123456", confirmText: "Disable", danger: true });
     if (c === null) return;
     try {
       await api.post("/auth/2fa/disable", { code: c });
@@ -307,7 +308,7 @@
     }
   }
   async function forgetSteam() {
-    if (!confirm("Forget the Steam account? (The cached login is kept on disk so re-adding won't re-trigger Steam Guard.)")) return;
+    if (!(await confirmDialog({ title: "Forget Steam account", body: "The cached login is kept on disk so re-adding won't re-trigger Steam Guard.", confirmText: "Forget" }))) return;
     try {
       await api.del("/steam/account");
       await loadSteam();
@@ -379,7 +380,7 @@
     }
   }
   async function deleteToken(t) {
-    if (!confirm(`Delete token "${t.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Delete token", body: `Delete "${t.name}"?`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/tokens/${t.id}`);
       await loadTokens();
@@ -416,7 +417,7 @@
     }
   }
   async function deleteChannel(c) {
-    if (!confirm("Delete this channel?")) return;
+    if (!(await confirmDialog({ title: "Delete channel", body: "Delete this notification channel?", danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/notifications/${c.id}`);
       await loadChannels();
@@ -444,7 +445,7 @@
     }
   }
   async function deleteTemplate(t) {
-    if (!confirm(`Delete template "${t.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Delete template", body: `Delete "${t.name}"?`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/templates/${t.id}`);
       await loadTemplates();
@@ -914,7 +915,7 @@
     }
   }
   async function deleteWatcher(w) {
-    if (!confirm(`Delete watcher "${w.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Delete watcher", body: `Delete "${w.name}"?`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/watchers/${w.id}`);
       await loadWatchers();
@@ -1122,7 +1123,7 @@
   }
 
   async function del(t) {
-    if (!confirm(`Delete target "${t.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Delete backup target", body: `Delete "${t.name}"?`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/backup/targets/${t.id}`);
       await load();

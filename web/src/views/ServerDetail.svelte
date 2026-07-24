@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { api, wsURL, getToken } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { navigate } from "../lib/router.js";
   import { user } from "../lib/auth.js";
   import FileManager from "../components/FileManager.svelte";
@@ -159,7 +160,7 @@
   }
 
   async function kickPlayer(p) {
-    const reason = prompt(`Kick ${p.name}? Optional reason:`, "");
+    const reason = await promptDialog({ title: `Kick ${p.name}`, label: "Optional reason", value: "", confirmText: "Kick" });
     if (reason === null) return; // cancelled
     playersBusy = true;
     try {
@@ -174,8 +175,8 @@
   }
 
   async function banPlayer(p) {
-    if (!confirm(`Ban ${p.name}?\n\nThey're added to ban.txt and refused on their next join. A player already in-game can't be kicked without RCon (which DayZ-Linux lacks), so they stay until they disconnect.`)) return;
-    const reason = prompt(`Ban ${p.name}? Optional reason (for the audit log):`, "");
+    if (!(await confirmDialog({ title: `Ban ${p.name}`, body: "They're added to ban.txt and refused on their next join. A player already in-game can't be kicked without RCon (which DayZ-Linux lacks), so they stay until they disconnect.", danger: true, confirmText: "Ban" }))) return;
+    const reason = await promptDialog({ title: `Ban ${p.name}`, label: "Optional reason (for the audit log)", value: "", confirmText: "Ban", danger: true });
     if (reason === null) return;
     playersBusy = true;
     try {
@@ -304,7 +305,7 @@
     }
   }
   async function removeMcMod(file) {
-    if (!confirm(`Remove ${file}?`)) return;
+    if (!(await confirmDialog({ title: "Remove file", body: `Remove ${file}?`, danger: true, confirmText: "Remove" }))) return;
     modBusy = file;
     try {
       await api.del(`/servers/${id}/mods?file=${encodeURIComponent(file)}`);
@@ -645,7 +646,7 @@
   }
 
   async function deleteBackup(b) {
-    if (!confirm("Delete this backup?")) return;
+    if (!(await confirmDialog({ title: "Delete backup", body: "Delete this backup?", danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/backups/${b.id}`);
       await loadBackups();
@@ -783,7 +784,7 @@
     }
   }
   async function resetNorn() {
-    if (!confirm("Forget all saved Norn settings? Loot files revert to vanilla on the next Update/Reinstall.")) return;
+    if (!(await confirmDialog({ title: "Forget Norn settings", body: "Loot files revert to vanilla on the next Update/Reinstall.", danger: true, confirmText: "Forget" }))) return;
     nornBusy = true;
     try {
       await api.post(`/servers/${id}/dayz/reset`, {});
@@ -834,10 +835,10 @@
     const cur = (modStatus?.mods || []).map((m) => m.id);
     return setMods([...cur, modId]);
   }
-  function pruneBroken() {
+  async function pruneBroken() {
     const broken = (modStatus?.mods || []).filter((m) => !m.installed || m.workshop === "removed");
     if (!broken.length) return;
-    if (!confirm(`Remove ${broken.length} missing/removed mod(s) from the load order? Press Update/Reinstall afterwards.`)) return;
+    if (!(await confirmDialog({ title: "Remove missing mods", body: `Remove ${broken.length} missing/removed mod(s) from the load order? Press Update/Reinstall afterwards.`, confirmText: "Remove" }))) return;
     const keep = (modStatus?.mods || []).filter((m) => m.installed && m.workshop !== "removed").map((m) => m.id);
     return setMods(keep);
   }
@@ -1318,7 +1319,7 @@
   const fmtBytes = (n) => (n < 1e6 ? `${(n / 1e3).toFixed(0)} KB` : `${(n / 1e6).toFixed(1)} MB`);
 
   async function cloneServer() {
-    const name = prompt("Name for the clone:", `${server.name} (copy)`);
+    const name = await promptDialog({ title: "Clone server", label: "Name for the clone", value: `${server.name} (copy)`, confirmText: "Clone" });
     if (name === null) return; // cancelled
     cloning = true;
     try {
@@ -1333,8 +1334,14 @@
   }
 
   async function runInstall(confirmFirst = false) {
-    if (confirmFirst &&
-      !confirm("Update / reinstall this server? It re-runs the install script to fetch the latest version. Back up your world first — config files may be regenerated."))
+    if (
+      confirmFirst &&
+      !(await confirmDialog({
+        title: "Update / reinstall",
+        body: "This re-runs the install script to fetch the latest version. Back up your world first — config files may be regenerated.",
+        confirmText: "Update / reinstall",
+      }))
+    )
       return;
     try {
       await api.post(`/servers/${id}/install`);

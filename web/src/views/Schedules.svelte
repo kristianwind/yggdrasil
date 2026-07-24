@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { buildScheduleArgs, missingTemplateVars, templateVarsFor } from "../lib/scheduleArgs.js";
 
   let schedules = $state([]);
@@ -188,7 +189,7 @@
     }
   }
   async function del(s) {
-    if (!confirm(`Delete schedule "${s.name}"?`)) return;
+    if (!(await confirmDialog({ title: "Delete schedule", body: `Delete "${s.name}"?`, danger: true, confirmText: "Delete" }))) return;
     try {
       await api.del(`/schedules/${s.id}`);
       await load();

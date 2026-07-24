@@ -38,6 +38,7 @@ var iconSlug = map[string]string{
 	"cyberchef":       "cyberchef",
 	"it-tools":        "it-tools",
 	"unifi-network":   "unifi",
+	"qbittorrentvpn":  "qbittorrent",
 }
 
 type app struct {

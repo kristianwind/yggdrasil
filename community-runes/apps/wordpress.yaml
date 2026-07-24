@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 7
+  version: 8
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -71,8 +71,13 @@ gameskill:
           echo "</IfModule>"
           echo "# END Yggdrasil upload limits"
           echo ""
-          [ -f /data/.htaccess ] && cat /data/.htaccess
-        } > /data/.htaccess.ygg && mv /data/.htaccess.ygg /data/.htaccess
+          # Preserve any existing .htaccess below our block. Must be `if/then/fi`,
+          # not `[ -f ] && cat`: on a fresh webroot the test returns non-zero, which
+          # would make the whole { } group exit non-zero and the `&& mv` below never
+          # run — leaving an orphan .htaccess.ygg and no .htaccess at all.
+          if [ -f /data/.htaccess ]; then cat /data/.htaccess; fi
+        } > /data/.htaccess.ygg
+        mv /data/.htaccess.ygg /data/.htaccess
         chown 33:33 /data/.htaccess 2>/dev/null || true
         chmod 644 /data/.htaccess
       fi

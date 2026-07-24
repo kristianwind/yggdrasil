@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -328,6 +329,8 @@ func (s *Server) runWpressStep(ctx context.Context, dataDir string, st *gameskil
 	}
 	r := wpress.NewReader(f)
 	files, bytes := 0, int64(0)
+	var dumpPath string
+	var pkgJSON []byte
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -344,7 +347,7 @@ func (s *Server) runWpressStep(ctx context.Context, dataDir string, st *gameskil
 			if st.DBKey == "" {
 				continue // rune chose not to load the DB — drain and move on
 			}
-			dumpPath := filepath.Join(staging, "wpress-database.sql")
+			dumpPath = filepath.Join(staging, "wpress-database.sql")
 			out, oerr := os.Create(dumpPath)
 			if oerr != nil {
 				return oerr
@@ -358,7 +361,13 @@ func (s *Server) runWpressStep(ctx context.Context, dataDir string, st *gameskil
 			out.Close()
 			inputs[st.DBKey] = dumpPath
 			fmt.Fprintf(w, "extracted database.sql (%d MB, table prefix → wp_)\n", e.Size>>20)
-		case "package.json", "multisite.json":
+		case "package.json":
+			// AIO stores the active theme + plugins here and zeroes the matching
+			// wp_options rows (template/stylesheet/active_plugins) in the dump —
+			// its own importer re-applies them from this file. We must too, or the
+			// imported site loads with no theme and no plugins (a blank page).
+			pkgJSON, _ = io.ReadAll(io.LimitReader(e.Body, 1<<20))
+		case "multisite.json":
 			io.Copy(io.Discard, e.Body) //nolint:errcheck // metadata — not site files
 		default:
 			dest := filepath.Join(root, filepath.Clean("/"+e.Path))
@@ -382,7 +391,76 @@ func (s *Server) runWpressStep(ctx context.Context, dataDir string, st *gameskil
 		}
 	}
 	fmt.Fprintf(w, "wpress: %d files (%d MB) into %s\n", files, bytes>>20, to)
+
+	// Re-apply the active theme + plugins that AIO stashed in package.json (the
+	// dump left the wp_options rows empty). Appended to the dump so the following
+	// db_import step writes them in the same load.
+	if dumpPath != "" && len(pkgJSON) > 0 {
+		if sql := wpressOptionsFixSQL(pkgJSON); sql != "" {
+			out, oerr := os.OpenFile(dumpPath, os.O_APPEND|os.O_WRONLY, 0o644)
+			if oerr != nil {
+				return oerr
+			}
+			_, werr := out.WriteString(sql)
+			out.Close()
+			if werr != nil {
+				return werr
+			}
+			fmt.Fprintln(w, "restored active theme + plugins from package.json")
+		}
+	}
 	return nil
+}
+
+// wpressOptionsFixSQL builds the SQL that restores the wp_options rows AIO left
+// empty (template/stylesheet/active_plugins), from the theme + plugin list it
+// recorded in package.json. Returns "" if the metadata carries nothing useful.
+func wpressOptionsFixSQL(pkgJSON []byte) string {
+	var pkg struct {
+		Template   string   `json:"Template"`
+		Stylesheet string   `json:"Stylesheet"`
+		Plugins    []string `json:"Plugins"`
+	}
+	if err := json.Unmarshal(pkgJSON, &pkg); err != nil {
+		return ""
+	}
+	var b strings.Builder
+	upsert := func(name, value string) {
+		fmt.Fprintf(&b, "\nINSERT INTO wp_options (option_name,option_value,autoload) VALUES ('%s','%s','yes') ON DUPLICATE KEY UPDATE option_value=VALUES(option_value);",
+			sqlEscape(name), sqlEscape(value))
+	}
+	if pkg.Template != "" {
+		upsert("template", pkg.Template)
+	}
+	if pkg.Stylesheet != "" {
+		upsert("stylesheet", pkg.Stylesheet)
+	}
+	if len(pkg.Plugins) > 0 {
+		upsert("active_plugins", phpSerializeStrings(pkg.Plugins))
+	}
+	if b.Len() > 0 {
+		return b.String() + "\n"
+	}
+	return ""
+}
+
+// sqlEscape escapes a value for a single-quoted MySQL string literal.
+func sqlEscape(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	return strings.ReplaceAll(s, "'", "''")
+}
+
+// phpSerializeStrings renders an indexed array of strings as PHP's serialize()
+// format (what WordPress stores in the active_plugins option). Lengths are byte
+// counts; plugin paths are ASCII so this is exact.
+func phpSerializeStrings(items []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "a:%d:{", len(items))
+	for i, s := range items {
+		fmt.Fprintf(&b, "i:%d;s:%d:\"%s\";", i, len(s), s)
+	}
+	b.WriteString("}")
+	return b.String()
 }
 
 // waitImportDB blocks until the stack's database sidecar accepts a trivial

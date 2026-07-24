@@ -112,7 +112,7 @@
   let showCreate = $state(false);
   let selectedSkill = $state(null);
   let skillDetail = $state(null);
-  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: "", autostart: true });
+  let form = $state({ name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: "", autostart: true, ports: {} });
   let creating = $state(false);
 
   // External reachability per server (id -> {reachable,...}), for the at-a-glance
@@ -246,7 +246,7 @@
     const realmId = ro.allowNoRealm ? "" : ro.realms[0]?.id || "";
     const skills = runesForRealm(realmId);
     if (skills.length === 0) return toast("No runes available with your permissions", "warn");
-    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: realmId, autostart: true };
+    form = { name: "", env: {}, cpu_percent: 0, memory_mb: 0, subdomain: "", realm_id: realmId, autostart: true, ports: {} };
     // preselectId is a rune id when opened from a "Create server" button; when the
     // handler is wired straight to onclick it's a click Event — ignore non-strings.
     selectedSkill =
@@ -276,6 +276,16 @@
     }
   }
 
+  // Drop blank/invalid entries so the server only sees explicit port choices.
+  function cleanPorts(ports) {
+    const out = {};
+    for (const [name, v] of Object.entries(ports || {})) {
+      const n = parseInt(v, 10);
+      if (n > 0) out[name] = n;
+    }
+    return out;
+  }
+
   async function create() {
     if (!form.name) return toast("Name is required", "warn");
     creating = true;
@@ -291,6 +301,7 @@
         memory_mb: Number(form.memory_mb) || 0,
         subdomain: form.subdomain || "",
         autostart: !!form.autostart,
+        ports: cleanPorts(form.ports),
       });
       toast("Server created", "success");
       showCreate = false;
@@ -733,6 +744,27 @@
             Nginx Proxy Manager or Cloudflare Tunnel (set up under Settings → Network). Leave blank to disable.
           </p>
         </div>
+      {/if}
+
+      {#if skillDetail?.ports?.length}
+        <details class="text-sm">
+          <summary class="cursor-pointer text-muted select-none">Advanced: host ports</summary>
+          <div class="mt-2 space-y-2">
+            <p class="text-xs text-muted">
+              Leave blank to auto-assign from the panel's range. Set one only if you need a
+              specific host port (e.g. to match an existing NPM/tunnel/DNS forward).
+            </p>
+            {#each skillDetail.ports as p}
+              <div class="flex items-center gap-2">
+                <label class="label mb-0 w-40 truncate" for={`port-${p.name}`}>
+                  {p.name} <span class="text-muted">({p.protocol || "tcp"})</span>
+                </label>
+                <input id={`port-${p.name}`} class="input" type="number" min="1" max="65535"
+                  placeholder={`auto (was ${p.default})`} bind:value={form.ports[p.name]} />
+              </div>
+            {/each}
+          </div>
+        </details>
       {/if}
 
       <label class="flex items-center gap-2 text-sm cursor-pointer">

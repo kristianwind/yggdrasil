@@ -1132,6 +1132,34 @@
   }
   let connectHost = $derived(network?.effective || "");
 
+  // Host-port editing (admin) — PUT /servers/{id}/ports. A running server is
+  // recreated on the new port; a stopped one binds it on next start.
+  let editPorts = $state(false);
+  let portEdits = $state({});
+  let savingPorts = $state(false);
+  function startEditPorts() {
+    portEdits = { ...(server.ports || {}) };
+    editPorts = true;
+  }
+  async function savePorts() {
+    savingPorts = true;
+    try {
+      const ports = {};
+      for (const [name, v] of Object.entries(portEdits)) {
+        const n = parseInt(v, 10);
+        if (n > 0) ports[name] = n;
+      }
+      const res = await api.put(`/servers/${id}/ports`, { ports });
+      editPorts = false;
+      toast(res.recreated ? "Ports updated — server recreated on the new port(s)" : "Ports updated", "success");
+      await loadServer();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingPorts = false;
+    }
+  }
+
   // BattleMetrics live status (only when a BM id is configured on the server).
   let bm = $state(null);
   async function loadBM() {
@@ -1792,16 +1820,45 @@
 
   {#if server.ports && Object.keys(server.ports).length}
     <div class="card p-3 mb-4">
-      <div class="text-xs text-muted uppercase tracking-wide mb-1">Connect address</div>
-      <div class="flex flex-wrap gap-2">
-        {#each Object.entries(server.ports) as [name, port]}
-          <span class="badge bg-panel2 border border-border font-mono text-xs">
-            {name}: {connectHost || "your-host"}:{port}
-          </span>
-        {/each}
+      <div class="flex items-center justify-between mb-1">
+        <div class="text-xs text-muted uppercase tracking-wide">Connect address</div>
+        {#if $user?.role === "admin" && !editPorts}
+          <button class="btn-ghost text-xs py-0.5 px-2" onclick={startEditPorts}
+            title="Change this server's host port(s). A running server is recreated on the new port.">✎ Edit ports</button>
+        {/if}
       </div>
-      {#if !connectHost}
-        <div class="text-muted text-xs mt-1">Set a public hostname in <a href="#/settings" class="underline">Settings → Network</a> to replace “your-host”.</div>
+      {#if editPorts}
+        <div class="space-y-2">
+          {#each Object.keys(server.ports) as name}
+            <div class="flex items-center gap-2">
+              <label class="label mb-0 w-40 truncate" for={`edit-port-${name}`}>{name}</label>
+              <input id={`edit-port-${name}`} class="input" type="number" min="1" max="65535"
+                bind:value={portEdits[name]} />
+            </div>
+          {/each}
+          <p class="text-xs text-warn">
+            {server.status === "running" || server.status === "starting"
+              ? "The server will be recreated and restarted on the new port(s)."
+              : "The new port(s) take effect on next start."}
+            Remember to update any NPM / tunnel / DNS forward.
+          </p>
+          <div class="flex gap-2">
+            <button class="btn-primary text-xs" onclick={savePorts} disabled={savingPorts}>
+              {savingPorts ? "Saving…" : "Save ports"}</button>
+            <button class="btn-ghost text-xs" onclick={() => (editPorts = false)} disabled={savingPorts}>Cancel</button>
+          </div>
+        </div>
+      {:else}
+        <div class="flex flex-wrap gap-2">
+          {#each Object.entries(server.ports) as [name, port]}
+            <span class="badge bg-panel2 border border-border font-mono text-xs">
+              {name}: {connectHost || "your-host"}:{port}
+            </span>
+          {/each}
+        </div>
+        {#if !connectHost}
+          <div class="text-muted text-xs mt-1">Set a public hostname in <a href="#/settings" class="underline">Settings → Network</a> to replace “your-host”.</div>
+        {/if}
       {/if}
     </div>
   {/if}

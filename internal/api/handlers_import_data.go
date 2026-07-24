@@ -164,6 +164,8 @@ func (s *Server) runDataImport(id string, rt *serverRuntime, inputs map[string]s
 		s.gracefulStop(ctx, containerID, rt.gs) //nolint:errcheck
 	}
 
+	w := hubWriter{hub: s.install, id: id}
+
 	// A db_import needs the database sidecar reachable — bring the stack up
 	// (network + sidecars) without the main app. No-op for single-container runes.
 	if importNeedsStack(rt.gs) {
@@ -172,9 +174,15 @@ func (s *Server) runDataImport(id string, rt *serverRuntime, inputs map[string]s
 			pub("ERROR: could not start the database: " + err.Error())
 			return err
 		}
+		// A FRESH sidecar first-inits (creates the system tables, database and
+		// user) before it accepts connections — tens of seconds. Wait for it, or
+		// the first db_import races in and dies with "Can't connect to server".
+		pub("Waiting for the database to accept connections ...")
+		if err := s.waitImportDB(ctx, id, rt, w); err != nil {
+			pub("ERROR: database did not become ready: " + err.Error())
+			return err
+		}
 	}
-
-	w := hubWriter{hub: s.install, id: id}
 	for i, step := range rt.gs.Import.Steps {
 		pub(fmt.Sprintf("--- step %d/%d ---", i+1, len(rt.gs.Import.Steps)))
 		if err := s.runImportStep(ctx, id, dataDir, rt, step, inputs, staging, w); err != nil {
@@ -366,6 +374,38 @@ func (s *Server) runWpressStep(ctx context.Context, dataDir string, st *gameskil
 	}
 	fmt.Fprintf(w, "wpress: %d files (%d MB) into %s\n", files, bytes>>20, to)
 	return nil
+}
+
+// waitImportDB blocks until the stack's database sidecar accepts a trivial
+// query, or times out. It reuses the first db_import step's client image and
+// connection command (fed "SELECT 1" on stdin, exactly how the real import
+// feeds the dump), run on the stack network so it resolves the sidecar by name.
+func (s *Server) waitImportDB(ctx context.Context, id string, rt *serverRuntime, w hubWriter) error {
+	var d *gameskill.DBImport
+	for _, st := range rt.gs.Import.Steps {
+		if st.DBImport != nil {
+			d = st.DBImport
+			break
+		}
+	}
+	if d == nil {
+		return nil
+	}
+	cmd := gameskill.ApplyTemplate(d.Command, rt.env)
+	// ~3 minutes of retries: a first-init on a busy host can be slow.
+	script := fmt.Sprintf(`i=0
+while [ $i -lt 90 ]; do
+  if echo "SELECT 1;" | %s >/dev/null 2>&1; then echo "database ready"; exit 0; fi
+  i=$((i+1)); sleep 2
+done
+echo "database not ready after 180s"; exit 1`, cmd)
+	return s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
+		Image:        gameskill.ApplyTemplate(d.Image, rt.env),
+		Env:          envSlice(rt.env),
+		Script:       script,
+		Network:      stackNetworkName(id),
+		NetworkAlias: "ygg-import-wait",
+	}, w)
 }
 
 // importNeedsStack reports whether any step imports into a database sidecar.

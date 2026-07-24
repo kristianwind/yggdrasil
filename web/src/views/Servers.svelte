@@ -688,7 +688,7 @@
     <div class="card w-full max-w-lg max-h-[90vh] overflow-auto p-5 space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">New server</h2>
-        <button class="btn-ghost px-2 py-1" onclick={() => (showCreate = false)}>✕</button>
+        <button class="btn-ghost px-2 py-1" aria-label="Close" onclick={() => (showCreate = false)}>✕</button>
       </div>
 
       {#if createRealmOptions.realms.length > 0}

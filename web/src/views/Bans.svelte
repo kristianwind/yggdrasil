@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { formatTime } from "../lib/time.js";
 
   let bans = $state([]);
   let servers = $state([]);
@@ -110,7 +111,7 @@
           <span class="badge bg-border text-muted ml-1">{b.server_name}</span>
         </div>
         <div class="text-xs text-muted truncate">
-          {b.reason || "(no reason)"} · by {b.banned_by || "—"} · {b.created_at}
+          {b.reason || "(no reason)"} · by {b.banned_by || "—"} · <span title={b.created_at}>{formatTime(b.created_at)}</span>
         </div>
       </div>
       <button class="btn-ghost" onclick={() => unban(b)}

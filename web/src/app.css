@@ -51,6 +51,9 @@ body {
   .btn-ghost {
     @apply btn bg-panel2 text-text hover:bg-border;
   }
+  .btn-secondary {
+    @apply btn bg-panel2 border border-border text-text hover:bg-border;
+  }
   .btn-danger {
     @apply btn bg-danger/90 text-white hover:bg-danger;
   }

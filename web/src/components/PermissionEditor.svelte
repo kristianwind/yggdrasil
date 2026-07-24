@@ -83,7 +83,7 @@
   <div class="card w-full max-w-2xl max-h-[90vh] overflow-auto p-5 space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="text-lg font-semibold">Permissions — {user.username}</h2>
-      <button class="btn-ghost px-2 py-1" onclick={() => onclose?.()}>✕</button>
+      <button class="btn-ghost px-2 py-1" aria-label="Close" onclick={() => onclose?.()}>✕</button>
     </div>
 
     {#if user.role === "admin"}

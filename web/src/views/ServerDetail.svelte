@@ -1628,8 +1628,11 @@
         {#each importInfo.inputs as inp}
           <div>
             <label class="label" for={`imp-${inp.key}`}>{inp.label}{inp.optional ? " (optional)" : ""}</label>
-            <input id={`imp-${inp.key}`} type="file" accept={inp.accept || ""} class="text-sm"
+            <!-- No `accept` filter: macOS greys out unknown extensions like .wpress
+                 in the file picker, so the accepted types are shown as a hint instead. -->
+            <input id={`imp-${inp.key}`} type="file" class="text-sm"
               onchange={(e) => (importFiles[inp.key] = e.target.files?.[0] || null)} />
+            {#if inp.accept}<div class="text-[11px] text-muted mt-0.5">Expected: {inp.accept}</div>{/if}
           </div>
         {/each}
         <div class="flex gap-2 pt-1">

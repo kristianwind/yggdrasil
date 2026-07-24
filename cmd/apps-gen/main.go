@@ -37,6 +37,7 @@ var iconSlug = map[string]string{
 	"static-site":     "", // no brand icon — falls back to a glyph
 	"cyberchef":       "cyberchef",
 	"it-tools":        "it-tools",
+	"unifi-network":   "unifi",
 }
 
 type app struct {

@@ -1,12 +1,30 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/kristianwind/yggdrasil/internal/auth"
 )
+
+// minPasswordLen is the floor for panel account passwords. This store guards a
+// root-equivalent system (the panel controls Docker), so a trivially guessable
+// password here is a real risk.
+const minPasswordLen = 12
+
+// validatePassword enforces a minimum strength for a new/changed account
+// password: long enough and not an obviously-weak/common value (weakSecret).
+func validatePassword(pw string) error {
+	if len([]rune(pw)) < minPasswordLen {
+		return fmt.Errorf("password must be at least %d characters", minPasswordLen)
+	}
+	if weakSecret(pw) {
+		return fmt.Errorf("password is too common — choose a stronger one")
+	}
+	return nil
+}
 
 type userInfo struct {
 	ID        string `json:"id"`
@@ -58,6 +76,10 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "role must be \"admin\" or \"user\"", http.StatusBadRequest)
 		return
 	}
+	if err := validatePassword(req.Password); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
 		jsonError(w, "hash error", http.StatusInternalServerError)
@@ -97,6 +119,14 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if req.Role != nil && !validRole(*req.Role) {
 		jsonError(w, "role must be \"admin\" or \"user\"", http.StatusBadRequest)
 		return
+	}
+	// Validate the password up front too, so a weak one is rejected before any of
+	// this handler's per-field UPDATEs run.
+	if req.Password != nil && *req.Password != "" {
+		if err := validatePassword(*req.Password); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	if req.Password != nil && *req.Password != "" {

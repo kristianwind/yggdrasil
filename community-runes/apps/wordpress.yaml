@@ -123,11 +123,16 @@ gameskill:
           service: db
           image: "mariadb:lts"
           command: "mariadb -h db -u {{DB_USER}} -p{{DB_PASSWORD}} {{DB_NAME}}"
+          # Wipe the schema first so the dump is authoritative — otherwise a
+          # re-import over a database WordPress already seeded keeps its default
+          # theme/active_plugins (the imported ones collide on existing keys).
+          reset: true
       - db_import:
           input: wpressdb
           service: db
           image: "mariadb:lts"
           command: "mariadb -h db -u {{DB_USER}} -p{{DB_PASSWORD}} {{DB_NAME}}"
+          reset: true
       - script: |
           set -e
           # Point the imported wp-config.php at this server's stack DB (the old

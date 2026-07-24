@@ -247,15 +247,24 @@ echo "unpacked into %s"`, to, to, to)
 			return nil // optional dump not supplied
 		}
 		cmd := gameskill.ApplyTemplate(d.Command, rt.env)
+		// Optionally wipe the schema first so the dump is authoritative (see
+		// DBImport.Reset). MySQL/MariaDB-flavoured: list every table in the current
+		// database and drop it with FK checks off, in one piped session.
+		reset := ""
+		if d.Reset {
+			reset = fmt.Sprintf(`echo "resetting database (dropping existing tables)…"
+{ echo "SET FOREIGN_KEY_CHECKS=0;"; %s -N -e "SELECT CONCAT('DROP TABLE IF EXISTS \`+"`"+`',table_name,'\`+"`"+`;') FROM information_schema.tables WHERE table_schema=DATABASE();"; } | %s
+`, cmd, cmd)
+		}
 		// Pipe the dump into the client, decompressing .gz on the fly. The client
 		// joins the stack network so it reaches the sidecar by service name.
 		script := fmt.Sprintf(`set -e
-if echo /input/dump | grep -q '\.gz$' || gzip -t /input/dump 2>/dev/null; then
+%sif echo /input/dump | grep -q '\.gz$' || gzip -t /input/dump 2>/dev/null; then
   gzip -dc /input/dump | %s
 else
   %s < /input/dump
 fi
-echo "database import done"`, cmd, cmd)
+echo "database import done"`, reset, cmd, cmd)
 		return s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
 			Image:        gameskill.ApplyTemplate(d.Image, rt.env),
 			ExtraMounts:  map[string]string{src: "/input/dump"},

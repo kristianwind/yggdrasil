@@ -1458,7 +1458,7 @@
   <div class="text-muted">Loading…</div>
 {:else}
   <div class="flex items-center gap-3 mb-1">
-    <button class="btn-ghost px-2 py-1" onclick={() => navigate("/servers")}>←</button>
+    <button class="btn-ghost px-2 py-1" aria-label="Back to servers" onclick={() => navigate("/servers")}>←</button>
     <h1 class="text-2xl font-semibold">{server.name}</h1>
     <span class="badge {server.status === 'running' ? 'bg-accent2/20 text-accent' : server.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
       >{server.status}</span

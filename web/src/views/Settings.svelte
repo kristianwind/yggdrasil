@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { formatTime } from "../lib/time.js";
   import { registerPasskey, passkeysSupported } from "../lib/webauthn.js";
   import RealmManager from "../components/RealmManager.svelte";
 
@@ -2357,7 +2358,7 @@
       <div class="flex-1">
         <div class="font-medium">{t.name}</div>
         <div class="text-xs text-muted">
-          created {t.created_at}{t.last_used_at ? ` · last used ${t.last_used_at}` : " · never used"}
+          created {formatTime(t.created_at)}{t.last_used_at ? ` · last used ${formatTime(t.last_used_at)}` : " · never used"}
         </div>
       </div>
       <button class="btn-danger" onclick={() => deleteToken(t)}>Delete</button>

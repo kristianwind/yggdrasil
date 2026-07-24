@@ -437,7 +437,7 @@
     <div class="card w-full max-w-2xl max-h-[90vh] overflow-auto p-5 space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Browse runes on GitHub</h2>
-        <button class="btn-ghost px-2 py-1" onclick={() => (ghOpen = false)}>✕</button>
+        <button class="btn-ghost px-2 py-1" aria-label="Close" onclick={() => (ghOpen = false)}>✕</button>
       </div>
       <p class="text-muted text-sm">
         Install community runes directly from a repo's folder of YAML files — no manual download.
@@ -537,7 +537,7 @@
     <div class="card p-4 w-full max-w-2xl max-h-[90vh] overflow-auto space-y-3">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Import from docker-compose</h2>
-        <button class="btn-ghost px-2 py-1" onclick={() => (showCompose = false)}>✕</button>
+        <button class="btn-ghost px-2 py-1" aria-label="Close" onclick={() => (showCompose = false)}>✕</button>
       </div>
       <p class="text-muted text-sm">
         Paste a <code>docker-compose.yml</code>. The panel turns it into a rune — the main service plus any

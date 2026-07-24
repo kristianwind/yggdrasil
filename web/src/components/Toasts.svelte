@@ -8,9 +8,10 @@
   };
 </script>
 
-<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm" role="status" aria-live="polite">
   {#each $toasts as t (t.id)}
-    <div class="card border px-4 py-2 text-sm shadow-lg {color[t.type] || color.info}">
+    <div class="card border px-4 py-2 text-sm shadow-lg {color[t.type] || color.info}"
+      role={t.type === "error" || t.type === "warn" ? "alert" : "status"}>
       {t.message}
     </div>
   {/each}

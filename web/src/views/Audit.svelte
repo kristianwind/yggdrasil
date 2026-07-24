@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api, getToken } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { formatTime } from "../lib/time.js";
 
   let entries = $state([]);
   let loading = $state(false);
@@ -105,7 +106,7 @@
     <tbody>
       {#each entries as e}
         <tr class="border-b border-border/50" title={e.detail || ""}>
-          <td class="px-4 py-2 text-muted whitespace-nowrap">{e.ts}</td>
+          <td class="px-4 py-2 text-muted whitespace-nowrap" title={e.ts}>{formatTime(e.ts)}</td>
           <td class="px-4 py-2">{e.username || "—"}</td>
           <td class="px-4 py-2 font-mono">{e.action}</td>
           <td class="px-4 py-2 font-mono text-muted truncate max-w-xs">{e.resource}</td>

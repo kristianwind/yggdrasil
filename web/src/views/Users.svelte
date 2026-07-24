@@ -6,6 +6,7 @@
   import PasswordField from "../components/PasswordField.svelte";
 
   let users = $state([]);
+  let loaded = $state(false);
   let showCreate = $state(false);
   let form = $state({ username: "", password: "", role: "user" });
   let permUser = $state(null); // user whose permissions are being edited
@@ -34,6 +35,8 @@
       users = await api.get("/users");
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      loaded = true;
     }
   }
   onMount(load);
@@ -78,13 +81,18 @@
 </div>
 
 <div class="card divide-y divide-border">
+  {#if !loaded}
+    <div class="p-4 text-muted text-sm">Loading…</div>
+  {:else if users.length === 0}
+    <div class="p-4 text-muted text-sm">No users yet.</div>
+  {/if}
   {#each users as u}
     <div class="flex items-center gap-3 px-4 py-3">
       <div class="flex-1">
         <div class="font-medium">{u.username}</div>
         <div class="text-xs text-muted">{u.role}{u.disabled ? " · disabled" : ""}</div>
       </div>
-      <button class="btn-ghost" onclick={() => openEdit(u)} title="Change this user's username, role or password.">Edit</button>
+      <button class="btn-ghost" onclick={() => openEdit(u)} title="Change this user's role or password.">Edit</button>
       {#if u.role !== "admin"}
         <button class="btn-ghost" onclick={() => (permUser = u)}
           title="Grant this user access to specific servers, realms or games, and choose what they can do (view, control, console, files, backups, schedules).">Permissions</button>

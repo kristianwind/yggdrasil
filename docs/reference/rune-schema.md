@@ -442,6 +442,41 @@ a Steam rune's startup command.
 Three names are load-bearing. `game` is the fallback for both query and RCON. `query` is preferred
 by the query poller if present. `rcon` is preferred by the console if present.
 
+## `services` — app stacks
+
+A rune with a `services:` block is a small multi-container app: the panel runs each sidecar on a
+private per-server bridge network, using its `name` as a DNS alias, and joins the main container to
+the same network. So the main app reaches its database by service name — set `DB_HOST: db` when a
+service is named `db`. Sidecars keep their image's entrypoint and each persist to a subdirectory of
+the server's data dir (`.stack/<name>`). Immich, Paperless, WordPress and TeslaMate are stacks.
+
+```yaml
+services:
+  - name: db                      # DNS alias on the stack network
+    image: "postgres:17"
+    data_path: /var/lib/postgresql/data
+    env: { POSTGRES_PASSWORD: "{{DB_PASS}}" }   # values may reference {{VARS}}
+  - name: grafana
+    image: "teslamate/grafana:latest"
+    data_path: /var/lib/grafana
+    ports:                        # a sidecar with its OWN web UI
+      - { name: web, default: 3000, protocol: tcp }
+```
+
+| Field | Type | What it does |
+|-------|------|--------------|
+| `name` | string | **Required.** DNS alias on the stack network. |
+| `image` | string | **Required.** |
+| `env` | map | Fixed environment; values may reference `{{VARS}}`. |
+| `data_path` | string | Mount for the sidecar's own persisted directory. Omit for a stateless worker. |
+| `command` | list | Optional argv override. |
+| `ports` | list | Host ports this sidecar publishes — same shape as top-level `ports`. |
+
+Most sidecars (databases, caches, workers) publish **no** ports: they're internal, reached by name.
+Declare `ports` only when a sidecar has its own UI the user must open — TeslaMate's Grafana is the
+example. Each such port is host-allocated once and reused across restarts, and appears in the
+server's port list under a `<service>.<name>` key (e.g. `grafana.web`).
+
 ## `query`
 
 ```yaml

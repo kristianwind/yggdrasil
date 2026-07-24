@@ -1,0 +1,83 @@
+gameskill:
+  id: teslamate
+  name: "TeslaMate"
+  category: "Apps"
+  description: "Self-hosted data logger for your Tesla — detailed drive/charge history, efficiency, battery health and beautiful Grafana dashboards. An app stack: the panel runs TeslaMate together with its own PostgreSQL, an MQTT broker and a pre-provisioned Grafana on a private network."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # The TeslaMate web app (sign in with your Tesla account here). It reaches its
+  # database and MQTT broker by service name on the private stack network.
+  docker:
+    image: "teslamate/teslamate:latest"
+    data_path: /opt/app/import
+    keep_entrypoint: true
+    env:
+      DATABASE_USER: "teslamate"
+      DATABASE_PASS: "{{DB_PASS}}"
+      DATABASE_NAME: "teslamate"
+      DATABASE_HOST: "db"
+      MQTT_HOST: "mosquitto"
+      ENCRYPTION_KEY: "{{ENCRYPTION_KEY}}"
+      TZ: "{{TZ}}"
+
+  variables:
+    - key: DB_PASS
+      name: "Database password (change this)"
+      type: string
+      default: "change-me"
+      secret: true
+    - key: ENCRYPTION_KEY
+      name: "Encryption key for your Tesla tokens (change this — keep it safe)"
+      type: string
+      default: "change-me-to-a-long-random-string"
+      secret: true
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  # The bundled backing services — reached by the app as db / mosquitto, and Grafana
+  # published to its own port so you can open the dashboards.
+  services:
+    - name: db
+      image: "postgres:17"
+      data_path: /var/lib/postgresql/data
+      env:
+        POSTGRES_USER: "teslamate"
+        POSTGRES_PASSWORD: "{{DB_PASS}}"
+        POSTGRES_DB: "teslamate"
+    - name: mosquitto
+      image: "eclipse-mosquitto:2"
+      data_path: /mosquitto/data
+      command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    - name: grafana
+      image: "teslamate/grafana:latest"
+      data_path: /var/lib/grafana
+      env:
+        DATABASE_USER: "teslamate"
+        DATABASE_PASS: "{{DB_PASS}}"
+        DATABASE_NAME: "teslamate"
+        DATABASE_HOST: "db"
+      ports:
+        - { name: web, default: 3000, protocol: tcp }
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "TeslaMate data directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'TeslaMateWeb'
+
+  # The TeslaMate app is 'web' (4000); Grafana gets its own published port (see the
+  # port list — grafana.web). Sign in to TeslaMate first, then open Grafana
+  # (default login admin / admin) for the dashboards.
+  ports:
+    - { name: web, default: 4000, protocol: tcp }
+
+  backup:
+    include: ["."]

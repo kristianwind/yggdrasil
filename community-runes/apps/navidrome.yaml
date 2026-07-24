@@ -1,0 +1,44 @@
+gameskill:
+  id: navidrome
+  name: "Navidrome"
+  category: "Apps"
+  description: "Your own music streaming server — a self-hosted, Subsonic-compatible alternative to Spotify for your personal library. Browse, search and stream from the web player or any Subsonic app (Symfonium, play:Sub, DSub, Amperfy). Point it at your music library, which you add as an admin host mount (read-only); it scans and keeps its index in the panel data dir."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "deluan/navidrome:latest"
+    data_path: /data
+    keep_entrypoint: true
+    env:
+      ND_SCANSCHEDULE: "1h"
+      ND_LOGLEVEL: "info"
+      ND_SESSIONTIMEOUT: "24h"
+      TZ: "{{TZ}}"
+
+  variables:
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Navidrome data directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'accepting requests|Started Navidrome'
+
+  ports:
+    - { name: web, default: 4533, protocol: tcp }
+
+  # Your music lives OUTSIDE this data dir. As an admin, open this server's
+  # Settings → "Host mounts" and add your library read-only, e.g.:
+  #   /mnt/media/music → /music   (read-only)
+  # Host mounts are admin-only and per server — never in the rune.
+  backup:
+    include: ["."]

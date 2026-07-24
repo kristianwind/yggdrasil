@@ -1,0 +1,49 @@
+gameskill:
+  id: ntfy
+  name: "ntfy"
+  category: "Apps"
+  description: "Send push notifications to your phone, desktop or any device from a simple HTTP PUT/POST — self-hosted, no accounts required. Subscribe from the ntfy mobile/desktop apps or the web UI, and fire a notification from any script (curl), cron job or app. Set the public base URL below so notification links and attachments resolve; it sits behind the panel's reverse proxy on the web port."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  docker:
+    image: "binwiederhier/ntfy:latest"
+    data_path: /var/cache/ntfy
+    keep_entrypoint: true
+    # Config via env instead of a server.yml — the message cache + auth db live in
+    # the persisted data dir, and it trusts the panel's reverse proxy for TLS/host.
+    env:
+      NTFY_CACHE_FILE: "/var/cache/ntfy/cache.db"
+      NTFY_AUTH_FILE: "/var/cache/ntfy/auth.db"
+      NTFY_BASE_URL: "{{BASE_URL}}"
+      NTFY_BEHIND_PROXY: "true"
+      NTFY_ATTACHMENT_CACHE_DIR: "/var/cache/ntfy/attachments"
+      TZ: "{{TZ}}"
+
+  variables:
+    - key: BASE_URL
+      name: "Public base URL (e.g. https://ntfy.example.com — needed for links & attachments)"
+      type: string
+      default: ""
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data/attachments
+      echo "ntfy cache directory ready"
+
+  # `ntfy serve` starts the server; it logs a "Listening on" line once up.
+  startup:
+    exec: ["serve"]
+    done_regex: 'Listening on'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

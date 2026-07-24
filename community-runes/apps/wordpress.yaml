@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 6
+  version: 7
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -94,18 +94,32 @@ gameskill:
   # server's DB credentials so the site comes up against the panel's database.
   import:
     inputs:
+      - key: wpress
+        label: "All-in-One WP Migration export (.wpress) — files + database in one"
+        accept: ".wpress"
+        optional: true
       - key: files
-        label: "Site archive (webroot: wp-content, uploads, …)"
+        label: "…or a site archive (webroot: wp-content, uploads, …)"
         accept: ".tar.gz,.tgz,.tar,.zip"
         optional: true
       - key: db
-        label: "Database dump (mysqldump .sql or .sql.gz)"
+        label: "…and/or a database dump (mysqldump .sql or .sql.gz)"
         accept: ".sql,.sql.gz,.gz"
+        optional: true
     steps:
+      - wpress:
+          input: wpress
+          to: "wp-content"
+          db_key: wpressdb
       - unpack: files
         to: "."
       - db_import:
           input: db
+          service: db
+          image: "mariadb:lts"
+          command: "mariadb -h db -u {{DB_USER}} -p{{DB_PASSWORD}} {{DB_NAME}}"
+      - db_import:
+          input: wpressdb
           service: db
           image: "mariadb:lts"
           command: "mariadb -h db -u {{DB_USER}} -p{{DB_PASSWORD}} {{DB_NAME}}"

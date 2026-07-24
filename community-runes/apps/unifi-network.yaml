@@ -1,0 +1,62 @@
+gameskill:
+  id: unifi-network
+  name: "UniFi Network"
+  category: "Apps"
+  description: "Self-host the UniFi Network controller to adopt and manage Ubiquiti access points, switches and gateways — the same application that runs on a Cloud Key, but in a container. A two-container app stack the panel wires together on a private network: the network application and its MongoDB database. Adopt devices on the same LAN via the inform port (8080); manage them from the web UI on 8443 (https). NOTE: this is the Network application only — UniFi Protect (cameras) requires UniFi OS hardware and has no supported container image."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # LinuxServer image: starts as root, drops to PUID:PGID. Config + keystore live
+  # in /config. It talks to the bundled MongoDB by service name (mongodb).
+  docker:
+    image: "lscr.io/linuxserver/unifi-network-application:latest"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+    env:
+      MONGO_HOST: "mongodb"
+      MONGO_PORT: "27017"
+      MONGO_DBNAME: "unifi"
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (must own the data dir)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  services:
+    # Unauthenticated MongoDB, reachable only by the app on the private stack
+    # network (never published). UniFi supports MongoDB 3.6–7.0; do not go to 8.x.
+    - name: mongodb
+      image: "docker.io/mongo:7.0"
+      data_path: /data/db
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "UniFi Network config directory ready"
+
+  startup:
+    command: ""
+    done_regex: '\[ls\.io-init\] done\.'
+
+  # gui  = the management web UI (https, browse to https://<host>:8443)
+  # inform = device adoption/inform channel (devices must reach this on the LAN)
+  # stun = device STUN keep-alive
+  ports:
+    - { name: gui, default: 8443, protocol: tcp }
+    - { name: inform, default: 8080, protocol: tcp }
+    - { name: stun, default: 3478, protocol: udp }
+
+  backup:
+    include: ["."]

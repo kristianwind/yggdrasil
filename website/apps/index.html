@@ -3,10 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supported apps &amp; games — Yggdrasil Panel</title>
-<meta name="description" content="50 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta name="description" content="52 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <link rel="canonical" href="https://yggdrasilpanel.com/apps/">
 <meta property="og:title" content="Supported apps &amp; games — Yggdrasil Panel">
-<meta property="og:description" content="50 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta property="og:description" content="52 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://yggdrasilpanel.com/apps/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E">
@@ -20,6 +20,15 @@ a{color:var(--grn2);text-decoration:none}
 .links{margin-left:auto;display:flex;gap:1.25rem;align-items:center}
 .links a{color:var(--mut);font-size:.95rem}.links a:hover{color:var(--tx);text-decoration:none}
 .links a.btn{background:transparent;color:var(--tx);border:1px solid var(--bd);border-radius:.6rem;padding:.6rem 1rem;font-weight:600}
+.navtoggle{position:absolute;opacity:0;pointer-events:none}
+.hamburger{display:none;margin-left:auto;font-size:1.6rem;line-height:1;cursor:pointer;color:var(--tx)}
+@media (max-width:640px){
+  .hamburger{display:block}
+  .links{position:absolute;top:60px;left:0;right:0;margin-left:0;flex-direction:column;align-items:flex-start;gap:0;background:rgba(11,15,20,.97);border-bottom:1px solid var(--bd);padding:.25rem 1.25rem .75rem;display:none}
+  .navtoggle:checked ~ .links{display:flex}
+  .links a{padding:.7rem 0;font-size:1rem}
+  .links a.btn{margin-top:.4rem;text-align:center;align-self:stretch}
+}
 .nav .brand{font-weight:700;color:var(--tx);font-size:1.05rem}
 .nav a{color:var(--mut)}.nav a:hover{color:var(--tx)}.nav .sp{flex:1}
 .wrap{max-width:1080px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
@@ -43,6 +52,8 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 <nav class="nav">
 <div class="navin">
   <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+  <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+  <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
   <div class="links">
     <a href="/#features">Features</a>
     <a href="/apps">Apps &amp; games</a>
@@ -55,7 +66,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 </nav>
 <main class="wrap">
   <h1>Supported apps &amp; games</h1>
-  <p class="lede">50 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
+  <p class="lede">52 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
 <h2>Games <span class="count">8</span></h2>
 <div class="grid"><div class="app">
   <div class="ic"><span class="glyph">🎮</span></div>
@@ -82,7 +93,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
   <div class="ic"><img loading="lazy" src="/icons/terraria.png" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Terraria</div><div class="desc">Terraria dedicated server (official build from terraria.</div></div>
 </div></div>
-<h2>Apps <span class="count">42</span></h2>
+<h2>Apps <span class="count">44</span></h2>
 <div class="grid"><div class="app">
   <div class="ic"><img loading="lazy" src="/icons/adguardhome.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">AdGuard Home</div><div class="desc">Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole.</div></div>
@@ -174,13 +185,16 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
   <div class="ic"><img loading="lazy" src="/icons/pihole.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Pi-hole</div><div class="desc">Network-wide ad blocker + local DNS.</div></div>
 </div><div class="app">
+  <div class="ic"><img loading="lazy" src="/icons/plex.svg" alt="" width="40" height="40"></div>
+  <div class="meta"><div class="name">Plex Media Server</div><div class="desc">Organise and stream your movies, TV, music and photos to any device with the Plex apps.</div></div>
+</div><div class="app">
   <div class="ic"><img loading="lazy" src="/icons/portainer.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Portainer</div><div class="desc">Docker/Kubernetes management UI.</div></div>
 </div><div class="app">
   <div class="ic"><img loading="lazy" src="/icons/postgresql.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">PostgreSQL</div><div class="desc">PostgreSQL database server (official image) — a backing store for other runes/apps</div></div>
 </div><div class="app">
-  <div class="ic"><span class="glyph">📦</span></div>
+  <div class="ic"><img loading="lazy" src="/icons/qbittorrentvpn.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">qBittorrent + VPN</div><div class="desc">qBittorrent torrent client routed entirely through an OpenVPN or WireGuard tunnel (binhex/arch-qbittorrentvpn).</div></div>
 </div><div class="app">
   <div class="ic"><img loading="lazy" src="/icons/radarr.svg" alt="" width="40" height="40"></div>
@@ -200,6 +214,9 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 </div><div class="app">
   <div class="ic"><img loading="lazy" src="/icons/teslamate.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">TeslaMate<span class="badge">stack</span></div><div class="desc">Self-hosted data logger for your Tesla — detailed drive/charge history, efficiency, battery health and beautiful Grafana dashboards.</div></div>
+</div><div class="app">
+  <div class="ic"><img loading="lazy" src="/icons/unifi-network.svg" alt="" width="40" height="40"></div>
+  <div class="meta"><div class="name">UniFi Network<span class="badge">stack</span></div><div class="desc">Self-host the UniFi Network controller to adopt and manage Ubiquiti access points, switches and gateways — the same application that runs on a Cloud Key, but…</div></div>
 </div><div class="app">
   <div class="ic"><img loading="lazy" src="/icons/uptime-kuma.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Uptime Kuma</div><div class="desc">Self-hosted uptime monitoring with status pages and alerts</div></div>

@@ -93,6 +93,15 @@ a{color:var(--grn2);text-decoration:none}
 .links{margin-left:auto;display:flex;gap:1.25rem;align-items:center}
 .links a{color:var(--mut);font-size:.95rem}.links a:hover{color:var(--tx);text-decoration:none}
 .links a.btn{background:transparent;color:var(--tx);border:1px solid var(--bd);border-radius:.6rem;padding:.6rem 1rem;font-weight:600}
+.navtoggle{position:absolute;opacity:0;pointer-events:none}
+.hamburger{display:none;margin-left:auto;font-size:1.6rem;line-height:1;cursor:pointer;color:var(--tx)}
+@media (max-width:640px){
+  .hamburger{display:block}
+  .links{position:absolute;top:60px;left:0;right:0;margin-left:0;flex-direction:column;align-items:flex-start;gap:0;background:rgba(11,15,20,.97);border-bottom:1px solid var(--bd);padding:.25rem 1.25rem .75rem;display:none}
+  .navtoggle:checked ~ .links{display:flex}
+  .links a{padding:.7rem 0;font-size:1rem}
+  .links a.btn{margin-top:.4rem;text-align:center;align-self:stretch}
+}
 .nav .brand{font-weight:700;color:var(--tx);font-size:1.05rem}
 .nav a{color:var(--mut)}.nav a:hover{color:var(--tx)}.nav .sp{flex:1}
 .wrap{max-width:1080px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
@@ -116,6 +125,8 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 <nav class="nav">
 <div class="navin">
   <a class="brand" href="/">🌳 Yggdrasil&nbsp;Panel</a>
+  <input type="checkbox" id="navtoggle" class="navtoggle" aria-hidden="true" />
+  <label for="navtoggle" class="hamburger" aria-label="Toggle menu">☰</label>
   <div class="links">
     <a href="/#features">Features</a>
     <a href="/apps">Apps &amp; games</a>

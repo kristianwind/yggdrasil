@@ -74,9 +74,15 @@ func (s *Server) handleImportData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stage every uploaded input to a temp dir the containers can bind-mount. The
-	// dir is removed after the import regardless of outcome — dumps hold secrets.
-	staging, err := os.MkdirTemp("", "ygg-import-*")
+	// Stage uploaded inputs under the panel's DATA ROOT, not /tmp. The panel runs
+	// as a systemd service with PrivateTmp, so its /tmp is a private namespace the
+	// Docker daemon can't see — a bind mount of a staged file from there fails with
+	// "bind source path does not exist". The data root is the same volume the
+	// daemon already bind-mounts server data dirs from, so it's always visible.
+	base := s.cfg.Database.Path[:len(s.cfg.Database.Path)-len(filepath.Base(s.cfg.Database.Path))]
+	stageRoot := filepath.Join(base, "import-staging")
+	os.MkdirAll(stageRoot, 0o755) //nolint:errcheck
+	staging, err := os.MkdirTemp(stageRoot, "ygg-import-*")
 	if err != nil {
 		jsonError(w, "staging error", http.StatusInternalServerError)
 		return

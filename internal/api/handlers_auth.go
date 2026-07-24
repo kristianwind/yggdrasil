@@ -15,6 +15,14 @@ import (
 // simple in-memory rate limiter: max 5 attempts per IP per minute
 var loginLimiter = &rateLimiter{counts: make(map[string][]time.Time)}
 
+// dummyPwHash equalizes login timing: on an unknown username we still run the
+// (deliberately slow) Argon2id verify against this fixed hash, so response time
+// doesn't reveal whether the account exists. Computed once at startup.
+var dummyPwHash = func() string {
+	h, _ := auth.HashPassword("timing-equalizer-not-a-real-secret")
+	return h
+}()
+
 type rateLimiter struct {
 	mu        sync.Mutex
 	counts    map[string][]time.Time
@@ -66,8 +74,9 @@ type acctFail struct {
 }
 
 type accountLocker struct {
-	mu    sync.Mutex
-	fails map[string]*acctFail
+	mu        sync.Mutex
+	fails     map[string]*acctFail
+	lastSweep time.Time
 }
 
 func (a *accountLocker) locked(key string) bool {
@@ -81,6 +90,19 @@ func (a *accountLocker) fail(key string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := time.Now()
+	// Evict expired entries periodically so a flood of distinct usernames (with a
+	// spoofed source IP defeating the per-IP limiter) can't grow this map
+	// unbounded — a memory-exhaustion DoS. Mirrors rateLimiter.allow.
+	if now.Sub(a.lastSweep) > 5*time.Minute {
+		for k, e := range a.fails {
+			expired := e.until.IsZero() && now.Sub(e.first) > 15*time.Minute
+			cleared := !e.until.IsZero() && now.After(e.until)
+			if expired || cleared {
+				delete(a.fails, k)
+			}
+		}
+		a.lastSweep = now
+	}
 	f := a.fails[key]
 	if f == nil || now.Sub(f.first) > 15*time.Minute {
 		f = &acctFail{first: now}
@@ -129,6 +151,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		req.Username,
 	).Scan(&userID, &hash, &role, &totpEnabled, &totpSecret, &tokenVer)
 	if err != nil {
+		// Run the same slow verify on a dummy hash so an unknown username takes as
+		// long as a wrong password — no timing oracle for account enumeration.
+		auth.VerifyPassword(req.Password, dummyPwHash) //nolint:errcheck
 		loginAccountLock.fail(acctKey)
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
 		return

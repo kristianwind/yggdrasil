@@ -104,7 +104,7 @@ func TestUpdateUserRejectsBeforeApplyingAnything(t *testing.T) {
 func TestCreateUserDefaultsToUserRole(t *testing.T) {
 	s := testServer(t)
 	w := httptest.NewRecorder()
-	s.handleCreateUser(w, adminReq(t, http.MethodPost, "/api/users", `{"username":"nobody","password":"pw123456"}`, ""))
+	s.handleCreateUser(w, adminReq(t, http.MethodPost, "/api/users", `{"username":"nobody","password":"valid-pw-123456"}`, ""))
 	if w.Code >= 400 {
 		t.Fatalf("create returned %d: %s", w.Code, w.Body.String())
 	}
@@ -122,7 +122,7 @@ func TestCreateUserRejectsUnknownRole(t *testing.T) {
 	s := testServer(t)
 	w := httptest.NewRecorder()
 	s.handleCreateUser(w, adminReq(t, http.MethodPost, "/api/users",
-		`{"username":"typo","password":"pw123456","role":"administrator"}`, ""))
+		`{"username":"typo","password":"valid-pw-123456","role":"administrator"}`, ""))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("create with role=administrator returned %d, want 400", w.Code)
 	}

@@ -309,6 +309,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/files/download", s.handleDownloadFile)
 
 		// Backup targets (admin-only global config)
+		r.Get("/api/backup-policy", s.requireAdmin(s.handleGetBackupPolicy))
+		r.Put("/api/backup-policy", s.requireAdmin(s.handleSetBackupPolicy))
 		r.Get("/api/backup/targets", s.requireAdmin(s.handleListBackupTargets))
 		r.Post("/api/backup/targets", s.requireAdmin(s.handleCreateBackupTarget))
 		r.Delete("/api/backup/targets/{id}", s.requireAdmin(s.handleDeleteBackupTarget))

@@ -223,6 +223,17 @@ type ImportStep struct {
 	To       string    `yaml:"to,omitempty"        json:"to,omitempty"`     // unpack destination within the data dir
 	DBImport *DBImport `yaml:"db_import,omitempty" json:"db_import,omitempty"`
 	Script   string    `yaml:"script,omitempty"    json:"script,omitempty"`
+	Wpress   *Wpress   `yaml:"wpress,omitempty"    json:"wpress,omitempty"`
+}
+
+// Wpress extracts an All-in-One WP Migration archive: the wp-content files land
+// under To (default "wp-content"), and the bundled database.sql — with its
+// SERVMASK_PREFIX mask replaced by the real table prefix — is registered as the
+// input named DBKey, so a later db_import step can load it.
+type Wpress struct {
+	Input string `yaml:"input"            json:"input"`
+	To    string `yaml:"to,omitempty"     json:"to,omitempty"`     // default "wp-content"
+	DBKey string `yaml:"db_key,omitempty" json:"db_key,omitempty"` // virtual input for the extracted dump
 }
 
 type DBImport struct {
@@ -455,8 +466,24 @@ func validate(gs *Gameskill) error {
 			}
 			keys[in.Key] = true
 		}
+		// A wpress step's db_key registers a virtual input that later steps may
+		// reference — collect them before validating references.
+		for _, st := range gs.Import.Steps {
+			if st.Wpress != nil && st.Wpress.DBKey != "" {
+				keys[st.Wpress.DBKey] = true
+			}
+		}
 		for i, st := range gs.Import.Steps {
 			verbs := 0
+			if st.Wpress != nil {
+				verbs++
+				if !keys[st.Wpress.Input] {
+					return fmt.Errorf("gameskill.import.steps[%d] wpress references unknown input %q", i, st.Wpress.Input)
+				}
+				if strings.Contains(st.Wpress.To, "..") {
+					return fmt.Errorf("gameskill.import.steps[%d] wpress 'to' must not contain ..", i)
+				}
+			}
 			if st.Unpack != "" {
 				verbs++
 				if !keys[st.Unpack] {

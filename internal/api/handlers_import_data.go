@@ -14,6 +14,7 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/docker"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
+	"github.com/kristianwind/yggdrasil/internal/wpress"
 )
 
 // App-data import — bring an EXISTING deployment of an app into a Yggdrasil
@@ -111,6 +112,11 @@ func (s *Server) handleImportData(w http.ResponseWriter, r *http.Request) {
 		inputs[in.Key] = dst
 	}
 
+	if len(inputs) == 0 {
+		os.RemoveAll(staging)
+		jsonError(w, "no files uploaded — pick at least one input", http.StatusBadRequest)
+		return
+	}
 	s.auditLog(r, "server.import_data", "server:"+id, map[string]any{"inputs": len(inputs)})
 	go s.runDataImport(id, rt, inputs, staging) //nolint:errcheck // progress streams to the install log
 	w.WriteHeader(http.StatusAccepted)
@@ -165,7 +171,7 @@ func (s *Server) runDataImport(id string, rt *serverRuntime, inputs map[string]s
 	w := hubWriter{hub: s.install, id: id}
 	for i, step := range rt.gs.Import.Steps {
 		pub(fmt.Sprintf("--- step %d/%d ---", i+1, len(rt.gs.Import.Steps)))
-		if err := s.runImportStep(ctx, id, dataDir, rt, step, inputs, w); err != nil {
+		if err := s.runImportStep(ctx, id, dataDir, rt, step, inputs, staging, w); err != nil {
 			pub("=== Import FAILED: " + err.Error() + " ===")
 			return err
 		}
@@ -190,7 +196,7 @@ func (s *Server) runDataImport(id string, rt *serverRuntime, inputs map[string]s
 }
 
 // runImportStep dispatches one step. Exactly one verb is set (validated at parse).
-func (s *Server) runImportStep(ctx context.Context, id, dataDir string, rt *serverRuntime, step gameskill.ImportStep, inputs map[string]string, w hubWriter) error {
+func (s *Server) runImportStep(ctx context.Context, id, dataDir string, rt *serverRuntime, step gameskill.ImportStep, inputs map[string]string, staging string, w hubWriter) error {
 	switch {
 	case step.Unpack != "":
 		src, ok := inputs[step.Unpack]
@@ -245,6 +251,13 @@ echo "database import done"`, cmd, cmd)
 			NetworkAlias: "ygg-import",
 		}, w)
 
+	case step.Wpress != nil:
+		src, ok := inputs[step.Wpress.Input]
+		if !ok {
+			return nil // optional archive not supplied — skip
+		}
+		return s.runWpressStep(ctx, dataDir, step.Wpress, src, inputs, staging, w)
+
 	case step.Script != "":
 		// Run the app's own image against the data dir. Input paths are exposed as
 		// $YGG_INPUT_<KEY> so a script can reference an upload if it needs to.
@@ -267,6 +280,85 @@ echo "database import done"`, cmd, cmd)
 			User:        "0:0",
 		}, w)
 	}
+	return nil
+}
+
+// runWpressStep extracts an All-in-One WP Migration archive natively (the
+// format is trivial framing, and Go beats shell at binary headers): wp-content
+// files land under `to`, and database.sql — table prefix unmasked to wp_ —
+// becomes the virtual input db_key for the following db_import step. The site's
+// URLs are deliberately NOT rewritten: naive replaces corrupt PHP-serialized
+// data, and the panel can't know the final domain anyway.
+func (s *Server) runWpressStep(ctx context.Context, dataDir string, st *gameskill.Wpress, src string, inputs map[string]string, staging string, w hubWriter) error {
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	to := strings.Trim(st.To, "/")
+	if to == "" {
+		to = "wp-content"
+	}
+	root := filepath.Join(dataDir, filepath.Clean("/"+to))
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	r := wpress.NewReader(f)
+	files, bytes := 0, int64(0)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		e, rerr := r.Next()
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return fmt.Errorf("wpress parse: %w", rerr)
+		}
+		switch e.Path {
+		case "database.sql":
+			if st.DBKey == "" {
+				continue // rune chose not to load the DB — drain and move on
+			}
+			dumpPath := filepath.Join(staging, "wpress-database.sql")
+			out, oerr := os.Create(dumpPath)
+			if oerr != nil {
+				return oerr
+			}
+			// The dump masks the table prefix; the panel's generated wp-config
+			// uses WordPress's default wp_.
+			if _, cerr := io.Copy(out, wpress.PrefixReplacer(e.Body, "wp_")); cerr != nil {
+				out.Close()
+				return cerr
+			}
+			out.Close()
+			inputs[st.DBKey] = dumpPath
+			fmt.Fprintf(w, "extracted database.sql (%d MB, table prefix → wp_)\n", e.Size>>20)
+		case "package.json", "multisite.json":
+			io.Copy(io.Discard, e.Body) //nolint:errcheck // metadata — not site files
+		default:
+			dest := filepath.Join(root, filepath.Clean("/"+e.Path))
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return err
+			}
+			out, oerr := os.Create(dest)
+			if oerr != nil {
+				return oerr
+			}
+			if _, cerr := io.Copy(out, e.Body); cerr != nil {
+				out.Close()
+				return cerr
+			}
+			out.Close()
+			files++
+			bytes += e.Size
+			if files%2000 == 0 {
+				fmt.Fprintf(w, "… %d files, %d MB\n", files, bytes>>20)
+			}
+		}
+	}
+	fmt.Fprintf(w, "wpress: %d files (%d MB) into %s\n", files, bytes>>20, to)
 	return nil
 }
 

@@ -1,0 +1,83 @@
+gameskill:
+  id: qbittorrentvpn
+  name: "qBittorrent + VPN"
+  category: "Apps"
+  description: "qBittorrent torrent client routed entirely through an OpenVPN or WireGuard tunnel (binhex/arch-qbittorrentvpn). All traffic — including the WebUI's peer connections — stays inside the VPN, with a built-in kill-switch. Includes an optional Privoxy HTTP proxy."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # binhex image: starts as root, brings up the VPN tunnel, then drops to
+  # PUID:PGID. Needs NET_ADMIN + /dev/net/tun to create the tunnel interface.
+  docker:
+    image: "binhex/arch-qbittorrentvpn:latest"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+    capabilities: ["NET_ADMIN"]
+    devices: ["/dev/net/tun"]
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (must own the data dir)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: VPN_ENABLED
+      name: "VPN enabled (yes/no) — 'no' disables the kill-switch, use with care"
+      type: string
+      default: "yes"
+    - key: VPN_PROV
+      name: "VPN provider (custom, pia, airvpn, protonvpn)"
+      type: string
+      default: "custom"
+    - key: VPN_CLIENT
+      name: "VPN client (openvpn or wireguard)"
+      type: string
+      default: "wireguard"
+    - key: LAN_NETWORK
+      name: "Your LAN in CIDR (so the WebUI stays reachable, e.g. 192.168.1.0/24)"
+      type: string
+      default: "192.168.1.0/24"
+    - key: NAME_SERVERS
+      name: "DNS servers inside the tunnel (comma-separated)"
+      type: string
+      default: "1.1.1.1,1.0.0.1"
+    - key: ENABLE_PRIVOXY
+      name: "Enable the Privoxy HTTP proxy on :8118 (yes/no)"
+      type: string
+      default: "no"
+    - key: WEBUI_PORT
+      name: "qBittorrent WebUI port (match the published web port below)"
+      type: int
+      default: 8080
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "qBittorrent config directory ready"
+
+  startup:
+    command: ""
+    # binhex logs this once the tunnel is up and qBittorrent is serving.
+    done_regex: 'Web UI address'
+
+  ports:
+    - { name: web,     default: 8080, protocol: tcp }
+    - { name: privoxy, default: 8118, protocol: tcp }
+    - { name: peer,    default: 6881, protocol: tcp }
+    - { name: peerudp, default: 6881, protocol: udp }
+
+  # IMPORTANT: put your VPN config in the data dir before starting, via this
+  # server's Files tab:
+  #   WireGuard → upload your provider's wg0.conf to  /wireguard/wg0.conf
+  #   OpenVPN   → put the .ovpn + certs in            /openvpn/
+  # Downloads live outside this data dir — add a host mount (Settings → Host mounts):
+  #   /mnt/downloads → /data/downloads
+  # The WebUI login on first start is admin / adminadmin — change it immediately.
+  backup:
+    include: ["."]

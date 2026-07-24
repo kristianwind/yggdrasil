@@ -1,0 +1,52 @@
+gameskill:
+  id: radarr
+  name: "Radarr"
+  category: "Apps"
+  description: "PVR for Usenet and BitTorrent — monitors and manages your movies, grabbing releases as they become available. Part of the *arr media stack."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # LinuxServer image: starts as root, drops to PUID:PGID so it can write the
+  # panel-owned data dir. Config + SQLite live in /config.
+  docker:
+    image: "lscr.io/linuxserver/radarr:latest"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (must own the data dir)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Radarr config directory ready"
+
+  startup:
+    command: ""
+    done_regex: '\[ls\.io-init\] done\.'
+
+  ports:
+    - { name: web, default: 7878, protocol: tcp }
+
+  # Your media + downloads live OUTSIDE this data dir. As an admin, open this
+  # server's Settings → "Host mounts" and add them so Radarr and your download
+  # client share the SAME paths (this is what makes hardlinks / atomic moves work):
+  #   /mnt/media     → /media       (your movie library)
+  #   /mnt/downloads → /downloads   (your download client's completed dir)
+  # Host mounts are admin-only and per server — never in the rune.
+  backup:
+    include: ["."]

@@ -205,6 +205,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		// runtime (image, command, user, capabilities, devices, mounts), so letting a
 		// non-admin upload/import/delete one is a privilege-escalation path.
 		r.Post("/api/gameskills", s.requireAdmin(s.handleUploadGameskill))
+		r.Post("/api/gameskills/import-compose", s.requireAdmin(s.handleComposeImport))
 		r.Post("/api/gameskills/import-egg", s.requireAdmin(s.handleImportEgg))
 		r.Post("/api/gameskills/import-xml", s.requireAdmin(s.handleImportXML))
 		r.Get("/api/gameskills/github", s.requireAdmin(s.handleGithubRunes))

@@ -146,6 +146,43 @@
     }
   }
 
+  // Import a plain docker-compose file as a rune.
+  let showCompose = $state(false);
+  let composeText = $state("");
+  let composeName = $state("");
+  let composeMain = $state("");
+  let composeBusy = $state(false);
+  let composeWarnings = $state([]);
+  let composeDoneId = $state("");
+  async function importCompose() {
+    if (!composeName.trim()) return toast("Give the app a name", "warn");
+    if (!composeText.trim()) return toast("Paste a docker-compose file", "warn");
+    composeBusy = true;
+    composeWarnings = [];
+    composeDoneId = "";
+    try {
+      const res = await api.post("/gameskills/import-compose", {
+        name: composeName.trim(),
+        compose: composeText,
+        main: composeMain.trim(),
+      });
+      await load();
+      composeWarnings = res.warnings || [];
+      composeDoneId = res.id;
+      if (composeWarnings.length) {
+        toast(`Rune “${res.name}” created — review the notes`, "success");
+      } else {
+        toast(`Rune “${res.name}” created`, "success");
+        showCompose = false;
+        navigate("/servers?new=" + res.id);
+      }
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      composeBusy = false;
+    }
+  }
+
   async function del(r) {
     const extra = r.builtin
       ? " This is a built-in default rune — it won't be re-added on restart."
@@ -288,6 +325,10 @@
       Import XML
       <input type="file" accept=".xml" class="hidden" onchange={importXml} />
     </label>
+    <button class="btn-ghost" onclick={() => { showCompose = true; composeWarnings = []; composeDoneId = ""; }}
+      title="Paste a docker-compose file and turn it into a rune — for bringing an existing compose app into the panel.">
+      From compose
+    </button>
   {/if}
 </div>
 <p class="text-muted mb-6">
@@ -487,6 +528,55 @@
           {ghData.repo}/{ghData.path} @ {ghData.ref}
         </p>
       {/if}
+    </div>
+  </div>
+{/if}
+
+{#if showCompose}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick={(e) => { if (e.target === e.currentTarget && !composeBusy) showCompose = false; }}>
+    <div class="card p-4 w-full max-w-2xl max-h-[90vh] overflow-auto space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Import from docker-compose</h2>
+        <button class="btn-ghost px-2 py-1" onclick={() => (showCompose = false)}>✕</button>
+      </div>
+      <p class="text-muted text-sm">
+        Paste a <code>docker-compose.yml</code>. The panel turns it into a rune — the main service plus any
+        supporting services as sidecars. Volumes with a host path (bind mounts) can't live in a rune; you'll
+        get a note to add them as host mounts on the server.
+      </p>
+      <div>
+        <label class="label" for="c-name">App name</label>
+        <input id="c-name" class="input" placeholder="e.g. My App" bind:value={composeName} />
+      </div>
+      <div>
+        <label class="label" for="c-main">Main service (optional)</label>
+        <input id="c-main" class="input" placeholder="auto-detected from published ports" bind:value={composeMain} />
+      </div>
+      <div>
+        <label class="label" for="c-yaml">docker-compose.yml</label>
+        <textarea id="c-yaml" class="input font-mono text-xs h-56" placeholder="services:&#10;  app:&#10;    image: ..." bind:value={composeText}></textarea>
+      </div>
+
+      {#if composeWarnings.length}
+        <div class="card bg-warn/10 border border-warn/30 p-3">
+          <div class="font-medium text-sm mb-1">Rune created — review these notes:</div>
+          <ul class="text-xs text-muted list-disc pl-4 space-y-1">
+            {#each composeWarnings as wmsg}<li>{wmsg}</li>{/each}
+          </ul>
+        </div>
+      {/if}
+
+      <div class="flex gap-2 pt-1">
+        {#if composeDoneId}
+          <button class="btn-primary flex-1" onclick={() => { showCompose = false; navigate("/servers?new=" + composeDoneId); }}>
+            Create a server from it →</button>
+          <button class="btn-ghost" onclick={() => (showCompose = false)}>Close</button>
+        {:else}
+          <button class="btn-ghost flex-1" onclick={() => (showCompose = false)} disabled={composeBusy}>Cancel</button>
+          <button class="btn-primary flex-1" onclick={importCompose} disabled={composeBusy}>
+            {composeBusy ? "Converting…" : "Convert to rune"}</button>
+        {/if}
+      </div>
     </div>
   </div>
 {/if}

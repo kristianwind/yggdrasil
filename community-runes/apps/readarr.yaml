@@ -1,0 +1,51 @@
+gameskill:
+  id: readarr
+  name: "Readarr"
+  category: "Apps"
+  description: "eBook and audiobook collection manager for the *arr stack — monitors authors and grabs new releases via your indexers and download client. NOTE: Readarr was retired upstream in 2025 and is no longer maintained; LinuxServer deprecated the image, so only a pinned version tag works (the latest/develop/nightly tags are gone). This rune pins the last working build. Your library + downloads come in as admin host mounts, never the rune."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Retired image: pinned to the last usable tag — LinuxServer removed the rolling
+  # tags when Readarr was deprecated. Starts as root, drops to PUID:PGID.
+  docker:
+    image: "lscr.io/linuxserver/readarr:0.4.19-nightly"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (must own the data dir + library)"
+      type: int
+      default: 1000
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 1000
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Readarr config directory ready"
+
+  startup:
+    command: ""
+    done_regex: '\[ls\.io-init\] done\.'
+
+  ports:
+    - { name: web, default: 8787, protocol: tcp }
+
+  # Your books/audiobooks + downloads live OUTSIDE this data dir. As an admin,
+  # open this server's Settings → "Host mounts" and add them (same paths your
+  # download client uses, so imports/hardlinks work), e.g.:
+  #   /mnt/media/books     → /books
+  #   /mnt/media/downloads → /downloads
+  backup:
+    include: ["."]

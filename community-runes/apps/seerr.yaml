@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "Request-management and media-discovery for Plex, Jellyfin and Emby — the official successor that merged Overseerr and Jellyseerr into one app. Users request movies/TV; it hands them to Sonarr/Radarr. Migrates an existing Overseerr or Jellyseerr config automatically on first start."
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   docker:
@@ -34,6 +34,9 @@ gameskill:
   startup:
     command: ""
     done_regex: 'Server ready'
+
+  ports:
+    - { name: web, default: 5055, protocol: tcp }
 
   # First-run: point Seerr at your Plex/Jellyfin/Emby server and your Sonarr/Radarr
   # from its own web UI. MIGRATING from Overseerr/Jellyseerr? Copy your old config

@@ -1,0 +1,68 @@
+gameskill:
+  id: homebridge
+  name: "Homebridge"
+  category: "Apps"
+  description: "Bridge non-HomeKit smart-home devices into Apple HomeKit. Runs Homebridge plus its web config UI (homebridge-config-ui-x) for installing plugins and editing config.json in the browser. IMPORTANT — HomeKit pairing needs the accessory's mDNS/Bonjour advertisement to reach your LAN, and the panel runs containers on a bridge network (no host networking). The config UI works out of the box; actual HomeKit pairing only works if the host relays mDNS between the docker bridge and your LAN (an avahi-daemon reflector on the host) AND you pin a fixed HomeKit port. See the notes below the ports."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Official homebridge/homebridge image (Ubuntu + s6). Starts as root so the
+  # entrypoint can bring up avahi and drop to PUID:PGID. Its storage lives at
+  # /var/lib/homebridge (NOT /homebridge — that was the old oznu image).
+  docker:
+    image: "homebridge/homebridge:latest"
+    data_path: /var/lib/homebridge
+    keep_entrypoint: true
+    user: "0:0"
+    # Pin the config-UI port so it always matches the published web port below.
+    env:
+      HOMEBRIDGE_CONFIG_UI_PORT: "8581"
+
+  variables:
+    - key: PUID
+      name: "Run-as UID (owns the storage dir)"
+      type: int
+      default: 1000
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 1000
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Homebridge storage ready"
+
+  startup:
+    command: ""
+    done_regex: 'Homebridge UI .* is listening'
+
+  # web  — the homebridge-config-ui-x dashboard (plugins, config.json, logs, backup).
+  # homekit — the HAP bridge port. Homebridge picks a RANDOM HAP port by default, so
+  #   this only works once you set a FIXED port in config.json → bridge.port: 51826
+  #   (do it in the UI: Settings → Homebridge Settings → Network → Bridge Port). Until
+  #   then this published port maps to nothing.
+  ports:
+    - { name: web, default: 8581, protocol: tcp }
+    - { name: homekit, default: 51826, protocol: tcp }
+
+  # ── HomeKit pairing on a bridge network ────────────────────────────────────────
+  # Apple's Home app finds accessories only via mDNS/Bonjour. This container's avahi
+  # advertises on the docker bridge (172.x), which your iPhone on the LAN can't see —
+  # so pairing fails with host networking unavailable. To make pairing work:
+  #   1. In the UI, pin bridge.port to 51826 (matches the published homekit port).
+  #   2. On the Yggdrasil HOST, run an avahi-daemon reflector so mDNS is repeated
+  #      between the docker bridge and your LAN (avahi.conf: enable-reflector=yes).
+  #   3. Pair using the code shown in this server's console/log on first start.
+  # Without the host-side reflector the config UI is fully usable but HomeKit pairing
+  # will not complete. (Plain Homebridge Docker guides assume network_mode: host,
+  # which the panel intentionally does not expose.)
+
+  backup:
+    include: ["."]

@@ -57,6 +57,11 @@ func main() {
 				log.Fatalf("migrate: %v", err)
 			}
 			return
+		case "reset-password":
+			if err := runResetPassword(os.Args[2:]); err != nil {
+				log.Fatalf("reset-password: %v", err)
+			}
+			return
 		}
 	}
 

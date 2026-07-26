@@ -9,18 +9,18 @@
   let users = $state([]);
   let loaded = $state(false);
   let showCreate = $state(false);
-  let form = $state({ username: "", password: "", role: "user" });
+  let form = $state({ username: "", email: "", password: "", role: "user" });
   let permUser = $state(null); // user whose permissions are being edited
-  let editUser = $state(null); // user being edited (role / password)
-  let editForm = $state({ role: "user", password: "" });
+  let editUser = $state(null); // user being edited (role / email / password)
+  let editForm = $state({ role: "user", email: "", password: "" });
 
   function openEdit(u) {
     editUser = u;
-    editForm = { role: u.role, password: "" };
+    editForm = { role: u.role, email: u.email || "", password: "" };
   }
   async function saveEdit() {
     try {
-      const payload = { role: editForm.role };
+      const payload = { role: editForm.role, email: editForm.email };
       if (editForm.password) payload.password = editForm.password; // blank = keep current
       await api.put(`/users/${editUser.id}`, payload);
       toast("User updated", "success");
@@ -48,7 +48,7 @@
       await api.post("/users", form);
       toast("User created", "success");
       showCreate = false;
-      form = { username: "", password: "", role: "user" };
+      form = { username: "", email: "", password: "", role: "user" };
       await load();
     } catch (e) {
       toast(e.message, "error");
@@ -91,7 +91,9 @@
     <div class="flex items-center gap-3 px-4 py-3">
       <div class="flex-1">
         <div class="font-medium">{u.username}</div>
-        <div class="text-xs text-muted">{u.role}{u.disabled ? " · disabled" : ""}</div>
+        <div class="text-xs text-muted">
+          {u.role}{u.disabled ? " · disabled" : ""}{u.email ? ` · ${u.email}` : " · no email"}
+        </div>
       </div>
       <button class="btn-ghost" onclick={() => openEdit(u)} title="Change this user's role or password.">Edit</button>
       {#if u.role !== "admin"}
@@ -121,6 +123,11 @@
     <div class="card w-full max-w-sm p-5 space-y-4">
       <h2 class="text-lg font-semibold">Edit {editUser.username}</h2>
       <div>
+        <label class="label" for="e-email">Email</label>
+        <input id="e-email" class="input" type="email" bind:value={editForm.email} autocomplete="email" placeholder="name@example.com" />
+        <p class="text-xs text-muted mt-1">Used for password-reset links. Leave blank if none.</p>
+      </div>
+      <div>
         <label class="label" for="e-role">Role</label>
         <select id="e-role" class="input" bind:value={editForm.role}>
           <option value="user">User</option>
@@ -149,6 +156,11 @@
       <div>
         <label class="label" for="un">Username</label>
         <input id="un" class="input" bind:value={form.username} />
+      </div>
+      <div>
+        <label class="label" for="em">Email <span class="text-muted font-normal">(optional)</span></label>
+        <input id="em" class="input" type="email" bind:value={form.email} autocomplete="email" placeholder="name@example.com" />
+        <p class="text-xs text-muted mt-1">Needed for “forgot password” self-service.</p>
       </div>
       <div>
         <label class="label" for="pw">Password</label>

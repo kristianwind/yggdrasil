@@ -49,6 +49,14 @@ func Send(cfg Config, text string) error {
 }
 
 func sendEmail(cfg Config, text string) error {
+	return SendEmail(cfg, "Yggdrasil notification", text)
+}
+
+// SendEmail sends a single message with an explicit subject over cfg's SMTP
+// settings. It's the transactional-mail entry point (password reset, test
+// mail), distinct from Send's fixed-subject notification path; both share the
+// same deadline-bounded SMTP conversation.
+func SendEmail(cfg Config, subject, body string) error {
 	if cfg.Host == "" || cfg.From == "" || cfg.To == "" {
 		return fmt.Errorf("email needs host, from and to")
 	}
@@ -59,8 +67,8 @@ func sendEmail(cfg Config, text string) error {
 	addr := cfg.Host + ":" + strconv.Itoa(port)
 	msg := []byte("From: " + cfg.From + "\r\n" +
 		"To: " + cfg.To + "\r\n" +
-		"Subject: Yggdrasil notification\r\n" +
-		"\r\n" + text + "\r\n")
+		"Subject: " + subject + "\r\n" +
+		"\r\n" + body + "\r\n")
 	var auth smtp.Auth
 	if cfg.Username != "" {
 		auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)

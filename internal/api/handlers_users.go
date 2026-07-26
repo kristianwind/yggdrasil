@@ -3,6 +3,8 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/mail"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -29,14 +31,28 @@ func validatePassword(pw string) error {
 type userInfo struct {
 	ID        string `json:"id"`
 	Username  string `json:"username"`
+	Email     string `json:"email"`
 	Role      string `json:"role"`
 	Disabled  bool   `json:"disabled"`
 	CreatedAt string `json:"created_at"`
 }
 
+// normalizeEmail trims an optional email and validates its shape. An empty
+// string is allowed (email is optional — the account just can't self-reset).
+func normalizeEmail(email string) (string, error) {
+	e := strings.TrimSpace(email)
+	if e == "" {
+		return "", nil
+	}
+	if _, err := mail.ParseAddress(e); err != nil {
+		return "", fmt.Errorf("invalid email address")
+	}
+	return e, nil
+}
+
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(),
-		"SELECT id, username, role, disabled, created_at FROM users ORDER BY username")
+		"SELECT id, username, COALESCE(email,''), role, disabled, created_at FROM users ORDER BY username")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -47,7 +63,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var u userInfo
 		var disabled int
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &disabled, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Role, &disabled, &u.CreatedAt); err != nil {
 			continue
 		}
 		u.Disabled = disabled == 1
@@ -60,10 +76,16 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Email    string `json:"email"`
 		Role     string `json:"role"`
 	}
 	if err := decodeJSON(r, &req); err != nil || req.Username == "" || req.Password == "" {
 		jsonError(w, "username and password required", http.StatusBadRequest)
+		return
+	}
+	email, err := normalizeEmail(req.Email)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Omitting the role means "user" — a safe default. Naming one we don't know is
@@ -87,8 +109,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	id := uuid.New().String()
 	if _, err := s.db.ExecContext(r.Context(),
-		"INSERT INTO users (id, username, password_hash, role) VALUES (?,?,?,?)",
-		id, req.Username, hash, req.Role); err != nil {
+		"INSERT INTO users (id, username, password_hash, email, role) VALUES (?,?,?,?,?)",
+		id, req.Username, hash, email, req.Role); err != nil {
 		jsonError(w, "db error (username taken?): "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -101,6 +123,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Password *string `json:"password"`
+		Email    *string `json:"email"`
 		Role     *string `json:"role"`
 		Disabled *bool   `json:"disabled"`
 	}
@@ -120,6 +143,17 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "role must be \"admin\" or \"user\"", http.StatusBadRequest)
 		return
 	}
+	// Normalize/validate the email up front too, so a bad address is rejected
+	// before any of the per-field UPDATEs below run.
+	var normEmail string
+	if req.Email != nil {
+		e, err := normalizeEmail(*req.Email)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		normEmail = e
+	}
 	// Validate the password up front too, so a weak one is rejected before any of
 	// this handler's per-field UPDATEs run.
 	if req.Password != nil && *req.Password != "" {
@@ -136,6 +170,9 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.db.ExecContext(r.Context(), "UPDATE users SET password_hash=? WHERE id=?", hash, id)
+	}
+	if req.Email != nil {
+		s.db.ExecContext(r.Context(), "UPDATE users SET email=? WHERE id=?", normEmail, id)
 	}
 	if req.Role != nil {
 		s.db.ExecContext(r.Context(), "UPDATE users SET role=? WHERE id=?", *req.Role, id)

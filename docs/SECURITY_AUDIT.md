@@ -100,6 +100,29 @@ boundary (the panel now leans on it for non-admin users). Findings fixed:
   anti-backdoor guard only covered direct upload; egg-import, xml-import, and github-install
   could overwrite a builtin on an id collision. Shared `isBuiltinRune()` now guards all four.
 
+### ✅ Pass 4 — 2026-07-26 (backup, file-manager, and Cloudflare surface)
+Security review of the post-24h feature work:
+- **`CAP_DAC_READ_SEARCH` on the service** (`deploy/yggdrasil.service`, `install.sh`): backups run
+  as the unprivileged `yggdrasil` user and stream each server's data dir, but some apps write
+  private files mode `0600` owned by their container PUID (.NET DataProtection keys, MariaDB
+  credentials) that this user can't read — so whole backups failed. The service now carries the
+  ambient `CAP_DAC_READ_SEARCH` (read-only DAC bypass). It already has docker-socket access
+  (root-equivalent), so read-any-file is a modest increase; it grants **no write bypass**, and
+  `NoNewPrivileges=true` plus `ProtectSystem`/`ProtectHome` stay. `internal/backup/archive.go` also
+  skips an unreadable file instead of aborting, so one file can't fail (or silently truncate) a run.
+- **Backup directory browser** (`GET /api/backup/browse`, `handlers_files.go`): admin-only and
+  read-only — returns sub-directory **names only** (never file contents, sizes, or permissions), and
+  requires an absolute `filepath.Clean`ed path. An admin already has full host control through the
+  panel, so it exposes nothing new; it is a convenience over typing a mount path by hand.
+- **File create / mkdir / folder upload** (`POST .../files/mkdir`, upload): same jail and gate as the
+  existing file operations — `safeJoin` confines every path to the server's data dir, and
+  `serverDataDir` enforces the `server.files` permission before any of them run. No new surface.
+- **Cloudflare anti-hijack** (`internal/cloudflare/cloudflare.go`): with one tunnel per node,
+  `EnsureDNS` now refuses to overwrite a proxied CNAME that points at a *different* tunnel
+  (`ErrForeignTunnel`), and `RemoveDNS` only deletes a record pointing at **this** tunnel — so a node
+  can neither steal nor delete a hostname another node/tunnel owns. `handleCheckDomain` surfaces the
+  conflict to admins, read-only.
+
 ## Confirmed good
 argon2id password hashing; API tokens stored only as SHA-256 hash; parameterized SQL throughout;
 no docker.sock mount and runes can't request it; `extra_volumes` host source confined to the

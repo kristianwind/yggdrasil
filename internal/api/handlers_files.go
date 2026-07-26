@@ -211,6 +211,34 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"status": "saved"})
 }
 
+// handleMkdir creates a directory (and any missing parents) inside the server's
+// data dir. Jailed by safeJoin like every other file op, and gated on the same
+// ServerFiles permission via serverDataDir.
+func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
+	dataDir, ok := s.serverDataDir(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := decodeJSON(r, &req); err != nil || strings.TrimSpace(req.Path) == "" {
+		jsonError(w, "path required", http.StatusBadRequest)
+		return
+	}
+	full, ok := safeJoin(dataDir, req.Path)
+	if !ok || full == dataDir {
+		jsonError(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	if err := os.MkdirAll(full, 0755); err != nil {
+		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.auditLog(r, "file.mkdir", "server:"+chi.URLParam(r, "id"), map[string]string{"path": req.Path})
+	jsonOK(w, map[string]string{"status": "created"})
+}
+
 func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {

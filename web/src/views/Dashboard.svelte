@@ -195,12 +195,45 @@
   // keeps no state (the visible history is sent each turn) and streams the reply
   // back as delta frames. Actions the AI proposes arrive validated and run only
   // through the same confirmed /ai/plan/execute path as before.
-  let chatMsgs = $state([]); // {role, content, streamRaw?, actions?, results?, running?}
+  // The chat history is persisted in localStorage so leaving the Dashboard (or a
+  // reload) doesn't drop an in-progress troubleshooting session — a common
+  // annoyance when you start asking Kvasir something and navigate away.
+  const CHAT_KEY = "ygg_kvasir_chat";
+  function loadChat() {
+    try {
+      const msgs = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]");
+      if (!Array.isArray(msgs)) return [];
+      // Keep only finished turns (drop in-flight streaming state / empty bubbles).
+      return msgs
+        .filter((m) => m && (m.content || (m.actions && m.actions.length)))
+        .map((m) => ({ role: m.role, content: m.content, actions: m.actions, results: m.results }));
+    } catch {
+      return [];
+    }
+  }
+  function saveChat(msgs) {
+    try {
+      const trimmed = msgs
+        .filter((m) => m.content || (m.actions && m.actions.length))
+        .slice(-40)
+        .map((m) => ({ role: m.role, content: m.content, actions: m.actions, results: m.results }));
+      localStorage.setItem(CHAT_KEY, JSON.stringify(trimmed));
+    } catch {
+      /* quota / private mode — non-fatal, chat just won't persist */
+    }
+  }
+  let chatMsgs = $state(loadChat()); // {role, content, streamRaw?, actions?, results?, running?}
   let chatInput = $state("");
   let chatBusy = $state(false);
   let chatErr = $state("");
   let chatWS = null;
   let chatBox = $state(null);
+  // Re-persist when a turn is added/removed or a reply finishes — deliberately
+  // gated on chatBusy so we don't write to localStorage on every stream token.
+  $effect(() => {
+    chatMsgs.length;
+    if (!chatBusy) saveChat(chatMsgs);
+  });
   function chatScroll() {
     queueMicrotask(() => chatBox?.scrollTo(0, chatBox.scrollHeight));
   }

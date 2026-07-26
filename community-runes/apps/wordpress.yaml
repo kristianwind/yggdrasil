@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 9
+  version: 10
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -177,10 +177,15 @@ gameskill:
 
   # Default Kvasir watchers — seeded per server as editable rules.
   watchers:
+    # Bots probe theme/include .php files directly (e.g. functions.php), which
+    # throws a harmless "Call to undefined function add_action()" fatal because WP
+    # core isn't loaded. A single fatal is almost always that noise, so require a
+    # burst — a genuinely broken site fails on every real request and clears this
+    # quickly, while the odd scanner hit stays quiet.
     - name: "PHP fatal errors"
       pattern: "PHP Fatal error"
-      threshold: 1
-      window_secs: 300
+      threshold: 10
+      window_secs: 600
       action: kvasir
     - name: "Login brute force"
       pattern: "POST /wp-login\\.php"

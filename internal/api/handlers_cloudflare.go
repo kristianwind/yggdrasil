@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -103,11 +105,21 @@ func (s *Server) cfAddServer(serverID, serverName string) {
 		_ = c.RemoveDNS(old)
 	}
 
+	// Manage the CNAME in the hostname's OWN zone so one tunnel can serve several
+	// different root domains, not just subdomains of cf_base_domain. Falls back to
+	// the client's default (base-domain) zone when the account owns no match.
+	if zid, zerr := c.ZoneForHost(domain); zerr == nil && zid != "" {
+		c.SetZoneID(zid)
+	}
 	service := fmt.Sprintf("http://%s:%d", internalHost, port)
 	if err := c.UpsertHostname(domain, service); err != nil {
 		return // ingress is the critical part; don't record a half-applied state
 	}
-	_ = c.EnsureDNS(domain) // DNS failure is non-fatal (record may be managed manually)
+	// DNS is non-fatal (may be managed manually). A foreign-tunnel conflict is
+	// surfaced loudly so a hostname another node serves isn't silently hijacked.
+	if err := c.EnsureDNS(domain); errors.Is(err, cloudflare.ErrForeignTunnel) {
+		log.Printf("cfAddServer: %q already CNAMEs to a different Cloudflare tunnel — DNS left untouched to avoid hijacking it (ingress on this tunnel was still added)", domain)
+	}
 	s.db.ExecContext(ctx, "UPDATE servers SET cf_hostname=? WHERE id=?", domain, serverID)
 }
 
@@ -124,6 +136,9 @@ func (s *Server) cfRemoveServer(serverID string) {
 	c, err := s.cfClient(ctx)
 	if err != nil || c == nil {
 		return
+	}
+	if zid, zerr := c.ZoneForHost(host); zerr == nil && zid != "" {
+		c.SetZoneID(zid) // remove the CNAME from the hostname's own zone
 	}
 	_ = c.RemoveHostname(host)
 	_ = c.RemoveDNS(host)

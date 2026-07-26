@@ -16,6 +16,7 @@ package cloudflare
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,11 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrForeignTunnel signals that a hostname already CNAMEs to a DIFFERENT
+// Cloudflare tunnel. With one tunnel per node, blindly overwriting it would
+// hijack a hostname another node serves, so we refuse and let the caller warn.
+var ErrForeignTunnel = errors.New("hostname already routed to a different Cloudflare tunnel")
 
 const apiBase = "https://api.cloudflare.com/client/v4"
 
@@ -121,6 +127,33 @@ func (c *Client) ResolveZoneID(name string) (string, error) {
 		return "", fmt.Errorf("no Cloudflare zone found for %q", name)
 	}
 	return zones[0].ID, nil
+}
+
+// ZoneForHost finds the account zone that owns hostname — the longest zone-name
+// suffix match against the account's actual zones. This lets one panel/tunnel
+// route several *different* root domains (not just subdomains of one base): DNS
+// records land in the correct zone per hostname. Returns "" (no error) when the
+// account owns no matching zone, so the caller can fall back to manual DNS.
+func (c *Client) ZoneForHost(hostname string) (string, error) {
+	hostname = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(hostname), "."))
+	if hostname == "" {
+		return "", nil
+	}
+	var zones []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := c.do("GET", "/zones?per_page=200", nil, &zones); err != nil {
+		return "", err
+	}
+	bestID, bestLen := "", 0
+	for _, z := range zones {
+		zn := strings.ToLower(z.Name)
+		if (hostname == zn || strings.HasSuffix(hostname, "."+zn)) && len(zn) > bestLen {
+			bestID, bestLen = z.ID, len(zn)
+		}
+	}
+	return bestID, nil
 }
 
 // ZoneID returns the (possibly resolved) zone id.
@@ -269,10 +302,17 @@ func (c *Client) findDNS(hostname string) (*dnsRecord, error) {
 }
 
 // EnsureDNS creates or updates a proxied CNAME hostname → <tunnel>.cfargotunnel.com.
+// If a CNAME already points at a DIFFERENT tunnel it returns ErrForeignTunnel
+// instead of overwriting it — so we never steal a hostname another node serves.
 func (c *Client) EnsureDNS(hostname string) error {
 	rec, err := c.findDNS(hostname)
 	if err != nil {
 		return err
+	}
+	if rec != nil && strings.EqualFold(rec.Type, "CNAME") &&
+		strings.HasSuffix(strings.ToLower(rec.Content), ".cfargotunnel.com") &&
+		!strings.EqualFold(rec.Content, c.cfTarget()) {
+		return ErrForeignTunnel
 	}
 	body := map[string]any{
 		"type":    "CNAME",
@@ -287,11 +327,16 @@ func (c *Client) EnsureDNS(hostname string) error {
 	return c.do("PUT", fmt.Sprintf("/zones/%s/dns_records/%s", c.zoneID, rec.ID), body, nil)
 }
 
-// RemoveDNS deletes the CNAME for hostname (no-op if absent).
+// RemoveDNS deletes the CNAME for hostname — but only when it points at THIS
+// tunnel, so we never delete a record another node/tunnel owns (or an unrelated
+// record a user manages by hand). No-op if absent or foreign.
 func (c *Client) RemoveDNS(hostname string) error {
 	rec, err := c.findDNS(hostname)
 	if err != nil || rec == nil {
 		return err
+	}
+	if !strings.EqualFold(rec.Content, c.cfTarget()) {
+		return nil // not ours — leave it alone
 	}
 	return c.do("DELETE", fmt.Sprintf("/zones/%s/dns_records/%s", c.zoneID, rec.ID), nil, nil)
 }

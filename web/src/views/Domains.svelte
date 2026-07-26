@@ -97,6 +97,12 @@
               not provisioned
             </span>
           {/if}
+          {#if c?.cf_conflict}
+            <span class="badge bg-danger/20 text-danger text-[11px]"
+              title={`This hostname's DNS points at a DIFFERENT Cloudflare tunnel (${c.cf_target}) — another node is serving it, so routing here won't take effect. The panel won't hijack it.`}>
+              ⚠ conflict · other tunnel
+            </span>
+          {/if}
         </div>
         <div class="text-xs text-muted truncate">
           <button class="hover:underline" onclick={() => navigate(`/servers/${d.server_id}`)}>

@@ -148,6 +148,18 @@ func (s *Server) handleCheckDomain(w http.ResponseWriter, r *http.Request) {
 	domainCheckMu.Unlock()
 
 	out := probeDomain(domain)
+	// Flag a conflict when a Cloudflare domain's CNAME points at a DIFFERENT
+	// tunnel than this node's — i.e. another node/tunnel is actually serving it,
+	// so provisioning here won't take effect (and we won't hijack it). Best-effort
+	// and cached with the probe below, so it doesn't hammer the CF API.
+	if provider == "cloudflare" {
+		if c, cerr := s.cfClient(r.Context()); cerr == nil && c != nil {
+			if foreign, target, ferr := c.CNAMEForeign(domain); ferr == nil && foreign {
+				out["cf_conflict"] = true
+				out["cf_target"] = target
+			}
+		}
+	}
 
 	domainCheckMu.Lock()
 	domainCheckCache[key] = domainCheckEntry{at: time.Now(), data: out}

@@ -309,6 +309,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/files/versions/{vid}", s.handleGetFileVersion)
 		r.Delete("/api/servers/{id}/files", s.handleDeleteFile)
 		r.Post("/api/servers/{id}/files/upload", s.handleUploadFile)
+		r.Post("/api/servers/{id}/files/mkdir", s.handleMkdir)
 		r.Get("/api/servers/{id}/files/download", s.handleDownloadFile)
 
 		// Backup targets (admin-only global config)

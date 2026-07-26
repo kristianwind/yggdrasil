@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
+  import { promptDialog } from "../lib/dialog.js";
 
   // configFiles is the rune's config_files list: the handful of paths whose
   // author says "this is what you actually edit". A game's real settings live in
@@ -197,6 +198,45 @@
     e.target.value = "";
   }
 
+  // Folder upload via the picker (webkitdirectory): each file carries a
+  // webkitRelativePath like "topdir/sub/file.txt" — rel is everything but the
+  // filename, so the tree is recreated under the current path.
+  function onPickFolder(e) {
+    const items = [...(e.target.files || [])].map((f) => {
+      const rp = f.webkitRelativePath || f.name;
+      return { file: f, rel: rp.split("/").slice(0, -1).join("/") };
+    });
+    uploadFiles(items);
+    e.target.value = "";
+  }
+
+  async function newFolder() {
+    const name = await promptDialog({ title: "New folder", label: "Folder name", placeholder: "config" });
+    if (!name || !name.trim()) return;
+    const dest = [path, name.trim()].filter(Boolean).join("/");
+    try {
+      await api.post(`/servers/${serverId}/files/mkdir`, { path: dest });
+      toast("Folder created", "success");
+      list();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  async function newFile() {
+    const name = await promptDialog({ title: "New file", label: "File name", placeholder: "notes.txt" });
+    if (!name || !name.trim()) return;
+    const dest = [path, name.trim()].filter(Boolean).join("/");
+    try {
+      // Writing empty content creates the file (and any parent dirs); then open it.
+      await api.put(`/servers/${serverId}/files/content`, { path: dest, content: "" });
+      toast("File created", "success");
+      await openPath(dest);
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   // Walk a dropped FileSystemEntry (file or directory) recursively, collecting
   // files with their subpath so a whole site folder keeps its structure.
   function walkEntry(entry, prefix) {
@@ -331,14 +371,22 @@
       </div>
     </div>
   {/if}
-  <div class="flex items-center gap-2 mb-3">
+  <div class="flex items-center gap-2 mb-3 flex-wrap">
     <button class="btn-ghost px-2 py-1" onclick={up} disabled={!path}>↑</button>
     <span class="font-mono text-sm text-muted">/{path}</span>
     {#if uploading}<span class="text-xs text-muted">{uploadMsg}</span>{/if}
-    <label class="btn-ghost ml-auto cursor-pointer">
-      Upload files
-      <input type="file" class="hidden" multiple onchange={onPick} />
-    </label>
+    <div class="flex items-center gap-2 ml-auto">
+      <button class="btn-ghost" onclick={newFile} disabled={uploading}>+ File</button>
+      <button class="btn-ghost" onclick={newFolder} disabled={uploading}>+ Folder</button>
+      <label class="btn-ghost cursor-pointer">
+        Upload files
+        <input type="file" class="hidden" multiple onchange={onPick} />
+      </label>
+      <label class="btn-ghost cursor-pointer">
+        Upload folder
+        <input type="file" class="hidden" webkitdirectory directory onchange={onPickFolder} />
+      </label>
+    </div>
   </div>
   <!-- Drop zone: drag a folder or several files anywhere over the listing. -->
   <div

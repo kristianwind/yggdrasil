@@ -145,6 +145,9 @@ ExecStart=/usr/local/bin/yggdrasil --config /etc/yggdrasil/config.yaml
 Restart=on-failure
 RestartSec=5
 WorkingDirectory=/var/lib/yggdrasil
+# Lets backups read app files that are mode 0600 owned by a container PUID
+# (.NET keys, DB creds) without full root. See deploy/yggdrasil.service.
+AmbientCapabilities=CAP_DAC_READ_SEARCH
 [Install]
 WantedBy=multi-user.target
 EOF

@@ -27,7 +27,7 @@ func TestArchiveRestoreRoundTrip(t *testing.T) {
 
 	// Only back up world + server.properties (simulating backup.include).
 	var buf bytes.Buffer
-	if err := Archive(src, []string{"world", "server.properties"}, &buf); err != nil {
+	if _, err := Archive(src, []string{"world", "server.properties"}, &buf); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 
@@ -54,7 +54,7 @@ func TestArchiveWholeDirWhenNoInclude(t *testing.T) {
 	writeFile(t, filepath.Join(src, "sub", "b.txt"), "B")
 
 	var buf bytes.Buffer
-	if err := Archive(src, nil, &buf); err != nil {
+	if _, err := Archive(src, nil, &buf); err != nil {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
@@ -139,7 +139,7 @@ func TestVerify(t *testing.T) {
 	writeFile(t, filepath.Join(src, "world", "level.dat"), "WORLD-DATA")
 
 	var buf bytes.Buffer
-	if err := Archive(src, nil, &buf); err != nil {
+	if _, err := Archive(src, nil, &buf); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 	good := buf.Bytes()
@@ -161,5 +161,43 @@ func TestVerify(t *testing.T) {
 	// Not a gzip at all → clear error.
 	if _, _, err := Verify(bytes.NewReader([]byte("this is not a gzip archive"))); err == nil {
 		t.Fatal("verify garbage: expected an error, got nil")
+	}
+}
+
+// TestArchiveSkipsUnreadableFile verifies that a file the archiver can't read
+// (mode 0000) is reported in skipped and the rest of the tree is archived —
+// one unreadable file must never fail the whole backup.
+func TestArchiveSkipsUnreadableFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses file permissions; skip can't be exercised")
+	}
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "readable.txt"), "hello")
+	secret := filepath.Join(src, "secret.key")
+	writeFile(t, secret, "top-secret")
+	if err := os.Chmod(secret, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(secret, 0o644) }) // so TempDir cleanup can remove it
+
+	var buf bytes.Buffer
+	skipped, err := Archive(src, nil, &buf)
+	if err != nil {
+		t.Fatalf("archive must not fail on an unreadable file: %v", err)
+	}
+	if len(skipped) != 1 || skipped[0] != "secret.key" {
+		t.Fatalf("want skipped=[secret.key], got %v", skipped)
+	}
+
+	// The readable file must still be in the archive, and it must be valid.
+	dst := t.TempDir()
+	if err := Restore(&buf, dst); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dst, "readable.txt")); err != nil || string(b) != "hello" {
+		t.Fatalf("readable.txt missing/wrong after skip: %q err=%v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "secret.key")); !os.IsNotExist(err) {
+		t.Fatalf("skipped file should not be in the archive")
 	}
 }

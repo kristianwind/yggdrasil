@@ -17,6 +17,13 @@ RestartSec=5
 StateDirectory=yggdrasil
 WorkingDirectory=/var/lib/yggdrasil
 
+# Backups run as the yggdrasil user and stream each server's data dir. Some apps
+# write files mode 0600 owned by their container PUID (.NET DataProtection keys,
+# MariaDB healthcheck creds, qBittorrent logs) that this user otherwise can't
+# read — the whole backup then fails on the first such file. This capability lets
+# the reader bypass file-permission checks (read-only) without granting full root.
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+
 # Hardening (kept compatible with Docker socket access)
 NoNewPrivileges=true
 ProtectSystem=full

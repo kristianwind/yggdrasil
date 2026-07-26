@@ -368,7 +368,8 @@ that directory, including through symlinks.
 | `GET` | `/api/servers/{id}/files/versions` | `server.files` | List snapshots for a path (metadata only) |
 | `GET` | `/api/servers/{id}/files/versions/{vid}` | `server.files` | One snapshot's full contents |
 | `DELETE` | `/api/servers/{id}/files` | `server.files` | Delete a file or directory (`?path=`) |
-| `POST` | `/api/servers/{id}/files/upload` | `server.files` | Multipart upload into a directory |
+| `POST` | `/api/servers/{id}/files/upload` | `server.files` | Multipart upload into a directory (send one request per file; the `path` field preserves sub-folders for a folder upload) |
+| `POST` | `/api/servers/{id}/files/mkdir` | `server.files` | Create a directory, parents included |
 | `GET` | `/api/servers/{id}/files/download` | `server.files` | Download a single file |
 
 The editor keeps 10 versions per file and only snapshots UTF-8 files up to 256 KB.
@@ -383,8 +384,10 @@ backup's server first, then checks.
 | --- | --- | --- | --- |
 | `GET` | `/api/backup/targets` | Admin | List configured backup destinations |
 | `POST` | `/api/backup/targets` | Admin | Add a backup destination |
+| `PUT` | `/api/backup/targets/{id}` | Admin | Edit a destination; a blank password field keeps the stored one |
 | `DELETE` | `/api/backup/targets/{id}` | Admin | Remove a backup destination |
 | `POST` | `/api/backup/targets/{id}/test` | Admin | Verify a destination's credentials and reachability |
+| `GET` | `/api/backup/browse` | Admin | List a host path's sub-directories (`?path=`), read-only — for the local-target folder picker |
 | `GET` | `/api/servers/{id}/backups` | `server.backup` | List a server's backups |
 | `POST` | `/api/servers/{id}/backup` | `server.backup` | Run a backup now |
 | `POST` | `/api/backups/{id}/restore` | `server.backup` | Restore a backup over the server's data |
@@ -492,7 +495,8 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/domains` | Session | Per-server subdomain and proxy state, filtered to viewable servers |
-| `GET` | `/api/domains/{id}/check` | `server.view` | Probe one server's public URL; the domain is recomputed server-side |
+| `GET` | `/api/domains/cloudflare` | Admin | Every hostname mapped on the configured Cloudflare tunnel, including ones set up directly in Cloudflare (not just what the panel provisioned) |
+| `GET` | `/api/domains/{id}/check` | `server.view` | Probe one server's public URL; the domain is recomputed server-side. For a Cloudflare domain it also reports `cf_conflict`/`cf_target` when the hostname's CNAME points at a different tunnel |
 | `GET` | `/api/settings/network` | Session | Public hostname, detected address, and the effective connect address |
 | `PUT` | `/api/settings/network` | Admin | Set the public hostname, UPnP toggle, and BattleMetrics token |
 | `GET` | `/api/upnp/status` | Admin | Whether UPnP is on and a gateway is reachable |
@@ -561,6 +565,7 @@ The public status board caches for 15 seconds and is served with `Cache-Control:
 | `GET` | `/api/system/update-status` | Admin | The last update result written by the helper, including failures |
 | `GET` | `/api/system/auto-update` | Admin | The opt-in scheduled updater's settings |
 | `POST` | `/api/system/auto-update` | Admin | Update the scheduled updater's settings |
+| `PUT` | `/api/settings/panel-name` | Admin | Set this panel's display name (shown in the sidebar and browser tab so several panels are distinguishable). Read back on the public `GET /api/version` as `panel_name` |
 
 Anything not matching `/api/` falls through to the embedded SPA, which serves `index.html` for
 unknown paths so client-side routes deep-link correctly. Unknown `/api/` paths return `404`.

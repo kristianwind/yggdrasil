@@ -868,7 +868,13 @@ that directory, including through symlinks.</p>
 <td><code>POST</code></td>
 <td><code>/api/servers/{id}/files/upload</code></td>
 <td><code>server.files</code></td>
-<td>Multipart upload into a directory</td>
+<td>Multipart upload into a directory (send one request per file; the <code>path</code> field preserves sub-folders for a folder upload)</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/files/mkdir</code></td>
+<td><code>server.files</code></td>
+<td>Create a directory, parents included</td>
 </tr>
 <tr>
 <td><code>GET</code></td>
@@ -906,6 +912,12 @@ backup&rsquo;s server first, then checks.</p>
 <td>Add a backup destination</td>
 </tr>
 <tr>
+<td><code>PUT</code></td>
+<td><code>/api/backup/targets/{id}</code></td>
+<td>Admin</td>
+<td>Edit a destination; a blank password field keeps the stored one</td>
+</tr>
+<tr>
 <td><code>DELETE</code></td>
 <td><code>/api/backup/targets/{id}</code></td>
 <td>Admin</td>
@@ -916,6 +928,12 @@ backup&rsquo;s server first, then checks.</p>
 <td><code>/api/backup/targets/{id}/test</code></td>
 <td>Admin</td>
 <td>Verify a destination&rsquo;s credentials and reachability</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/backup/browse</code></td>
+<td>Admin</td>
+<td>List a host path&rsquo;s sub-directories (<code>?path=</code>), read-only — for the local-target folder picker</td>
 </tr>
 <tr>
 <td><code>GET</code></td>
@@ -1321,9 +1339,15 @@ admin-only — watchers read logs across servers.</p>
 </tr>
 <tr>
 <td><code>GET</code></td>
+<td><code>/api/domains/cloudflare</code></td>
+<td>Admin</td>
+<td>Every hostname mapped on the configured Cloudflare tunnel, including ones set up directly in Cloudflare (not just what the panel provisioned)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
 <td><code>/api/domains/{id}/check</code></td>
 <td><code>server.view</code></td>
-<td>Probe one server&rsquo;s public URL; the domain is recomputed server-side</td>
+<td>Probe one server&rsquo;s public URL; the domain is recomputed server-side. For a Cloudflare domain it also reports <code>cf_conflict</code>/<code>cf_target</code> when the hostname&rsquo;s CNAME points at a different tunnel</td>
 </tr>
 <tr>
 <td><code>GET</code></td>
@@ -1620,6 +1644,12 @@ shows players; writing it is admin-only.</p>
 <td><code>/api/system/auto-update</code></td>
 <td>Admin</td>
 <td>Update the scheduled updater&rsquo;s settings</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/panel-name</code></td>
+<td>Admin</td>
+<td>Set this panel&rsquo;s display name (shown in the sidebar and browser tab so several panels are distinguishable). Read back on the public <code>GET /api/version</code> as <code>panel_name</code></td>
 </tr>
 </tbody>
 </table>

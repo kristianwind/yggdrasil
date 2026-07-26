@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Mojang Bedrock dedicated server (no Steam, no RCON — console only)"
   author: "yggdrasil-core"
-  version: 2
+  version: 3
   icon: "minecraft"
 
   # CAVEAT: The Bedrock dedicated server is x86_64-only. On arm64 hosts it must
@@ -68,6 +68,12 @@ gameskill:
       # at /etc/ssl/certs/ca-certificates.crt at runtime. Without this the server
       # logs "Could not connect to Minecraft services" and stops in online mode.
       cp -L /etc/ssl/certs/ca-certificates.crt /data/.certs/ca-certificates.crt 2>/dev/null || true
+      # Prefer IPv4 for outbound DNS. On the default (IPv4-only) Docker bridge the
+      # resolver returns AAAA-first, so online-mode auth — which resolves to IPv6 —
+      # can't connect and the server stops ("Could not connect to Minecraft
+      # services"), even though IPv4 egress works. The panel mounts this file at
+      # /etc/gai.conf so getaddrinfo returns IPv4-mapped addresses first.
+      printf 'precedence ::ffff:0:0/96 100\n' > /data/.gai.conf
       # Bundle bedrock_server's libs AND libcurl's own closure (libssl/libcrypto/…) —
       # ldd of the binary alone can miss libcurl's TLS backend, breaking HTTPS.
       LC=$(ldconfig -p 2>/dev/null | grep 'libcurl.so.4' | awk '{print $NF}' | head -1)

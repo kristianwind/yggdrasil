@@ -2,15 +2,28 @@ gameskill:
   id: minecraft-bedrock
   name: "Minecraft (Bedrock)"
   category: "Minecraft"
-  description: "Mojang Bedrock dedicated server (no Steam, no RCON — console only)"
+  description: "Mojang Bedrock dedicated server via the maintained itzg/minecraft-bedrock-server image. It handles the BDS download, a proper libcurl + CA trust, and the Minecraft-services handshake that a bare base image gets wrong — so ONLINE MODE and the allow-list actually work. No RCON — console only."
   author: "yggdrasil-core"
-  version: 3
+  version: 4
   icon: "minecraft"
 
-  # CAVEAT: The Bedrock dedicated server is x86_64-only. On arm64 hosts it must
-  # run under emulation (box64/qemu); native arm64 is not provided by Mojang.
+  # itzg's image bundles a working libcurl + CA store and manages server.properties
+  # from these env vars on every start. Starts as root and drops to UID/GID (chowns
+  # /data so ownership self-heals). x86_64 only — Mojang ships no arm64 BDS.
   docker:
-    image: "ubuntu:22.04"
+    image: "itzg/minecraft-bedrock-server:latest"
+    data_path: /data
+    keep_entrypoint: true
+    user: "0:0"
+    env:
+      EULA: "{{EULA}}"
+      SERVER_NAME: "{{SERVER_NAME}}"
+      GAMEMODE: "{{GAMEMODE}}"
+      DIFFICULTY: "{{DIFFICULTY}}"
+      MAX_PLAYERS: "{{MAX_PLAYERS}}"
+      ONLINE_MODE: "{{ONLINE_MODE}}"
+      ALLOW_LIST: "{{ALLOW_LIST}}"
+      LEVEL_SEED: "{{LEVEL_SEED}}"
 
   variables:
     - key: SERVER_NAME
@@ -31,78 +44,27 @@ gameskill:
       name: "Max players"
       type: int
       default: 10
+    - key: ONLINE_MODE
+      name: "Online mode (require Xbox authentication — keep ON for a real allow-list)"
+      type: bool
+      default: true
     - key: ALLOW_LIST
-      name: "Enable allow-list (whitelist)"
+      name: "Enable allow-list (whitelist) — only works meaningfully with online mode ON"
       type: bool
       default: false
+    - key: LEVEL_SEED
+      name: "World seed (leave blank for a random world)"
+      type: string
+      default: ""
     - key: EULA
       name: "Accept the Minecraft EULA and Privacy Policy"
       type: bool
       default: false
       required: true
 
-  install:
-    image: "ubuntu:22.04"
-    script: |
-      set -e
-      apt-get update && apt-get install -y curl unzip ca-certificates
-      # Resolve the current Linux Bedrock download URL from Mojang's links API.
-      URL=$(curl -fsSL -A "Mozilla/5.0 (Yggdrasil)" \
-        "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links" \
-        | grep -o 'https[^"]*bin-linux/bedrock-server[^"]*\.zip' | head -1)
-      if [ -z "$URL" ]; then echo "Could not resolve Bedrock download URL"; exit 1; fi
-      echo "Downloading $URL"
-      curl -fsSL -A "Mozilla/5.0 (Yggdrasil)" -o /tmp/bedrock.zip "$URL"
-      # Preserve config files across updates; overwrite the binary/libs.
-      unzip -o /tmp/bedrock.zip -x "server.properties" "allowlist.json" "permissions.json" -d /data
-      [ -f /data/server.properties ] || unzip -o /tmp/bedrock.zip "server.properties" -d /data
-      chmod +x /data/bedrock_server || true
-      # bedrock_server needs system libcurl (absent from the ubuntu base). Install
-      # it here (we run as root during install) and bundle the full shared-library
-      # closure into .libs so the runtime works without root/apt.
-      apt-get install -y libcurl4 ca-certificates >/dev/null 2>&1 || true
-      mkdir -p /data/.libs /data/.certs
-      # Online-mode needs HTTPS to Minecraft services. bedrock_server's libcurl reads
-      # the CA bundle from its compiled-in default path ONLY (it ignores
-      # SSL_CERT_FILE/CURL_CA_BUNDLE), so stage the bundle here; the panel mounts it
-      # at /etc/ssl/certs/ca-certificates.crt at runtime. Without this the server
-      # logs "Could not connect to Minecraft services" and stops in online mode.
-      cp -L /etc/ssl/certs/ca-certificates.crt /data/.certs/ca-certificates.crt 2>/dev/null || true
-      # Prefer IPv4 for outbound DNS. On the default (IPv4-only) Docker bridge the
-      # resolver returns AAAA-first, so online-mode auth — which resolves to IPv6 —
-      # can't connect and the server stops ("Could not connect to Minecraft
-      # services"), even though IPv4 egress works. The panel mounts this file at
-      # /etc/gai.conf so getaddrinfo returns IPv4-mapped addresses first.
-      printf 'precedence ::ffff:0:0/96 100\n' > /data/.gai.conf
-      # Bundle bedrock_server's libs AND libcurl's own closure (libssl/libcrypto/…) —
-      # ldd of the binary alone can miss libcurl's TLS backend, breaking HTTPS.
-      LC=$(ldconfig -p 2>/dev/null | grep 'libcurl.so.4' | awk '{print $NF}' | head -1)
-      for b in /data/bedrock_server "$LC"; do
-        [ -n "$b" ] && [ -f "$b" ] || continue
-        ldd "$b" 2>/dev/null | awk '/=> \//{print $3}' | while read -r lib; do
-          [ -f "$lib" ] && cp -Ln "$lib" /data/.libs/ 2>/dev/null || true
-        done
-      done
-      [ -n "$LC" ] && cp -Ln "$LC" /data/.libs/ 2>/dev/null || true
-
+  # No custom install: itzg's entrypoint downloads BDS and applies the env config.
   startup:
-    # Re-stamp server.properties from the CURRENT settings on every start (like the
-    # Java rune), so changing Difficulty / Gamemode / Max players / Allow-list in
-    # Settings and restarting actually takes effect. Before this the whole form was
-    # cosmetic: the server always ran with the zip's default server.properties, so
-    # difficulty (and the rest) had no effect no matter what you picked.
-    #
-    # server-name uses the panel's server name (SERVER_NAME is injected). Bedrock
-    # reads stdin for console commands (no RCON); exec hands it PID 1 + stdin so the
-    # "stop" command reaches it. The bundled .libs on LD_LIBRARY_PATH avoid apt.
-    command: |
-      setprop() { if grep -q "^$1=" server.properties 2>/dev/null; then sed -i "s#^$1=.*#$1=$2#" server.properties; else echo "$1=$2" >> server.properties; fi; }
-      setprop server-name "{{SERVER_NAME}}"
-      setprop gamemode {{GAMEMODE}}
-      setprop difficulty {{DIFFICULTY}}
-      setprop max-players {{MAX_PLAYERS}}
-      setprop allow-list {{ALLOW_LIST}}
-      exec env LD_LIBRARY_PATH=/data/.libs:/data ./bedrock_server
+    command: ""
     done_regex: 'Server started'
     stop: "stop"
 

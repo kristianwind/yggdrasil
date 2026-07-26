@@ -27,6 +27,29 @@ func TestSplitChatActions(t *testing.T) {
 	}
 }
 
+func TestSplitLookup(t *testing.T) {
+	// No block → whole text, no request.
+	text, req := splitLookup("Behrens1 looks quiet.")
+	if text != "Behrens1 looks quiet." || req != nil {
+		t.Fatalf("plain reply mangled: %q %v", text, req)
+	}
+	// Trailing block is stripped and parsed.
+	full := "Let me check.\n```lookup\n" + `{"tool":"player_history","server":"Behrens1","hours":6}` + "\n```"
+	text, req = splitLookup(full)
+	if strings.Contains(text, "```") || req == nil || req.Tool != "player_history" || req.Server != "Behrens1" || req.Hours != 6 {
+		t.Fatalf("lookup block not parsed: %q %+v", text, req)
+	}
+	// Broken JSON → no request (the text is still recovered).
+	text, req = splitLookup("hmm\n```lookup\n{oops\n```")
+	if req != nil {
+		t.Fatalf("broken block should yield no request: %+v", req)
+	}
+	// A block missing the tool field is not a valid request.
+	if _, r := splitLookup("x\n```lookup\n{\"server\":\"A\"}\n```"); r != nil {
+		t.Fatalf("tool-less block should be rejected: %+v", r)
+	}
+}
+
 func TestBuildChatMessagesClamps(t *testing.T) {
 	servers := []serverRow{{ID: "s1", Name: "Heimdal", GameskillID: "dayz", Status: "running"}}
 	// A client-smuggled system turn is dropped; oversize content is truncated;

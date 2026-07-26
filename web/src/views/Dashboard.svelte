@@ -268,9 +268,14 @@
     if (!last || last.role !== "assistant") return;
     if (f.type === "delta") {
       last.streamRaw = (last.streamRaw || "") + f.text;
-      // Hide the trailing ```actions block while it streams — it becomes buttons.
-      const cut = last.streamRaw.indexOf("```actions");
-      last.content = cut >= 0 ? last.streamRaw.slice(0, cut) : last.streamRaw;
+      // Hide the trailing control blocks while they stream — ```actions becomes
+      // buttons, and ```lookup is an internal data request the panel runs.
+      let cut = last.streamRaw.length;
+      for (const marker of ["```actions", "```lookup"]) {
+        const i = last.streamRaw.indexOf(marker);
+        if (i >= 0 && i < cut) cut = i;
+      }
+      last.content = last.streamRaw.slice(0, cut);
     } else if (f.type === "done") {
       last.content = f.text;
       last.actions = (f.actions || []).filter((a) => a.ok);

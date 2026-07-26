@@ -5,9 +5,15 @@
 *.exe
 /tmp/
 
-# Built frontend — produced by CI / `npm run build`, embedded at build time.
-# A placeholder web/dist/index.html is committed so the module builds without
-# a frontend toolchain; CI overwrites it with the real Svelte bundle.
+# Built frontend — produced by `npm run build`, embedded at build time via
+# `//go:embed all:web/dist`. The whole dist is gitignored: its hashed asset
+# filenames change on every build and caused a merge conflict on every parallel
+# branch. Only .gitkeep is tracked, so the directory (and the embed pattern)
+# survive a fresh clone and `go build` compiles even before a frontend build.
+# CI and release build the real bundle. For a working UI locally, run
+# `cd web && npm ci && npm run build` before `go build`.
+/web/dist/
+!/web/dist/.gitkeep
 /web/node_modules/
 /web/.svelte-kit/
 

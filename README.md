@@ -263,16 +263,24 @@ location / {
 
 ## Development
 
-Requirements: Go 1.23+, and (optionally) Node 20+ for the frontend.
+Requirements: Go 1.23+, and Node 20+ for the frontend.
+
+The frontend (`web/dist`) is **git-ignored** and embedded at build time via
+`//go:embed all:web/dist`, so build it before `go build` — otherwise the binary
+serves an empty UI (it still compiles, thanks to a tracked `.gitkeep`). CI and
+the release workflow build it automatically.
 
 ```bash
+# Build the frontend once (rebuild after changing anything under web/src)
+cd web && npm ci && npm run build && cd ..
+
 # Run the backend against a local config (Docker optional; it degrades gracefully)
 go run ./cmd/yggdrasil --config ./dev-config.yaml
 
 # Tests
 go test ./...
 
-# Build a static binary
+# Build a static binary (frontend must be built first, as above)
 CGO_ENABLED=0 go build -o yggdrasil ./cmd/yggdrasil
 ```
 

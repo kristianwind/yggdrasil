@@ -17,6 +17,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Frontend FIRST: web/dist is gitignored and embedded via `//go:embed
+      # all:web/dist`, so it must exist before any `go build`/`test`/`docs-gen`.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Frontend test and build (compiles the Svelte app + produces web/dist)
+        run: |
+          if [ -f web/package.json ]; then
+            cd web
+            npm ci
+            npm test
+            npm run build
+          else
+            echo "No web/package.json — skipping frontend build."
+            mkdir -p web/dist  # keep the go:embed pattern satisfied
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -41,19 +60,3 @@ jobs:
             exit 1
           fi
           echo "website/docs/ matches docs/."
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Frontend test and build (compiles the Svelte app)
-        run: |
-          if [ -f web/package.json ]; then
-            cd web
-            npm ci
-            npm test
-            npm run build
-          else
-            echo "No web/package.json — skipping frontend build."
-          fi

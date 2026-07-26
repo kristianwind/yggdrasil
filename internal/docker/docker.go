@@ -228,6 +228,18 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error)
 				Type: mount.TypeBind, Source: caBundle, Target: "/etc/ssl/certs/ca-certificates.crt", ReadOnly: true,
 			})
 		}
+		// Same idea for address ordering: a container on the default (IPv4-only)
+		// Docker bridge whose resolver returns AAAA-first can't reach vendor auth
+		// services that resolve to IPv6 — Bedrock then logs "Could not connect to
+		// Minecraft services" and stops, even though IPv4 egress works. If the
+		// install staged a gai.conf preferring IPv4-mapped addresses, mount it at the
+		// default path so getaddrinfo returns IPv4 first. Harmless for other games.
+		gaiConf := filepath.Join(opts.DataDir, ".gai.conf")
+		if _, err := os.Stat(gaiConf); err == nil {
+			mounts = append(mounts, mount.Mount{
+				Type: mount.TypeBind, Source: gaiConf, Target: "/etc/gai.conf", ReadOnly: true,
+			})
+		}
 	}
 	// Admin-configured host bind mounts (e.g. a media library at /mnt/mediaserver →
 	// /media). Validated in the API layer (admin-only, denylist, source must exist);

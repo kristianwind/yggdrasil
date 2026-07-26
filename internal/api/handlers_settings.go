@@ -23,6 +23,27 @@ func (s *Server) setSetting(ctx context.Context, key, value string) {
 		key, value)
 }
 
+// handleSetPanelName sets a friendly display name for THIS panel, surfaced in
+// the sidebar so an operator running several panels can tell them apart. A blank
+// name clears it (the UI falls back to "Yggdrasil Panel"). The name is read back
+// via /api/version (public), so it's kept short and non-sensitive.
+func (s *Server) handleSetPanelName(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if len(name) > 60 {
+		name = name[:60]
+	}
+	s.setSetting(r.Context(), "panel_name", name)
+	s.auditLog(r, "settings.panel_name", "panel_name", map[string]string{"name": name})
+	jsonOK(w, map[string]any{"panel_name": name})
+}
+
 // handleGetNetworkSettings returns the public hostname (and the auto-detected
 // fallback address so the UI can show what players would currently connect to).
 func (s *Server) handleGetNetworkSettings(w http.ResponseWriter, r *http.Request) {

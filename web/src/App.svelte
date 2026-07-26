@@ -39,7 +39,12 @@
     await loadUser();
     if (!location.hash) navigate("/");
     ready = true;
-    api.get("/version").then((v) => (build = v)).catch(() => {});
+    api.get("/version").then((v) => {
+      build = v;
+      // Reflect a custom panel name in the browser tab too, so several panels
+      // open in different tabs are distinguishable at a glance.
+      if (v?.panel_name) document.title = v.panel_name;
+    }).catch(() => {});
   });
 
   // Surface rune updates in the nav so an admin sees them without opening Runes.
@@ -130,7 +135,7 @@
           mobileOpen = false;
         }}
       >
-        <span>🌳</span><span class="whitespace-nowrap {collapsed ? 'md:hidden' : ''}">Yggdrasil Panel</span>
+        <span>🌳</span><span class="whitespace-nowrap {collapsed ? 'md:hidden' : ''}">{build?.panel_name || "Yggdrasil Panel"}</span>
       </button>
       <!-- Command palette trigger — keeps ⌘K discoverable and works on touch. -->
       <button
@@ -244,7 +249,7 @@
         style="padding-top: calc(0.75rem + env(safe-area-inset-top));"
       >
         <button class="btn-ghost px-2 py-1" aria-label="Open menu" onclick={() => { if (Date.now() >= menuGuardUntil) mobileOpen = true; }}>☰</button>
-        <span class="font-semibold">🌳 Yggdrasil Panel</span>
+        <span class="font-semibold">🌳 {build?.panel_name || "Yggdrasil Panel"}</span>
       </header>
       <main class="flex-1 p-4 md:p-6 overflow-auto">
         {#if $route.parts[0] === "servers" && $route.parts[1]}

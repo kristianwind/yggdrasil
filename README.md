@@ -12,6 +12,9 @@ same one-click "Runes".
 
 - **One binary.** A single static Go binary with the web UI embedded. No separate
   database, no Redis, no required reverse proxy.
+- **Runs on a Raspberry Pi.** Pure-static builds for **amd64 and arm64**; the
+  installer auto-detects your architecture, so a Pi 4/5 (64-bit) is a first-class
+  low-power host.
 - **One command to install.** The installer handles Docker and everything else.
 - **Extensible.** A game *or app* = one declarative **gameskill** file (shown as a
   *Rune* in the UI). Minecraft Java, Minecraft Bedrock, Uptime Kuma and Vaultwarden

@@ -318,6 +318,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/backup/targets/{id}", s.requireAdmin(s.handleUpdateBackupTarget))
 		r.Delete("/api/backup/targets/{id}", s.requireAdmin(s.handleDeleteBackupTarget))
 		r.Post("/api/backup/targets/{id}/test", s.requireAdmin(s.handleTestBackupTarget))
+		r.Get("/api/backup/browse", s.requireAdmin(s.handleBrowseDirs))
 
 		// Backups (per-server, RBAC: server.backup)
 		r.Get("/api/servers/{id}/backups", s.handleListBackups)

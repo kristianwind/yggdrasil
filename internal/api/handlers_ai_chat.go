@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,7 +80,7 @@ func (s *Server) answerChatTurn(r *http.Request, conn *websocket.Conn, history [
 		return
 	}
 	servers := s.controllableServers(r)
-	msgs := buildChatMessages(history, servers, cfg.ActionsEnabled, s.chatDocsContext(history))
+	msgs := buildChatMessages(history, servers, cfg.ActionsEnabled, s.chatDocsContext(history), s.chatServerStats(r.Context()))
 
 	ctx, cancel := context.WithTimeout(context.Background(), chatTimeout)
 	defer cancel()
@@ -106,14 +108,21 @@ func writeChatFrame(conn *websocket.Conn, f chatFrame) {
 
 // buildChatMessages assembles system grounding + the clamped client history.
 // Pure + testable.
-func buildChatMessages(history []llm.Message, servers []serverRow, actionsEnabled bool, docs string) []llm.Message {
+func buildChatMessages(history []llm.Message, servers []serverRow, actionsEnabled bool, docs string, stats map[string]string) []llm.Message {
 	var sb strings.Builder
 	for _, srv := range servers {
-		fmt.Fprintf(&sb, "- %s (%s, %s)\n", srv.Name, srv.GameskillID, srv.Status)
+		fmt.Fprintf(&sb, "- %s (%s, %s)", srv.Name, srv.GameskillID, srv.Status)
+		if st := stats[srv.ID]; st != "" {
+			fmt.Fprintf(&sb, " — %s", st)
+		}
+		sb.WriteByte('\n')
 	}
 	system := "You are Kvasir, the built-in assistant of this Yggdrasil Panel instance (a self-hosted " +
 		"game & app server panel). You are talking to the panel's operator.\n\n" +
-		"Their servers right now:\n" + strings.TrimRight(sb.String(), "\n") + "\n\n" +
+		"Their servers right now (the per-server readings after '—' come from the panel's own metrics " +
+		"samples, updated every few minutes — use them to answer questions about current and recent " +
+		"players and load; a server with no reading has no recent samples or a rune that can't count " +
+		"players):\n" + strings.TrimRight(sb.String(), "\n") + "\n\n" +
 		"STAY ON TOPIC: you only discuss THIS panel and THESE servers — operations, configuration, " +
 		"logs, performance, backups, players. For anything else, say it's outside your scope. " +
 		"You have no internet access and must never claim to have taken an action yourself.\n"
@@ -151,6 +160,107 @@ func buildChatMessages(history []llm.Message, servers []serverRow, actionsEnable
 		out = append(out, llm.Message{Role: role, Content: content})
 	}
 	return out
+}
+
+// chatServerStats returns a per-server (keyed by server id) one-line metrics
+// suffix for the chat snapshot — recent player counts and load — so Kvasir can
+// actually answer "were there players in the last few hours?" and "how's the
+// load?" from the samples the panel already collects, instead of claiming it has
+// no access. Best-effort: a server with no samples, or a query-less rune
+// (players stored as -1), simply gets no suffix.
+func (s *Server) chatServerStats(ctx context.Context) map[string]string {
+	// 24h aggregate: peak players, average/peak CPU, and when players were last
+	// seen online (NULL if never in the window).
+	type agg struct {
+		peakPlayers     int
+		avgCPU, peakCPU float64
+		lastActive      sql.NullString
+	}
+	aggs := map[string]agg{}
+	if rows, err := s.db.QueryContext(ctx, `
+		SELECT server_id, COALESCE(MAX(players),-1), COALESCE(ROUND(AVG(cpu)),0), COALESCE(ROUND(MAX(cpu)),0),
+		       MAX(CASE WHEN players>0 THEN ts END)
+		FROM metrics WHERE ts >= datetime('now','-1 day')
+		GROUP BY server_id`); err == nil {
+		for rows.Next() {
+			var id string
+			var a agg
+			if rows.Scan(&id, &a.peakPlayers, &a.avgCPU, &a.peakCPU, &a.lastActive) == nil {
+				aggs[id] = a
+			}
+		}
+		rows.Close()
+	}
+	// Current values = the most recent sample per server (last ~30 min).
+	type cur struct {
+		players int
+		mem     float64
+	}
+	curs := map[string]cur{}
+	if rows, err := s.db.QueryContext(ctx, `
+		SELECT m.server_id, m.players, m.mem_mb
+		FROM metrics m
+		JOIN (SELECT server_id, MAX(ts) mts FROM metrics
+		      WHERE ts >= datetime('now','-30 minutes') GROUP BY server_id) l
+		  ON l.server_id = m.server_id AND l.mts = m.ts`); err == nil {
+		for rows.Next() {
+			var id string
+			var c cur
+			if rows.Scan(&id, &c.players, &c.mem) == nil {
+				curs[id] = c
+			}
+		}
+		rows.Close()
+	}
+
+	out := map[string]string{}
+	for id, a := range aggs {
+		var parts []string
+		c, haveCur := curs[id]
+		// Player line only for runes that actually report a count (>= 0 somewhere).
+		if a.peakPlayers >= 0 {
+			now := "unknown"
+			if haveCur && c.players >= 0 {
+				now = strconv.Itoa(c.players)
+			}
+			last := "no players seen in 24h"
+			if a.lastActive.Valid {
+				last = "last had players " + humanizeSince(a.lastActive.String)
+			}
+			parts = append(parts, fmt.Sprintf("players now %s, 24h peak %d, %s", now, a.peakPlayers, last))
+		}
+		if a.avgCPU > 0 || a.peakCPU > 0 {
+			load := fmt.Sprintf("CPU 24h avg %.0f%%/peak %.0f%%", a.avgCPU, a.peakCPU)
+			if haveCur && c.mem > 0 {
+				load += fmt.Sprintf(", mem now %.0f MB", c.mem)
+			}
+			parts = append(parts, load)
+		}
+		if len(parts) > 0 {
+			out[id] = strings.Join(parts, "; ")
+		}
+	}
+	return out
+}
+
+// humanizeSince renders a SQLite datetime('now')-format UTC timestamp as a rough
+// "how long ago" for the chat snapshot.
+func humanizeSince(ts string) string {
+	t, err := time.Parse("2006-01-02 15:04:05", ts)
+	if err != nil {
+		return "recently"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 // splitChatActions separates the visible reply from the trailing ```actions

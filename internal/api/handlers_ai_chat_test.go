@@ -35,9 +35,14 @@ func TestBuildChatMessagesClamps(t *testing.T) {
 	for i := 0; i < chatMaxTurns+5; i++ {
 		history = append(history, llm.Message{Role: "user", Content: strings.Repeat("x", chatMaxMsgLen+100)})
 	}
-	msgs := buildChatMessages(history, servers, true, "")
+	msgs := buildChatMessages(history, servers, true, "", nil)
 	if msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "Heimdal") {
 		t.Fatal("system grounding missing the fleet")
+	}
+	// Per-server metrics suffix is appended to the matching server's line.
+	withStats := buildChatMessages(nil, servers, true, "", map[string]string{"s1": "players now 3, 24h peak 7, last had players 2h ago"})[0].Content
+	if !strings.Contains(withStats, "Heimdal (dayz, running) — players now 3, 24h peak 7") {
+		t.Fatalf("server metrics suffix missing from the snapshot:\n%s", withStats)
 	}
 	if len(msgs) != 1+chatMaxTurns {
 		t.Fatalf("history not clamped: %d messages", len(msgs))
@@ -51,13 +56,13 @@ func TestBuildChatMessagesClamps(t *testing.T) {
 		}
 	}
 	// Docs excerpts land in the system prompt when provided.
-	withDocs := buildChatMessages(nil, servers, true, "--- Docs › Backups ---\nRun backups nightly.")[0].Content
+	withDocs := buildChatMessages(nil, servers, true, "--- Docs › Backups ---\nRun backups nightly.", nil)[0].Content
 	if !strings.Contains(withDocs, "Run backups nightly") {
 		t.Fatal("docs excerpts missing from the system prompt")
 	}
 	// Actions gate flips the instructions.
-	on := buildChatMessages(nil, servers, true, "")[0].Content
-	off := buildChatMessages(nil, servers, false, "")[0].Content
+	on := buildChatMessages(nil, servers, true, "", nil)[0].Content
+	off := buildChatMessages(nil, servers, false, "", nil)[0].Content
 	if !strings.Contains(on, "```actions") || strings.Contains(off, "```actions") {
 		t.Fatal("actions instructions don't follow the actionsEnabled flag")
 	}

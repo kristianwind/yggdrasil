@@ -155,6 +155,34 @@ func (c *Client) putConfig(cfg map[string]any) error {
 	return c.do("PUT", path, map[string]any{"config": cfg}, nil)
 }
 
+// IngressHostname is one hostname → service mapping from the tunnel config.
+type IngressHostname struct {
+	Hostname string `json:"hostname"`
+	Service  string `json:"service"`
+	Path     string `json:"path,omitempty"`
+}
+
+// ListIngress returns every hostname rule on this tunnel — including ones added
+// directly in the Cloudflare dashboard, not just those the panel provisioned.
+// The mandatory trailing catch-all (no hostname) is omitted.
+func (c *Client) ListIngress() ([]IngressHostname, error) {
+	cfg, err := c.getConfig()
+	if err != nil {
+		return nil, err
+	}
+	out := []IngressHostname{}
+	for _, r := range ingressRules(cfg) {
+		h, _ := r["hostname"].(string)
+		if h == "" {
+			continue // the catch-all rule carries no hostname
+		}
+		svc, _ := r["service"].(string)
+		p, _ := r["path"].(string)
+		out = append(out, IngressHostname{Hostname: h, Service: svc, Path: p})
+	}
+	return out, nil
+}
+
 // ingressRules extracts the current ingress list as []map[string]any.
 func ingressRules(cfg map[string]any) []map[string]any {
 	raw, _ := cfg["ingress"].([]any)

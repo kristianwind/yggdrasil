@@ -9,6 +9,10 @@
   let loaded = $state(false);
   // Per-row reachability ("<server_id>|<provider>" -> {reachable, status, url}).
   let checks = $state({});
+  // Cloudflare tunnel ingress (admin-only): every hostname the tunnel routes,
+  // including ones mapped directly in Cloudflare — so this page reflects reality
+  // even when nothing was provisioned through the panel. Null until/unless loaded.
+  let cfIngress = $state(null);
 
   async function load() {
     try {
@@ -17,6 +21,8 @@
         api.get("/gameskills").catch(() => []),
       ]);
       loaded = true;
+      // CF tunnel ingress — admin-only; non-admins just don't see the section.
+      api.get("/domains/cloudflare").then((r) => (cfIngress = r)).catch(() => {});
       // Probe each domain in the background; rows fill in as results arrive.
       domains.forEach(async (d) => {
         const r = await api
@@ -107,3 +113,27 @@
     </div>
   {/each}
 </div>
+
+{#if cfIngress?.configured && cfIngress.hostnames?.length}
+  {@const known = new Set(domains.map((d) => d.domain))}
+  <h2 class="text-lg font-semibold mt-8 mb-1">Cloudflare Tunnel · all mapped hostnames</h2>
+  <p class="text-muted mb-3 text-sm">
+    Every hostname your tunnel routes — including ones configured directly in Cloudflare, not just
+    those the panel provisioned. <span class="badge bg-accent2/15 text-accent text-[11px]">panel</span>
+    = matches a server above; <span class="badge bg-panel2 border border-border text-muted text-[11px]">external</span>
+    = mapped outside the panel.
+  </p>
+  <div class="card divide-y divide-border">
+    {#each cfIngress.hostnames as h}
+      <div class="flex items-center gap-3 px-4 py-2.5">
+        <a href={`https://${h.hostname}`} target="_blank" rel="noopener" class="font-medium hover:underline truncate">{h.hostname} ↗</a>
+        <span class="text-xs text-muted font-mono truncate flex-1" title={h.service}>→ {h.service}</span>
+        {#if known.has(h.hostname)}
+          <span class="badge bg-accent2/15 text-accent text-[11px] shrink-0">panel</span>
+        {:else}
+          <span class="badge bg-panel2 border border-border text-muted text-[11px] shrink-0">external</span>
+        {/if}
+      </div>
+    {/each}
+  </div>
+{/if}

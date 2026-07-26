@@ -41,7 +41,13 @@ func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRunti
 	if err != nil {
 		return nil, err
 	}
-	rt := &serverRuntime{gs: gs, env: map[string]string{}, ports: map[string]int{}}
+	// Seed the rune's variable defaults first, then overlay the server's stored
+	// values. Without this, a server created before the rune added a variable has
+	// no value for it, so a template like "{{ONLINE_MODE}}" in docker.env passes
+	// through literally and the container rejects it (this broke Bedrock servers
+	// when the rune gained ONLINE_MODE). Defaults make new variables safe for
+	// existing servers; env_json still wins wherever it has a value.
+	rt := &serverRuntime{gs: gs, env: gameskill.DefaultEnv(gs), ports: map[string]int{}}
 	json.Unmarshal([]byte(envJSON), &rt.env)
 	// Decrypt secret-typed env (RCON password, password vars) — this is the one
 	// path that feeds real values to the container and RCON.

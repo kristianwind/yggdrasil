@@ -27,8 +27,14 @@ type targetView struct {
 	Type     string `json:"type"`
 	Path     string `json:"path"`
 	Host     string `json:"host,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Username string `json:"username,omitempty"`
+	Share    string `json:"share,omitempty"`
 	KeepN    int    `json:"keep_n"`
 	KeepDays int    `json:"keep_days"`
+	// HasPassword lets the editor show "leave blank to keep" instead of a bare
+	// empty field. The password itself is never sent to the browser.
+	HasPassword bool `json:"has_password"`
 }
 
 func (s *Server) handleListBackupTargets(w http.ResponseWriter, r *http.Request) {
@@ -46,11 +52,13 @@ func (s *Server) handleListBackupTargets(w http.ResponseWriter, r *http.Request)
 		if err := rows.Scan(&id, &name, &typ, &enc, &keepN, &keepDays); err != nil {
 			continue
 		}
-		// Decrypt only to surface non-secret fields (path/host); never password.
+		// Decrypt only to surface non-secret fields (path/host/port/user); the
+		// password is reduced to a has/has-not flag and never sent to the browser.
 		cfg, _ := s.decryptTargetConfig(enc)
 		list = append(list, targetView{
 			ID: id, Name: name, Type: typ, Path: cfg.Path, Host: cfg.Host,
-			KeepN: keepN, KeepDays: keepDays,
+			Port: cfg.Port, Username: cfg.Username, Share: cfg.Share,
+			KeepN: keepN, KeepDays: keepDays, HasPassword: cfg.Password != "",
 		})
 	}
 	jsonOK(w, list)
@@ -83,6 +91,45 @@ func (s *Server) handleCreateBackupTarget(w http.ResponseWriter, r *http.Request
 	s.auditLog(r, "backup_target.create", "target:"+id, map[string]string{"name": req.Name, "type": req.Type})
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, map[string]string{"id": id})
+}
+
+func (s *Server) handleUpdateBackupTarget(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Name string `json:"name"`
+		backup.Config
+		KeepN    int `json:"keep_n"`
+		KeepDays int `json:"keep_days"`
+	}
+	if err := decodeJSON(r, &req); err != nil || req.Name == "" || req.Type == "" {
+		jsonError(w, "name and type required", http.StatusBadRequest)
+		return
+	}
+	// A blank password from the edit form means "unchanged" — we never send the
+	// stored secret to the browser, so keep the existing one rather than wiping it.
+	if req.Password == "" {
+		if cur, err := s.loadTargetConfig(r.Context(), id); err == nil {
+			req.Password = cur.Password
+		}
+	}
+	enc, err := s.encryptTargetConfig(req.Config)
+	if err != nil {
+		jsonError(w, "encrypt: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	res, err := s.db.ExecContext(r.Context(),
+		"UPDATE backup_targets SET name=?, type=?, config_enc=?, keep_n=?, keep_days=? WHERE id=?",
+		req.Name, req.Type, enc, req.KeepN, req.KeepDays, id)
+	if err != nil {
+		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+	s.auditLog(r, "backup_target.update", "target:"+id, map[string]string{"name": req.Name, "type": req.Type})
+	jsonOK(w, map[string]string{"status": "updated"})
 }
 
 func (s *Server) handleDeleteBackupTarget(w http.ResponseWriter, r *http.Request) {

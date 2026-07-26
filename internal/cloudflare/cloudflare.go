@@ -301,6 +301,27 @@ func (c *Client) findDNS(hostname string) (*dnsRecord, error) {
 	return nil, nil
 }
 
+// CNAMEForeign reports whether hostname's proxied CNAME points at a DIFFERENT
+// Cloudflare tunnel than this client's — a conflict, meaning some other node/
+// tunnel owns the hostname. Returns the offending target for display. Absent, a
+// non-CNAME, or a CNAME pointing at this tunnel all report foreign=false.
+func (c *Client) CNAMEForeign(hostname string) (foreign bool, target string, err error) {
+	// Resolve the hostname's own zone (multi-domain); fall back to the current zone.
+	if zid, zerr := c.ZoneForHost(hostname); zerr == nil && zid != "" {
+		c.SetZoneID(zid)
+	}
+	rec, err := c.findDNS(hostname)
+	if err != nil || rec == nil {
+		return false, "", err
+	}
+	if strings.EqualFold(rec.Type, "CNAME") &&
+		strings.HasSuffix(strings.ToLower(rec.Content), ".cfargotunnel.com") &&
+		!strings.EqualFold(rec.Content, c.cfTarget()) {
+		return true, rec.Content, nil
+	}
+	return false, "", nil
+}
+
 // EnsureDNS creates or updates a proxied CNAME hostname → <tunnel>.cfargotunnel.com.
 // If a CNAME already points at a DIFFERENT tunnel it returns ErrForeignTunnel
 // instead of overwriting it — so we never steal a hostname another node serves.

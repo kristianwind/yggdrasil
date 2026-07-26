@@ -416,20 +416,31 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	}
 	name := fmt.Sprintf("%s-%s/%s.tar.gz", slugName(s.serverName(serverID)), short, time.Now().UTC().Format("20060102-150405"))
 
-	// Stream the archive straight to the target.
+	// Stream the archive straight to the target. Unreadable files are skipped
+	// (not fatal) and reported back over skippedCh so a partial archive is
+	// surfaced rather than silently passed off as complete.
 	pr, pw := io.Pipe()
+	skippedCh := make(chan []string, 1)
 	go func() {
-		err := backup.Archive(dataDir, include, pw)
+		skipped, err := backup.Archive(dataDir, include, pw)
+		skippedCh <- skipped
 		pw.CloseWithError(err)
 	}()
 	size, err := tgt.Put(ctx, name, pr)
 	if err != nil {
 		return fail("upload: " + err.Error())
 	}
+	skipped := <-skippedCh
 
 	s.db.Exec("UPDATE backups SET status='done', path=?, size_bytes=?, completed_at=? WHERE id=?",
 		name, size, time.Now().UTC().Format(time.RFC3339), backupID)
-	s.notifyServer(serverID, "✅ Backup complete for " + s.serverName(serverID) + " (" + humanBytes(size) + ")")
+	msg := "✅ Backup complete for " + s.serverName(serverID) + " (" + humanBytes(size) + ")"
+	if len(skipped) > 0 {
+		log.Printf("backup %s (%s): %d file(s) unreadable, skipped: %s",
+			backupID, s.serverName(serverID), len(skipped), strings.Join(skipped, ", "))
+		msg += fmt.Sprintf(" — ⚠️ %d unreadable file(s) skipped", len(skipped))
+	}
+	s.notifyServer(serverID, msg)
 
 	s.applyRetention(ctx, serverID, targetID, tgt)
 	return nil

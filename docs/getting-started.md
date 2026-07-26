@@ -7,7 +7,9 @@ spent waiting for a download.
 
 You need:
 
-- A **Debian or Ubuntu** host, `amd64` or `arm64`. The installer refuses other distributions.
+- A **Debian or Ubuntu** host, `amd64` or `arm64` — including a **Raspberry Pi 4 or 5** (64-bit Pi OS) or
+  any other arm64 single-board computer. The installer detects your architecture and pulls the matching
+  build; it refuses other distributions.
 - **Root** access.
 - Enough disk for the games you plan to run. A Minecraft server is a few hundred MB; DayZ and Rust
   are several GB each, and Steam needs room to stage a download on top of that.

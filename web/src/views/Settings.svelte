@@ -521,6 +521,52 @@
       savingNetwork = false;
     }
   }
+  // Email (SMTP) — outbound mail for password-reset links, plus a test button.
+  // The password is write-only: the API returns has_password, never the value.
+  let email = $state({ host: "", port: "587", username: "", from: "", has_password: false, configured: false });
+  let emailPw = $state("");
+  let savingEmail = $state(false);
+  let testEmailTo = $state("");
+  let testingEmail = $state(false);
+  async function loadEmail() {
+    try {
+      email = await api.get("/settings/email");
+    } catch {
+      /* non-fatal */
+    }
+  }
+  async function saveEmail() {
+    savingEmail = true;
+    try {
+      const body = {
+        host: email.host || "",
+        port: String(email.port || ""),
+        username: email.username || "",
+        from: email.from || "",
+      };
+      if (emailPw) body.password = emailPw; // blank = keep the stored password
+      await api.put("/settings/email", body);
+      emailPw = "";
+      await loadEmail();
+      toast("Email settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingEmail = false;
+    }
+  }
+  async function sendTestEmail() {
+    testingEmail = true;
+    try {
+      await api.post("/settings/email/test", { to: testEmailTo || "" });
+      toast("Test email sent", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      testingEmail = false;
+    }
+  }
+
   // Public status page (opt-in up/down board at /status)
   let statusPage = $state({ enabled: false, title: "Server Status" });
   let savingStatusPage = $state(false);
@@ -1107,6 +1153,7 @@
     loadAutoUpdate();
     loadOSUpdates();
     loadNetwork();
+    loadEmail();
     loadStatusPage();
     loadBeacon();
     loadDiscord();
@@ -1837,6 +1884,55 @@
     title="Register a passkey (fingerprint, face, security key or device PIN) so you can sign in without a password.">
     {pkBusy ? "Waiting for passkey…" : "Add a passkey"}
   </button>
+</div>
+
+<!-- Email (SMTP) — powers "forgot password" self-service -->
+<h2 class="text-xl font-semibold mb-2">Email (SMTP)</h2>
+<p class="text-muted mb-4 text-sm">
+  Outbound email for <b>password-reset links</b>. Point this at your own mail provider — a Gmail
+  app password, Fastmail, Postmark, Amazon SES, or your NAS relay. Yggdrasil never runs a mail
+  server for you. A user can only reset their own password if they have an email on their account.
+  Locked out with no email set up? Run <code class="text-xs bg-black/30 px-1 rounded">yggdrasil reset-password &lt;user&gt;</code> on the host.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div class="grid grid-cols-3 gap-3">
+    <div class="col-span-2">
+      <label class="label" for="smtp-host">SMTP host</label>
+      <input id="smtp-host" class="input" bind:value={email.host} placeholder="smtp.example.com" autocomplete="off" />
+    </div>
+    <div>
+      <label class="label" for="smtp-port">Port</label>
+      <input id="smtp-port" class="input" bind:value={email.port} placeholder="587" inputmode="numeric" />
+    </div>
+  </div>
+  <div>
+    <label class="label" for="smtp-from">From address</label>
+    <input id="smtp-from" class="input" type="email" bind:value={email.from} placeholder="yggdrasil@example.com" autocomplete="off" />
+  </div>
+  <div>
+    <label class="label" for="smtp-user">Username <span class="text-muted font-normal">(optional)</span></label>
+    <input id="smtp-user" class="input" bind:value={email.username} placeholder="often the same as the From address" autocomplete="off" />
+  </div>
+  <div>
+    <label class="label" for="smtp-pass">Password <span class="text-muted font-normal">(optional)</span></label>
+    <input id="smtp-pass" class="input" type="password" bind:value={emailPw} autocomplete="new-password"
+      placeholder={email.has_password ? "•••••••• — leave blank to keep current" : ""} />
+  </div>
+  <div class="pt-1">
+    <button class="btn-primary" onclick={saveEmail} disabled={savingEmail}>{savingEmail ? "Saving…" : "Save"}</button>
+  </div>
+  <div class="border-t border-border pt-3">
+    <label class="label" for="smtp-test">Send a test email</label>
+    <div class="flex gap-2">
+      <input id="smtp-test" class="input flex-1" type="email" bind:value={testEmailTo} placeholder="recipient (defaults to the From address)" />
+      <button class="btn-ghost shrink-0" onclick={sendTestEmail} disabled={testingEmail || !email.configured}>
+        {testingEmail ? "Sending…" : "Send test"}
+      </button>
+    </div>
+    {#if !email.configured}
+      <p class="text-xs text-muted mt-1">Save an SMTP host and From address first.</p>
+    {/if}
+  </div>
 </div>
 
 {/if}

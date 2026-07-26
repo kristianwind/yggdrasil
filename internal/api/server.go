@@ -167,6 +167,8 @@ func (s *Server) buildRouter() *chi.Mux {
 
 	// Public routes
 	r.Post("/api/auth/login", s.handleLogin)
+	r.Post("/api/auth/forgot", s.handleForgotPassword)
+	r.Post("/api/auth/reset", s.handleResetPassword)
 	r.Post("/api/auth/passkey/login/begin", s.handleWALoginBegin)
 	r.Post("/api/auth/passkey/login/finish", s.handleWALoginFinish)
 	r.Get("/api/version", s.handleVersion)
@@ -424,6 +426,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/settings/network", s.handleGetNetworkSettings)
 		r.Put("/api/settings/network", s.requireAdmin(s.handleSetNetworkSettings))
 		r.Put("/api/settings/panel-name", s.requireAdmin(s.handleSetPanelName))
+		r.Get("/api/settings/email", s.requireAdmin(s.handleGetEmailSettings))
+		r.Put("/api/settings/email", s.requireAdmin(s.handleSetEmailSettings))
+		r.Post("/api/settings/email/test", s.requireAdmin(s.handleTestEmail))
 		r.Get("/api/upnp/status", s.requireAdmin(s.handleUPnPStatus))
 		r.Get("/api/settings/unifi", s.requireAdmin(s.handleGetUnifiSettings))
 		r.Put("/api/settings/unifi", s.requireAdmin(s.handleSetUnifiSettings))

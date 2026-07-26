@@ -283,6 +283,16 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Single-use password-reset tokens. Only the SHA-256 hash is stored (the
+-- plaintext is emailed to the user and never persisted), mirroring api_tokens.
+-- A row is deleted on use, and expired rows are swept on each forgot request.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+	token_hash  TEXT PRIMARY KEY,
+	user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	expires_at  TEXT NOT NULL,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
 	id          TEXT PRIMARY KEY,
 	type        TEXT NOT NULL,
@@ -373,6 +383,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "users", "totp_secret", "TEXT") // encrypted; pending until enabled
 	addColumnIfMissing(db, "users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing(db, "users", "email", "TEXT NOT NULL DEFAULT ''") // optional; the address password-reset links are sent to
 	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''")        // BattleMetrics server id (optional)
 	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")      // open firewall ports on start (UPnP/UniFi)
 	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")           // DayZ Norn loot settings (re-applied after reinstall)

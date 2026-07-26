@@ -131,6 +131,18 @@ func HashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// GenerateResetToken returns a new opaque password-reset token (URL-safe, no
+// prefix so it drops cleanly into a link) and its SHA-256 hash for storage. Like
+// API tokens, only the hash is persisted; the plaintext is emailed once.
+func GenerateResetToken() (token, hash string, err error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+	token = base64.RawURLEncoding.EncodeToString(b)
+	return token, HashToken(token), nil
+}
+
 func EnsureAdmin(db *sql.DB, username, password string) error {
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM users WHERE role='admin'").Scan(&count); err != nil {

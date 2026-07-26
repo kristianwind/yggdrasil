@@ -9,6 +9,7 @@
   import CommandPalette from "./components/CommandPalette.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import Login from "./views/Login.svelte";
+  import ResetPassword from "./views/ResetPassword.svelte";
   import Dashboard from "./views/Dashboard.svelte";
   import Servers from "./views/Servers.svelte";
   import ServerDetail from "./views/ServerDetail.svelte";
@@ -67,9 +68,10 @@
     if (ready && $user) refreshRuneUpdates();
   });
 
-  // Redirect to login when unauthenticated (except on the login route).
+  // Redirect to login when unauthenticated (except on the login/reset routes —
+  // reset is reachable from an emailed link without an active session).
   $effect(() => {
-    if (ready && !$user && $route.path !== "/login") navigate("/login");
+    if (ready && !$user && $route.path !== "/login" && $route.path !== "/reset") navigate("/login");
     if (ready && $user && $route.path === "/login") navigate("/");
     // On the transition to logged-in, land on the dashboard with the menu closed
     // and briefly ignore the ☰ button: on an iOS home-screen PWA the tap that
@@ -107,7 +109,11 @@
 {#if !ready}
   <div class="h-screen grid place-items-center text-muted">Loading…</div>
 {:else if !$user}
-  <Login />
+  {#if $route.path === "/reset"}
+    <ResetPassword />
+  {:else}
+    <Login />
+  {/if}
 {:else}
   <CommandPalette />
   <!-- Desktop: lock to the viewport so only <main> scrolls (no stray page scroll).

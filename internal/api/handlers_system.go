@@ -182,6 +182,9 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		"repo":             "https://github.com/kristianwind/yggdrasil",
 		"latest":           latest,
 		"update_available": updAvail,
+		// Friendly per-panel display name (blank unless set). Lets an operator
+		// running several panels tell them apart in the sidebar/tab.
+		"panel_name": s.getSetting(r.Context(), "panel_name"),
 		// The panel can update itself only for a released (vX.Y.Z) build with the
 		// decoupled updater installed; otherwise the UI points at manual steps.
 		"can_self_update": updAvail && strings.HasPrefix(v, "v") && s.selfUpdateAvailable(),

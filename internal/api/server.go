@@ -420,6 +420,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Network settings (public hostname / connect address) + UPnP
 		r.Get("/api/settings/network", s.handleGetNetworkSettings)
 		r.Put("/api/settings/network", s.requireAdmin(s.handleSetNetworkSettings))
+		r.Put("/api/settings/panel-name", s.requireAdmin(s.handleSetPanelName))
 		r.Get("/api/upnp/status", s.requireAdmin(s.handleUPnPStatus))
 		r.Get("/api/settings/unifi", s.requireAdmin(s.handleGetUnifiSettings))
 		r.Put("/api/settings/unifi", s.requireAdmin(s.handleSetUnifiSettings))

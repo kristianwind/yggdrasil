@@ -74,11 +74,29 @@
   let build = $state(null);
   let updating = $state(false);
   let checking = $state(false);
+  // Friendly panel display name (shown in the sidebar + browser tab).
+  let panelName = $state("");
+  let savingPanelName = $state(false);
   async function loadBuild() {
     try {
       build = await api.get("/version");
+      panelName = build?.panel_name || "";
     } catch {
       build = null;
+    }
+  }
+  async function savePanelName() {
+    savingPanelName = true;
+    try {
+      const r = await api.put("/settings/panel-name", { name: panelName.trim() });
+      panelName = r.panel_name || "";
+      if (build) build.panel_name = panelName;
+      document.title = panelName || "Yggdrasil Panel";
+      toast("Panel name saved — reload to update the sidebar", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingPanelName = false;
     }
   }
   async function checkUpdates() {
@@ -1176,6 +1194,18 @@
 </div>
 
 {#if tab === "system"}
+<!-- Panel name -->
+<h2 class="text-xl font-semibold mb-2">Panel name</h2>
+<p class="text-muted mb-3 text-sm">
+  A friendly name for this panel, shown in the sidebar and the browser tab — handy when you run
+  several panels. Leave blank for the default "Yggdrasil Panel".
+</p>
+<div class="card p-4 mb-10 max-w-xl flex gap-2">
+  <input class="input flex-1" bind:value={panelName} maxlength="60" placeholder="Yggdrasil Panel"
+    onkeydown={(e) => e.key === "Enter" && savePanelName()} />
+  <button class="btn-primary shrink-0" onclick={savePanelName} disabled={savingPanelName}>Save</button>
+</div>
+
 <!-- Panel updates -->
 <h2 class="text-xl font-semibold mb-2">Panel updates</h2>
 <div class="card p-4 mb-10">

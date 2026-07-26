@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
-  import { promptDialog } from "../lib/dialog.js";
+  import { promptDialog, confirmDialog } from "../lib/dialog.js";
 
   // configFiles is the rune's config_files list: the handful of paths whose
   // author says "this is what you actually edit". A game's real settings live in
@@ -223,6 +223,27 @@
     }
   }
 
+  async function del(entry) {
+    const kind = entry.is_dir ? "folder" : "file";
+    const ok = await confirmDialog({
+      title: `Delete ${kind}`,
+      body: entry.is_dir
+        ? `Delete the folder “${entry.name}” and everything inside it? This can't be undone.`
+        : `Delete “${entry.name}”? This can't be undone.`,
+      danger: true,
+      confirmText: "Delete",
+    });
+    if (!ok) return;
+    try {
+      await api.del(`/servers/${serverId}/files?path=${encodeURIComponent(entry.path)}`);
+      toast(`Deleted ${entry.name}`, "success");
+      if (editing && editing.path === entry.path) editing = null; // close if we deleted the open file
+      list();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   async function newFile() {
     const name = await promptDialog({ title: "New file", label: "File name", placeholder: "notes.txt" });
     if (!name || !name.trim()) return;
@@ -406,12 +427,15 @@
       <div class="p-4 text-muted text-sm">Empty directory — drag &amp; drop files or a folder here, or use “Upload files”.</div>
     {/if}
     {#each entries as entry}
-      <button class="w-full text-left px-4 py-2 hover:bg-panel2/50 flex items-center justify-between" onclick={() => open(entry)}>
-        <span class="flex items-center gap-2">
-          <span>{entry.is_dir ? "📁" : "📄"}</span>{entry.name}
-        </span>
-        {#if !entry.is_dir}<span class="text-xs text-muted">{entry.size} B</span>{/if}
-      </button>
+      <div class="flex items-center hover:bg-panel2/50">
+        <button class="flex-1 min-w-0 text-left px-4 py-2 flex items-center justify-between gap-2" onclick={() => open(entry)}>
+          <span class="flex items-center gap-2 min-w-0">
+            <span>{entry.is_dir ? "📁" : "📄"}</span><span class="truncate">{entry.name}</span>
+          </span>
+          {#if !entry.is_dir}<span class="text-xs text-muted shrink-0">{entry.size} B</span>{/if}
+        </button>
+        <button class="px-3 py-2 shrink-0 text-muted hover:text-danger" title={`Delete ${entry.name}`} aria-label={`Delete ${entry.name}`} onclick={() => del(entry)}>🗑</button>
+      </div>
     {/each}
   </div>
 {/if}

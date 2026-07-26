@@ -243,8 +243,24 @@ func (s *Server) startAutostartServers() {
 
 	for _, x := range list {
 		if x.cid != "" {
-			if running, _, err := s.docker.State(ctx, x.cid); err == nil && running {
+			running, _, err := s.docker.State(ctx, x.cid)
+			if err == nil && running {
 				continue // still up (panel restarted but the container kept running)
+			}
+			if err == nil {
+				// The container exists but isn't running yet — the common case on a
+				// cold boot, where Docker's own restart policy (autostart=1 sets one)
+				// hasn't brought it back at this exact instant. Start it in place.
+				//
+				// Recreating here races that restart policy for the same name and
+				// fails with "name ... is already in use" (the old container isn't
+				// gone yet). Re-check after starting so a concurrent restart-policy
+				// start still counts as success; only fall through to a full recreate
+				// if the existing container genuinely can't be brought up.
+				s.docker.Start(ctx, x.cid) //nolint:errcheck // re-checked below
+				if r2, _, e2 := s.docker.State(ctx, x.cid); e2 == nil && r2 {
+					continue
+				}
 			}
 		}
 		if err := s.recreateAndStart(ctx, x.id); err != nil {

@@ -1155,7 +1155,37 @@
   function newTarget() {
     editingId = null;
     form = blank();
+    browseOpen = false;
     showCreate = true;
+  }
+
+  // Directory picker for a "local" target path — a read-only host dir listing so
+  // you don't have to remember/type the exact mountpoint.
+  let browseOpen = $state(false);
+  let browsePath = $state("/");
+  let browseParent = $state("/");
+  let browseDirs = $state([]);
+  let browseLoading = $state(false);
+  async function browseLoad(p) {
+    browseLoading = true;
+    try {
+      const r = await api.get(`/backup/browse?path=${encodeURIComponent(p)}`);
+      browsePath = r.path;
+      browseParent = r.parent;
+      browseDirs = r.dirs || [];
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      browseLoading = false;
+    }
+  }
+  function openBrowse() {
+    browseOpen = true;
+    browseLoad(form.path && form.path.startsWith("/") ? form.path : "/");
+  }
+  function pickBrowse() {
+    form.path = browsePath;
+    browseOpen = false;
   }
 
   async function test(t) {
@@ -2520,7 +2550,35 @@
 
       <div>
         <label class="label" for="t-path">{form.type === "local" ? "Directory path" : "Remote path"}</label>
-        <input id="t-path" class="input" bind:value={form.path} placeholder={form.type === "local" ? "/mnt/backups" : "backups"} />
+        <div class="flex gap-2">
+          <input id="t-path" class="input flex-1" bind:value={form.path} placeholder={form.type === "local" ? "/mnt/backups" : "backups"} />
+          {#if form.type === "local"}
+            <button class="btn-ghost shrink-0" type="button" onclick={() => (browseOpen ? (browseOpen = false) : openBrowse())}>
+              {browseOpen ? "Close" : "Browse…"}
+            </button>
+          {/if}
+        </div>
+        {#if form.type === "local" && browseOpen}
+          <div class="card mt-2 p-2 text-sm">
+            <div class="flex items-center gap-2 mb-2">
+              <button class="btn-ghost px-2 py-0.5 shrink-0" type="button" onclick={() => browseLoad(browseParent)} title="Up one level" disabled={browsePath === "/"}>↑</button>
+              <span class="font-mono text-xs text-muted truncate flex-1" title={browsePath}>{browsePath}</span>
+              <button class="btn-primary px-2 py-0.5 shrink-0" type="button" onclick={pickBrowse}>Use this folder</button>
+            </div>
+            <div class="max-h-48 overflow-auto rounded border border-border divide-y divide-border">
+              {#if browseLoading}
+                <div class="p-2 text-muted">Loading…</div>
+              {:else if browseDirs.length === 0}
+                <div class="p-2 text-muted">No subfolders here.</div>
+              {:else}
+                {#each browseDirs as d}
+                  <button class="block w-full text-left px-2 py-1 hover:bg-panel2" type="button"
+                    onclick={() => browseLoad((browsePath === "/" ? "" : browsePath) + "/" + d)}>📁 {d}</button>
+                {/each}
+              {/if}
+            </div>
+          </div>
+        {/if}
       </div>
 
       <div class="grid grid-cols-2 gap-3">

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -140,6 +141,45 @@ func (s *Server) handleDeleteBackupTarget(w http.ResponseWriter, r *http.Request
 	}
 	s.auditLog(r, "backup_target.delete", "target:"+id, nil)
 	jsonOK(w, map[string]string{"status": "deleted"})
+}
+
+// handleBrowseDirs lists the subdirectories of a host path so the backup-target
+// editor can offer a directory picker for "local" (already-mounted) destinations
+// instead of a free-text field. Admin-only and strictly read-only: it returns
+// directory NAMES only, never file contents, and no size/permission detail. An
+// admin already has full host control via the panel, so this exposes nothing new
+// — it's a convenience over typing a mount path by hand.
+func (s *Server) handleBrowseDirs(w http.ResponseWriter, r *http.Request) {
+	p := strings.TrimSpace(r.URL.Query().Get("path"))
+	if p == "" {
+		p = "/"
+	}
+	p = filepath.Clean(p)
+	if !filepath.IsAbs(p) {
+		jsonError(w, "path must be absolute", http.StatusBadRequest)
+		return
+	}
+	entries, err := os.ReadDir(p) // ReadDir returns entries already sorted by name
+	if err != nil {
+		jsonError(w, "cannot read "+p+": "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	dirs := []string{}
+	for _, e := range entries {
+		// Follow the entry's own type; also resolve symlinks that point at a dir
+		// (common for mount layouts) so those are browsable too.
+		if e.IsDir() {
+			dirs = append(dirs, e.Name())
+			continue
+		}
+		if e.Type()&os.ModeSymlink != 0 {
+			if fi, serr := os.Stat(filepath.Join(p, e.Name())); serr == nil && fi.IsDir() {
+				dirs = append(dirs, e.Name())
+			}
+		}
+	}
+	parent := filepath.Dir(p)
+	jsonOK(w, map[string]any{"path": p, "parent": parent, "dirs": dirs})
 }
 
 func (s *Server) handleTestBackupTarget(w http.ResponseWriter, r *http.Request) {

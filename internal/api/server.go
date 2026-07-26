@@ -298,6 +298,7 @@ func (s *Server) buildRouter() *chi.Mux {
 
 		// Domains overview (NPM / Cloudflare subdomains; RBAC-filtered like the server list)
 		r.Get("/api/domains", s.handleListDomains)
+		r.Get("/api/domains/cloudflare", s.requireAdmin(s.handleCloudflareIngress))
 		r.Get("/api/domains/{id}/check", s.handleCheckDomain)
 
 		// Files

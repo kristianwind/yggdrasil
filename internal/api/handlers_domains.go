@@ -256,3 +256,27 @@ func probeDomain(domain string) map[string]any {
 	}
 	return map[string]any{"reachable": false, "status": 0, "url": "https://" + domain + "/"}
 }
+
+// handleCloudflareIngress lists every hostname mapped on the configured
+// Cloudflare tunnel — including ones added directly in the Cloudflare dashboard,
+// not just what the panel provisioned. It answers "the Domains page is empty even
+// though CF is routing things", by surfacing the tunnel's real ingress. Admin-only
+// (the rules expose internal service targets). Returns {configured:false} when the
+// CF integration isn't set up, so the UI can stay quiet.
+func (s *Server) handleCloudflareIngress(w http.ResponseWriter, r *http.Request) {
+	c, err := s.cfClient(r.Context())
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	if c == nil {
+		jsonOK(w, map[string]any{"configured": false, "hostnames": []any{}})
+		return
+	}
+	rules, err := c.ListIngress()
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	jsonOK(w, map[string]any{"configured": true, "hostnames": rules})
+}

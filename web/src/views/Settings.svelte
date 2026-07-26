@@ -9,6 +9,7 @@
 
   let targets = $state([]);
   let showCreate = $state(false);
+  let editingId = $state(null); // null = creating a new target; else the target id being edited
   let form = $state(blank());
 
   // Settings are grouped into tabs so the page doesn't grow into one long scroll.
@@ -1100,17 +1101,43 @@
     loadAi();
   });
 
-  async function create() {
+  async function saveTarget() {
     if (!form.name) return toast("Name required", "warn");
     try {
-      await api.post("/backup/targets", { ...form, port: Number(form.port) || 0 });
-      toast("Target created", "success");
+      const body = { ...form, port: Number(form.port) || 0 };
+      if (editingId) {
+        await api.put(`/backup/targets/${editingId}`, body);
+        toast("Target saved", "success");
+      } else {
+        await api.post("/backup/targets", body);
+        toast("Target created", "success");
+      }
       showCreate = false;
+      editingId = null;
       form = blank();
       await load();
     } catch (e) {
       toast(e.message, "error");
     }
+  }
+
+  function startEdit(t) {
+    editingId = t.id;
+    // Prefill everything the list exposes; the password is never sent back, so it
+    // stays blank and "leave blank to keep current" applies on save.
+    form = {
+      name: t.name, type: t.type, path: t.path || "", host: t.host || "",
+      port: t.port || 0, username: t.username || "", password: "",
+      share: t.share || "", keep_n: t.keep_n || 0, keep_days: t.keep_days || 0,
+      has_password: !!t.has_password,
+    };
+    showCreate = true;
+  }
+
+  function newTarget() {
+    editingId = null;
+    form = blank();
+    showCreate = true;
   }
 
   async function test(t) {
@@ -2139,8 +2166,8 @@
 </div>
 
 <div class="flex items-center justify-between mb-2">
-  <h2 class="text-xl font-semibold">Backup targets</h2>
-  <button class="btn-primary" onclick={() => (showCreate = true)}>+ New target</button>
+  <h2 class="text-xl font-semibold">Storage &amp; Backup</h2>
+  <button class="btn-primary" onclick={newTarget}>+ New target</button>
 </div>
 <p class="text-muted mb-4 text-sm">
   Where backups are stored. <b>Local</b> also covers an NFS or CIFS share already mounted on the
@@ -2165,6 +2192,7 @@
           {/if}
         </div>
       </div>
+      <button class="btn-ghost" onclick={() => startEdit(t)}>Edit</button>
       <button class="btn-ghost" onclick={() => test(t)}>Test</button>
       <button class="btn-danger" onclick={() => del(t)}>Delete</button>
     </div>
@@ -2416,7 +2444,7 @@
 {#if showCreate}
   <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
     <div class="card w-full max-w-lg max-h-[90vh] overflow-auto p-5 space-y-3">
-      <h2 class="text-lg font-semibold">New backup target</h2>
+      <h2 class="text-lg font-semibold">{editingId ? "Edit" : "New"} backup target</h2>
       <div>
         <label class="label" for="t-name">Name</label>
         <input id="t-name" class="input" bind:value={form.name} />
@@ -2448,7 +2476,7 @@
           </div>
           <div>
             <label class="label" for="t-pass">Password</label>
-            <input id="t-pass" class="input" type="password" bind:value={form.password} />
+            <input id="t-pass" class="input" type="password" bind:value={form.password} autocomplete="off" placeholder={editingId && form.has_password ? "leave blank to keep current" : ""} />
           </div>
         </div>
       {/if}
@@ -2477,8 +2505,8 @@
       </div>
 
       <div class="flex gap-2 pt-2">
-        <button class="btn-ghost flex-1" onclick={() => (showCreate = false)}>Cancel</button>
-        <button class="btn-primary flex-1" onclick={create}>Create target</button>
+        <button class="btn-ghost flex-1" onclick={() => { showCreate = false; editingId = null; }}>Cancel</button>
+        <button class="btn-primary flex-1" onclick={saveTarget}>{editingId ? "Save changes" : "Create target"}</button>
       </div>
     </div>
   </div>

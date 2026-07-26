@@ -315,6 +315,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/backup-policy", s.requireAdmin(s.handleSetBackupPolicy))
 		r.Get("/api/backup/targets", s.requireAdmin(s.handleListBackupTargets))
 		r.Post("/api/backup/targets", s.requireAdmin(s.handleCreateBackupTarget))
+		r.Put("/api/backup/targets/{id}", s.requireAdmin(s.handleUpdateBackupTarget))
 		r.Delete("/api/backup/targets/{id}", s.requireAdmin(s.handleDeleteBackupTarget))
 		r.Post("/api/backup/targets/{id}/test", s.requireAdmin(s.handleTestBackupTarget))
 

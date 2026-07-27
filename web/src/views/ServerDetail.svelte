@@ -2062,13 +2062,13 @@
       <div class="mt-3">
         <button class="btn-ghost text-xs" disabled={explainBusy} onclick={() => explainError(context, text)}
           title="Send the log above to your configured AI assistant for a plain-language cause + fix (advisory).">
-          {explainBusy ? "Analyzing…" : "🤖 Explain this"}
+          {explainBusy ? "Analyzing…" : "🧠 Explain this"}
         </button>
       </div>
       {#if explain}
         <div class="card border-accent2/40 bg-accent2/5 p-3 text-sm space-y-1 mt-2">
           <div class="text-xs uppercase tracking-wide text-accent flex items-center gap-2">
-            <span>🤖 Kvasir explains</span>
+            <span>🧠 Kvasir explains</span>
             <button class="text-muted hover:text-text ml-auto" title="Dismiss" onclick={() => (explain = "")}>✕</button>
           </div>
           <div class="whitespace-pre-wrap break-words">{explain}</div>
@@ -2217,7 +2217,7 @@
         {#if server.ai_enabled}
           <button class="btn-primary text-xs ml-auto" disabled={digestBusy}
             title="Ask the configured AI assistant for a plain-language summary of the recent activity (advisory — sends the log events to the LLM your admin set up)."
-            onclick={loadDigest}>{digestBusy ? "Summarizing…" : "🤖 Summarize"}</button>
+            onclick={loadDigest}>{digestBusy ? "Summarizing…" : "🧠 Summarize"}</button>
           <button class="btn-ghost text-xs {server.ai_enabled ? '' : 'ml-auto'}" disabled={activityBusy} onclick={loadActivity}
             title="Re-read the admin log and refresh the feed.">Refresh</button>
         {:else}
@@ -2228,7 +2228,7 @@
       {#if digest}
         <div class="card border-accent2/40 bg-accent2/5 p-3 text-sm space-y-1">
           <div class="text-xs uppercase tracking-wide text-accent flex items-center gap-2">
-            <span>🤖 Kvasir digest</span>
+            <span>🧠 Kvasir digest</span>
             <button class="text-muted hover:text-text ml-auto" title="Dismiss" onclick={() => (digest = "")}>✕</button>
           </div>
           <div class="whitespace-pre-wrap break-words">{digest}</div>
@@ -2375,7 +2375,7 @@
         {#if server.ai_enabled && can("server.control")}
           <div class="card p-3 space-y-2">
             <div class="flex items-center gap-2">
-              <span class="text-sm font-medium">🤖 Config review</span>
+              <span class="text-sm font-medium">🧠 Config review</span>
               <button class="btn-ghost text-xs ml-auto" disabled={configAdviceBusy} onclick={reviewConfig}
                 title="Ask your configured AI assistant to review these settings for footguns (weak passwords, low memory, risky options). Advisory.">
                 {configAdviceBusy ? "Reviewing…" : "Review config"}

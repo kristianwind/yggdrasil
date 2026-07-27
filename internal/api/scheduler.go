@@ -315,6 +315,15 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		return "ok", "message sent: " + rendered
 
 	case scheduler.ActionUpdate:
+		// Don't update a server the operator has stopped: runInstall reinstalls AND
+		// starts it, so a nightly "update all" would silently bring stopped servers
+		// back online (which is exactly the surprise this guards against). Update
+		// only touches running servers; a stopped one stays stopped.
+		var st string
+		s.db.QueryRow("SELECT status FROM servers WHERE id=?", serverID).Scan(&st)
+		if st == "stopped" {
+			return "skipped", "server is stopped"
+		}
 		if argTrue(args["skip_if_players"]) && s.playersOnline(serverID) > 0 {
 			return "skipped", "players online"
 		}

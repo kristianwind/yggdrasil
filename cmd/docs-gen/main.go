@@ -263,7 +263,7 @@ func sections(doc ast.Node, src []byte) []sec {
 		// renders the title), so it never reaches here and is not a boundary.
 		if h, ok := n.(*ast.Heading); ok && (h.Level == 2 || h.Level == 3) {
 			flush()
-			title := string(h.Text(src))
+			title := html.UnescapeString(string(h.Text(src)))
 			parent := ""
 			if h.Level == 3 {
 				parent = h2
@@ -320,7 +320,11 @@ func rewrite(doc ast.Node, src []byte, p Page, b *built) error {
 		}
 		switch n := n.(type) {
 		case *ast.Heading:
-			txt := string(n.Text(src))
+			// Text(src) returns the Typographer-substituted text (straight quotes →
+			// entities like &rsquo;). Decode it back to real runes here so the single
+			// html.EscapeString applied downstream (TOC, <title>, <h1>) escapes once
+			// rather than double-encoding &rsquo; into a literal "&rsquo;".
+			txt := html.UnescapeString(string(n.Text(src)))
 			switch {
 			case n.Level == 1 && b.title == "":
 				b.title = txt

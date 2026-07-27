@@ -364,6 +364,23 @@ CREATE TABLE IF NOT EXISTS player_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_player_sessions ON player_sessions(server_id, joined_at);
 
+-- Notable app log events (WordPress xmlrpc/login attempts, nginx 5xx, failed
+-- auth…), rolled up per subject (e.g. client IP) per hour so a brute-force burst
+-- is one row/IP/hour rather than thousands of raw lines. Declared by a rune's
+-- events: block; powers "is my site under attack / any 5xx overnight?" answers
+-- long after the live log scrolls away. Pruned to 30 days.
+CREATE TABLE IF NOT EXISTS app_events (
+	server_id  TEXT NOT NULL,
+	key        TEXT NOT NULL,
+	label      TEXT NOT NULL DEFAULT '',
+	subject    TEXT NOT NULL DEFAULT '',   -- captured group 1 (e.g. IP), '' if none
+	bucket     TEXT NOT NULL,              -- hour bucket 'YYYY-MM-DD HH:00:00'
+	count      INTEGER NOT NULL DEFAULT 0,
+	last_ts    TEXT NOT NULL,
+	PRIMARY KEY (server_id, key, subject, bucket)
+);
+CREATE INDEX IF NOT EXISTS idx_app_events ON app_events(server_id, bucket);
+
 -- Generic key/value app settings (e.g. public hostname for connect addresses).
 CREATE TABLE IF NOT EXISTS app_settings (
 	key   TEXT PRIMARY KEY,

@@ -97,8 +97,8 @@ func TestBuildChatMessagesClamps(t *testing.T) {
 	if strings.Contains(lvl0, "```lookup") {
 		t.Fatal("level 0 must not advertise any lookups")
 	}
-	if !strings.Contains(lvl1, "```lookup") || !strings.Contains(lvl1, "roster") || strings.Contains(lvl1, "search_logs") {
-		t.Fatal("level 1 should advertise panel lookups incl. roster but not search_logs")
+	if !strings.Contains(lvl1, "```lookup") || !strings.Contains(lvl1, "roster") || !strings.Contains(lvl1, "events") || strings.Contains(lvl1, "search_logs") {
+		t.Fatal("level 1 should advertise panel lookups incl. roster + events but not search_logs")
 	}
 	if !strings.Contains(lvl2, "search_logs") {
 		t.Fatal("level 2 should advertise search_logs")

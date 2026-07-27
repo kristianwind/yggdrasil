@@ -66,6 +66,7 @@ var lookupMinLevel = map[string]int{
 	"metrics_window":  1,
 	"list_backups":    1,
 	"roster":          1,
+	"events":          1,
 	"search_logs":     2,
 }
 
@@ -78,7 +79,7 @@ var lookupMinLevel = map[string]int{
 func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookupReq, level int) string {
 	min, known := lookupMinLevel[req.Tool]
 	if !known {
-		return fmt.Sprintf("Unknown lookup %q. Available: player_history, player_sessions, metrics_window, list_backups, roster, search_logs.", req.Tool)
+		return fmt.Sprintf("Unknown lookup %q. Available: player_history, player_sessions, metrics_window, list_backups, events, roster, search_logs.", req.Tool)
 	}
 	if level < min {
 		return fmt.Sprintf("The %q lookup isn't enabled on this panel (the admin controls Kvasir's data access in Settings).", req.Tool)
@@ -103,6 +104,8 @@ func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookup
 		return s.lookupMetricsWindow(ctx, srv, req.Hours)
 	case "list_backups":
 		return s.lookupBackups(ctx, srv)
+	case "events":
+		return s.lookupAppEvents(ctx, srv, req.Hours)
 	case "roster":
 		return s.lookupRoster(ctx, srv)
 	case "search_logs":
@@ -256,6 +259,72 @@ func (s *Server) lookupPlayerSessions(ctx context.Context, srv *serverRow, hours
 		return fmt.Sprintf("%s: no recorded player sessions in the last %dh. (Session history is kept going forward from when the panel started tracking it — older activity, or a rune without join/leave patterns, won't appear here.)", srv.Name, hours)
 	}
 	return fmt.Sprintf("%s — named players seen in the last %dh (most recent first), times in UTC:\n%s", srv.Name, hours, strings.Join(lines, "\n"))
+}
+
+// lookupAppEvents summarises recorded security/health events (WordPress
+// xmlrpc/login attempts, 5xx, …) over a window — totals per event type plus the
+// top source IPs — so Kvasir can answer "is this site being attacked, and from
+// where?". Aggregated, so it stays cheap even under a brute-force flood.
+func (s *Server) lookupAppEvents(ctx context.Context, srv *serverRow, hours int) string {
+	hours = clampHours(hours)
+	win := fmt.Sprintf("-%d hours", hours)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT key, label, subject, SUM(count) AS c, MAX(last_ts)
+		FROM app_events WHERE server_id=? AND bucket >= datetime('now', ?)
+		GROUP BY key, subject ORDER BY key, c DESC`, srv.ID, win)
+	if err != nil {
+		return "Couldn't read events."
+	}
+	defer rows.Close()
+
+	type agg struct {
+		label   string
+		total   int
+		sources int
+		last    string
+		top     []string // "IP (N×)"
+	}
+	byKey := map[string]*agg{}
+	var order []string
+	for rows.Next() {
+		var key, label, subject, last string
+		var c int
+		if rows.Scan(&key, &label, &subject, &c, &last) != nil {
+			continue
+		}
+		a := byKey[key]
+		if a == nil {
+			a = &agg{label: label}
+			byKey[key] = a
+			order = append(order, key)
+		}
+		a.total += c
+		if subject != "" {
+			a.sources++
+			if len(a.top) < 3 {
+				a.top = append(a.top, fmt.Sprintf("%s (%d×)", subject, c))
+			}
+		}
+		if last > a.last {
+			a.last = last
+		}
+	}
+	if len(order) == 0 {
+		return fmt.Sprintf("%s: no notable events recorded in the last %dh. (Events are tracked going forward from when the panel started; a rune with no events: block records none.)", srv.Name, hours)
+	}
+	var lines []string
+	for _, key := range order {
+		a := byKey[key]
+		line := fmt.Sprintf("%s: %d in %dh", a.label, a.total, hours)
+		if a.sources > 0 {
+			line += fmt.Sprintf(" from %d source(s); top: %s", a.sources, strings.Join(a.top, ", "))
+		}
+		if a.last != "" {
+			line += fmt.Sprintf("; last %s UTC", a.last)
+		}
+		lines = append(lines, line)
+	}
+	return fmt.Sprintf("%s — recorded events (last %dh):\n%s", srv.Name, hours, strings.Join(lines, "\n"))
 }
 
 func (s *Server) lookupMetricsWindow(ctx context.Context, srv *serverRow, hours int) string {

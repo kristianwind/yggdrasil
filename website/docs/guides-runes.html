@@ -59,6 +59,26 @@ Which is also why a rune with no <code>query</code> block gets no watchdog toggl
 field on a server. In the panel it&rsquo;s a rune.</p>
 <p>Runes are versioned by an integer <code>version</code> field, shown in the list. It&rsquo;s metadata for
 you, not a dependency system.</p>
+<h2 id="app-stacks-multi-container-runes">App stacks (multi-container runes)</h2>
+<p>Most runes are one container. But an app often needs a database or a couple of helper
+services alongside it — WordPress wants MariaDB, Karakeep wants Meilisearch and a headless
+Chrome, Immich and Paperless bring their own. A rune can declare those as <strong>services</strong>, and
+the panel runs the whole set as one &ldquo;server&rdquo;:</p>
+<ul>
+<li>Each service (sidecar) runs on a <strong>private per-server network</strong>, using its name as a DNS
+alias. The main app reaches its database by name — e.g. <code>DB_HOST: db</code> when a service is
+called <code>db</code> — so there&rsquo;s no separate database rune to set up and wire by hand.</li>
+<li>Each sidecar keeps its own image&rsquo;s entrypoint and persists to a subdirectory of the
+server&rsquo;s data dir, so <strong>one backup of the server captures the database and search index
+too</strong>.</li>
+<li>Sidecars are internal by default (reached only by the app). A sidecar with its own web UI
+can publish its own port — that&rsquo;s how a stack like TeslaMate exposes both the app and its
+Grafana.</li>
+</ul>
+<p>To you it&rsquo;s still one server in the panel — one row, one set of controls, one backup. Pick
+the rune, fill in a password or two, and the stack comes up wired together. The full
+<code>services:</code> schema (fields, ports, env templating) is in the
+<a href="reference-rune-schema.html">rune reference</a>.</p>
 <h2 id="keeping-runes-up-to-date">Keeping runes up to date</h2>
 <p>A rune declares a <code>version</code>. It&rsquo;s the rune author&rsquo;s number, bumped when the file changes — and for
 a rune you installed from the catalog it&rsquo;s the only signal that your copy has drifted from its
@@ -232,7 +252,7 @@ the container from the rune as it is right now. Changes to the install script ne
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-a-rune-is">What a rune is</a><a class="t2" href="#keeping-runes-up-to-date">Keeping runes up to date</a><a class="t2" href="#built-in-runes">Built-in runes</a><a class="t2" href="#the-community-catalog">The community catalog</a><a class="t2" href="#adding-a-rune">Adding a rune</a><a class="t3" href="#browse-github">Browse GitHub</a><a class="t3" href="#upload-a-yaml">Upload a YAML</a><a class="t3" href="#import-a-pterodactyl-egg">Import a Pterodactyl egg</a><a class="t3" href="#import-xml">Import XML</a><a class="t2" href="#rune-management-is-admin-only">Rune management is admin-only</a><a class="t3" href="#the-built-in-overwrite-guard">The built-in overwrite guard</a><a class="t2" href="#deleting-runes">Deleting runes</a><a class="t2" href="#what-the-seeder-does-on-boot">What the seeder does on boot</a><a class="t2" href="#editing-a-runes-yaml-does-not-change-the-panels-copy">Editing a rune&amp;rsquo;s YAML does not change the panel&amp;rsquo;s copy</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-a-rune-is">What a rune is</a><a class="t2" href="#app-stacks-multi-container-runes">App stacks (multi-container runes)</a><a class="t2" href="#keeping-runes-up-to-date">Keeping runes up to date</a><a class="t2" href="#built-in-runes">Built-in runes</a><a class="t2" href="#the-community-catalog">The community catalog</a><a class="t2" href="#adding-a-rune">Adding a rune</a><a class="t3" href="#browse-github">Browse GitHub</a><a class="t3" href="#upload-a-yaml">Upload a YAML</a><a class="t3" href="#import-a-pterodactyl-egg">Import a Pterodactyl egg</a><a class="t3" href="#import-xml">Import XML</a><a class="t2" href="#rune-management-is-admin-only">Rune management is admin-only</a><a class="t3" href="#the-built-in-overwrite-guard">The built-in overwrite guard</a><a class="t2" href="#deleting-runes">Deleting runes</a><a class="t2" href="#what-the-seeder-does-on-boot">What the seeder does on boot</a><a class="t2" href="#editing-a-runes-yaml-does-not-change-the-panels-copy">Editing a rune’s YAML does not change the panel’s copy</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

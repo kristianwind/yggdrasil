@@ -27,6 +27,28 @@ field on a server. In the panel it's a rune.
 Runes are versioned by an integer `version` field, shown in the list. It's metadata for
 you, not a dependency system.
 
+## App stacks (multi-container runes)
+
+Most runes are one container. But an app often needs a database or a couple of helper
+services alongside it — WordPress wants MariaDB, Karakeep wants Meilisearch and a headless
+Chrome, Immich and Paperless bring their own. A rune can declare those as **services**, and
+the panel runs the whole set as one "server":
+
+- Each service (sidecar) runs on a **private per-server network**, using its name as a DNS
+  alias. The main app reaches its database by name — e.g. `DB_HOST: db` when a service is
+  called `db` — so there's no separate database rune to set up and wire by hand.
+- Each sidecar keeps its own image's entrypoint and persists to a subdirectory of the
+  server's data dir, so **one backup of the server captures the database and search index
+  too**.
+- Sidecars are internal by default (reached only by the app). A sidecar with its own web UI
+  can publish its own port — that's how a stack like TeslaMate exposes both the app and its
+  Grafana.
+
+To you it's still one server in the panel — one row, one set of controls, one backup. Pick
+the rune, fill in a password or two, and the stack comes up wired together. The full
+`services:` schema (fields, ports, env templating) is in the
+[rune reference](../reference/rune-schema.md).
+
 ## Keeping runes up to date
 
 A rune declares a `version`. It's the rune author's number, bumped when the file changes — and for

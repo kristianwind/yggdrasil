@@ -226,7 +226,7 @@ In **Proxy Hosts → Add/Edit**:
 |-------|-------|
 | Domain Names | `yggdrasil.example.com` |
 | Scheme | **`http`** (Yggdrasil terminates no TLS itself) |
-| Forward Hostname / IP | the host running Yggdrasil, e.g. `192.168.1.158` |
+| Forward Hostname / IP | the host running Yggdrasil, e.g. `192.168.1.50` |
 | Forward Port | `8080` |
 | **Websockets Support** | ✅ **ON** ← required for console / logs / install |
 | Block Common Exploits | ON (fine) |
@@ -238,7 +238,7 @@ console drop after a while, paste this into the host's **Advanced** tab:
 
 ```nginx
 location / {
-    proxy_pass       http://192.168.1.158:8080;
+    proxy_pass       http://192.168.1.50:8080;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -254,7 +254,7 @@ location / {
 
 - **Page won't load at all through the proxy** → the proxy can't reach Yggdrasil.
   Make sure `server.host` in the config is `0.0.0.0` (not `127.0.0.1`), and from the
-  proxy host run `curl http://192.168.1.158:8080` to confirm it answers.
+  proxy host run `curl http://192.168.1.50:8080` to confirm it answers.
 - **Page loads, login works, but console/logs are blank** → Websockets Support is
   OFF. Turn it ON (or add the Advanced snippet above).
 - **Console drops after ~1 minute** → proxy read timeout; add `proxy_read_timeout`

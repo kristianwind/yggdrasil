@@ -50,7 +50,7 @@ router 80/443 → NPM, certs handled by NPM (Let's Encrypt).
 - Create: `POST /api/nginx/proxy-hosts` JSON:
   ```json
   {"domain_names":["notes.yggdrasilpanel.com"],"forward_scheme":"http",
-   "forward_host":"192.168.1.158","forward_port":25072,
+   "forward_host":"192.168.1.50","forward_port":25072,
    "access_list_id":0,"certificate_id":"new","ssl_forced":true,
    "block_exploits":true,"allow_websocket_upgrade":true,"http2_support":true,
    "hsts_enabled":false,"caching_enabled":false,"locations":[],"advanced_config":"",

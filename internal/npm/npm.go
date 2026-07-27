@@ -41,7 +41,7 @@ type CreateOpts struct {
 	NoSSL   bool   // true = certificate_id 0 (plain http, no cert request)
 }
 
-// New builds a client. baseURL like http://192.168.1.158:81 (the NPM admin API).
+// New builds a client. baseURL like http://192.168.1.50:81 (the NPM admin API).
 func New(baseURL, email, pass string) *Client {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL != "" && !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {

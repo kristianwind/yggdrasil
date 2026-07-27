@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 11
+  version: 12
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -191,6 +191,15 @@ gameskill:
       pattern: "POST /wp-login\\.php"
       threshold: 20
       window_secs: 120
+      action: kvasir
+    # XML-RPC is a classic brute-force / pingback-amplification vector. Real usage
+    # (e.g. genuine Jetpack) is a trickle; a sustained flood — ~20+ in 5 min — is an
+    # attack. Fires proactively so you hear about it without asking. Most modern
+    # sites don't need xmlrpc.php at all and can block it at the proxy.
+    - name: "XML-RPC flood"
+      pattern: "POST /xmlrpc\\.php"
+      threshold: 20
+      window_secs: 300
       action: kvasir
     - name: "HTTP 5xx spike"
       pattern: '" 5\d\d '

@@ -345,7 +345,7 @@
     { id: "fleet", label: "Fleet summary", icon: "📊" },
     { id: "cards", label: "Stat cards", icon: "🧮" },
     { id: "hosthistory", label: "Host history", icon: "📈" },
-    { id: "opsdigest", label: "Kvasir · Ops digest", icon: "🤖" },
+    { id: "opsdigest", label: "Kvasir · Ops digest", icon: "🧠" },
     { id: "askkvasir", label: "Ask Kvasir", icon: "💬" },
     { id: "whosonline", label: "Who's online", icon: "👥" },
     { id: "recent", label: "Recent servers", icon: "🕘" },
@@ -637,7 +637,7 @@
 {#if info?.ai_enabled}
   <div class="card p-4 mb-8">
     <div class="flex items-center gap-2">
-      <h2 class="text-lg font-semibold">🤖 Kvasir · Ops digest</h2>
+      <h2 class="text-lg font-semibold">🧠 Kvasir · Ops digest</h2>
       <button class="btn-primary text-xs ml-auto" disabled={opsBusy} onclick={loadOpsDigest}
         title="Ask Kvasir (your configured AI) for a plain-language health briefing across all servers (advisory).">
         {opsBusy ? "Summarizing…" : "Summarize"}</button>
@@ -656,7 +656,7 @@
 {#if info?.ai_enabled}
   <div class="card p-4 mb-8 space-y-3">
     <div class="flex items-center gap-2">
-      <h2 class="text-lg font-semibold">🤖 Kvasir</h2>
+      <h2 class="text-lg font-semibold">🧠 Kvasir</h2>
       <span class="text-xs text-muted">chat · knows only this panel · actions always confirmed</span>
       {#if chatMsgs.length}
         <button class="btn-ghost text-xs ml-auto" onclick={() => { chatMsgs = []; chatErr = ""; }}>Clear</button>

@@ -629,5 +629,5 @@ func (s *Server) maybeSendOpsDigest() {
 		log.Printf("ops digest: LLM request failed: %v", err)
 		return
 	}
-	s.notifyAll("🤖 Daily ops digest\n\n" + out)
+	s.notifyAll("🧠 Daily ops digest\n\n" + out)
 }

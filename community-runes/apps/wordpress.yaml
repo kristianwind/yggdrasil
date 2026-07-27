@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 10
+  version: 11
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -197,3 +197,18 @@ gameskill:
       threshold: 10
       window_secs: 60
       action: kvasir
+
+  # Persistent security-event history (complements the real-time watchers above):
+  # each match is rolled up per client IP per hour into app_events, so "is this
+  # site being brute-forced, and from where?" is answerable in the panel and by
+  # Kvasir long after the access log scrolls away. Capture group 1 = client IP.
+  events:
+    - key: xmlrpc_hit
+      label: "XML-RPC hit"
+      match: '^(\S+) .*"POST /xmlrpc\.php'
+    - key: wp_login_attempt
+      label: "wp-login attempt"
+      match: '^(\S+) .*"POST /wp-login\.php'
+    - key: http_5xx
+      label: "HTTP 5xx"
+      match: '^(\S+) .*" 5\d\d '

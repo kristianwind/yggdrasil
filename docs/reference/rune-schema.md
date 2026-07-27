@@ -591,6 +591,33 @@ players:
 
 Single-quote the regex in YAML so backslashes stay literal.
 
+## `events`
+
+Notable log lines worth keeping as a **persistent, aggregated security/health signal** — a WordPress
+xmlrpc/login attempt, an HTTP 5xx, a failed auth. Each match is rolled up **per subject (capture group 1,
+e.g. a client IP) per hour**, so a brute-force burst becomes one row per IP per hour instead of thousands
+of raw lines. The panel and Kvasir can then answer “is this site being attacked, and from where?” long
+after the log scrolls away — without storing raw access logs. Deliberately for **selective, low-volume**
+signals; don't point it at every request.
+
+```yaml
+events:
+  - key: xmlrpc_hit
+    label: "XML-RPC hit"
+    match: '^(\S+) .*"POST /xmlrpc\.php'   # group 1 = client IP
+  - key: http_5xx
+    label: "HTTP 5xx"
+    match: '^(\S+) .*" 5\d\d '
+```
+
+| Field | Required | What it does |
+|-------|----------|--------------|
+| `key` | yes | Stable identifier for this event type. |
+| `match` | yes | Regex matched per log line; capture group 1 (optional) = the subject rolled up (e.g. an IP). |
+| `label` | no | Human label shown in the UI / chat (defaults to `key`). |
+
+Kvasir's `events` lookup (data-access tier 1) reports totals and top sources per event. Pruned to 30 days.
+
 ## `admin_log`
 
 Turns a game's admin/activity log into a parsed feed of joins, leaves, deaths and kills.

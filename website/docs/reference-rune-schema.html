@@ -888,6 +888,48 @@ needed. Example (itzg Bedrock):</p>
   session_leave: 'Player disconnected:\s*(.+?),'
 </code></pre>
 <p>Single-quote the regex in YAML so backslashes stay literal.</p>
+<h2 id="events"><code>events</code></h2>
+<p>Notable log lines worth keeping as a <strong>persistent, aggregated security/health signal</strong> — a WordPress
+xmlrpc/login attempt, an HTTP 5xx, a failed auth. Each match is rolled up <strong>per subject (capture group 1,
+e.g. a client IP) per hour</strong>, so a brute-force burst becomes one row per IP per hour instead of thousands
+of raw lines. The panel and Kvasir can then answer “is this site being attacked, and from where?” long
+after the log scrolls away — without storing raw access logs. Deliberately for <strong>selective, low-volume</strong>
+signals; don&rsquo;t point it at every request.</p>
+<pre><code class="language-yaml">events:
+  - key: xmlrpc_hit
+    label: &quot;XML-RPC hit&quot;
+    match: '^(\S+) .*&quot;POST /xmlrpc\.php'   # group 1 = client IP
+  - key: http_5xx
+    label: &quot;HTTP 5xx&quot;
+    match: '^(\S+) .*&quot; 5\d\d '
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key</code></td>
+<td>yes</td>
+<td>Stable identifier for this event type.</td>
+</tr>
+<tr>
+<td><code>match</code></td>
+<td>yes</td>
+<td>Regex matched per log line; capture group 1 (optional) = the subject rolled up (e.g. an IP).</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>no</td>
+<td>Human label shown in the UI / chat (defaults to <code>key</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>Kvasir&rsquo;s <code>events</code> lookup (data-access tier 1) reports totals and top sources per event. Pruned to 30 days.</p>
 <h2 id="admin_log"><code>admin_log</code></h2>
 <p>Turns a game&rsquo;s admin/activity log into a parsed feed of joins, leaves, deaths and kills.</p>
 <pre><code class="language-yaml">admin_log:
@@ -1284,7 +1326,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn&amp;rsquo;t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

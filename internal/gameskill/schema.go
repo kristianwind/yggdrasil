@@ -39,6 +39,20 @@ type Gameskill struct {
 	AdminLog    *AdminLog  `yaml:"admin_log"   json:"admin_log,omitempty"`
 	Services    []Service  `yaml:"services,omitempty" json:"services,omitempty"`
 	Watchers    []Watcher  `yaml:"watchers,omitempty" json:"watchers,omitempty"`
+	Events      []Event    `yaml:"events,omitempty"   json:"events,omitempty"`
+}
+
+// Event declares a notable log line worth recording as a persistent, aggregated
+// security/health signal — a WordPress xmlrpc/login attempt, an nginx 5xx, a
+// failed auth. The panel matches Match against each log line and rolls matches up
+// per subject per hour into the app_events table, so "is my site being brute
+// forced?" / "any 5xx spikes overnight?" is answerable long after the log
+// scrolls away, without storing every raw request. Deliberately for SELECTIVE,
+// low-volume signals — not raw access logging.
+type Event struct {
+	Key   string `yaml:"key"             json:"key"`             // stable id, e.g. "xmlrpc_hit"
+	Match string `yaml:"match"           json:"match"`           // regex; capture group 1 (optional) = subject (e.g. client IP)
+	Label string `yaml:"label,omitempty" json:"label,omitempty"` // human label for the UI / chat
 }
 
 // Service is a sidecar container an app depends on — a database, a cache, a worker
@@ -464,6 +478,15 @@ func validate(gs *Gameskill) error {
 			if _, err := regexp.Compile(p); err != nil {
 				return fmt.Errorf("gameskill.players session pattern %q does not compile: %w", p, err)
 			}
+		}
+	}
+
+	for i, ev := range gs.Events {
+		if strings.TrimSpace(ev.Key) == "" {
+			return fmt.Errorf("gameskill.events[%d].key is required", i)
+		}
+		if _, err := regexp.Compile(ev.Match); err != nil {
+			return fmt.Errorf("gameskill.events[%d].match does not compile: %w", i, err)
 		}
 	}
 

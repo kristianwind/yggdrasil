@@ -1736,7 +1736,7 @@
   <div class="grid sm:grid-cols-2 gap-3">
     <div>
       <label class="label" for="npmurl">NPM URL</label>
-      <input id="npmurl" class="input" bind:value={npm.url} placeholder="http://192.168.1.158:81" />
+      <input id="npmurl" class="input" bind:value={npm.url} placeholder="http://192.168.1.50:81" />
     </div>
     <div>
       <label class="label" for="npmbase">Base domain</label>

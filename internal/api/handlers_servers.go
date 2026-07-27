@@ -65,6 +65,7 @@ type serverRow struct {
 	WatchdogSup    bool              `json:"watchdog_supported"`     // rune has a query the watchdog can health-check (single GET)
 	PlayersSup     bool              `json:"players_supported"`      // rune declares a players: block (Players tab; single GET)
 	AdminLogSup    bool              `json:"admin_log_supported"`    // rune declares an admin_log: block (Activity tab; single GET)
+	HasActivity    bool              `json:"has_activity"`           // rune records player sessions and/or app events (History tab; single GET)
 	ModsSupported  bool              `json:"mods_supported"`         // SERVER_TYPE maps to a Modrinth loader (Mods tab; single GET)
 	ConfigFiles    []string          `json:"config_files,omitempty"` // rune's config_files: the files worth editing (Files tab shortcuts; single GET)
 	AIEnabled      bool              `json:"ai_enabled"`             // advisory AI features are on (digest button; single GET)
@@ -231,6 +232,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		srv.WatchdogSup = rt.gs.Query != nil
 		srv.PlayersSup = rt.gs.Players != nil
 		srv.AdminLogSup = rt.gs.AdminLog != nil
+		srv.HasActivity = (rt.gs.Players != nil && rt.gs.Players.SessionJoin != "") || len(rt.gs.Events) > 0
 		_, srv.ModsSupported = modProfileFor(rt.env["SERVER_TYPE"]) // Modrinth mod manager
 		srv.ConfigFiles = rt.gs.ConfigFiles
 	}

@@ -273,6 +273,63 @@
     }
   }
 
+  // IP blocking (attack mitigation)
+  let blockCfg = $state({ enabled: false, mode: "propose", nft_enabled: false, nft_available: false, cf_configured: false });
+  let blocks = $state([]);
+  let newBlock = $state({ ip: "", host: "", reason: "" });
+  let blockBusy = $state(false);
+
+  async function loadBlocking() {
+    try {
+      blockCfg = await api.get("/settings/blocking");
+      blocks = await api.get("/blocks");
+    } catch (e) {
+      /* admin-only; ignore for non-admins */
+    }
+  }
+  async function saveBlocking() {
+    try {
+      const res = await api.put("/settings/blocking", {
+        enabled: blockCfg.enabled,
+        mode: blockCfg.mode,
+        nft_enabled: blockCfg.nft_enabled,
+      });
+      blockCfg = { ...blockCfg, ...res };
+      toast("Blocking settings saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+      await loadBlocking(); // re-sync (e.g. nft enable rejected for missing privileges)
+    }
+  }
+  async function addBlock() {
+    if (!newBlock.ip.trim()) return toast("Enter an IP to block", "warn");
+    blockBusy = true;
+    try {
+      await api.post("/blocks", {
+        ip: newBlock.ip.trim(),
+        host: newBlock.host.trim(),
+        reason: newBlock.reason.trim(),
+      });
+      newBlock = { ip: "", host: "", reason: "" };
+      toast("IP blocked", "success");
+      await loadBlocking();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      blockBusy = false;
+    }
+  }
+  async function removeBlock(b) {
+    if (!(await confirmDialog({ title: "Unblock IP", body: `Unblock ${b.ip}?`, confirmText: "Unblock" }))) return;
+    try {
+      await api.del(`/blocks/${b.id}`);
+      toast("Unblocked", "success");
+      await loadBlocking();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   // Message templates
   let templates = $state([]);
   let editing = $state(null); // { id?, name, body }
@@ -1149,6 +1206,7 @@
     loadWatcherServers();
     load2fa();
     loadPasskeys();
+    loadBlocking();
     loadBuild();
     loadAutoUpdate();
     loadOSUpdates();
@@ -1933,6 +1991,87 @@
       <p class="text-xs text-muted mt-1">Save an SMTP host and From address first.</p>
     {/if}
   </div>
+</div>
+
+<!-- IP blocking (attack mitigation) -->
+<h2 class="text-xl font-semibold mb-2">Attack mitigation — IP blocking</h2>
+<p class="text-muted mb-4 text-sm">
+  Block an abusive client IP (brute-force logins, xmlrpc floods, vulnerability scans). For a site
+  behind Cloudflare the block is added at Cloudflare's edge, so the attacker never reaches your origin.
+  For a directly-exposed site it's dropped in the host firewall (nftables, ports 80/443 only — never SSH).
+  Kvasir can suggest blocks from what its watchers detect; you decide whether it applies them.
+</p>
+<div class="card p-4 mb-6 max-w-xl space-y-4">
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={blockCfg.enabled} />
+    Enable IP blocking
+  </label>
+
+  <div>
+    <label class="label" for="block-mode">When Kvasir suggests a block</label>
+    <select id="block-mode" class="input" bind:value={blockCfg.mode} disabled={!blockCfg.enabled}>
+      <option value="off">Off — don't suggest blocks</option>
+      <option value="propose">Propose — record it and notify me; I apply it here</option>
+      <option value="auto">Auto — block immediately (reversible; a wrong block drops a real visitor)</option>
+    </select>
+  </div>
+
+  <div>
+    <label class="inline-flex items-center gap-2 text-sm cursor-pointer {blockCfg.nft_available ? '' : 'opacity-60'}">
+      <input type="checkbox" bind:checked={blockCfg.nft_enabled} disabled={!blockCfg.nft_available} />
+      Allow host-firewall (nftables) blocks for directly-exposed sites
+    </label>
+    {#if !blockCfg.nft_available}
+      <p class="text-xs text-muted mt-1">
+        Host firewall isn't available — the panel needs the <code class="bg-black/30 px-1 rounded">CAP_NET_ADMIN</code>
+        capability (add <code class="bg-black/30 px-1 rounded">AmbientCapabilities=CAP_NET_ADMIN</code> to the service) and the
+        <code class="bg-black/30 px-1 rounded">nft</code> binary. Cloudflare blocks work without it.
+      </p>
+    {/if}
+    {#if !blockCfg.cf_configured}
+      <p class="text-xs text-muted mt-1">Cloudflare isn't configured — set it up under Domains to block proxied sites at the edge.</p>
+    {/if}
+  </div>
+
+  <button class="btn-primary" onclick={saveBlocking}>Save blocking settings</button>
+</div>
+
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <h3 class="font-semibold">Blocked IPs</h3>
+  <div class="flex flex-col sm:flex-row gap-2">
+    <input class="input flex-1" bind:value={newBlock.ip} placeholder="IP to block (e.g. 149.36.51.138)" />
+    <input class="input flex-1" bind:value={newBlock.host} placeholder="site host (optional — picks Cloudflare zone)" />
+  </div>
+  <div class="flex gap-2">
+    <input class="input flex-1" bind:value={newBlock.reason} placeholder="reason (optional)" />
+    <button class="btn-primary shrink-0" onclick={addBlock} disabled={blockBusy || !blockCfg.enabled}>
+      {blockBusy ? "Blocking…" : "Block IP"}
+    </button>
+  </div>
+  {#if !blockCfg.enabled}
+    <p class="text-xs text-muted">Enable IP blocking above first.</p>
+  {/if}
+
+  {#if blocks.length}
+    <div class="divide-y divide-border">
+      {#each blocks as b}
+        <div class="flex items-center gap-3 py-2">
+          <span class="badge {b.backend === 'cloudflare' ? 'bg-accent2/20 text-accent' : 'bg-border text-muted'}">
+            {b.backend === "cloudflare" ? "Cloudflare" : "host FW"}
+          </span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-mono">{b.ip}</div>
+            <div class="text-xs text-muted truncate">
+              {b.source}{b.reason ? ` · ${b.reason}` : ""}{b.created_at ? ` · ${b.created_at.slice(0, 16).replace('T', ' ')}` : ""}
+            </div>
+          </div>
+          <button class="btn-ghost px-2 py-1 shrink-0" onclick={() => removeBlock(b)}>Unblock</button>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <p class="text-sm text-muted">No IPs blocked.</p>
+  {/if}
 </div>
 
 {/if}

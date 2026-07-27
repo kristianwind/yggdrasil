@@ -472,6 +472,21 @@ admin-only — watchers read logs across servers.
 | `DELETE` | `/api/watchers/{id}` | Admin | Delete a watcher |
 | `POST` | `/api/servers/{id}/watchers/suggest` | Admin | Ask Kvasir for watcher rules from the server's rune type and recent log; returns validated proposals, creates nothing |
 
+### IP blocking
+
+Blocks an abusive client IP at Cloudflare's edge (when a zone the panel's token can see owns the
+site's hostname) or in the host firewall via nftables (for a directly-exposed site). Admin-only.
+Private, loopback, link-local, Tailscale/CGNAT and Cloudflare's own ranges are always refused, and
+the nftables rules only ever touch ports 80/443 — never SSH.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/blocks` | Admin | List active blocks (ip, backend, scope, reason, source) |
+| `POST` | `/api/blocks` | Admin | Block an IP: `{ip, host?, server_id?, reason?}`. `host`/`server_id` pick the Cloudflare zone; without one it falls back to the host firewall |
+| `DELETE` | `/api/blocks/{id}` | Admin | Remove the block from its backend and forget it |
+| `GET` | `/api/settings/blocking` | Admin | Blocking config plus whether Cloudflare is configured and nftables is usable |
+| `PUT` | `/api/settings/blocking` | Admin | Update `{enabled, mode, nft_enabled}`; `mode` is `off\|propose\|auto` (how Kvasir's `block_ip` suggestion is handled) |
+
 ### Norn
 
 Norn is the DayZ loot-economy tool. Reading the economy needs `server.view`; changing it needs

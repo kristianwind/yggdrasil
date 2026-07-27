@@ -402,6 +402,23 @@ CREATE TABLE IF NOT EXISTS beacon_pings (
 	last_seen   TEXT NOT NULL DEFAULT (datetime('now')),
 	ping_count  INTEGER NOT NULL DEFAULT 1
 );
+
+-- Blocked abusive client IPs. backend='cloudflare' rows carry the zone id (scope)
+-- and the created access-rule id (cf_rule_id) so the edge rule can be removed;
+-- backend='nftables' rows are host-wide (scope=''). One row per (ip,backend,scope).
+CREATE TABLE IF NOT EXISTS blocked_ips (
+	id         TEXT PRIMARY KEY,
+	ip         TEXT NOT NULL,
+	backend    TEXT NOT NULL,               -- 'cloudflare' | 'nftables'
+	scope      TEXT NOT NULL DEFAULT '',    -- CF zone id, or '' for host-wide
+	cf_rule_id TEXT NOT NULL DEFAULT '',    -- Cloudflare access-rule id (for removal)
+	server_id  TEXT NOT NULL DEFAULT '',    -- server the block was raised for (context)
+	reason     TEXT NOT NULL DEFAULT '',
+	source     TEXT NOT NULL DEFAULT 'manual', -- manual | kvasir
+	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	UNIQUE (ip, backend, scope)
+);
+CREATE INDEX IF NOT EXISTS idx_blocked_ips ON blocked_ips(created_at);
 `
 
 func migrate(db *sql.DB) error {

@@ -63,8 +63,8 @@ func (k *kvasirState) allowAction(serverID string, now time.Time) bool {
 
 type kvasirDecision struct {
 	Explanation string `json:"explanation"`
-	Action      string `json:"action"` // none | restart | safe_restart | set_memory | set_env | other
-	Args        string `json:"args"`   // e.g. "6144" (MB) or "EULA=true"
+	Action      string `json:"action"` // none | restart | safe_restart | set_memory | set_env | block_ip | other
+	Args        string `json:"args"`   // e.g. "6144" (MB), "EULA=true", or an attacker IP for block_ip
 	Reason      string `json:"reason"`
 }
 
@@ -163,6 +163,13 @@ func (s *Server) kvasirApply(serverID string, dec kvasirDecision, body string) (
 	// reinstall) stays propose-only: the panel never lets the AI reconfigure or delete.
 	if dec.Action == "set_memory" {
 		return s.kvasirApplyMemory(serverID, dec, body)
+	}
+	// block_ip: only auto-enforces when the admin has turned blocking to "auto";
+	// otherwise it's a proposal the admin applies from the Security page. Blocking
+	// an IP is reversible (unblock) and never touches the server itself, so auto is
+	// offered — but off by default, since a wrong block drops a real visitor.
+	if dec.Action == "block_ip" {
+		return s.kvasirApplyBlock(serverID, dec, body)
 	}
 	s.notifyServer(serverID, body+"\n\n_This needs a config change (or isn't auto-safe), so I'm leaving it for you to apply — I only auto-run safe restarts and bounded memory bumps._")
 	return false, "proposed"
@@ -266,12 +273,16 @@ func buildKvasirMessages(name, event, detail, logTail string) []llm.Message {
 	system := "You are Kvasir, the operations assistant for a self-hosted game/app server panel. " +
 		"An event just happened on a server. Explain it briefly and plainly to the admin, and propose ONE fix. " +
 		"Respond with ONLY a JSON object — no prose, no markdown fences — of the form:\n" +
-		`{"explanation":"<1-3 sentences: what happened and why>","action":"<none|restart|safe_restart|set_memory|set_env>","args":"<memory MB, or KEY=VALUE, else empty>","reason":"<short why this fix>"}` + "\n\n" +
+		`{"explanation":"<1-3 sentences: what happened and why>","action":"<none|restart|safe_restart|set_memory|set_env|block_ip>","args":"<memory MB, KEY=VALUE, an attacker IP, else empty>","reason":"<short why this fix>"}` + "\n\n" +
 		"Guidance: exit code 137 is usually an out-of-memory kill (suggest set_memory with a higher MB). " +
 		"exit 143/130 are graceful stops (usually action none). A slow start that's still loading is often " +
 		"fine (action none) unless the log shows a fatal error. DayZ 'Unknown object class' / 'No components in' " +
 		"lines are harmless map/mod noise, not a fault. Prefer action none when nothing is actually wrong. " +
-		"Only use safe_restart/restart for a hung-but-not-crashed server; use set_memory/set_env for config causes."
+		"Only use safe_restart/restart for a hung-but-not-crashed server; use set_memory/set_env for config causes. " +
+		"For an external attack (login brute-force, xmlrpc flood, vulnerability scan) coming from ONE identifiable " +
+		"public source IP in the log, use block_ip with args set to that exact IP address. Do NOT block_ip for " +
+		"private/internal IPs (10.x, 192.168.x, 172.16-31.x, 127.x), when no single IP dominates, or for ordinary " +
+		"scanner background-noise that the server already answers with 403/404."
 	user := fmt.Sprintf("Server: %s\nEvent: %s (%s)\n\nRecent log tail:\n%s", name, event, detail, logTail)
 	return []llm.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
 }

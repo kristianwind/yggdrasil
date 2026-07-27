@@ -274,6 +274,92 @@ func (c *Client) RemoveHostname(hostname string) error {
 	return c.putConfig(cfg)
 }
 
+// --- Firewall (IP Access Rules) ---
+//
+// These use Cloudflare's zone-level "IP Access Rules"
+// (/zones/{zone}/firewall/access_rules/rules) to block a single client IP at the
+// edge, so an attacker never reaches the origin. It's the simplest edge block
+// that needs only the API token we already hold (Zone → Firewall Services: Edit).
+// Rules are scoped to the zone that owns the attacked hostname.
+
+type accessRule struct {
+	ID            string `json:"id"`
+	Mode          string `json:"mode"`
+	Notes         string `json:"notes"`
+	Configuration struct {
+		Target string `json:"target"`
+		Value  string `json:"value"`
+	} `json:"configuration"`
+}
+
+// BlockIP creates a zone-level "block" access rule for a single IP and returns
+// the created rule's id (needed to remove it later). If an identical rule already
+// exists (Cloudflare rejects duplicates), it looks the existing one up and returns
+// its id instead of erroring, so the call is idempotent.
+func (c *Client) BlockIP(zoneID, ip, notes string) (string, error) {
+	zoneID = strings.TrimSpace(zoneID)
+	if zoneID == "" {
+		return "", fmt.Errorf("cloudflare: zone id required to block an IP")
+	}
+	body := map[string]any{
+		"mode":  "block",
+		"notes": notes,
+		"configuration": map[string]string{
+			"target": accessRuleTarget(ip),
+			"value":  ip,
+		},
+	}
+	var out accessRule
+	err := c.do("POST", fmt.Sprintf("/zones/%s/firewall/access_rules/rules", zoneID), body, &out)
+	if err != nil {
+		// A duplicate rule (same target/value) already blocks this IP — treat as success.
+		if id, lerr := c.findAccessRule(zoneID, ip); lerr == nil && id != "" {
+			return id, nil
+		}
+		return "", err
+	}
+	return out.ID, nil
+}
+
+// UnblockIP deletes a zone-level access rule by its id (no-op if already gone).
+func (c *Client) UnblockIP(zoneID, ruleID string) error {
+	zoneID, ruleID = strings.TrimSpace(zoneID), strings.TrimSpace(ruleID)
+	if zoneID == "" || ruleID == "" {
+		return fmt.Errorf("cloudflare: zone id and rule id required to unblock")
+	}
+	err := c.do("DELETE", fmt.Sprintf("/zones/%s/firewall/access_rules/rules/%s", zoneID, ruleID), nil, nil)
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "not found") {
+		return nil
+	}
+	return err
+}
+
+// findAccessRule returns the id of an existing block rule for ip in the zone, or
+// "" if none. Used to make BlockIP idempotent when Cloudflare reports a duplicate.
+func (c *Client) findAccessRule(zoneID, ip string) (string, error) {
+	var rules []accessRule
+	path := fmt.Sprintf("/zones/%s/firewall/access_rules/rules?configuration.target=%s&configuration.value=%s",
+		zoneID, accessRuleTarget(ip), url.QueryEscape(ip))
+	if err := c.do("GET", path, nil, &rules); err != nil {
+		return "", err
+	}
+	for _, r := range rules {
+		if strings.EqualFold(r.Configuration.Value, ip) {
+			return r.ID, nil
+		}
+	}
+	return "", nil
+}
+
+// accessRuleTarget picks Cloudflare's target type for an address: "ip6" for IPv6,
+// "ip" for IPv4. (CIDR ranges would be "ip_range", but we only block single IPs.)
+func accessRuleTarget(ip string) string {
+	if strings.Contains(ip, ":") {
+		return "ip6"
+	}
+	return "ip"
+}
+
 // --- DNS ---
 
 type dnsRecord struct {

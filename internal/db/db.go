@@ -404,6 +404,11 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "ai_config", "actions_enabled", "INTEGER NOT NULL DEFAULT 0") // higher tier: let AI PROPOSE server actions (always confirmed); default off
 	addColumnIfMissing(db, "ai_config", "proactive_level", "INTEGER NOT NULL DEFAULT 0")           // Kvasir proactive monitoring: 0 off, 1 passive (explain), 2 active-observe (propose), 3 active-help (safe auto-fix)
 	addColumnIfMissing(db, "ai_config", "proactive_triggers", "TEXT NOT NULL DEFAULT 'crash,slowstart,resource,host'") // which events Kvasir reacts to
+	// Kvasir chat data-access tier: 0 snapshot-only (no lookups), 1 panel data
+	// (metrics/player history/backups/roster — default), 2 also lets it search a
+	// server's live LOG. Default 1 keeps logs (which can hold player chat/IPs and
+	// get sent to the LLM) an explicit opt-in rather than always-on.
+	addColumnIfMissing(db, "ai_config", "chat_data_level", "INTEGER NOT NULL DEFAULT 1")
 	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")          // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
 	addColumnIfMissing(db, "servers", "status_public", "INTEGER NOT NULL DEFAULT 0")     // show this server on the public /status page (opt-in, default off)
 	addColumnIfMissing(db, "backups", "verified_at", "TEXT NOT NULL DEFAULT ''")         // when this backup's archive was last integrity-checked

@@ -58,12 +58,12 @@ func TestBuildChatMessagesClamps(t *testing.T) {
 	for i := 0; i < chatMaxTurns+5; i++ {
 		history = append(history, llm.Message{Role: "user", Content: strings.Repeat("x", chatMaxMsgLen+100)})
 	}
-	msgs := buildChatMessages(history, servers, true, "", nil)
+	msgs := buildChatMessages(history, servers, true, "", nil, 1)
 	if msgs[0].Role != "system" || !strings.Contains(msgs[0].Content, "Heimdal") {
 		t.Fatal("system grounding missing the fleet")
 	}
 	// Per-server metrics suffix is appended to the matching server's line.
-	withStats := buildChatMessages(nil, servers, true, "", map[string]string{"s1": "players now 3, 24h peak 7, last had players 2h ago"})[0].Content
+	withStats := buildChatMessages(nil, servers, true, "", map[string]string{"s1": "players now 3, 24h peak 7, last had players 2h ago"}, 1)[0].Content
 	if !strings.Contains(withStats, "Heimdal (dayz, running) — players now 3, 24h peak 7") {
 		t.Fatalf("server metrics suffix missing from the snapshot:\n%s", withStats)
 	}
@@ -79,14 +79,28 @@ func TestBuildChatMessagesClamps(t *testing.T) {
 		}
 	}
 	// Docs excerpts land in the system prompt when provided.
-	withDocs := buildChatMessages(nil, servers, true, "--- Docs › Backups ---\nRun backups nightly.", nil)[0].Content
+	withDocs := buildChatMessages(nil, servers, true, "--- Docs › Backups ---\nRun backups nightly.", nil, 1)[0].Content
 	if !strings.Contains(withDocs, "Run backups nightly") {
 		t.Fatal("docs excerpts missing from the system prompt")
 	}
 	// Actions gate flips the instructions.
-	on := buildChatMessages(nil, servers, true, "", nil)[0].Content
-	off := buildChatMessages(nil, servers, false, "", nil)[0].Content
+	on := buildChatMessages(nil, servers, true, "", nil, 1)[0].Content
+	off := buildChatMessages(nil, servers, false, "", nil, 1)[0].Content
 	if !strings.Contains(on, "```actions") || strings.Contains(off, "```actions") {
 		t.Fatal("actions instructions don't follow the actionsEnabled flag")
+	}
+
+	// Data-access tier gates which lookups are advertised.
+	lvl0 := buildChatMessages(nil, servers, true, "", nil, 0)[0].Content
+	lvl1 := buildChatMessages(nil, servers, true, "", nil, 1)[0].Content
+	lvl2 := buildChatMessages(nil, servers, true, "", nil, 2)[0].Content
+	if strings.Contains(lvl0, "```lookup") {
+		t.Fatal("level 0 must not advertise any lookups")
+	}
+	if !strings.Contains(lvl1, "```lookup") || !strings.Contains(lvl1, "roster") || strings.Contains(lvl1, "search_logs") {
+		t.Fatal("level 1 should advertise panel lookups incl. roster but not search_logs")
+	}
+	if !strings.Contains(lvl2, "search_logs") {
+		t.Fatal("level 2 should advertise search_logs")
 	}
 }

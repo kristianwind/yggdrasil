@@ -7,10 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kristianwind/yggdrasil/internal/docker"
+	"github.com/kristianwind/yggdrasil/internal/query"
 )
 
 // Kvasir read-only lookups. Mid-chat the model may request one panel data lookup
@@ -53,11 +57,31 @@ func splitLookup(full string) (text string, req *lookupReq) {
 	return text, nil
 }
 
+// lookupMinLevel is the chat data-access tier each tool needs: panel data at
+// level 1, live logs at level 2. runLookup and the prompt both consult this so a
+// tool is only offered — and only runs — when the admin has enabled its tier.
+var lookupMinLevel = map[string]int{
+	"player_history": 1,
+	"metrics_window": 1,
+	"list_backups":   1,
+	"roster":         1,
+	"search_logs":    2,
+}
+
 // runLookup executes a read-only lookup against a server the caller controls and
 // returns a short plain-text result. servers is the caller's controllable set, so
 // a server outside it (or unknown) is refused — the chat can't read data the user
-// has no access to.
-func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookupReq) string {
+// has no access to. level is the ai_config.chat_data_level tier; a tool above it
+// is refused (defense in depth behind the prompt, which only advertises allowed
+// tools).
+func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookupReq, level int) string {
+	min, known := lookupMinLevel[req.Tool]
+	if !known {
+		return fmt.Sprintf("Unknown lookup %q. Available: player_history, metrics_window, list_backups, roster, search_logs.", req.Tool)
+	}
+	if level < min {
+		return fmt.Sprintf("The %q lookup isn't enabled on this panel (the admin controls Kvasir's data access in Settings).", req.Tool)
+	}
 	var srv *serverRow
 	want := strings.ToLower(strings.TrimSpace(req.Server))
 	for i := range servers {
@@ -76,11 +100,85 @@ func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookup
 		return s.lookupMetricsWindow(ctx, srv, req.Hours)
 	case "list_backups":
 		return s.lookupBackups(ctx, srv)
+	case "roster":
+		return s.lookupRoster(ctx, srv)
 	case "search_logs":
 		return s.lookupSearchLogs(ctx, srv, req.Pattern)
-	default:
-		return fmt.Sprintf("Unknown lookup %q. Available: player_history, metrics_window, list_backups, search_logs.", req.Tool)
 	}
+	return fmt.Sprintf("Unknown lookup %q.", req.Tool)
+}
+
+// lookupRoster reports who is online right now via the game's own RCON list
+// command or the Steam query protocol. Games that report only a count (or no
+// names — e.g. Bedrock, whose names live in the log) are told to fall back to
+// search_logs, which is where join/leave lines with names actually are.
+func (s *Server) lookupRoster(ctx context.Context, srv *serverRow) string {
+	rt, err := s.loadRuntime(ctx, srv.ID)
+	if err != nil || rt.gs.Players == nil {
+		return fmt.Sprintf("%s: no live roster for this game. For who joined or left, use search_logs (pattern \"connected\" or \"joined\").", srv.Name)
+	}
+	pl := rt.gs.Players
+	if pl.ListCommand != "" {
+		if out, e := s.rconExec(ctx, srv.ID, pl.ListCommand); e == nil {
+			if players, perr := parsePlayers(out, pl.PlayerRegex); perr == nil && len(players) > 0 {
+				names := make([]string, 0, len(players))
+				for _, p := range players {
+					names = append(names, p.Name)
+				}
+				return fmt.Sprintf("%s: %d online now — %s.", srv.Name, len(names), strings.Join(names, ", "))
+			}
+		}
+	}
+	if rt.gs.Query != nil {
+		if names, qerr := query.QueryPlayers(rt.gs.Query.Type, "127.0.0.1", rt.queryPort(), 3*time.Second); qerr == nil {
+			clean := make([]string, 0, len(names))
+			for _, n := range names {
+				if n = strings.TrimSpace(n); n != "" {
+					clean = append(clean, n)
+				}
+			}
+			if len(clean) > 0 {
+				return fmt.Sprintf("%s: %d online now — %s.", srv.Name, len(clean), strings.Join(clean, ", "))
+			}
+			return fmt.Sprintf("%s: %d online now, but the game isn't reporting names via query. For names, use search_logs (pattern \"connected\"/\"joined\").", srv.Name, len(names))
+		}
+	}
+	return fmt.Sprintf("%s: couldn't read a live roster right now. For who joined/left, use search_logs (pattern \"connected\"/\"joined\").", srv.Name)
+}
+
+// llmLocality reports whether the configured LLM endpoint is on this network
+// (so log data fed to it stays local) or a third-party cloud (so it would leave
+// the box). Used to warn the admin before they enable the log-access tier.
+func llmLocality(provider, baseURL string) (local bool, host string) {
+	if strings.EqualFold(strings.TrimSpace(provider), "ollama") && strings.TrimSpace(baseURL) == "" {
+		return true, "localhost" // Ollama defaults to a local daemon
+	}
+	b := strings.TrimSpace(baseURL)
+	if b == "" {
+		return false, "" // no override → a hosted default (OpenAI/Anthropic)
+	}
+	if !strings.Contains(b, "://") {
+		b = "http://" + b
+	}
+	u, err := url.Parse(b)
+	if err != nil {
+		return false, ""
+	}
+	host = u.Hostname()
+	h := strings.ToLower(host)
+	if h == "localhost" || strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".lan") || strings.HasSuffix(h, ".internal") || !strings.Contains(h, ".") {
+		return true, host
+	}
+	if ip := net.ParseIP(h); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return true, host
+		}
+		// Tailscale/CGNAT 100.64.0.0/10 counts as "your network" too.
+		if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return true, host
+		}
+	}
+	return false, host
 }
 
 // clampHours keeps a requested window sane (default 24h, max 30 days).

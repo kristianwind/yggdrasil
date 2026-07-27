@@ -45,6 +45,9 @@ type aiConfig struct {
 	// (propose), 3 active-help (safe auto-fix). Triggers = which events it reacts to.
 	ProactiveLevel    int
 	ProactiveTriggers string
+	// Chat data-access tier: 0 snapshot-only, 1 panel data (metrics/players/
+	// backups/roster), 2 also allows searching a server's live log.
+	ChatDataLevel int
 }
 
 // loadAIConfig reads the single ai_config row and decrypts the API key. Returns a
@@ -54,10 +57,10 @@ func (s *Server) loadAIConfig(ctx context.Context) aiConfig {
 	var enc string
 	var enabled, digestEnabled, actionsEnabled int
 	err := s.db.QueryRowContext(ctx,
-		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled, COALESCE(digest_enabled,0), COALESCE(digest_hour,8), COALESCE(actions_enabled,0), COALESCE(proactive_level,0), COALESCE(proactive_triggers,'') FROM ai_config WHERE id=1").
-		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled, &digestEnabled, &c.DigestHour, &actionsEnabled, &c.ProactiveLevel, &c.ProactiveTriggers)
+		"SELECT provider, model, base_url, COALESCE(api_key_enc,''), enabled, COALESCE(digest_enabled,0), COALESCE(digest_hour,8), COALESCE(actions_enabled,0), COALESCE(proactive_level,0), COALESCE(proactive_triggers,''), COALESCE(chat_data_level,1) FROM ai_config WHERE id=1").
+		Scan(&c.Provider, &c.Model, &c.BaseURL, &enc, &enabled, &digestEnabled, &c.DigestHour, &actionsEnabled, &c.ProactiveLevel, &c.ProactiveTriggers, &c.ChatDataLevel)
 	if err != nil {
-		return aiConfig{}
+		return aiConfig{ChatDataLevel: 1}
 	}
 	c.Enabled = enabled == 1
 	c.DigestEnabled = digestEnabled == 1
@@ -90,13 +93,21 @@ type aiConfigView struct {
 	ActionsEnabled    bool   `json:"actions_enabled"`    // AI may propose server actions (always confirmed)
 	ProactiveLevel    int    `json:"proactive_level"`    // 0 off, 1 passive, 2 active-observe, 3 active-help
 	ProactiveTriggers string `json:"proactive_triggers"` // csv: crash,slowstart,resource,host,anomaly (anomaly is opt-in, not in the default)
+	ChatDataLevel     int    `json:"chat_data_level"`    // 0 snapshot-only, 1 panel data (default), 2 also live logs
+	// Whether the configured LLM endpoint is on this network (local) or a third
+	// party (cloud) — read-only, so the UI can warn before log data would leave.
+	LLMLocal bool   `json:"llm_local"`
+	LLMHost  string `json:"llm_host"`
 }
 
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	c := s.loadAIConfig(r.Context())
 	v := aiConfigView{Provider: c.Provider, Model: c.Model, BaseURL: c.BaseURL, Enabled: c.Enabled,
 		Configured: c.APIKey != "", DigestEnabled: c.DigestEnabled, DigestHour: c.DigestHour, ActionsEnabled: c.ActionsEnabled,
-		ProactiveLevel: c.ProactiveLevel, ProactiveTriggers: firstNonEmpty(c.ProactiveTriggers, "crash,slowstart,resource,host")}
+		ProactiveLevel: c.ProactiveLevel, ProactiveTriggers: firstNonEmpty(c.ProactiveTriggers, "crash,slowstart,resource,host"),
+		ChatDataLevel: c.ChatDataLevel}
+	local, host := llmLocality(c.Provider, c.BaseURL)
+	v.LLMLocal, v.LLMHost = local, host
 	if c.Provider == "" {
 		v.Provider = "openai"
 	}
@@ -144,17 +155,21 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if triggers == "" {
 		triggers = "crash,slowstart,resource,host"
 	}
+	dataLevel := req.ChatDataLevel
+	if dataLevel < 0 || dataLevel > 2 {
+		dataLevel = 1
+	}
 	_, err := s.db.ExecContext(r.Context(), `
-		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, digest_enabled, digest_hour, actions_enabled, proactive_level, proactive_triggers, updated_at)
-		VALUES (1,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+		INSERT INTO ai_config (id, provider, model, base_url, api_key_enc, enabled, digest_enabled, digest_hour, actions_enabled, proactive_level, proactive_triggers, chat_data_level, updated_at)
+		VALUES (1,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
 		ON CONFLICT(id) DO UPDATE SET
 			provider=excluded.provider, model=excluded.model, base_url=excluded.base_url,
 			api_key_enc=excluded.api_key_enc, enabled=excluded.enabled,
 			digest_enabled=excluded.digest_enabled, digest_hour=excluded.digest_hour,
 			actions_enabled=excluded.actions_enabled, proactive_level=excluded.proactive_level,
-			proactive_triggers=excluded.proactive_triggers, updated_at=excluded.updated_at`,
+			proactive_triggers=excluded.proactive_triggers, chat_data_level=excluded.chat_data_level, updated_at=excluded.updated_at`,
 		strings.TrimSpace(req.Provider), strings.TrimSpace(req.Model), strings.TrimSpace(req.BaseURL),
-		keyEnc, boolToInt(req.Enabled), boolToInt(req.DigestEnabled), hour, boolToInt(req.ActionsEnabled), level, triggers)
+		keyEnc, boolToInt(req.Enabled), boolToInt(req.DigestEnabled), hour, boolToInt(req.ActionsEnabled), level, triggers, dataLevel)
 	if err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return

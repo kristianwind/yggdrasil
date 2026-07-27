@@ -817,7 +817,7 @@
   }
 
   // AI assistant (advisory features — admin brings their own LLM)
-  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false, digest_enabled: false, digest_hour: 8, actions_enabled: false, proactive_level: 0, proactive_triggers: "crash,slowstart,resource,host" });
+  let ai = $state({ provider: "openai", model: "", base_url: "", api_key: "", enabled: false, configured: false, digest_enabled: false, digest_hour: 8, actions_enabled: false, proactive_level: 0, proactive_triggers: "crash,slowstart,resource,host", chat_data_level: 1, llm_local: false, llm_host: "" });
   // Kvasir proactive trigger checkboxes ↔ the csv string on `ai`.
   const PROACTIVE_TRIGGERS = [
     ["crash", "Crashes / faults"],
@@ -2112,6 +2112,35 @@
           </label>
         {/each}
       </div>
+    {/if}
+  </div>
+
+  <!-- Chat data access — how much of the panel's own data Kvasir's chat may read -->
+  <div class="border-t border-border pt-3 mt-1">
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <span class="font-medium">Chat data access</span>
+      <select class="input w-auto" bind:value={ai.chat_data_level} disabled={!ai.enabled}>
+        <option value={0}>Snapshot only — server names, status, live player/load summary</option>
+        <option value={1}>Panel data — + look up player history, resources, backups, who's online</option>
+        <option value={2}>+ Server logs — also search a server's live log (player names, errors)</option>
+      </select>
+    </div>
+    <p class="text-muted text-xs mt-1">
+      What Kvasir's chat may read to answer you — all read-only, and only for servers you control. Higher tiers
+      let it answer questions the summary can't (e.g. “were there players overnight?”, “who joined?”, “find the crash”).
+    </p>
+    {#if ai.chat_data_level >= 2}
+      {#if ai.llm_local}
+        <p class="text-xs mt-1 rounded bg-accent2/15 text-accent px-2 py-1">
+          🔒 Your LLM is on your network ({ai.llm_host || "local"}) — log contents stay local, nothing leaves the box.
+        </p>
+      {:else}
+        <p class="text-xs mt-1 rounded bg-warn/15 text-warn px-2 py-1">
+          ⚠️ Your LLM is a third-party/cloud endpoint{ai.llm_host ? ` (${ai.llm_host})` : ""}. Enabling log search means
+          server logs — which can contain <b>player chat, IP addresses and occasionally secrets</b> — get sent there.
+          Prefer a local model for this tier.
+        </p>
+      {/if}
     {/if}
   </div>
 

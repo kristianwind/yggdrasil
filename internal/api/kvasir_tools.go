@@ -84,6 +84,14 @@ func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookup
 	if level < min {
 		return fmt.Sprintf("The %q lookup isn't enabled on this panel (the admin controls Kvasir's data access in Settings).", req.Tool)
 	}
+	// Fleet mode: `events` with server "*"/"all"/empty scans every controllable
+	// server at once, so "is ANY of my sites being attacked?" is one lookup rather
+	// than one-per-site (which the lookup cap would cut short).
+	if req.Tool == "events" {
+		if w := strings.ToLower(strings.TrimSpace(req.Server)); w == "" || w == "*" || w == "all" {
+			return s.lookupAppEventsFleet(ctx, servers, req.Hours)
+		}
+	}
 	var srv *serverRow
 	want := strings.ToLower(strings.TrimSpace(req.Server))
 	for i := range servers {
@@ -325,6 +333,87 @@ func (s *Server) lookupAppEvents(ctx context.Context, srv *serverRow, hours int)
 		lines = append(lines, line)
 	}
 	return fmt.Sprintf("%s — recorded events (last %dh):\n%s", srv.Name, hours, strings.Join(lines, "\n"))
+}
+
+// lookupAppEventsFleet summarises recorded events across ALL controllable
+// servers in one shot, so "is any of my sites being attacked?" is answered
+// without a lookup per site. Only servers that actually recorded events appear.
+func (s *Server) lookupAppEventsFleet(ctx context.Context, servers []serverRow, hours int) string {
+	hours = clampHours(hours)
+	if len(servers) == 0 {
+		return "You don't manage any servers."
+	}
+	name := map[string]string{}
+	ph := make([]string, 0, len(servers))
+	args := make([]any, 0, len(servers)+1)
+	for _, sv := range servers {
+		name[sv.ID] = sv.Name
+		ph = append(ph, "?")
+		args = append(args, sv.ID)
+	}
+	args = append(args, fmt.Sprintf("-%d hours", hours))
+	q := `SELECT server_id, key, label, subject, SUM(count) AS c, MAX(last_ts)
+		FROM app_events WHERE server_id IN (` + strings.Join(ph, ",") + `) AND bucket >= datetime('now', ?)
+		GROUP BY server_id, key, subject ORDER BY c DESC`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return "Couldn't read events."
+	}
+	defer rows.Close()
+
+	type keyAgg struct {
+		label   string
+		total   int
+		sources int
+		top     []string
+		last    string
+	}
+	// server id -> key -> agg, preserving first-seen order per server.
+	perServer := map[string]map[string]*keyAgg{}
+	var svOrder []string
+	for rows.Next() {
+		var sid, key, label, subject, last string
+		var c int
+		if rows.Scan(&sid, &key, &label, &subject, &c, &last) != nil {
+			continue
+		}
+		if perServer[sid] == nil {
+			perServer[sid] = map[string]*keyAgg{}
+			svOrder = append(svOrder, sid)
+		}
+		a := perServer[sid][key]
+		if a == nil {
+			a = &keyAgg{label: label}
+			perServer[sid][key] = a
+		}
+		a.total += c
+		if subject != "" {
+			a.sources++
+			if len(a.top) < 3 {
+				a.top = append(a.top, fmt.Sprintf("%s (%d×)", subject, c))
+			}
+		}
+		if last > a.last {
+			a.last = last
+		}
+	}
+	if len(svOrder) == 0 {
+		return fmt.Sprintf("No notable events recorded on any of your servers in the last %dh.", hours)
+	}
+	var out []string
+	for _, sid := range svOrder {
+		var parts []string
+		for key, a := range perServer[sid] {
+			p := fmt.Sprintf("%s %d", a.label, a.total)
+			if a.sources > 0 {
+				p += fmt.Sprintf(" (top %s)", strings.Join(a.top, ", "))
+			}
+			_ = key
+			parts = append(parts, p)
+		}
+		out = append(out, fmt.Sprintf("%s: %s", name[sid], strings.Join(parts, "; ")))
+	}
+	return fmt.Sprintf("Recorded events across your servers (last %dh):\n%s", hours, strings.Join(out, "\n"))
 }
 
 func (s *Server) lookupMetricsWindow(ctx context.Context, srv *serverRow, hours int) string {

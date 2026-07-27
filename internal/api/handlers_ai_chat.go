@@ -177,8 +177,9 @@ func buildChatMessages(history []llm.Message, servers []serverRow, actionsEnable
 			"is online right NOW; `player_sessions` is the reliable source for named player activity over time — use it " +
 			"for \"who was on yesterday / when did X last play\" (`hours` = window). `events` reports recorded " +
 			"security/health events (e.g. WordPress xmlrpc/login attempts, HTTP 5xx) with counts and top source IPs — " +
-			"use it for \"is this site being attacked / any errors?\". `player_history` is counts only; " +
-			"`hours` also sets the window for metrics_window (default 24). "
+			"use it for \"is this site being attacked / any errors?\". For \"is ANY of my sites attacked?\" call `events` " +
+			"with server \"*\" to scan every server in one lookup instead of checking them one at a time. " +
+			"`player_history` is counts only; `hours` also sets the window for metrics_window (default 24). "
 		if dataLevel >= 2 {
 			system += "`search_logs` greps a server's live log for `pattern` — a fallback for names/events when " +
 				"player_sessions has no record (e.g. before tracking started), but the live log is short-lived, so " +

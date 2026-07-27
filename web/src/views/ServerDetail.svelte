@@ -428,6 +428,23 @@
     if (tab === "activity" && server?.admin_log_supported) loadActivity();
   });
 
+  // History tab: the panel's own recorded player sessions + security/health events.
+  let history = $state(null); // { sessions:[], events:[], hours }
+  let historyBusy = $state(false);
+  async function loadHistory() {
+    historyBusy = true;
+    try {
+      history = await api.get(`/servers/${id}/activity`);
+    } catch (e) {
+      /* leave prior data */
+    } finally {
+      historyBusy = false;
+    }
+  }
+  $effect(() => {
+    if (tab === "history" && server?.has_activity) loadHistory();
+  });
+
   // AI config advisor (advisory — review this server's settings for footguns)
   let configAdvice = $state("");
   let configAdviceBusy = $state(false);
@@ -690,6 +707,7 @@
       ...(can("server.console") ? [["console", "Console"]] : []),
       ...(server?.players_supported && can("server.console") ? [["players", "Players"]] : []),
       ...(server?.admin_log_supported && can("server.view") ? [["activity", "Activity"]] : []),
+      ...(server?.has_activity && can("server.view") ? [["history", "History"]] : []),
       ...(server?.mods_supported && can("server.files") ? [["mcmods", "Mods"]] : []),
       ...(can("server.files") ? [["files", "Files"]] : []),
       ...(can("server.backup") ? [["backups", "Backups"]] : []),
@@ -707,6 +725,7 @@
     console: "Live server console — read output and send commands (or RCON, where the game supports it).",
     players: "Who's connected right now. Kick, broadcast a message, or lock joins.",
     activity: "Recent server activity parsed from the game's admin log — joins, disconnects, deaths, kills.",
+    history: "Recorded history the panel keeps — who was online and when, plus notable security/health events (e.g. attack attempts, HTTP 5xx).",
     files: "Browse, edit and upload this server's files (configs, mods, world data).",
     backups: "Create, restore and manage backups of this server's data.",
     settings: "Edit this server's variables, resource limits, mods and delegated access.",
@@ -2284,6 +2303,51 @@
           {/each}
         </div>
       {/if}
+    </div>
+  {:else if tab === "history"}
+    <div class="max-w-3xl space-y-5">
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-muted">Recorded over the last {history?.hours ? Math.round(history.hours / 24) : 7} days{historyBusy ? " · loading…" : ""}</span>
+        <button class="btn-ghost text-xs ml-auto" disabled={historyBusy} onclick={loadHistory}>Refresh</button>
+      </div>
+
+      <!-- Security / health events -->
+      <div>
+        <h3 class="text-sm font-semibold mb-1">🛡️ Security &amp; health events</h3>
+        {#if history?.events?.length}
+          <div class="card divide-y divide-border">
+            {#each history.events as e}
+              <div class="flex items-center gap-3 px-3 py-2 text-sm">
+                <span class="font-medium">{e.label || e.key}</span>
+                {#if e.subject}<span class="text-muted font-mono text-xs">{e.subject}</span>{/if}
+                <span class="badge bg-warn/20 text-warn ml-auto">{e.count}×</span>
+                <span class="text-muted text-xs whitespace-nowrap" title="Most recent (UTC)">{e.last_ts?.slice(5, 16)}</span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-muted text-sm">No notable events recorded — nothing worth flagging.</p>
+        {/if}
+      </div>
+
+      <!-- Player sessions -->
+      <div>
+        <h3 class="text-sm font-semibold mb-1">👥 Player sessions</h3>
+        {#if history?.sessions?.length}
+          <div class="card divide-y divide-border">
+            {#each history.sessions as p}
+              <div class="flex items-center gap-3 px-3 py-2 text-sm">
+                <span class="font-medium">{p.name}</span>
+                <span class="text-muted text-xs whitespace-nowrap ml-auto" title="Joined (UTC)">{p.joined_at?.slice(5, 16)}</span>
+                <span class="text-muted text-xs">→</span>
+                <span class="text-muted text-xs whitespace-nowrap" title="Left (UTC)">{p.left_at ? p.left_at.slice(5, 16) : "still on / unclosed"}</span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-muted text-sm">No player sessions recorded yet (tracking runs forward from when this was set up).</p>
+        {/if}
+      </div>
     </div>
   {:else if tab === "mcmods"}
     <div class="max-w-3xl space-y-6">

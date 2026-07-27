@@ -253,6 +253,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/wipe", s.handleWipeServer)
 		r.Get("/api/servers/{id}/stats", s.handleServerStats)
 		r.Get("/api/servers/{id}/metrics", s.handleServerMetrics)
+		r.Get("/api/servers/{id}/activity", s.handleServerActivity)
 		r.Get("/api/servers/{id}/crashes", s.handleServerCrashes)
 		r.Delete("/api/servers/{id}/crashes", s.handleClearServerCrashes)
 		r.Get("/api/crashes/summary", s.handleCrashesSummary)

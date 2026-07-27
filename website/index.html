@@ -182,7 +182,8 @@
           Runs on <b>amd64 and arm64</b> — including a <b>Raspberry Pi 4/5</b>.</p></div>
       <div class="card"><div class="ic">ᚱ</div><h3>Runes for everything</h3>
         <p>A game <i>or</i> app = one declarative YAML “Rune”. Minecraft, Rust, DayZ built in; a library of
-          community runes (databases + homelab apps) one click away.</p></div>
+          community runes (databases + homelab apps) one click away — including <b>app stacks</b> that
+          bring their own database, wired up automatically (WordPress, Immich, Karakeep).</p></div>
       <div class="card"><div class="ic">🖥️</div><h3>Real-time console &amp; stats</h3>
         <p>Live WebSocket console with command input, log streaming, per-server CPU/RAM limits and monitoring,
           and a clear installing → running → stopped lifecycle.</p></div>
@@ -196,19 +197,23 @@
         <p>Safe restarts with in-game countdowns, an auto-restart toggle, a watchdog that
           auto-heals a hung server, world wipes, and a live Players tab with kick / broadcast /
           lock — plus an activity feed of joins, deaths and kills. All rune-declared.</p></div>
-      <div class="card"><div class="ic">🤖</div><h3>AI assistant <span class="pill" style="font-size:.6em;vertical-align:middle">optional</span></h3>
-        <p>Bring your own LLM (OpenAI, Anthropic, DeepSeek, Ollama, …). Get a plain-language
-          “what happened while I was away” digest of the activity log with anomaly flags.
-          Opt-in, advisory, and it never touches a server by itself.</p></div>
+      <div class="card"><div class="ic">🧠</div><h3>Kvasir — built-in AI <span class="pill" style="font-size:.6em;vertical-align:middle">optional</span></h3>
+        <p>Bring your own LLM (OpenAI, Anthropic, DeepSeek, or a local Ollama/vLLM). Chat with a helper
+          that knows <i>your</i> panel — “were there players overnight?”, “is any site being attacked?” —
+          answered from the panel’s own data. Proactive monitoring explains crashes and can apply safe
+          fixes. You choose how much it may read; a local model keeps everything on your box.</p></div>
       <div class="card"><div class="ic">🔐</div><h3>Access &amp; security</h3>
-        <p>Multiple admins with scoped permissions, optional 2FA, API tokens, a full audit log.
-          Secrets encrypted at rest (AES-256-GCM); argon2id passwords.</p></div>
+        <p>Scoped multi-admin permissions, optional 2FA and passkeys, self-service password reset by email,
+          API tokens, a full audit log. Log-pattern watchers flag brute-force and attack bursts and keep a
+          security-event history. Secrets encrypted at rest (AES-256-GCM); argon2id passwords.</p></div>
     </div>
 
     <div class="tag-pills">
       <span class="pill">Minecraft Java &amp; Bedrock</span>
       <span class="pill">Rust</span>
       <span class="pill">DayZ + Workshop mods</span>
+      <span class="pill">WordPress</span>
+      <span class="pill">Karakeep</span>
       <span class="pill">Vaultwarden</span>
       <span class="pill">Gitea</span>
       <span class="pill">Uptime Kuma</span>

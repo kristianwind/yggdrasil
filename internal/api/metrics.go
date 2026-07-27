@@ -29,15 +29,18 @@ func (s *Server) startMetricsSampler() {
 	go func() {
 		defer recoverLog("metricsSampler")
 		s.sampleMetrics()
+		s.sampleSessions()
 		t := time.NewTicker(metricsInterval)
 		defer t.Stop()
 		n := 0
 		for range t.C {
 			s.sampleMetrics()
+			s.sampleSessions()
 			if n++; n%12 == 0 { // ~hourly
 				s.db.Exec("DELETE FROM metrics WHERE ts < datetime('now', ?)", metricsRetention)
 				s.db.Exec("DELETE FROM host_metrics WHERE ts < datetime('now', ?)", metricsRetention)
 				s.db.Exec("DELETE FROM server_crashes WHERE ts < datetime('now', '-30 days')")
+				s.db.Exec("DELETE FROM player_sessions WHERE joined_at < datetime('now', '-30 days')")
 			}
 		}
 	}()

@@ -569,10 +569,25 @@ players:
 | `broadcast_command` | no | Templated with `{{message}}`. |
 | `lock_command` | no | No template. |
 | `unlock_command` | no | No template. |
+| `session_join` | no | Regex matched against log lines; capture group 1 = player name. Opens a session-history row on a join. |
+| `session_leave` | no | Regex; capture group 1 = name. Closes the open session on a leave. May be omitted (open sessions close when the server stops). |
 
 `player_regex` runs against each line of the response; lines that don't match (headers, totals) are
 skipped. `name` is required; `id`, `ping`, `guid` and `ip` are optional and shown when captured. Any
 action command you leave out is not offered in the UI, so read-only listing is a valid rune.
+
+`session_join` / `session_leave` record a persistent **player session history** (who was on, and when)
+straight from the log, so it survives after the live log scrolls away — the panel and Kvasir can then
+answer “who was on yesterday / when did X last play”. This is independent of the RCON roster above and
+is the only way to get named history for games (e.g. Bedrock) whose names appear only in the log. A
+`players:` block may declare session tracking *only* (no `list_command`), in which case no RCON block is
+needed. Example (itzg Bedrock):
+
+```yaml
+players:
+  session_join:  'Player connected:\s*(.+?),'
+  session_leave: 'Player disconnected:\s*(.+?),'
+```
 
 Single-quote the regex in YAML so backslashes stay literal.
 

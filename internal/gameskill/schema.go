@@ -110,6 +110,14 @@ type Players struct {
 	BroadcastCommand string `yaml:"broadcast_command,omitempty" json:"broadcast_command,omitempty"`
 	LockCommand      string `yaml:"lock_command,omitempty"      json:"lock_command,omitempty"`
 	UnlockCommand    string `yaml:"unlock_command,omitempty"    json:"unlock_command,omitempty"`
+	// SessionJoin/SessionLeave are regexps matched against log lines to record a
+	// persistent join/leave session history (capture group 1 = player name), so
+	// "who was on yesterday" survives after the live log scrolls away. Independent
+	// of the RCON roster above — useful for games (e.g. Bedrock) whose names only
+	// appear in the log. SessionLeave may be empty (open sessions close when the
+	// server stops).
+	SessionJoin  string `yaml:"session_join,omitempty"  json:"session_join,omitempty"`
+	SessionLeave string `yaml:"session_leave,omitempty" json:"session_leave,omitempty"`
 }
 
 // Wipe declares what "reset the world / persistence" means for this rune: the
@@ -422,24 +430,40 @@ func validate(gs *Gameskill) error {
 	}
 
 	if gs.Players != nil {
-		if strings.TrimSpace(gs.Players.ListCommand) == "" {
-			return fmt.Errorf("gameskill.players.list_command is required when players is set")
+		hasRoster := strings.TrimSpace(gs.Players.ListCommand) != ""
+		hasSessions := strings.TrimSpace(gs.Players.SessionJoin) != ""
+		if !hasRoster && !hasSessions {
+			return fmt.Errorf("gameskill.players needs either list_command (RCON roster) or session_join (session history)")
 		}
-		if gs.RCON == nil || !gs.RCON.Enabled {
-			return fmt.Errorf("gameskill.players requires an enabled rcon: block")
-		}
-		re, err := regexp.Compile(gs.Players.PlayerRegex)
-		if err != nil {
-			return fmt.Errorf("gameskill.players.player_regex does not compile: %w", err)
-		}
-		hasName := false
-		for _, n := range re.SubexpNames() {
-			if n == "name" {
-				hasName = true
+		// The RCON roster fields are only required when a list_command is declared —
+		// a players block can be session-tracking only (e.g. Bedrock, whose names
+		// live in the log, not an RCON list).
+		if hasRoster {
+			if gs.RCON == nil || !gs.RCON.Enabled {
+				return fmt.Errorf("gameskill.players.list_command requires an enabled rcon: block")
+			}
+			re, err := regexp.Compile(gs.Players.PlayerRegex)
+			if err != nil {
+				return fmt.Errorf("gameskill.players.player_regex does not compile: %w", err)
+			}
+			hasName := false
+			for _, n := range re.SubexpNames() {
+				if n == "name" {
+					hasName = true
+				}
+			}
+			if !hasName {
+				return fmt.Errorf("gameskill.players.player_regex must have a (?P<name>...) capture group")
 			}
 		}
-		if !hasName {
-			return fmt.Errorf("gameskill.players.player_regex must have a (?P<name>...) capture group")
+		// Session patterns, when present, must compile (capture group 1 = name).
+		for _, p := range []string{gs.Players.SessionJoin, gs.Players.SessionLeave} {
+			if p == "" {
+				continue
+			}
+			if _, err := regexp.Compile(p); err != nil {
+				return fmt.Errorf("gameskill.players session pattern %q does not compile: %w", p, err)
+			}
 		}
 	}
 

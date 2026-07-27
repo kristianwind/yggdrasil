@@ -61,11 +61,12 @@ func splitLookup(full string) (text string, req *lookupReq) {
 // level 1, live logs at level 2. runLookup and the prompt both consult this so a
 // tool is only offered — and only runs — when the admin has enabled its tier.
 var lookupMinLevel = map[string]int{
-	"player_history": 1,
-	"metrics_window": 1,
-	"list_backups":   1,
-	"roster":         1,
-	"search_logs":    2,
+	"player_history":  1,
+	"player_sessions": 1,
+	"metrics_window":  1,
+	"list_backups":    1,
+	"roster":          1,
+	"search_logs":     2,
 }
 
 // runLookup executes a read-only lookup against a server the caller controls and
@@ -77,7 +78,7 @@ var lookupMinLevel = map[string]int{
 func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookupReq, level int) string {
 	min, known := lookupMinLevel[req.Tool]
 	if !known {
-		return fmt.Sprintf("Unknown lookup %q. Available: player_history, metrics_window, list_backups, roster, search_logs.", req.Tool)
+		return fmt.Sprintf("Unknown lookup %q. Available: player_history, player_sessions, metrics_window, list_backups, roster, search_logs.", req.Tool)
 	}
 	if level < min {
 		return fmt.Sprintf("The %q lookup isn't enabled on this panel (the admin controls Kvasir's data access in Settings).", req.Tool)
@@ -96,6 +97,8 @@ func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookup
 	switch req.Tool {
 	case "player_history":
 		return s.lookupPlayerHistory(ctx, srv, req.Hours)
+	case "player_sessions":
+		return s.lookupPlayerSessions(ctx, srv, req.Hours)
 	case "metrics_window":
 		return s.lookupMetricsWindow(ctx, srv, req.Hours)
 	case "list_backups":
@@ -220,6 +223,39 @@ func (s *Server) lookupPlayerHistory(ctx context.Context, srv *serverRow, hours 
 	}
 	return fmt.Sprintf("%s over the last %dh: peak %d players; currently %s; %d of %d samples had someone online; %s.",
 		srv.Name, hours, peak, now, withPlayers, samples, last)
+}
+
+// lookupPlayerSessions answers "who was on, and when" over a window from the
+// recorded session history — the structured, reliable source for named player
+// activity (unlike search_logs, it survives log rotation and needs no grep).
+func (s *Server) lookupPlayerSessions(ctx context.Context, srv *serverRow, hours int) string {
+	hours = clampHours(hours)
+	win := fmt.Sprintf("-%d hours", hours)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT player_name, MIN(joined_at), MAX(COALESCE(left_at, joined_at)), COUNT(*)
+		FROM player_sessions
+		WHERE server_id=? AND joined_at >= datetime('now', ?)
+		GROUP BY player_name ORDER BY MAX(joined_at) DESC LIMIT 50`, srv.ID, win)
+	if err != nil {
+		return "Couldn't read player sessions."
+	}
+	defer rows.Close()
+	var lines []string
+	for rows.Next() {
+		var name, first, last string
+		var n int
+		if rows.Scan(&name, &first, &last, &n) == nil {
+			line := fmt.Sprintf("%s — first %s, last %s", name, first, last)
+			if n > 1 {
+				line += fmt.Sprintf(" (%d sessions)", n)
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		return fmt.Sprintf("%s: no recorded player sessions in the last %dh. (Session history is kept going forward from when the panel started tracking it — older activity, or a rune without join/leave patterns, won't appear here.)", srv.Name, hours)
+	}
+	return fmt.Sprintf("%s — named players seen in the last %dh (most recent first), times in UTC:\n%s", srv.Name, hours, strings.Join(lines, "\n"))
 }
 
 func (s *Server) lookupMetricsWindow(ctx context.Context, srv *serverRow, hours int) string {

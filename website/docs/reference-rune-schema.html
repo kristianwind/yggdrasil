@@ -862,11 +862,31 @@ command. Omit the block for games with no console ban.</p>
 <td>no</td>
 <td>No template.</td>
 </tr>
+<tr>
+<td><code>session_join</code></td>
+<td>no</td>
+<td>Regex matched against log lines; capture group 1 = player name. Opens a session-history row on a join.</td>
+</tr>
+<tr>
+<td><code>session_leave</code></td>
+<td>no</td>
+<td>Regex; capture group 1 = name. Closes the open session on a leave. May be omitted (open sessions close when the server stops).</td>
+</tr>
 </tbody>
 </table>
 <p><code>player_regex</code> runs against each line of the response; lines that don&rsquo;t match (headers, totals) are
 skipped. <code>name</code> is required; <code>id</code>, <code>ping</code>, <code>guid</code> and <code>ip</code> are optional and shown when captured. Any
 action command you leave out is not offered in the UI, so read-only listing is a valid rune.</p>
+<p><code>session_join</code> / <code>session_leave</code> record a persistent <strong>player session history</strong> (who was on, and when)
+straight from the log, so it survives after the live log scrolls away — the panel and Kvasir can then
+answer “who was on yesterday / when did X last play”. This is independent of the RCON roster above and
+is the only way to get named history for games (e.g. Bedrock) whose names appear only in the log. A
+<code>players:</code> block may declare session tracking <em>only</em> (no <code>list_command</code>), in which case no RCON block is
+needed. Example (itzg Bedrock):</p>
+<pre><code class="language-yaml">players:
+  session_join:  'Player connected:\s*(.+?),'
+  session_leave: 'Player disconnected:\s*(.+?),'
+</code></pre>
 <p>Single-quote the regex in YAML so backslashes stay literal.</p>
 <h2 id="admin_log"><code>admin_log</code></h2>
 <p>Turns a game&rsquo;s admin/activity log into a parsed feed of joins, leaves, deaths and kills.</p>

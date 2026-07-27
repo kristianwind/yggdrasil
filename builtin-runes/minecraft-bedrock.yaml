@@ -74,6 +74,13 @@ gameskill:
   rcon:
     enabled: false   # Bedrock has no RCON; commands go to the container stdin
 
+  players:
+    # Bedrock has no RCON/query roster with names — the names only appear in the
+    # server log. Record join/leave sessions from those lines so the panel (and
+    # Kvasir) can answer "who was on yesterday" long after the log scrolls away.
+    session_join:  'Player connected:\s*(.+?),'
+    session_leave: 'Player disconnected:\s*(.+?),'
+
   config_files:
     - "server.properties"
     - "allowlist.json"

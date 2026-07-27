@@ -349,6 +349,21 @@ CREATE TABLE IF NOT EXISTS violation_rules (
 	created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Player session history: one row per player's presence on a server, opened on a
+-- join log-event and closed (left_at set) on the matching leave — so "who was on
+-- yesterday / when did X last play" is answerable long after the live log has
+-- scrolled away. Names come from the rune's session_join/session_leave patterns.
+-- left_at NULL = still online per our tracking (or the server stopped uncleanly).
+CREATE TABLE IF NOT EXISTS player_sessions (
+	id          TEXT PRIMARY KEY,
+	server_id   TEXT NOT NULL,
+	player_name TEXT NOT NULL,
+	joined_at   TEXT NOT NULL,
+	left_at     TEXT,
+	created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_player_sessions ON player_sessions(server_id, joined_at);
+
 -- Generic key/value app settings (e.g. public hostname for connect addresses).
 CREATE TABLE IF NOT EXISTS app_settings (
 	key   TEXT PRIMARY KEY,

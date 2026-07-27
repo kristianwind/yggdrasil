@@ -1,0 +1,83 @@
+gameskill:
+  id: karakeep
+  name: "Karakeep"
+  category: "Apps"
+  description: "Self-hosted 'bookmark everything' — links, articles, notes, images and PDFs — with full-text search and optional AI auto-tagging. A privacy-first, self-hosted alternative to Raindrop.io / Pocket (which are cloud-only). An app stack: the panel runs Karakeep together with its own Meilisearch (full-text search) and a headless Chrome (link previews + full-page archiving) on a private network — nothing to wire up by hand."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Karakeep's web app (Next.js). Reaches the bundled Meilisearch + Chrome by their
+  # service names on the per-server stack network.
+  docker:
+    image: "ghcr.io/karakeep-app/karakeep:release"
+    data_path: /data
+    keep_entrypoint: true   # the karakeep image starts the web app itself
+    env:
+      DATA_DIR: /data
+      MEILI_ADDR: "http://meilisearch:7700"
+      BROWSER_WEB_URL: "http://chrome:9222"
+      MEILI_MASTER_KEY: "{{MEILI_MASTER_KEY}}"
+      NEXTAUTH_SECRET: "{{NEXTAUTH_SECRET}}"
+      NEXTAUTH_URL: "{{NEXTAUTH_URL}}"
+      # Optional: point at an LLM for auto-tagging/summaries. Leave the key blank to
+      # run without AI. A local endpoint keeps your bookmarks on your own network.
+      OPENAI_API_KEY: "{{OPENAI_API_KEY}}"
+      OPENAI_BASE_URL: "{{OPENAI_BASE_URL}}"
+
+  variables:
+    - key: NEXTAUTH_URL
+      name: "Public URL"
+      type: string
+      default: "http://localhost:3000"
+      description: "The exact URL you'll open Karakeep at — scheme + host (+ path). Sign-in redirects break if this doesn't match how you reach it, e.g. https://bookmarks.example.com"
+    - key: NEXTAUTH_SECRET
+      name: "Auth secret (long random string — change this)"
+      type: string
+      default: "change-me-to-a-long-random-string"
+    - key: MEILI_MASTER_KEY
+      name: "Search master key (long random string — change this)"
+      type: string
+      default: "change-me-to-another-long-random-string"
+    - key: OPENAI_API_KEY
+      name: "AI key (optional — enables auto-tagging)"
+      type: string
+      default: ""
+      description: "Leave blank to run without AI. Works with OpenAI or any OpenAI-compatible endpoint (set the base URL below)."
+    - key: OPENAI_BASE_URL
+      name: "AI endpoint (optional)"
+      type: string
+      default: ""
+      description: "Only if using a non-OpenAI/local model, e.g. http://192.168.1.150:8080/v1. Leave blank for OpenAI."
+
+  # The bundled sidecars — reached by the web app as "meilisearch" and "chrome".
+  services:
+    - name: meilisearch
+      image: "getmeili/meilisearch:v1.41.0"
+      data_path: /meili_data
+      env:
+        MEILI_NO_ANALYTICS: "true"
+        MEILI_MASTER_KEY: "{{MEILI_MASTER_KEY}}"
+    - name: chrome
+      image: "gcr.io/zenika-hub/alpine-chrome:124"
+      command:
+        - "--no-sandbox"
+        - "--disable-gpu"
+        - "--disable-dev-shm-usage"
+        - "--remote-debugging-address=0.0.0.0"
+        - "--remote-debugging-port=9222"
+        - "--hide-scrollbars"
+
+  startup:
+    command: ""
+    # Karakeep's web app is Next.js; it logs a readiness line once the server is up.
+    done_regex: 'Ready in|Listening on|started server on'
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+
+  # The database is a SQLite file inside DATA_DIR, and the search index lives in the
+  # Meilisearch sidecar's volume — both under this server's data dir, so one backup
+  # captures bookmarks + search index together.
+  backup:
+    include: ["."]

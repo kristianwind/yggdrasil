@@ -288,6 +288,12 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `POST` | `/api/gameskills/install-from-github` | Admin | Fetch, validate, and store one rune from GitHub |
 | `DELETE` | `/api/gameskills/{id}` | Admin | Delete a rune |
 
+The GitHub routes read **public** repositories anonymously. To browse and install from a **private**
+one — or to lift GitHub's 60-requests-per-hour anonymous limit — store a token via
+`PUT /api/settings/github`; it is then sent as a Bearer credential on GitHub's own hosts only. Note
+that GitHub answers `404` (not `403`) for a private repository the caller cannot see, so a listing
+that fails without a token is usually a permissions problem rather than a wrong path.
+
 ### Servers
 
 | Method | Path | Auth | Description |
@@ -524,6 +530,9 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | `GET` | `/api/settings/cloudflare` | Admin | The Cloudflare tunnel configuration |
 | `PUT` | `/api/settings/cloudflare` | Admin | Update the Cloudflare tunnel configuration |
 | `POST` | `/api/settings/cloudflare/test` | Admin | Verify the token, resolve the zone, and check the tunnel config |
+| `GET` | `/api/settings/github` | Admin | Whether a GitHub token is stored (`{configured}`); the token itself is never returned |
+| `PUT` | `/api/settings/github` | Admin | Store or clear the GitHub token (`{token}`; empty clears). Lets the rune browser read **private** repos and lifts the 60-req/hour anonymous limit |
+| `POST` | `/api/settings/github/test` | Admin | Verify the stored token and report the account it authenticates as |
 
 `GET /api/settings/network` is readable by any session because the connect address is what the UI
 shows players; writing it is admin-only.

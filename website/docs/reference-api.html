@@ -496,6 +496,11 @@ create-server form needs it; everything that changes the catalogue is admin-only
 </tr>
 </tbody>
 </table>
+<p>The GitHub routes read <strong>public</strong> repositories anonymously. To browse and install from a <strong>private</strong>
+one — or to lift GitHub&rsquo;s 60-requests-per-hour anonymous limit — store a token via
+<code>PUT /api/settings/github</code>; it is then sent as a Bearer credential on GitHub&rsquo;s own hosts only. Note
+that GitHub answers <code>404</code> (not <code>403</code>) for a private repository the caller cannot see, so a listing
+that fails without a token is usually a permissions problem rather than a wrong path.</p>
 <h3 id="servers">Servers</h3>
 <table>
 <thead>
@@ -1467,6 +1472,24 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 <td><code>/api/settings/cloudflare/test</code></td>
 <td>Admin</td>
 <td>Verify the token, resolve the zone, and check the tunnel config</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/github</code></td>
+<td>Admin</td>
+<td>Whether a GitHub token is stored (<code>{configured}</code>); the token itself is never returned</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/github</code></td>
+<td>Admin</td>
+<td>Store or clear the GitHub token (<code>{token}</code>; empty clears). Lets the rune browser read <strong>private</strong> repos and lifts the 60-req/hour anonymous limit</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/github/test</code></td>
+<td>Admin</td>
+<td>Verify the stored token and report the account it authenticates as</td>
 </tr>
 </tbody>
 </table>

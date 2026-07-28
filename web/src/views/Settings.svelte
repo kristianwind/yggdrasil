@@ -273,6 +273,38 @@
     }
   }
 
+  // GitHub token — lets the rune browser read private repositories
+  let gh = $state({ configured: false });
+  let ghInput = $state("");
+  let ghBusy = $state(false);
+  let ghTesting = $state(false);
+  async function loadGithub() {
+    gh = await api.get("/settings/github").catch(() => ({ configured: false }));
+  }
+  async function saveGithub() {
+    ghBusy = true;
+    try {
+      gh = await api.put("/settings/github", { token: ghInput.trim() });
+      ghInput = "";
+      toast(gh.configured ? "GitHub token saved" : "GitHub token cleared", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      ghBusy = false;
+    }
+  }
+  async function testGithub() {
+    ghTesting = true;
+    try {
+      const res = await api.post("/settings/github/test", {});
+      toast(`GitHub token works — authenticated as ${res.login}`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      ghTesting = false;
+    }
+  }
+
   // IP blocking (attack mitigation)
   let blockCfg = $state({ enabled: false, mode: "propose", nft_enabled: false, nft_available: false, cf_configured: false });
   let blocks = $state([]);
@@ -1207,6 +1239,7 @@
     load2fa();
     loadPasskeys();
     loadBlocking();
+    loadGithub();
     loadBuild();
     loadAutoUpdate();
     loadOSUpdates();
@@ -2485,6 +2518,33 @@
     <button class="btn-primary shrink-0" onclick={saveSteamKey} disabled={steamKeyBusy || !steamKeyInput.trim()}>Save</button>
     {#if steamKey.configured}
       <button class="btn-ghost shrink-0" onclick={() => { steamKeyInput = ''; saveSteamKey(); }} disabled={steamKeyBusy}>Clear</button>
+    {/if}
+  </div>
+</div>
+
+<h2 class="text-xl font-semibold mb-2">GitHub token</h2>
+<p class="text-muted mb-4 text-sm">
+  Optional. Lets <b>Runes → Browse GitHub</b> read <b>private</b> repositories, and lifts GitHub's
+  60-requests-per-hour limit for anonymous calls. A classic token needs the <code class="text-xs bg-black/30 px-1 rounded">repo</code>
+  scope; a fine-grained token needs <b>Repository permissions → Contents: Read-only</b> on the repos you
+  want. Create one at
+  <a class="text-accent hover:underline" href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>.
+  Stored encrypted, write-only — it's never sent back to the browser.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  <div class="text-sm">
+    Status: {#if gh.configured}<span class="text-accent">a token is configured</span>{:else}<span class="text-muted">no token set — only public repos are reachable</span>{/if}
+  </div>
+  <div class="flex gap-2">
+    <input class="input flex-1 font-mono" type="password" autocomplete="off"
+      placeholder={gh.configured ? "Enter a new token to replace it" : "ghp_… or github_pat_…"}
+      bind:value={ghInput} />
+    <button class="btn-primary shrink-0" onclick={saveGithub} disabled={ghBusy || !ghInput.trim()}>Save</button>
+    {#if gh.configured}
+      <button class="btn-ghost shrink-0" onclick={testGithub} disabled={ghTesting}>
+        {ghTesting ? "Testing…" : "Test"}
+      </button>
+      <button class="btn-ghost shrink-0" onclick={() => { ghInput = ''; saveGithub(); }} disabled={ghBusy}>Clear</button>
     {/if}
   </div>
 </div>

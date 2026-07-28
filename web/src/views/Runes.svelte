@@ -205,6 +205,7 @@
   let ghOpen = $state(false);
   let ghLoading = $state(false);
   let ghData = $state(null);
+  let ghError = $state("");
   let ghBusy = $state(""); // download_url currently installing
   let ghRepo = $state("kristianwind/yggdrasil");
   let ghPath = $state("community-runes");
@@ -262,12 +263,16 @@
   );
   async function loadGithub(refresh) {
     ghLoading = true;
+    ghError = "";
     try {
       const q = new URLSearchParams({ repo: ghRepo.trim(), path: ghPath.trim() });
       if (ghRef.trim()) q.set("ref", ghRef.trim());
       if (refresh) q.set("refresh", "1");
       ghData = await api.get(`/gameskills/github?${q}`);
     } catch (e) {
+      // Keep the reason visible in the dialog — a toast disappears before it's read,
+      // and the message says whether this is a private repo, a bad ref or a rate limit.
+      ghError = e.message || "Couldn't load the listing.";
       toast(e.message, "error");
       ghData = null;
     } finally {
@@ -489,7 +494,12 @@
       {#if ghLoading}
         <div class="text-muted text-sm">Fetching from GitHub…</div>
       {:else if !ghData}
-        <div class="text-muted text-sm">Couldn't load the listing — check the repo/folder and try Reload.</div>
+        <div class="text-sm text-danger">{ghError || "Couldn't load the listing — check the repo/folder and try Reload."}</div>
+        <div class="text-muted text-xs mt-1">
+          Folder is a path inside the repo (e.g. <span class="font-mono">yggdrasil</span>), not a GitHub URL —
+          leave out <span class="font-mono">/tree/&lt;branch&gt;/</span>. Private repositories need a
+          GitHub token under Settings → Integrations.
+        </div>
       {:else if !ghData.runes.length}
         <div class="text-muted text-sm">No <span class="font-mono">.yaml</span> runes found in that folder.</div>
       {:else}

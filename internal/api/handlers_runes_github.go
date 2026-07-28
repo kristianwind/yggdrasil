@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -93,7 +95,12 @@ type ghRunesEntry struct {
 	runes []ghRune
 }
 
-func ghHTTP(ctx context.Context, method, rawurl string, accept string) (*http.Response, error) {
+// ghHTTP issues a GitHub request. token (optional) is a personal access token,
+// sent as a Bearer credential so PRIVATE rune repos can be listed and installed;
+// without it only public repos are reachable. The header is only ever attached to
+// GitHub's own hosts (ghAllowedHosts already gates callers), so the token can't
+// leak to a third party via a crafted URL.
+func ghHTTP(ctx context.Context, method, rawurl, accept, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, rawurl, nil)
 	if err != nil {
 		return nil, err
@@ -103,7 +110,47 @@ func ghHTTP(ctx context.Context, method, rawurl string, accept string) (*http.Re
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}
+	if token != "" && ghAllowedHosts[req.URL.Host] {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	return http.DefaultClient.Do(req)
+}
+
+// githubToken returns the stored (decrypted) GitHub PAT, or "" when none is set.
+func (s *Server) githubToken(ctx context.Context) string {
+	enc := s.getSetting(ctx, "github_token")
+	if enc == "" {
+		return ""
+	}
+	tok, err := s.cipher.Decrypt(enc)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(tok)
+}
+
+// ghTokenFingerprint is a short, non-reversible tag for the token in use. It goes
+// into the listing cache key so that changing (or clearing) the token doesn't serve
+// a cached listing the new credential shouldn't see.
+func ghTokenFingerprint(token string) string {
+	if token == "" {
+		return "anon"
+	}
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:4])
+}
+
+// sanitizeGHDownloadURL strips a query string from a contents-API download_url.
+// For a private repo GitHub embeds a short-lived `?token=…` there; keeping it would
+// cache a credential, hand it to the browser, and break later installs when it
+// expires. We drop it and authenticate with the PAT header instead.
+func sanitizeGHDownloadURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	u.RawQuery = ""
+	return u.String()
 }
 
 // handleGithubRunes lists the *.yaml runes in a GitHub repo directory, parsing
@@ -127,7 +174,8 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheKey := repo + "|" + path + "|" + ref
+	token := s.githubToken(r.Context())
+	cacheKey := repo + "|" + path + "|" + ref + "|" + ghTokenFingerprint(token)
 	refresh := r.URL.Query().Get("refresh") == "1"
 
 	ghRunesMu.Lock()
@@ -139,7 +187,7 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		runes = cached.runes
 	} else {
 		var err error
-		runes, err = fetchGithubRunes(r.Context(), repo, path, ref)
+		runes, err = fetchGithubRunes(r.Context(), repo, path, ref, token)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusBadGateway)
 			return
@@ -191,19 +239,29 @@ func isYAMLName(n string) bool {
 }
 
 // ghListDir fetches one directory listing from the GitHub contents API.
-func ghListDir(ctx context.Context, repo, path, ref string) ([]ghDirEntry, error) {
+func ghListDir(ctx context.Context, repo, path, ref, token string) ([]ghDirEntry, error) {
 	listURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s?ref=%s",
 		repo, path, url.QueryEscape(ref))
-	resp, err := ghHTTP(ctx, "GET", listURL, "application/vnd.github+json")
+	resp, err := ghHTTP(ctx, "GET", listURL, "application/vnd.github+json", token)
 	if err != nil {
 		return nil, fmt.Errorf("github unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNotFound:
-		return nil, fmt.Errorf("not found: %s/%s@%s", repo, path, ref)
+		// GitHub answers 404 (not 403) for a private repo you can't see, so an
+		// unauthenticated miss is most often a missing token rather than a typo.
+		if token == "" {
+			return nil, fmt.Errorf("not found: %s/%s@%s — if the repository is private, add a GitHub token in Settings → Integrations", repo, path, ref)
+		}
+		return nil, fmt.Errorf("not found: %s/%s@%s — check the repo, folder and branch (and that the token can read this repository)", repo, path, ref)
+	case http.StatusUnauthorized:
+		return nil, fmt.Errorf("github rejected the token (401) — check the GitHub token in Settings → Integrations")
 	case http.StatusForbidden:
-		return nil, fmt.Errorf("github rate limit reached — try again in a few minutes")
+		if token == "" {
+			return nil, fmt.Errorf("github rate limit reached (60 requests/hour without a token) — add a GitHub token in Settings → Integrations, or try again later")
+		}
+		return nil, fmt.Errorf("github refused the request (403) — rate limited, or the token lacks access to this repository")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github returned %d", resp.StatusCode)
@@ -218,11 +276,11 @@ func ghListDir(ctx context.Context, repo, path, ref string) ([]ghDirEntry, error
 // fetchGithubRunes lists a repo directory AND its immediate subdirectories (so
 // runes can be grouped into folders like databases/ apps/ games/), then fetches +
 // parses each .yaml concurrently for its metadata.
-func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, error) {
+func fetchGithubRunes(ctx context.Context, repo, path, ref, token string) ([]ghRune, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	entries, err := ghListDir(ctx, repo, path, ref)
+	entries, err := ghListDir(ctx, repo, path, ref, token)
 	if err != nil {
 		return nil, err
 	}
@@ -230,20 +288,20 @@ func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, er
 	var subdirs []string
 	for _, e := range entries {
 		if e.Type == "file" && isYAMLName(e.Name) && e.DownloadURL != "" {
-			candidates = append(candidates, ghRune{Filename: e.Name, DownloadURL: e.DownloadURL})
+			candidates = append(candidates, ghRune{Filename: e.Name, DownloadURL: sanitizeGHDownloadURL(e.DownloadURL)})
 		} else if e.Type == "dir" {
 			subdirs = append(subdirs, path+"/"+e.Name)
 		}
 	}
 	// Descend one level into subfolders (best-effort; a failed subdir is skipped).
 	for _, sd := range subdirs {
-		subEntries, serr := ghListDir(ctx, repo, sd, ref)
+		subEntries, serr := ghListDir(ctx, repo, sd, ref, token)
 		if serr != nil {
 			continue
 		}
 		for _, e := range subEntries {
 			if e.Type == "file" && isYAMLName(e.Name) && e.DownloadURL != "" {
-				candidates = append(candidates, ghRune{Filename: e.Name, DownloadURL: e.DownloadURL})
+				candidates = append(candidates, ghRune{Filename: e.Name, DownloadURL: sanitizeGHDownloadURL(e.DownloadURL)})
 			}
 		}
 	}
@@ -257,7 +315,7 @@ func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, er
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			data, err := fetchGithubRaw(ctx, g.DownloadURL)
+			data, err := fetchGithubRaw(ctx, g.DownloadURL, token)
 			if err != nil {
 				g.ParseError = err.Error()
 				return
@@ -284,16 +342,19 @@ func fetchGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, er
 	return candidates, nil
 }
 
-func fetchGithubRaw(ctx context.Context, rawurl string) ([]byte, error) {
+func fetchGithubRaw(ctx context.Context, rawurl, token string) ([]byte, error) {
 	u, err := url.Parse(rawurl)
 	if err != nil || u.Scheme != "https" || !ghAllowedHosts[u.Host] {
 		return nil, fmt.Errorf("download url not allowed")
 	}
-	resp, err := ghHTTP(ctx, "GET", rawurl, "")
+	resp, err := ghHTTP(ctx, "GET", rawurl, "", token)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && token == "" {
+		return nil, fmt.Errorf("fetch returned 404 — if the repository is private, add a GitHub token in Settings → Integrations")
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fetch returned %d", resp.StatusCode)
 	}
@@ -313,7 +374,7 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	data, err := fetchGithubRaw(ctx, req.DownloadURL)
+	data, err := fetchGithubRaw(ctx, req.DownloadURL, s.githubToken(r.Context()))
 	if err != nil {
 		jsonError(w, "fetch: "+err.Error(), http.StatusBadGateway)
 		return

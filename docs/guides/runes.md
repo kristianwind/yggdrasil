@@ -228,6 +228,7 @@ the container from the rune as it is right now. Changes to the install script ne
 
 - [Managing servers](servers.md) — creating servers from runes, and the features runes light up
 - [Rune schema](../reference/rune-schema.md) — every field, for writing your own
+- [Writing a rune with an LLM](runes-with-an-llm.md) — measure the image first, then let a model write the YAML
 - [Networking](networking.md) — ports, subdomains, and reverse proxies for app runes
 - [Backups and schedules](backups-and-schedules.md)
 - [Monitoring and alerts](monitoring-and-alerts.md)

@@ -189,7 +189,11 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		var err error
 		runes, err = fetchGithubRunes(r.Context(), repo, path, ref, token)
 		if err != nil {
-			jsonError(w, err.Error(), http.StatusBadGateway)
+			// Deliberately not 502: a proxy in front of the panel (Cloudflare
+			// Tunnel, nginx) may swap a Bad Gateway body for its own error page,
+			// and the message here — private repo, bad ref, rate limit — is the
+			// whole point of the response. 400 reaches the browser intact.
+			jsonError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		ghRunesMu.Lock()
@@ -376,7 +380,9 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 	defer cancel()
 	data, err := fetchGithubRaw(ctx, req.DownloadURL, s.githubToken(r.Context()))
 	if err != nil {
-		jsonError(w, "fetch: "+err.Error(), http.StatusBadGateway)
+		// 400 rather than 502 for the same reason as the listing above: the
+		// reason must survive any proxy between the panel and the browser.
+		jsonError(w, "fetch: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	gs, err := gameskill.Parse(data)

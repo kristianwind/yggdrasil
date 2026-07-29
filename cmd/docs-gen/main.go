@@ -65,6 +65,7 @@ var pages = []Page{
 
 	{Src: "guides/servers.md", Section: "Guides", Nav: "Servers", Blurb: "Lifecycle, console, files, cloning, tags, bulk actions.", OnSite: true},
 	{Src: "guides/runes.md", Section: "Guides", Nav: "Runes", Blurb: "The catalog: what ships, and how to add more.", OnSite: true},
+	{Src: "guides/runes-with-an-llm.md", Section: "Guides", Nav: "Runes with an LLM", Blurb: "Measure the image first, then let a model write the YAML.", OnSite: true},
 	{Src: "guides/backups-and-schedules.md", Section: "Guides", Nav: "Backups & schedules", Blurb: "Targets, restore, verification, retention, cron.", OnSite: true},
 	{Src: "guides/migration.md", Section: "Guides", Nav: "Migrating hosts", Blurb: "Move a whole panel to another machine — bundle or rsync.", OnSite: true},
 	{Src: "guides/networking.md", Section: "Guides", Nav: "Networking", Blurb: "Ports, reachability, UniFi, NPM, Cloudflare Tunnel.", OnSite: true},

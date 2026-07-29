@@ -39,7 +39,20 @@ async function request(method, path, body, opts = {}) {
     // Carry the status on the error. Callers that need to tell one failure from
     // another — "not there yet" vs "went wrong" — should branch on this rather
     // than pattern-match the message, which changes whenever the wording does.
-    const err = new Error((data && data.error) || res.statusText);
+    //
+    // The message must never come out empty: `res.statusText` is "" on HTTP/2,
+    // and a proxy in front of the panel can replace our JSON body with its own
+    // error page (so `data` is a string, with no `.error`). That combination
+    // produced Error("") — callers fell back to a generic "something failed"
+    // and the real reason was lost. Fall through to a plain-text body when there
+    // is one, and finally to the status code, which is always something.
+    const plain =
+      typeof data === "string" && data.trim() && !/^\s*</.test(data)
+        ? data.trim().slice(0, 300)
+        : "";
+    const err = new Error(
+      (data && data.error) || plain || res.statusText || `HTTP ${res.status}`,
+    );
     err.status = res.status;
     throw err;
   }

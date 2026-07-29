@@ -15,17 +15,10 @@
     <meta name="apple-mobile-web-app-title" content="Yggdrasil Panel" />
     <meta name="description" content="Yggdrasil Panel — self-hosted game & app server control panel (Docker)." />
     <title>Yggdrasil Panel</title>
-    <script>
-      // Apply the saved/OS theme before first paint to avoid a flash.
-      (function () {
-        try {
-          var t = localStorage.getItem("ygg_theme");
-          if (t !== "light" && t !== "dark")
-            t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-          document.documentElement.setAttribute("data-theme", t);
-        } catch (e) {}
-      })();
-    </script>
+    <!-- Sets the theme before first paint. External, not inline: the panel's CSP
+         is `script-src 'self'` with no 'unsafe-inline', which refuses inline
+         blocks outright. -->
+    <script src="./theme-init.js"></script>
   </head>
   <body>
     <div id="app"></div>

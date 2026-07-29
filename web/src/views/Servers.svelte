@@ -5,6 +5,7 @@
   import { navigate, route } from "../lib/router.js";
   import { get } from "svelte/store";
   import { user } from "../lib/auth.js";
+  import { confirmDialog } from "../lib/dialog.js";
   import VarForm from "../components/VarForm.svelte";
   import MiniSpark from "../components/MiniSpark.svelte";
 
@@ -19,6 +20,66 @@
   let crashes = $state({}); // server_id -> unexpected-exit count in the last 24h
   let miniMetrics = $state({}); // server_id -> recent CPU series for the inline sparkline
   let loading = $state(true);
+
+  // Pull a server directly from another panel (admin only).
+  //
+  // This exists because uploading a bundle can't work behind a tunnel: an export
+  // streams fine, but an upload is a request body and Cloudflare caps those at
+  // 100 MB, while a real server's data dir is gigabytes. Pulling turns the
+  // transfer into a large response, which nothing caps, and keeps the browser
+  // out of the data path — it only starts the transfer and waits for the result.
+  let pullOpen = $state(false);
+  let pull = $state({ url: "", token: "" });
+  let pullList = $state(null); // null = not listed yet
+  let pullBusy = $state(false);
+  let pullingID = $state("");
+
+  async function listRemote() {
+    if (!pull.url.trim() || !pull.token.trim()) return toast("Address and token are required", "warn");
+    pullBusy = true;
+    try {
+      pullList = await api.post("/panel/remote/servers", { url: pull.url.trim(), token: pull.token.trim() });
+      if (!pullList.length) toast("That panel has no servers", "info");
+    } catch (e) {
+      pullList = null;
+      toast(e.message, "error");
+    } finally {
+      pullBusy = false;
+    }
+  }
+
+  async function pullServer(rs) {
+    if (
+      !(await confirmDialog({
+        title: `Import “${rs.name}”`,
+        body: "The whole data directory is copied over the network — this can take a while for a large server. Leave this page open.",
+        confirmText: "Import",
+      }))
+    )
+      return;
+    pullingID = rs.id;
+    try {
+      const r = await api.post("/panel/remote/import", {
+        url: pull.url.trim(),
+        token: pull.token.trim(),
+        server_id: rs.id,
+      });
+      if (r.ports_changed?.length) {
+        toast(
+          `Imported “${r.name}”, but ${r.ports_changed.length} port(s) were already in use and moved: ${r.ports_changed.join(", ")}. Update your forwarding for these.`,
+          "warn",
+          10000,
+        );
+      } else {
+        toast(`Imported “${r.name}” — ports preserved. Set it up under Settings, then Start.`, "success");
+      }
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      pullingID = "";
+    }
+  }
 
   // Import a server bundle exported from another panel (admin only).
   let importFile = $state(null);
@@ -435,6 +496,10 @@
       </button>
     {/if}
     {#if $user?.role === "admin"}
+      <button class="btn-ghost" onclick={() => (pullOpen = !pullOpen)}
+        title="Copy a server straight from another Yggdrasil panel over the network — works for large servers, where uploading a bundle would hit a proxy's upload limit.">
+        ⇄ From another panel
+      </button>
       <button class="btn-ghost" onclick={() => importFile?.click()} disabled={importing}
         title="Import a server exported from another Yggdrasil panel (a .yggserver.tar.gz bundle): its config, rune and data.">
         {importing ? "Importing…" : "⤒ Import server"}
@@ -443,6 +508,72 @@
     {/if}
   </div>
 </div>
+
+{#if pullOpen}
+  <div class="card p-4 mb-6 space-y-3">
+    <div class="flex items-start gap-2">
+      <div class="flex-1">
+        <h3 class="font-semibold">Import from another panel</h3>
+        <p class="text-xs text-muted mt-1">
+          This panel copies the server <b>from</b> the other one, so the transfer isn't limited by a
+          proxy's upload cap — the way sending a bundle up through a tunnel is. Both panels stay
+          running; nothing is removed from the source.
+          <b>Tip:</b> if both are on the same Tailscale/VPN, use that address
+          (<span class="font-mono">http://100.x.x.x:8080</span>) and the copy skips the internet entirely.
+        </p>
+      </div>
+      <button class="btn-ghost px-2 py-1 shrink-0" onclick={() => (pullOpen = false)} aria-label="Close">✕</button>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-2">
+      <div>
+        <label class="label" for="pull-url">Source panel address</label>
+        <input id="pull-url" class="input" bind:value={pull.url} placeholder="http://100.80.130.8:8080" autocomplete="off" />
+      </div>
+      <div>
+        <label class="label" for="pull-token">API token from that panel</label>
+        <input id="pull-token" class="input" type="password" bind:value={pull.token}
+          placeholder="create one there under Settings → API tokens" autocomplete="off" />
+      </div>
+    </div>
+    <p class="text-xs text-muted">
+      The bundle carries <b>decrypted</b> secrets, so pull over HTTPS or a private network — not plain
+      HTTP across the internet. The token is used for this transfer only and is never stored here.
+    </p>
+    <button class="btn-primary" onclick={listRemote} disabled={pullBusy}>
+      {pullBusy ? "Connecting…" : "List its servers"}
+    </button>
+
+    {#if pullList}
+      {#if pullList.length}
+        <div class="divide-y divide-border">
+          {#each pullList as rs}
+            <div class="flex items-center gap-3 py-2">
+              <div class="flex-1 min-w-0">
+                <div class="text-sm truncate">
+                  {rs.name}
+                  {#if rs.exists_here}<span class="badge bg-warn/20 text-warn ml-1">already here</span>{/if}
+                </div>
+                <div class="text-xs text-muted">{rs.gameskill_id} · {rs.status}</div>
+              </div>
+              <button class="btn-ghost px-2 py-1 shrink-0" disabled={!!pullingID}
+                onclick={() => pullServer(rs)}>
+                {pullingID === rs.id ? "Copying…" : "Import"}
+              </button>
+            </div>
+          {/each}
+        </div>
+        {#if pullingID}
+          <p class="text-xs text-muted">
+            Copying — a multi-gigabyte server can take a long time. Leave this page open.
+          </p>
+        {/if}
+      {:else}
+        <p class="text-sm text-muted">That panel has no servers.</p>
+      {/if}
+    {/if}
+  </div>
+{/if}
 
 {#if servers.length > 3}
   <div class="mb-4 max-w-sm relative">

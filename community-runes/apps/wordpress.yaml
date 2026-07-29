@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 12
+  version: 13
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -84,7 +84,34 @@ gameskill:
       echo "WordPress webroot ready (PHP upload limit raised to 128M)"
 
   startup:
-    command: ""
+    # PHP runs as www-data (uid/gid 33) while the webroot is owned by the panel's
+    # own user, so out of the box WordPress cannot write to wp-content: no media
+    # uploads, no plugin/theme installs, no cache, no generated PDFs. Chowning the
+    # tree to www-data would fix PHP but take the panel's Files tab with it, so
+    # instead the OWNER is left alone and only the GROUP is set to 33 with group
+    # write — both sides can write, nobody else can. setgid on directories makes
+    # new files inherit the group.
+    #
+    # This runs at every start, not just install, because a server IMPORTED from
+    # another panel never re-runs install — and its files arrive owned by the new
+    # host's panel user, which is exactly when this bites.
+    #
+    # keep_entrypoint means these args go to the image's docker-entrypoint.sh,
+    # which execs them after it has laid down WordPress core — so wp-content is
+    # guaranteed to exist by the time we touch it. The stat guard keeps a restart
+    # cheap on a large site (tens of thousands of files) once it is already right.
+    exec:
+      - "sh"
+      - "-c"
+      - |
+        d=/var/www/html/wp-content
+        if [ -d "$d" ] && [ "$(stat -c '%g' "$d")" != "33" ]; then
+          echo "yggdrasil: granting PHP (www-data) write access to wp-content"
+          chgrp -R 33 "$d" 2>/dev/null || true
+          chmod -R g+w "$d" 2>/dev/null || true
+          find "$d" -type d -exec chmod g+s {} + 2>/dev/null || true
+        fi
+        exec apache2-foreground
     done_regex: 'Command line:'
 
   ports:

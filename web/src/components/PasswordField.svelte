@@ -3,8 +3,13 @@
   // button. Bind `value`; drop-in replacement for a bare <input type="password">.
   import { toast } from "../lib/toast.js";
 
+  // `value` deliberately declares NO fallback: Svelte throws props_invalid_value
+  // when a bindable prop that has one is handed `undefined`, and callers bind to
+  // object members (e.g. a rune variable with no value yet) that can legitimately
+  // be unset. Tolerating undefined here keeps one empty field from taking down the
+  // whole form it lives in.
   let {
-    value = $bindable(""),
+    value = $bindable(),
     id = "",
     placeholder = "",
     autocomplete = "off",

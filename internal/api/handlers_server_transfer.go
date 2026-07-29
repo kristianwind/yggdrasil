@@ -174,6 +174,39 @@ func (s *Server) handleServerImport(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, resp)
 }
 
+// extractBundleEntry writes one data/ entry from a bundle into the server's data
+// dir, preserving the mode the archive recorded.
+//
+// The mode matters more than it looks. Directory modes used to be hardcoded to
+// 0755 here, which silently discarded whatever the source had widened — so a
+// container user (PHP as www-data, a game as its own uid) could not write
+// anywhere inside an imported server, while the very same server worked fine on
+// the panel it came from. Files always kept their mode; only directories lost it,
+// and that is the half that decides whether the app works, because creating a
+// file needs write permission on its *directory*.
+//
+// rel is already relative to the bundle's data/ prefix; it is re-cleaned against
+// the data dir so a crafted "../" entry cannot escape.
+func extractBundleEntry(dataDir, rel string, hdr *tar.Header, r io.Reader) {
+	dest := filepath.Join(dataDir, filepath.Clean("/"+rel))
+	mode := hdr.FileInfo().Mode().Perm()
+	if hdr.Typeflag == tar.TypeDir {
+		os.MkdirAll(dest, 0o755) //nolint:errcheck
+		os.Chmod(dest, mode)     //nolint:errcheck // MkdirAll applies umask, so set the real mode
+		return
+	}
+	// A file's parent may arrive before its own dir header; that header corrects
+	// the mode when it shows up.
+	os.MkdirAll(filepath.Dir(dest), 0o755) //nolint:errcheck
+	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return
+	}
+	io.Copy(f, r) //nolint:errcheck
+	f.Close()
+	os.Chmod(dest, mode) //nolint:errcheck // OpenFile also applies umask
+}
+
 // importServerBundle reads one .yggserver.tar.gz stream and creates the server.
 // skipExisting makes it a no-op (reported, not an error) when a server of the
 // bundle's name already lives here — the bulk migration wants idempotence. The
@@ -224,17 +257,7 @@ func (s *Server) importServerBundle(ctx context.Context, body io.Reader, skipExi
 			continue // drain without writing; the archive reader must still advance
 		}
 		if rel := strings.TrimPrefix(name, "data/"); rel != name {
-			dest := filepath.Join(dataDir, filepath.Clean("/"+rel))
-			if hdr.Typeflag == tar.TypeDir {
-				os.MkdirAll(dest, 0o755)
-				continue
-			}
-			os.MkdirAll(filepath.Dir(dest), 0o755)
-			f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
-			if err == nil {
-				io.Copy(f, tr)
-				f.Close()
-			}
+			extractBundleEntry(dataDir, rel, hdr, tr)
 		}
 	}
 	if man == nil {
@@ -245,6 +268,12 @@ func (s *Server) importServerBundle(ctx context.Context, body io.Reader, skipExi
 		os.RemoveAll(dataDir)
 		return map[string]any{"name": man.Name, "skipped": true, "reason": "a server with this name already exists"}, nil
 	}
+	// Match what a freshly-installed server gets: install widens the data dir's top
+	// level so the container's own user can create things directly in it. An import
+	// that skipped this left every container user locked out of the server root —
+	// which is exactly where WordPress writes wordfence-waf.php, and where plenty of
+	// apps expect to drop state. Mirrors install.go.
+	os.Chmod(dataDir, 0o777) //nolint:errcheck // best-effort; the container user must be able to write here
 	return s.finalizeServerImport(ctx, man, newID, dataDir)
 }
 

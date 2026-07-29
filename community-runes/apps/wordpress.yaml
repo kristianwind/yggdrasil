@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 13
+  version: 14
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -111,6 +111,18 @@ gameskill:
           chmod -R g+w "$d" 2>/dev/null || true
           find "$d" -type d -exec chmod g+s {} + 2>/dev/null || true
         fi
+        # WordPress decides whether it may write directly by creating a temp file
+        # and comparing its owner to the PHP process uid — an OWNERSHIP test, not a
+        # permission one. Because the panel stays the owner (above), that test fails
+        # and WordPress falls back to prompting for FTP credentials, which no
+        # container here has. Updates and plugin installs then simply stop working.
+        # FS_METHOD=direct skips the test; the group write granted above is what
+        # actually makes it safe.
+        c=/var/www/html/wp-config.php
+        if [ -f "$c" ] && ! grep -q FS_METHOD "$c"; then
+          sed -i '1a define( "FS_METHOD", "direct" );' "$c"
+          echo "yggdrasil: set FS_METHOD=direct (no FTP prompt on updates)"
+        fi
         exec apache2-foreground
     done_regex: 'Command line:'
 
@@ -196,11 +208,17 @@ gameskill:
           HT
             echo "added WordPress rewrite rules to .htaccess"
           fi
-          # The app serves as www-data (uid 33); imported files land owned by the
-          # panel user, so uploads, caches, wflogs and .htaccess aren't writable.
-          # Hand the whole tree to www-data.
-          chown -R www-data:www-data /data
-          echo "ownership handed to www-data"
+          # Ownership: PHP serves as www-data (33) while the panel runs as its own
+          # user, so imported files are unwritable by the app. Rather than handing
+          # the tree to www-data — which then locks the panel's Files tab out of it —
+          # keep the panel as owner and give www-data the GROUP with write. Both can
+          # write, nobody else can. setgid so new files inherit the group. Startup
+          # re-establishes this every boot, so it also covers servers that arrived
+          # by panel-to-panel transfer and never ran these import steps.
+          chgrp -R 33 /data
+          chmod -R g+w /data
+          find /data -type d -exec chmod g+s {} + 2>/dev/null || true
+          echo "www-data granted group write; panel keeps ownership"
 
   # Default Kvasir watchers — seeded per server as editable rules.
   watchers:

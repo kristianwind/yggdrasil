@@ -288,6 +288,16 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `POST` | `/api/gameskills/install-from-github` | Admin | Fetch, validate, and store one rune from GitHub |
 | `DELETE` | `/api/gameskills/{id}` | Admin | Delete a rune |
 
+**Moving a large server between panels — pull, don't push.** An export *streams*, so downloading a
+multi-gigabyte server works through a tunnel. An upload is a request *body*, and Cloudflare caps those
+at 100 MB (Free/Pro), so pushing a real data directory up through a tunnel cannot work regardless of
+what the panel allows. `POST /api/panel/remote/import` inverts the direction: the receiving panel
+fetches the bundle itself, which is a large *response* and is not capped, and the browser never
+carries the data. If both panels share a Tailscale/VPN, give the private address and the copy skips
+the internet entirely. Two cautions: the bundle carries **decrypted** secrets, so pull over HTTPS or a
+private network; and because the panel fetches an operator-supplied URL, these routes are admin-only
+and audited — they cannot be host-allowlisted, since reaching private addresses is the point.
+
 The GitHub routes read **public** repositories anonymously. To browse and install from a **private**
 one — or to lift GitHub's 60-requests-per-hour anonymous limit — store a token via
 `PUT /api/settings/github`; it is then sent as a Bearer credential on GitHub's own hosts only. Note
@@ -530,6 +540,8 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | `GET` | `/api/settings/cloudflare` | Admin | The Cloudflare tunnel configuration |
 | `PUT` | `/api/settings/cloudflare` | Admin | Update the Cloudflare tunnel configuration |
 | `POST` | `/api/settings/cloudflare/test` | Admin | Verify the token, resolve the zone, and check the tunnel config |
+| `POST` | `/api/panel/remote/servers` | Admin | List the servers on **another** panel: `{url, token}`. Each entry adds `exists_here` so a name clash shows before a long transfer. Nothing is stored |
+| `POST` | `/api/panel/remote/import` | Admin | Copy one server **from** another panel: `{url, token, server_id, skip_existing?}`. Streams that panel's export straight into the normal import — see the note below |
 | `GET` | `/api/settings/github` | Admin | Whether a GitHub token is stored (`{configured}`); the token itself is never returned |
 | `PUT` | `/api/settings/github` | Admin | Store or clear the GitHub token (`{token}`; empty clears). Lets the rune browser read **private** repos and lifts the 60-req/hour anonymous limit |
 | `POST` | `/api/settings/github/test` | Admin | Verify the stored token and report the account it authenticates as |

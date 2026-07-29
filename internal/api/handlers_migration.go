@@ -241,7 +241,11 @@ func (s *Server) handleMigrationImport(w http.ResponseWriter, r *http.Request) {
 	}
 	finalize()
 	if sawAI {
-		s.startDiscordBot()
+		// Async: reconnecting closes the old gateway session and opens a new one,
+		// both blocking network calls. Holding the import's response for that made
+		// the upload appear to hang at ~99% whenever Discord was slow. Matches how
+		// boot and the settings handler already call it.
+		go s.startDiscordBot()
 	}
 	s.auditLog(r, "migration.import", "panel", map[string]any{"servers": len(servers)})
 	resp := map[string]any{"servers": servers}

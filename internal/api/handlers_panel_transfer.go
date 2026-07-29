@@ -242,7 +242,12 @@ func (s *Server) handlePanelImport(w http.ResponseWriter, r *http.Request) {
 	}
 	summary := s.applyPanelBundle(r.Context(), b)
 	if b.AIConfig != nil {
-		s.startDiscordBot() // the config may carry a bot token — reconnect with it
+		// Async: the config may carry a bot token, but reconnecting closes the old
+		// gateway session and opens a new one — both blocking network calls. Holding
+		// the import's HTTP response for that made the upload appear to hang at ~99%
+		// whenever Discord was slow to answer, with no error anywhere: the request
+		// had arrived and the work was done, only the response never came.
+		go s.startDiscordBot()
 	}
 	s.auditLog(r, "panel.import", "panel", map[string]any{"summary": fmt.Sprintf("%v", summary)})
 	jsonOK(w, summary)

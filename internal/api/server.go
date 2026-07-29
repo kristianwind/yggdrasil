@@ -235,6 +235,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/import", s.handleServerImport)
 		r.Get("/api/panel/export", s.requireAdmin(s.handlePanelExport))
 		r.Post("/api/panel/import", s.requireAdmin(s.handlePanelImport))
+		// Pull a server straight from another panel — see handlers_panel_pull.go
+		// for why an upload can't work behind a tunnel.
+		r.Post("/api/panel/remote/servers", s.requireAdmin(s.handleRemoteServers))
+		r.Post("/api/panel/remote/import", s.requireAdmin(s.handleRemoteImport))
 		r.Get("/api/migration/export", s.requireAdmin(s.handleMigrationExport))
 		r.Post("/api/migration/import", s.requireAdmin(s.handleMigrationImport))
 		r.Post("/api/servers/{id}/install", s.handleInstallServer)

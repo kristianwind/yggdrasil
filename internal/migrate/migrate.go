@@ -192,6 +192,14 @@ func Import(r io.Reader, dbPath string) (*Manifest, error) {
 				if err := os.MkdirAll(dest, 0o755); err != nil {
 					return nil, err
 				}
+				// Apply the archived mode. Stopping at 0755 discarded whatever the
+				// source had widened, so a container running as its own uid could not
+				// write inside the migrated server — and it also *tightened* nothing
+				// while quietly loosening a 0700 directory to 0755. MkdirAll is subject
+				// to umask, hence the explicit Chmod.
+				if err := os.Chmod(dest, hdr.FileInfo().Mode().Perm()); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			if err := writeFile(dest, tr, hdr.FileInfo().Mode()); err != nil {
@@ -277,6 +285,10 @@ func writeFile(dest string, r io.Reader, mode os.FileMode) error {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, r)
-	return err
+	if _, err := io.Copy(f, r); err != nil {
+		return err
+	}
+	// OpenFile's mode is masked by umask, and it does nothing at all when the file
+	// already existed — so set it explicitly to what the archive recorded.
+	return os.Chmod(dest, mode.Perm())
 }

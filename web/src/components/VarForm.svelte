@@ -2,25 +2,16 @@
   // Auto-generates a settings form from a gameskill's `variables`.
   // Two-way binds into `values` (a plain object keyed by variable key).
   import PasswordField from "./PasswordField.svelte";
+  import { seedVarDefaults } from "../lib/varDefaults.js";
 
   let { variables = [], values = $bindable({}) } = $props();
 
-  // Seed defaults for any unset keys.
-  $effect(() => {
-    for (const v of variables) {
-      if (values[v.key] === undefined && v.default !== undefined && v.default !== null) {
-        values[v.key] = v.default;
-      }
-      // Normalize bool vars: env round-trips through env_json as the *string*
-      // "true"/"false", and a non-empty string like "false" is truthy — which
-      // renders the checkbox as checked even when the stored value is false (so
-      // saving silently writes "false" back). Coerce to a real boolean so the
-      // toggle reflects — and saves — the actual value.
-      if (v.type === "bool" && typeof values[v.key] === "string") {
-        values[v.key] = values[v.key] === "true";
-      }
-    }
-  });
+  // Seed EAGERLY, before the first render — not only in an $effect, which runs
+  // after it. See varDefaults.js for why the timing matters.
+  seedVarDefaults(variables, values);
+
+  // …and again whenever the rune's variable list changes.
+  $effect(() => seedVarDefaults(variables, values));
 
   // Treat string vars that look like a secret (password / pass / secret / token)
   // as password fields — gives them the show/generate/copy controls. A rune can

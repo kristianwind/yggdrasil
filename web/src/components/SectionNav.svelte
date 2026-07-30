@@ -86,12 +86,22 @@
 </script>
 
 {#if items.length >= minItems}
-  <!-- Hidden on narrow screens: there the page is one column and a side rail would
-       squeeze the content it is meant to help with. -->
-  <nav class="hidden xl:block w-56 shrink-0" aria-label="On this page">
-    <div class="sticky top-4">
-      <div class="text-[11px] uppercase tracking-wide text-muted mb-2 px-2">On this page</div>
-      <ul class="space-y-0.5 border-l border-border">
+  <!-- Hidden below xl: there the page is one column and a side rail would squeeze
+       the content it exists to help with.
+       `sticky` sits on the <nav> itself, NOT on an inner wrapper — a sticky element
+       can only travel inside its containing block, and the nav is only as tall as
+       its own list, so an inner sticky div has nowhere to go and the menu simply
+       scrolls away. As a flex item its containing block is the row, which is as tall
+       as the settings column. The scrollport is App.svelte's <main> (overflow-auto),
+       so `top-4` is measured against that. `self-start` stops it stretching, and
+       max-h + overflow keep a long index (Integrations has 16) from running off the
+       bottom of the screen. -->
+  <nav
+    class="hidden xl:block w-56 shrink-0 self-start sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto"
+    aria-label="On this page"
+  >
+    <div class="text-[11px] uppercase tracking-wide text-muted mb-2 px-2">On this page</div>
+    <ul class="space-y-0.5 border-l border-border">
         {#each items as it}
           <li>
             <button
@@ -105,7 +115,6 @@
             </button>
           </li>
         {/each}
-      </ul>
-    </div>
+    </ul>
   </nav>
 {/if}

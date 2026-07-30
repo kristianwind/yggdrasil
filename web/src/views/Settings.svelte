@@ -6,7 +6,9 @@
   import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { registerPasskey, passkeysSupported } from "../lib/webauthn.js";
   import RealmManager from "../components/RealmManager.svelte";
+  import SectionNav from "../components/SectionNav.svelte";
 
+  let settingsContent = $state(null); // the content column, scanned for section headings
   let targets = $state([]);
   let showCreate = $state(false);
   let editingId = $state(null); // null = creating a new target; else the target id being edited
@@ -1360,6 +1362,13 @@
     </button>
   {/each}
 </div>
+
+<!-- Two columns: the settings themselves, and a sticky index of the current tab's
+     sections. These pages run to thousands of lines rendered, so finding one
+     setting meant scrolling and hoping. SectionNav reads the headings from the DOM,
+     so it stays correct as sections are added. -->
+<div class="flex gap-6 items-start">
+  <div class="flex-1 min-w-0" bind:this={settingsContent}>
 
 {#if tab === "system"}
 <!-- Panel name -->
@@ -2924,3 +2933,8 @@
   </div>
 {/if}
 {/if}
+
+  </div>
+
+  <SectionNav container={settingsContent} rescan={tab} />
+</div>

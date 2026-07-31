@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { api, wsURL, getToken } from "../lib/api.js";
   import { livePoll } from "../lib/livePoll.js";
+  import { formatTime, relativeTime } from "../lib/time.js";
   import { toast } from "../lib/toast.js";
   import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { navigate } from "../lib/router.js";
@@ -429,6 +430,30 @@
     if (tab === "activity" && server?.admin_log_supported) loadActivity();
   });
 
+  // Turn an audit action into something readable. Unknown actions fall back to
+  // the raw key rather than being hidden — a new action type should show up as
+  // itself, not vanish from the history.
+  const lifecycleLabels = {
+    "server.start": "Started",
+    "server.stop": "Stopped",
+    "server.restart": "Restarted",
+    "server.crash": "Exited unexpectedly",
+    "server.create": "Created",
+    "server.install": "Installed",
+    "server.clone": "Cloned",
+    "server.import_data": "Data imported",
+    "kvasir.action": "Kvasir acted",
+    "schedule.restart": "Scheduled restart",
+    "schedule.stop": "Scheduled stop",
+    "schedule.start": "Scheduled start",
+    "schedule.backup": "Scheduled backup",
+    "schedule.update": "Scheduled update",
+  };
+  const lifecycleLabel = (a) => lifecycleLabels[a] || a;
+  const lifecycleIcon = (a) =>
+    a === "server.crash" ? "💥" : a.startsWith("schedule.") ? "⏰" : a === "kvasir.action" ? "🧠"
+      : a === "server.stop" ? "⏹" : a === "server.start" ? "▶️" : a === "server.restart" ? "🔄" : "•";
+
   // History tab: the panel's own recorded player sessions + security/health events.
   let history = $state(null); // { sessions:[], events:[], hours }
   let historyBusy = $state(false);
@@ -443,7 +468,7 @@
     }
   }
   $effect(() => {
-    if (tab === "history" && server?.has_activity) loadHistory();
+    if (tab === "history") loadHistory();
   });
 
   // AI config advisor (advisory — review this server's settings for footguns)
@@ -708,7 +733,10 @@
       ...(can("server.console") ? [["console", "Console"]] : []),
       ...(server?.players_supported && can("server.console") ? [["players", "Players"]] : []),
       ...(server?.admin_log_supported && can("server.view") ? [["activity", "Activity"]] : []),
-      ...(server?.has_activity && can("server.view") ? [["history", "History"]] : []),
+      // Always available now, not just for runes that record players or app
+      // events: every server has a lifecycle (who started it, when it fell
+      // over), and that is the question this tab most often has to answer.
+      ...(can("server.view") ? [["history", "History"]] : []),
       ...(server?.mods_supported && can("server.files") ? [["mcmods", "Mods"]] : []),
       ...(can("server.files") ? [["files", "Files"]] : []),
       ...(can("server.backup") ? [["backups", "Backups"]] : []),
@@ -2349,6 +2377,31 @@
       <div class="flex items-center gap-2">
         <span class="text-sm text-muted">Recorded over the last {history?.hours ? Math.round(history.hours / 24) : 7} days{historyBusy ? " · loading…" : ""}</span>
         <button class="btn-ghost text-xs ml-auto" disabled={historyBusy} onclick={loadHistory}>Refresh</button>
+      </div>
+
+      <!-- What happened to this server, and who did it -->
+      <div>
+        <h3 class="text-sm font-semibold mb-1">📋 Server events</h3>
+        {#if history?.lifecycle?.length}
+          <div class="card divide-y divide-border">
+            {#each history.lifecycle as e}
+              <div class="flex items-center gap-3 px-3 py-2 text-sm">
+                <span>{lifecycleIcon(e.action)}</span>
+                <span class="font-medium">{lifecycleLabel(e.action)}</span>
+                <!-- No actor means nobody did it — a crash, not a decision. -->
+                {#if e.actor}
+                  <span class="text-muted">by {e.actor}</span>
+                {:else if e.action === "server.crash"}
+                  <span class="text-danger">unexpected</span>
+                {/if}
+                {#if e.detail}<span class="text-muted text-xs truncate">{e.detail}</span>{/if}
+                <span class="text-muted text-xs ml-auto shrink-0" title={formatTime(e.ts)}>{relativeTime(e.ts)}</span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="text-muted text-sm">Nothing recorded in this window.</div>
+        {/if}
       </div>
 
       <!-- Security / health events -->

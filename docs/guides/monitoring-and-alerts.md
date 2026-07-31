@@ -237,6 +237,34 @@ explains what happened; it does not decide whether you hear about it.
 Player anomalies (a mass disconnect, an unusual influx) bypass this policy — they carry no traffic
 sources to judge, and are governed by their own cooldown instead.
 
+## The History tab
+
+Every server has a **History** tab answering "what happened to this, and who did it":
+
+- **Server events** — started, stopped, restarted, installed, cloned, with the person's username
+  against each. A scheduled action shows as `schedule`, one Kvasir took as `kvasir`, and one issued
+  from Discord names the Discord user. An entry with **no** actor is a crash: that is how you tell
+  "it fell over" from "someone stopped it".
+- **Security & health events** — the rune's declared events, rolled up per source.
+- **Player sessions** — who was on and when, for runes that record it.
+
+The first section merges three things the panel already recorded separately: the audit log, the
+crash list and the schedule run log. Having them apart meant "why did this restart at 4am?" took
+three views to answer — and once genuinely did, when a nightly update schedule was restarting
+servers that had been deliberately stopped.
+
+## Rune versions
+
+The servers list shows each server's rune and its version — `wordpress v18`, `karakeep v3`.
+
+An asterisk after the version means the **running container is older than the rune**. Runes update
+themselves from the catalog, but a container keeps the startup script, environment and mounts it was
+created with until the server is restarted. Without that marker a rune fix that is published but not
+yet in effect looks exactly like one that didn't work.
+
+Restarting the server applies the new version — a restart recreates the container, which is why it
+picks up rune, environment and mount changes while a plain container restart would not.
+
 ## Host system info
 
 `GET /api/system/info` backs the dashboard's host panel (admin only):

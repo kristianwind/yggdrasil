@@ -450,6 +450,12 @@ func migrate(db *sql.DB) error {
 	// Idempotent column additions for databases created by older versions.
 	addColumnIfMissing(db, "servers", "installed", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "servers", "install_status", "TEXT NOT NULL DEFAULT 'pending'")
+	// The rune version baked into the server's current container, recorded when it
+	// is created. The catalog version alone cannot answer "is this server actually
+	// running the fixed rune?": a rune updates itself from the catalog, but the
+	// container keeps the startup script, env and mounts it was created with until
+	// the server is restarted. 0 = created before this was tracked.
+	addColumnIfMissing(db, "servers", "rune_version_applied", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "backup_targets", "keep_n", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "users", "totp_secret", "TEXT") // encrypted; pending until enabled

@@ -37,6 +37,12 @@ type serverRow struct {
 	ID             string            `json:"id"`
 	Name           string            `json:"name"`
 	GameskillID    string            `json:"gameskill_id"`
+	// RuneVersion is the rune's version in the catalog now; RuneVersionApplied is
+	// the one baked into the running container. They differ after a rune update
+	// until the server is restarted, which is worth showing: a rune fix that is
+	// "deployed" but not yet in effect looks identical to one that didn't work.
+	RuneVersion        int `json:"rune_version"`
+	RuneVersionApplied int `json:"rune_version_applied"`
 	RealmID        string            `json:"realm_id,omitempty"`
 	Status         string            `json:"status"`
 	ContainerID    string            `json:"container_id,omitempty"`
@@ -81,14 +87,14 @@ type serverRow struct {
 	NotesHTML string `json:"notes_html,omitempty"` // single GET
 }
 
-const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0), COALESCE(tags,'')"
+const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0), COALESCE(tags,''), COALESCE((SELECT version FROM gameskills g WHERE g.id = servers.gameskill_id),0), COALESCE(rune_version_applied,0)"
 
 func scanServer(sc interface{ Scan(...any) error }) (serverRow, error) {
 	var srv serverRow
 	var installed, autoFwd, autostart, watchdog, statusPublic int
 	var tags string
 	err := sc.Scan(&srv.ID, &srv.Name, &srv.GameskillID, &srv.RealmID,
-		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog, &statusPublic, &srv.CPUAlarmPct, &srv.MemAlarmMB, &srv.DiskAlarmMB, &tags)
+		&srv.Status, &srv.ContainerID, &srv.DataDir, &installed, &srv.InstallStatus, &srv.PortsJSON, &srv.CreatedAt, &srv.BMServerID, &autoFwd, &srv.Subdomain, &srv.HostMountsJSON, &autostart, &watchdog, &statusPublic, &srv.CPUAlarmPct, &srv.MemAlarmMB, &srv.DiskAlarmMB, &tags, &srv.RuneVersion, &srv.RuneVersionApplied)
 	srv.Tags = splitTags(tags)
 	srv.Installed = installed == 1
 	srv.AutoForward = autoFwd == 1
@@ -866,9 +872,18 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	}
 
 	// Mark "starting"; the watcher promotes to "running" on the done_regex.
+	//
+	// The rune version is stamped here, not at install, because this is the
+	// moment the rune's startup script, env and mounts are baked into a
+	// container — everything the rune says is fixed until the next recreate.
+	// Recording it is what lets the UI distinguish "the rune was updated" from
+	// "the update is actually in effect", which otherwise looks the same and has
+	// already caused a fixed rune to be reported as still broken.
+	var runeVersion int
+	s.db.QueryRowContext(ctx, "SELECT version FROM gameskills WHERE id=?", srv.GameskillID).Scan(&runeVersion) //nolint:errcheck
 	s.db.ExecContext(ctx,
-		"UPDATE servers SET status='starting', container_id=? WHERE id=?",
-		containerID, id)
+		"UPDATE servers SET status='starting', container_id=?, rune_version_applied=? WHERE id=?",
+		containerID, runeVersion, id)
 	go s.watchStartupReady(id, containerID, gs.Startup.DoneRegex)
 	// Only open firewall ports when this server opts in (default on).
 	if srv.AutoForward {

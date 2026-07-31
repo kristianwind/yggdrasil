@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -90,7 +92,10 @@ func (s *Server) handleTestNotification(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "decrypt error", http.StatusInternalServerError)
 		return
 	}
-	if err := notify.Send(cfg, "🌳 Yggdrasil test notification — channels are working."); err != nil {
+	// Labelled like every other message. This is the one an operator sends while
+	// wiring a second panel into a channel the first already posts to, so "which
+	// panel was that?" is precisely the question it has to answer.
+	if err := notify.Send(cfg, "["+s.panelLabel()+"] 🌳 Yggdrasil test notification — channels are working."); err != nil {
 		jsonError(w, "send failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -108,7 +113,33 @@ func (s *Server) notifyAll(text string) { s.notifyChannels("", text) }
 // still see everything. Use it for anything about one specific server.
 func (s *Server) notifyServer(serverID, text string) { s.notifyChannels(serverID, text) }
 
+// panelLabel identifies which panel a message came from, for the very common
+// setup where several panels post into the same chat channel.
+//
+// Without it a notification names only the server: "executit.dk — anomaly".
+// The operator reads that against the panel they happen to be looking at, and
+// if the site is stopped THERE the message says something impossible. That
+// exact confusion happened — an alert from one panel about a live site was read
+// as activity on a stopped copy of it on another. The site name is not the
+// identity; the pair (panel, site) is.
+//
+// Falls back to the hostname so this still says something useful on a panel
+// whose name was never set.
+func (s *Server) panelLabel() string {
+	if n := strings.TrimSpace(s.getSetting(context.Background(), "panel_name")); n != "" {
+		return n
+	}
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return "yggdrasil"
+}
+
 func (s *Server) notifyChannels(serverID, text string) {
+	// Prefixed once here rather than at each call site: every notification the
+	// panel sends needs it, and a new one added later would otherwise quietly
+	// go out unlabelled.
+	text = "[" + s.panelLabel() + "] " + text
 	go func() {
 		q := "SELECT config_enc FROM notifications WHERE enabled=1 AND COALESCE(server_id,'')=''"
 		var args []any

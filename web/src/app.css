@@ -43,7 +43,34 @@ body {
 @layer components {
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium
-           transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none;
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none
+           active:scale-[0.97] active:brightness-95 motion-reduce:active:scale-100;
+  }
+  /* A button that starts something slow — a container start, an install — has to
+     answer the press itself. Without it the only feedback is the thing finishing,
+     which can be a minute later, and the honest reading of a button that looks
+     untouched is that the click missed. `active:` covers the press; `.is-busy`
+     covers the wait after it. */
+  .btn.is-busy {
+    @apply opacity-70 cursor-progress pointer-events-none;
+  }
+  .btn.is-busy::before {
+    content: "";
+    @apply inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent;
+    animation: ygg-spin 0.7s linear infinite;
+  }
+  @keyframes ygg-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  /* Respect a reduced-motion preference: keep the busy state legible, drop the
+     spin rather than the indicator. */
+  @media (prefers-reduced-motion: reduce) {
+    .btn.is-busy::before {
+      animation: none;
+      @apply border-r-current opacity-60;
+    }
   }
   .btn-primary {
     @apply btn bg-accent2 text-white hover:bg-accent;

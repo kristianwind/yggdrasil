@@ -1,6 +1,7 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { api } from "../lib/api.js";
+  import { livePoll } from "../lib/livePoll.js";
   import { toast } from "../lib/toast.js";
   import { navigate, route } from "../lib/router.js";
   import { get } from "svelte/store";
@@ -20,6 +21,7 @@
   let crashes = $state({}); // server_id -> unexpected-exit count in the last 24h
   let miniMetrics = $state({}); // server_id -> recent CPU series for the inline sparkline
   let loading = $state(true);
+  let stopPolling;
 
   // Pull a server directly from another panel (admin only).
   //
@@ -189,8 +191,43 @@
     );
   }
 
-  async function load() {
-    loading = true;
+  // refreshStatuses updates just the status of each row, so the list stops
+  // showing whatever was true when it was opened — a server that finishes
+  // starting, crashes, or is stopped from another tab now changes here on its
+  // own. Deliberately narrower than load(): that one refetches realms, runes,
+  // backup targets, crash summaries, sparklines and reachability, and toasts on
+  // failure, none of which should happen every few seconds.
+  async function refreshStatuses() {
+    const fresh = await api.get("/servers");
+    if (!Array.isArray(fresh)) return;
+    const next = new Map(fresh.map((s) => [s.id, s]));
+    // Only touch the array when something actually moved, so the list isn't
+    // re-rendered (and any sort/filter work redone) on every quiet tick.
+    let changed = fresh.length !== servers.length;
+    if (!changed) {
+      changed = servers.some((s) => {
+        const f = next.get(s.id);
+        return !f || f.status !== s.status || f.install_status !== s.install_status;
+      });
+    }
+    if (!changed) return;
+    // A server appearing or disappearing is a structural change (created or
+    // deleted elsewhere), and the row needs the fields only load() fetches.
+    if (fresh.length !== servers.length) {
+      await load(true);
+      return;
+    }
+    servers = servers.map((s) => {
+      const f = next.get(s.id);
+      return f ? { ...s, status: f.status, install_status: f.install_status, installed: f.installed } : s;
+    });
+  }
+
+  // quiet skips the loading flag. The spinner replaces the whole list, which is
+  // right on first paint and wrong for a background refresh — a poll that found
+  // a new server would otherwise blank the page for a moment every time.
+  async function load(quiet = false) {
+    if (!quiet) loading = true;
     try {
       [servers, realms, gameskills, backupTargets, crashes] = await Promise.all([
         api.get("/servers"),
@@ -220,7 +257,11 @@
       await openCreate(newParam === "1" ? null : newParam);
       navigate("/servers");
     }
+    // 5s rather than the detail view's 4s: this is one request for the whole
+    // fleet and nobody watches a list as closely as the server they just acted on.
+    stopPolling = livePoll(refreshStatuses, 5000);
   });
+  onDestroy(() => stopPolling?.());
 
   // Group servers by realm name for display.
   // Filters: a tag filter (click a tag) + a free-text search over name/rune/tags.

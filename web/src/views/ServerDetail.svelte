@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { api, wsURL, getToken } from "../lib/api.js";
+  import { livePoll } from "../lib/livePoll.js";
   import { toast } from "../lib/toast.js";
   import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { navigate } from "../lib/router.js";
@@ -15,7 +16,7 @@
   let tab = $state("console");
   let stats = $state(null);
   let status = $state(null); // player-count query result
-  let statsTimer;
+  let stopPolling;
 
   // Console
   let lines = $state([]);
@@ -1415,7 +1416,14 @@
     }
   }
 
+  // The verb currently in flight, so the button that was pressed can say so.
+  // Starting a container takes seconds and an install takes minutes; until the
+  // status badge moves, a button that looks untouched reads as a missed click.
+  let busy = $state("");
+
   async function action(verb) {
+    if (busy) return; // one control action at a time
+    busy = verb;
     try {
       await api.post(`/servers/${id}/${verb}`);
       toast(verb, "success");
@@ -1423,6 +1431,33 @@
       if (verb !== "stop") setTimeout(connectConsole, 800);
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      busy = "";
+    }
+  }
+
+  // refreshStatus keeps the header badge and the action buttons honest while the
+  // page is open — a container that finishes starting, crashes, or is stopped
+  // from elsewhere used to leave this view showing whatever was true when it
+  // loaded. Deliberately NOT loadServer(): that one also refetches BattleMetrics,
+  // reachability and the auto-restart schedule and toasts on failure, none of
+  // which belongs on a timer. Only the fields that change on their own are
+  // merged, so an open dialog or a half-edited form is left alone.
+  async function refreshStatus() {
+    const fresh = await api.get(`/servers/${id}`);
+    if (!server || !fresh) return;
+    if (
+      fresh.status === server.status &&
+      fresh.install_status === server.install_status &&
+      fresh.installed === server.installed
+    ) {
+      return; // nothing moved; don't touch the object and re-render for free
+    }
+    const finishedInstalling = server.install_status === "installing" && fresh.install_status !== "installing";
+    server = { ...server, status: fresh.status, install_status: fresh.install_status, installed: fresh.installed };
+    if (finishedInstalling) {
+      toast(fresh.install_status === "error" ? "Install failed — see the install log" : "Install complete",
+        fresh.install_status === "error" ? "error" : "success");
     }
   }
 
@@ -1468,7 +1503,10 @@
       connectConsole();
     }
     pollStats();
-    statsTimer = setInterval(pollStats, 4000);
+    stopPolling = livePoll(async () => {
+      await pollStats();
+      await refreshStatus();
+    }, 4000);
   });
   onDestroy(() => {
     closeWS();
@@ -1476,7 +1514,7 @@
       installWs.onclose = null;
       installWs.close();
     }
-    clearInterval(statsTimer);
+    stopPolling?.();
   });
 </script>
 
@@ -1524,8 +1562,9 @@
       {/if}
     {:else if (server.status === "running" || server.status === "starting")}
       {#if can("server.control")}
-        <button class="btn-ghost" onclick={() => action("restart")}
-          title="Restart now, immediately — no player warning. Recreates the container so rune/env/mod changes apply. Does not update the game version.">Restart</button>
+        <button class="btn-ghost {busy === 'restart' ? 'is-busy' : ''}" disabled={!!busy} onclick={() => action("restart")}
+          title="Restart now, immediately — no player warning. Recreates the container so rune/env/mod changes apply. Does not update the game version."
+          >{busy === "restart" ? "Restarting…" : "Restart"}</button>
         <button class="btn-ghost" onclick={() => { showSafe = true; if (!backupTargets.length) loadBackups(); }}
           title={server.restart_warn
             ? "Restart with an in-game countdown for players first (and an optional backup). Opens a dialog — nothing happens until you confirm."
@@ -1540,12 +1579,13 @@
               : ` · ${autoRestart.every_hours}h`
             : ""}
         </button>
-        <button class="btn-ghost" onclick={() => action("stop")}
-          title="Stop the server now (graceful shutdown). Players are disconnected.">Stop</button>
+        <button class="btn-ghost {busy === 'stop' ? 'is-busy' : ''}" disabled={!!busy} onclick={() => action("stop")}
+          title="Stop the server now (graceful shutdown). Players are disconnected."
+          >{busy === "stop" ? "Stopping…" : "Stop"}</button>
       {/if}
     {:else if can("server.control")}
-      <button class="btn-primary" onclick={() => action("start")}
-        title="Start this server now.">Start</button>
+      <button class="btn-primary {busy === 'start' ? 'is-busy' : ''}" disabled={!!busy} onclick={() => action("start")}
+        title="Start this server now.">{busy === "start" ? "Starting…" : "Start"}</button>
       <button class="btn-ghost" onclick={() => runInstall(true)}
         title="Re-run the install script: updates the game to the latest version and re-downloads mods (SteamCMD). Back up your world first — config files may be regenerated.">Update / Reinstall</button>
     {/if}

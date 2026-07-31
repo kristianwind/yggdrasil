@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 15
+  version: 16
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -89,8 +89,8 @@ gameskill:
     # uploads, no plugin/theme installs, no cache, no generated PDFs. Chowning the
     # tree to www-data would fix PHP but take the panel's Files tab with it, so
     # instead the OWNER is left alone and only the GROUP is set to 33 with group
-    # write — both sides can write, nobody else can. setgid on directories makes
-    # new files inherit the group.
+    # read+write — both sides can read and write, nobody else can. setgid on
+    # directories makes new files inherit the group.
     #
     # This runs at every start, not just install, because a server IMPORTED from
     # another panel never re-runs install — and its files arrive owned by the new
@@ -98,18 +98,31 @@ gameskill:
     #
     # keep_entrypoint means these args go to the image's docker-entrypoint.sh,
     # which execs them after it has laid down WordPress core — so wp-content is
-    # guaranteed to exist by the time we touch it. The stat guard keeps a restart
+    # guaranteed to exist by the time we touch it. The guard keeps a restart
     # cheap on a large site (tens of thousands of files) once it is already right.
     exec:
       - "sh"
       - "-c"
       - |
         d=/var/www/html/wp-content
-        if [ -d "$d" ] && [ "$(stat -c '%g' "$d")" != "33" ]; then
-          echo "yggdrasil: granting PHP (www-data) write access to wp-content"
+        # g+rw, not g+w: applied to a file a plugin deliberately created as 0600
+        # — Wordfence does this for its whole wflogs/ directory — a bare g+w
+        # yields 0620, which is write permission WITHOUT read. The plugin can
+        # then rewrite its own config and never read it back, which surfaces as
+        # "the configuration files are corrupt or inaccessible by the web
+        # server" rather than as a permission error.
+        #
+        # Two guard conditions, because either alone misses a real case. An
+        # imported site arrives with the wrong GROUP. A site already fixed by an
+        # earlier version of this rune has the right group but the wrong MODE,
+        # and the group test alone would skip it forever. The marker records
+        # which rule has been applied — bump its name whenever the rule changes.
+        if [ -d "$d" ] && { [ "$(stat -c '%g' "$d")" != "33" ] || [ ! -f "$d/.ygg-perms-v2" ]; }; then
+          echo "yggdrasil: granting PHP (www-data) read+write access to wp-content"
           chgrp -R 33 "$d" 2>/dev/null || true
-          chmod -R g+w "$d" 2>/dev/null || true
+          chmod -R g+rw "$d" 2>/dev/null || true
           find "$d" -type d -exec chmod g+s {} + 2>/dev/null || true
+          : > "$d/.ygg-perms-v2" 2>/dev/null || true
         fi
         # A few files in the webroot ROOT are rewritten in place by WordPress and
         # by security plugins: .htaccess (permalinks, and Wordfence's
@@ -127,7 +140,7 @@ gameskill:
         for f in /var/www/html/.htaccess /var/www/html/wordfence-waf.php; do
           if [ -f "$f" ]; then
             chgrp 33 "$f" 2>/dev/null || true
-            chmod g+w "$f" 2>/dev/null || true
+            chmod g+rw "$f" 2>/dev/null || true
           fi
         done
         # WordPress decides whether it may write directly by creating a temp file
@@ -235,7 +248,9 @@ gameskill:
           # re-establishes this every boot, so it also covers servers that arrived
           # by panel-to-panel transfer and never ran these import steps.
           chgrp -R 33 /data
-          chmod -R g+w /data
+          # g+rw, not g+w — see the startup block: g+w alone turns a 0600 file
+          # into 0620, writable but not readable.
+          chmod -R g+rw /data
           find /data -type d -exec chmod g+s {} + 2>/dev/null || true
           echo "www-data granted group write; panel keeps ownership"
 

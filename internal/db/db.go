@@ -381,6 +381,28 @@ CREATE TABLE IF NOT EXISTS app_events (
 );
 CREATE INDEX IF NOT EXISTS idx_app_events ON app_events(server_id, bucket);
 
+-- Every detection a watcher or the anomaly detector made, with the alert
+-- policy's verdict on it (see internal/api/alert_policy.go). Rows with paged=0
+-- were deliberately NOT sent — routine scanner noise, or a repeat of a
+-- situation already reported inside the cooldown — and are what the daily
+-- digest summarises. Keeping the suppressed ones is the point: it is the only
+-- way to answer "was it quiet, or did the detection break?".
+CREATE TABLE IF NOT EXISTS alerts (
+	id         TEXT PRIMARY KEY,
+	server_id  TEXT NOT NULL,
+	key        TEXT NOT NULL,              -- stable situation id, e.g. 'watcher:<id>'
+	class      TEXT NOT NULL,              -- routine | incident
+	title      TEXT NOT NULL DEFAULT '',
+	detail     TEXT NOT NULL DEFAULT '',   -- a few sample log lines
+	sources    TEXT NOT NULL DEFAULT '',   -- comma-separated public source IPs, busiest first
+	hits       INTEGER NOT NULL DEFAULT 0,
+	reason     TEXT NOT NULL DEFAULT '',   -- why the policy classified it this way
+	paged      INTEGER NOT NULL DEFAULT 0, -- 1 = a notification was sent
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_situation ON alerts(server_id, key, created_at);
+CREATE INDEX IF NOT EXISTS idx_alerts_recent ON alerts(created_at);
+
 -- Generic key/value app settings (e.g. public hostname for connect addresses).
 CREATE TABLE IF NOT EXISTS app_settings (
 	key   TEXT PRIMARY KEY,

@@ -68,19 +68,55 @@ type kvasirDecision struct {
 	Reason      string `json:"reason"`
 }
 
+// kvasirEvent is one event handed to Kvasir. The struct form exists for callers
+// that need more than the basics — see the two optional fields.
+type kvasirEvent struct {
+	ServerID string
+	Event    string
+	Detail   string
+	LogTail  string
+
+	// Fallback is announced verbatim if Kvasir cannot produce an explanation —
+	// AI switched off, model unreachable, empty answer. A caller that sets it
+	// has handed the announcement over entirely, so the admin gets one message
+	// instead of a deterministic one plus an AI one; this field is what keeps
+	// that from silently becoming zero messages when the model is down. The
+	// detection is a fact, and facts must survive a broken LLM.
+	Fallback string
+
+	// Hint is extra guidance appended to the prompt, e.g. that an attack is
+	// distributed and blocking single addresses would be pointless.
+	Hint string
+}
+
 // kvasirReact is the entry point every watched event calls. Cheap-exits fast when
 // proactive monitoring is off or this event isn't watched. Runs the AI in the
 // background — callers fire it with `go`.
 func (s *Server) kvasirReact(serverID, event, detail, logTail string) {
+	s.kvasirReactEvent(kvasirEvent{ServerID: serverID, Event: event, Detail: detail, LogTail: logTail})
+}
+
+func (s *Server) kvasirReactEvent(e kvasirEvent) {
 	defer recoverLog("kvasirReact")
+	serverID, event, detail := e.ServerID, e.Event, e.Detail
+	// Every path that gives up before producing an explanation has to announce
+	// the fallback, or a caller that delegated its message would go silent.
+	giveUp := func() {
+		if e.Fallback != "" {
+			s.notifyServer(serverID, e.Fallback)
+		}
+	}
 	if s.kvasir == nil {
+		giveUp()
 		return
 	}
 	cfg := s.loadAIConfig(context.Background())
 	if !cfg.Enabled || cfg.APIKey == "" || cfg.ProactiveLevel == 0 {
+		giveUp()
 		return
 	}
 	if !kvasirTriggerOn(cfg.ProactiveTriggers, event) {
+		giveUp()
 		return
 	}
 	name := s.serverName(serverID)
@@ -92,12 +128,14 @@ func (s *Server) kvasirReact(serverID, event, detail, logTail string) {
 	defer cancel()
 	out, err := llm.Complete(ctx,
 		llm.Config{Provider: cfg.Provider, Model: cfg.Model, BaseURL: cfg.BaseURL, APIKey: cfg.APIKey},
-		buildKvasirMessages(name, event, detail, logTail), kvasirReactMaxTokens)
+		buildKvasirMessages(name, event, detail, e.LogTail, e.Hint), kvasirReactMaxTokens)
 	if err != nil {
+		giveUp()
 		return
 	}
 	dec := parseKvasirDecision(out)
 	if dec.Explanation == "" {
+		giveUp()
 		return
 	}
 
@@ -269,7 +307,7 @@ func kvasirArgSuffix(args string) string {
 
 // buildKvasirMessages is the reaction prompt: the event + context, and a strict
 // JSON contract. Pure + testable.
-func buildKvasirMessages(name, event, detail, logTail string) []llm.Message {
+func buildKvasirMessages(name, event, detail, logTail, hint string) []llm.Message {
 	system := "You are Kvasir, the operations assistant for a self-hosted game/app server panel. " +
 		"An event just happened on a server. Explain it briefly and plainly to the admin, and propose ONE fix. " +
 		"Respond with ONLY a JSON object — no prose, no markdown fences — of the form:\n" +
@@ -283,6 +321,12 @@ func buildKvasirMessages(name, event, detail, logTail string) []llm.Message {
 		"public source IP in the log, use block_ip with args set to that exact IP address. Do NOT block_ip for " +
 		"private/internal IPs (10.x, 192.168.x, 172.16-31.x, 127.x), when no single IP dominates, or for ordinary " +
 		"scanner background-noise that the server already answers with 403/404."
+	// The hint carries what the panel already worked out deterministically — the
+	// shape of the traffic — so the model reasons from measured fact instead of
+	// guessing it from a 20-line sample.
+	if strings.TrimSpace(hint) != "" {
+		system += "\n\nWhat the panel already measured about this traffic: " + strings.TrimSpace(hint)
+	}
 	user := fmt.Sprintf("Server: %s\nEvent: %s (%s)\n\nRecent log tail:\n%s", name, event, detail, logTail)
 	return []llm.Message{{Role: "system", Content: system}, {Role: "user", Content: user}}
 }

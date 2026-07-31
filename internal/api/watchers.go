@@ -157,6 +157,11 @@ func (s *Server) watcherLogLines(containerID, since string) []string {
 	return strings.Split(buf.String(), "\n")
 }
 
+// fireWatcher handles a tripped watcher. Tripping is not the same as being worth
+// a message: the alert policy decides that, and a routine trip (scanner noise, or
+// a repeat of a situation already reported this hour) is recorded and goes no
+// further. Without that filter a watcher on a public site pages all day, which
+// is how this panel's watchers ended up deleted rather than tuned.
 func (s *Server) fireWatcher(serverID string, w logWatcher, matched []string) {
 	s.db.Exec("UPDATE log_watchers SET last_fired=datetime('now') WHERE id=?", w.ID)
 	sample := matched
@@ -164,14 +169,34 @@ func (s *Server) fireWatcher(serverID string, w logWatcher, matched []string) {
 		sample = sample[len(sample)-watcherSampleLines:]
 	}
 	tail := strings.Join(sample, "\n")
+	verdict, page := s.raiseAlert(serverID, alertInput{
+		Key:   "watcher:" + w.ID,
+		Title: "Watcher " + w.Name,
+		Hits:  len(matched),
+		Lines: sample,
+	})
+	if !page {
+		return
+	}
 	body := fmt.Sprintf("👁 Watcher **%s** tripped — %d matches in the last %ds", w.Name, len(matched), w.WindowSecs)
 	if tail != "" {
 		body += "\n```\n" + tail + "\n```"
 	}
-	go s.notifyServer(serverID, body)
+	// One situation, one message: when Kvasir is going to explain this anyway,
+	// it owns the announcement and body becomes its fallback. Sending both is
+	// what made a single event arrive twice.
 	if w.Action == "kvasir" {
-		go s.kvasirReact(serverID, "watcher", fmt.Sprintf("%s: %d matches in %ds", w.Name, len(matched), w.WindowSecs), tail)
+		go s.kvasirReactEvent(kvasirEvent{
+			ServerID: serverID,
+			Event:    "watcher",
+			Detail:   fmt.Sprintf("%s: %d matches in %ds", w.Name, len(matched), w.WindowSecs),
+			LogTail:  tail,
+			Fallback: body,
+			Hint:     alertHint(verdict),
+		})
+		return
 	}
+	go s.notifyServer(serverID, body)
 }
 
 // ---- CRUD ----

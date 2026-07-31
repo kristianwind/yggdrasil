@@ -44,6 +44,7 @@ func (s *Server) startMetricsSampler() {
 				s.db.Exec("DELETE FROM server_crashes WHERE ts < datetime('now', '-30 days')")
 				s.db.Exec("DELETE FROM player_sessions WHERE joined_at < datetime('now', '-30 days')")
 				s.db.Exec("DELETE FROM app_events WHERE bucket < datetime('now', '-30 days')")
+				s.db.Exec("DELETE FROM alerts WHERE created_at < datetime('now', '-30 days')")
 			}
 		}
 	}()

@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 14
+  version: 15
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -111,6 +111,25 @@ gameskill:
           chmod -R g+w "$d" 2>/dev/null || true
           find "$d" -type d -exec chmod g+s {} + 2>/dev/null || true
         fi
+        # A few files in the webroot ROOT are rewritten in place by WordPress and
+        # by security plugins: .htaccess (permalinks, and Wordfence's
+        # auto_prepend_file line) and wordfence-waf.php (the WAF bootstrap). The
+        # webroot DIRECTORY is group-writable, so creating a missing file works —
+        # but overwriting an existing one needs write on the file itself, and an
+        # imported site's files arrive 644 owned by the panel. That is why
+        # Wordfence reports "unable to create wordfence-waf.php" on a site that
+        # moved between panels while a freshly installed one is fine.
+        #
+        # Only these files, never the rest of core: wp-login.php and friends stay
+        # read-only to PHP so a compromised plugin cannot rewrite them. No "does
+        # it need it" guard here — this script runs as root, and root passes
+        # `test -w` even on a 644 file, so the obvious guard would never fire.
+        for f in /var/www/html/.htaccess /var/www/html/wordfence-waf.php; do
+          if [ -f "$f" ]; then
+            chgrp 33 "$f" 2>/dev/null || true
+            chmod g+w "$f" 2>/dev/null || true
+          fi
+        done
         # WordPress decides whether it may write directly by creating a temp file
         # and comparing its owner to the PHP process uid — an OWNERSHIP test, not a
         # permission one. Because the panel stays the owner (above), that test fails

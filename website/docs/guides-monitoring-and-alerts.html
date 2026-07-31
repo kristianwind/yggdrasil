@@ -270,6 +270,28 @@ should be reproducible and testable, not a function of what a model felt like an
 explains what happened; it does not decide whether you hear about it.</p>
 <p>Player anomalies (a mass disconnect, an unusual influx) bypass this policy — they carry no traffic
 sources to judge, and are governed by their own cooldown instead.</p>
+<h2 id="the-history-tab">The History tab</h2>
+<p>Every server has a <strong>History</strong> tab answering &ldquo;what happened to this, and who did it&rdquo;:</p>
+<ul>
+<li><strong>Server events</strong> — started, stopped, restarted, installed, cloned, with the person&rsquo;s username
+against each. A scheduled action shows as <code>schedule</code>, one Kvasir took as <code>kvasir</code>, and one issued
+from Discord names the Discord user. An entry with <strong>no</strong> actor is a crash: that is how you tell
+&ldquo;it fell over&rdquo; from &ldquo;someone stopped it&rdquo;.</li>
+<li><strong>Security &amp; health events</strong> — the rune&rsquo;s declared events, rolled up per source.</li>
+<li><strong>Player sessions</strong> — who was on and when, for runes that record it.</li>
+</ul>
+<p>The first section merges three things the panel already recorded separately: the audit log, the
+crash list and the schedule run log. Having them apart meant &ldquo;why did this restart at 4am?&rdquo; took
+three views to answer — and once genuinely did, when a nightly update schedule was restarting
+servers that had been deliberately stopped.</p>
+<h2 id="rune-versions">Rune versions</h2>
+<p>The servers list shows each server&rsquo;s rune and its version — <code>wordpress v18</code>, <code>karakeep v3</code>.</p>
+<p>An asterisk after the version means the <strong>running container is older than the rune</strong>. Runes update
+themselves from the catalog, but a container keeps the startup script, environment and mounts it was
+created with until the server is restarted. Without that marker a rune fix that is published but not
+yet in effect looks exactly like one that didn&rsquo;t work.</p>
+<p>Restarting the server applies the new version — a restart recreates the container, which is why it
+picks up rune, environment and mount changes while a plain container restart would not.</p>
 <h2 id="host-system-info">Host system info</h2>
 <p><code>GET /api/system/info</code> backs the dashboard&rsquo;s host panel (admin only):</p>
 <ul>
@@ -345,7 +367,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

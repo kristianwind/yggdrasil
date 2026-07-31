@@ -78,6 +78,50 @@ func checkBlockable(ip string) (string, error) {
 	return parsed.String(), nil
 }
 
+// operatorIPWindow is how far back a panel sign-in counts as "this is one of
+// ours". Long enough to cover a home connection that only reaches the panel
+// every few days, short enough that an address which changed hands is not
+// protected forever.
+const operatorIPWindow = "-14 days"
+
+// recentOperatorIPs is the set of addresses an administrator has reached this
+// panel from recently.
+//
+// Their own address is the one an attack-detector is most likely to misread:
+// an admin clicking through a WordPress dashboard produces exactly the traffic
+// shape of a scraper — many requests, one source, in a burst. This panel has
+// already proposed blocking its owner's home address for doing that, and with
+// block_mode=auto it would have carried it out.
+func (s *Server) recentOperatorIPs(ctx context.Context) map[string]bool {
+	out := map[string]bool{}
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT DISTINCT ip FROM audit_log WHERE COALESCE(ip,'')<>'' AND ts >= datetime('now', ?)", operatorIPWindow)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ip string
+		if rows.Scan(&ip) == nil {
+			// Normalise through net.ParseIP so "1.2.3.4" and a padded or
+			// alternate spelling of the same address compare equal.
+			if p := net.ParseIP(strings.TrimSpace(ip)); p != nil {
+				out[p.String()] = true
+			}
+		}
+	}
+	return out
+}
+
+// isOperatorIP reports whether ip belongs to someone who has signed in here.
+func (s *Server) isOperatorIP(ctx context.Context, ip string) bool {
+	p := net.ParseIP(strings.TrimSpace(ip))
+	if p == nil {
+		return false
+	}
+	return s.recentOperatorIPs(ctx)[p.String()]
+}
+
 // cfFirewallClient builds a Cloudflare client for edge-firewall calls. Unlike
 // cfClient it needs only the API token (no tunnel/account), since IP Access Rules
 // are zone-scoped. Returns nil when Cloudflare isn't enabled/configured.
@@ -130,6 +174,9 @@ func (s *Server) blockIP(ctx context.Context, serverID, host, ip, reason, source
 	clean, err := checkBlockable(ip)
 	if err != nil {
 		return blockedIP{}, err
+	}
+	if s.isOperatorIP(ctx, clean) {
+		return blockedIP{}, fmt.Errorf("refusing to block %s — an administrator signed in to this panel from that address recently; blocking it would lock you out of your own site", clean)
 	}
 	if s.getSetting(ctx, "block_enabled") != "1" {
 		return blockedIP{}, fmt.Errorf("IP blocking is disabled — enable it in Settings → Security")

@@ -189,15 +189,29 @@ is sent. It sorts each situation into one of two classes:
 | `routine` | Vulnerability scanning the server already refused, or a handful of hits spread thinly across many sources | Recorded, summarised in the daily digest, never sent as an alert |
 | `incident` | One source hammering, or a flood large enough to matter whatever its shape | Sent to your notification channels |
 
-Three rules do the work:
+Four rules do the work, in this order:
 
-- **Concentration.** If one address accounts for most of the traffic, blocking that address would
-  actually stop it — so it is an incident, and Kvasir is told which address to propose blocking.
+- **Refusal comes first.** A scan the server answered with 404/403 is settled — the answer was "no",
+  and it stays routine however concentrated it is. Nearly every traffic spike on a public site is
+  exactly this shape: one scanner walking a wordlist. Treating each one as an incident is what buries
+  the alerts that matter.
+- **Concentration.** If one address accounts for most of the traffic *and it is getting through*,
+  blocking that address would actually stop it — so it is an incident, and Kvasir is told which
+  address to propose blocking.
 - **Distribution.** If the traffic comes from many addresses with no dominant one, blocking them one
   at a time cannot win; this panel has seen 56 distinct addresses against a single site in a day.
   Such a situation only alerts once it is genuinely loud, and Kvasir is explicitly told *not* to
   propose per-address blocks — the useful answer is a rate limit or a challenge at the edge.
-- **Volume.** Below a small threshold nothing pages on its own. Two failed logins is a normal day.
+- **Volume.** Below a small threshold nothing pages on its own — two failed logins is a normal day.
+  Above a much larger one it pages whatever the responses say, because a refused flood is still a
+  flood.
+
+**Your own address is never an attack source.** Any address an administrator has signed in to the
+panel from in the last 14 days is excluded from the traffic analysis, and refused outright if
+something tries to block it. An admin clicking through a WordPress dashboard produces one source,
+many requests, in a burst — by shape alone that is indistinguishable from a scrape, and this panel
+really did propose blocking its owner's home connection for it. With blocking set to automatic that
+proposal would have been carried out.
 
 A situation alerts at most **once per hour** per (server, rule), so an attack that runs all afternoon
 is one message rather than one per scan tick. And a rule that trips is announced **once**, not twice:

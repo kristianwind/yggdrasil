@@ -140,11 +140,16 @@ is green when everything shared is up, amber when some are, grey when none are.<
 and the colour both count every shared server regardless of the cap, so a fleet of 30 that&rsquo;s fully up
 still reads <code>**30 of 30 online**</code> in green.</p>
 <h2 id="the-beacon">The beacon</h2>
-<p>Yggdrasil Panel ships <strong>no telemetry</strong>. Nothing phones home, nothing tracks you, and the download
-count on GitHub is the only number the project gets for free. The beacon is the single deliberate
-exception, and it is <strong>off by default</strong>.</p>
-<p>When you switch it on under <strong>Settings → System → Beacon</strong>, the panel sends one small ping a day so
-the project can gauge how many installs exist.</p>
+<p>The beacon is the single thing in Yggdrasil Panel that reports anything anywhere. Nothing else
+phones home, nothing tracks you, and no usage is measured — the blanket rule still stands for
+everything except this.</p>
+<p>The beacon is <strong>on by default</strong>, and the panel says so itself: the first time an admin signs in it
+raises a notice naming exactly what is sent, with a one-click way to turn it off. Disclosure is the
+condition the default rests on — an install that reported home quietly would be the kind of thing a
+self-hosted audience is right to hold against a project.</p>
+<p>It sends one small ping a day so the project can gauge how many installs exist.</p>
+<p><strong>Turning it off is permanent.</strong> An explicit off is stored as a decision and survives upgrades; only
+an install that has never expressed a preference gets the default.</p>
 <h3 id="the-literal-payload">The literal payload</h3>
 <pre><code class="language-json">{ &quot;instance_id&quot;: &quot;…&quot;, &quot;version&quot;: &quot;…&quot; }
 </code></pre>

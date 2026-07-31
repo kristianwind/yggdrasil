@@ -113,12 +113,19 @@ still reads `**30 of 30 online**` in green.
 
 ## The beacon
 
-Yggdrasil Panel ships **no telemetry**. Nothing phones home, nothing tracks you, and the download
-count on GitHub is the only number the project gets for free. The beacon is the single deliberate
-exception, and it is **off by default**.
+The beacon is the single thing in Yggdrasil Panel that reports anything anywhere. Nothing else
+phones home, nothing tracks you, and no usage is measured — the blanket rule still stands for
+everything except this.
 
-When you switch it on under **Settings → System → Beacon**, the panel sends one small ping a day so
-the project can gauge how many installs exist.
+The beacon is **on by default**, and the panel says so itself: the first time an admin signs in it
+raises a notice naming exactly what is sent, with a one-click way to turn it off. Disclosure is the
+condition the default rests on — an install that reported home quietly would be the kind of thing a
+self-hosted audience is right to hold against a project.
+
+It sends one small ping a day so the project can gauge how many installs exist.
+
+**Turning it off is permanent.** An explicit off is stored as a decision and survives upgrades; only
+an install that has never expressed a preference gets the default.
 
 ### The literal payload
 

@@ -384,6 +384,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/settings/beacon", s.requireAdmin(s.handleGetBeaconSettings))
 		r.Put("/api/settings/beacon", s.requireAdmin(s.handleSetBeaconSettings))
 		r.Post("/api/settings/beacon/test", s.requireAdmin(s.handleTestBeacon))
+		r.Post("/api/settings/beacon/notice", s.requireAdmin(s.handleAckBeaconNotice))
 		r.Get("/api/beacon/stats", s.requireAdmin(s.handleBeaconStats))
 
 		// Discord status board (admin-only)

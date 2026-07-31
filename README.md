@@ -42,6 +42,26 @@ generated admin password. Re-running it upgrades or repairs an existing install.
 Updating later is just: swap the binary + restart the service (or re-run the
 one-liner — it's idempotent).
 
+## What it reports
+
+Yggdrasil Panel phones home, **on by default**, and this is the whole of it:
+
+```json
+{ "instance_id": "a random uuid generated on this install", "version": "v0.2.221" }
+```
+
+Once a day, to `https://beacon.yggdrasilpanel.com/api/beacon`. No server names, no addresses, no
+configuration, no user data — and the collector stores no IP. The id identifies an install to nobody;
+it exists only so repeat pings can be counted as one, so the project can see roughly how many people
+run it.
+
+The panel tells you this itself the first time an admin signs in, with a one-click way to decline.
+You can also turn it off, or point it at your own collector, under **Settings → Beacon**, which shows
+the literal payload. Setting `beacon_enabled` to `0` is respected permanently — upgrades never turn it
+back on.
+
+Nothing else in the panel reports anything anywhere.
+
 ## Documentation
 
 **[📖 Full documentation](docs/)** — or jump straight to

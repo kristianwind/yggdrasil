@@ -93,14 +93,69 @@ func TestBeaconReportsAfterUpgradeFromDayOnlyGate(t *testing.T) {
 	}
 }
 
-// Opting out still means silence.
-func TestBeaconStaysOffWhenDisabled(t *testing.T) {
+// Opting out still means silence — and it has to keep meaning that. The beacon
+// is on by default now, so "off" is the only state a user can be in that an
+// upgrade could quietly undo, and undoing it would be the exact betrayal the
+// disclosure is meant to prevent.
+func TestBeaconStaysOffWhenExplicitlyDisabled(t *testing.T) {
 	s := testServer(t)
+	ctx := context.Background()
 	url, seen := fakeCollector(t)
-	s.setSetting(context.Background(), "beacon_url", url)
+	s.setSetting(ctx, "beacon_url", url)
+	s.setSetting(ctx, "beacon_enabled", "0")
 	s.version = "v0.2.160"
 	s.maybeSendBeacon()
 	if len(*seen) != 0 {
-		t.Errorf("a disabled beacon sent %d pings", len(*seen))
+		t.Errorf("an explicitly disabled beacon sent %d pings", len(*seen))
+	}
+	if s.beaconEnabled(ctx) {
+		t.Error("an explicit off must not read as enabled")
+	}
+}
+
+// An install that has never expressed a preference gets the default, which is on.
+func TestBeaconOnByDefaultWhenUnset(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	url, seen := fakeCollector(t)
+	s.setSetting(ctx, "beacon_url", url)
+	s.version = "v0.2.160"
+
+	if !s.beaconEnabled(ctx) {
+		t.Fatal("an untouched install should get the default, which is on")
+	}
+	s.maybeSendBeacon()
+	if len(*seen) != 1 {
+		t.Fatalf("expected one ping, got %d", len(*seen))
+	}
+}
+
+// The notice is the condition the default rests on: it is pending exactly while
+// the operator has not chosen, and never again once they have.
+func TestBeaconNoticePendingOnlyBeforeAChoice(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+
+	if !s.beaconNoticePending(ctx) {
+		t.Error("a fresh install has not been told yet — the notice should be pending")
+	}
+	// Acknowledging settles it whichever way the operator went.
+	s.setSetting(ctx, "beacon_notice_ack", "1")
+	if s.beaconNoticePending(ctx) {
+		t.Error("an acknowledged notice must not come back")
+	}
+
+	// And someone who had already made a deliberate choice is not told about a
+	// decision they have made — including an operator who turned it ON before
+	// this default existed.
+	s2 := testServer(t)
+	s2.setSetting(ctx, "beacon_enabled", "1")
+	if s2.beaconNoticePending(ctx) {
+		t.Error("an operator who already opted in has nothing to be told")
+	}
+	s3 := testServer(t)
+	s3.setSetting(ctx, "beacon_enabled", "0")
+	if s3.beaconNoticePending(ctx) {
+		t.Error("an operator who already opted out has nothing to be told")
 	}
 }

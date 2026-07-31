@@ -14,12 +14,20 @@ import (
 	"github.com/google/uuid"
 )
 
-// Beacon: a strictly voluntary "I'm running Yggdrasil Panel" ping, so the project
-// can get a rough sense of how many installs are out there. It is OFF by default
-// and, when on, sends EXACTLY two fields — a random anonymous instance id and the
-// panel version — and nothing else. No IP is stored, no server names, no user
-// data, no config. This is a deliberate, opt-in exception to the panel's otherwise
-// no-phone-home stance; the UI shows the literal payload so there are no surprises.
+// Beacon: an "I'm running Yggdrasil Panel" ping, so the project can get a rough
+// sense of how many installs are out there. It sends EXACTLY two fields — a
+// random anonymous instance id and the panel version — and nothing else. No IP
+// is stored, no server names, no user data, no config.
+//
+// It is ON by default, and that is only defensible because the panel says so
+// unprompted: an admin who has not acknowledged the notice gets a banner on
+// sign-in naming what is sent, with a one-click way to switch it off. Turning
+// something like this on quietly is how a self-hosted project loses the trust it
+// runs on, so the disclosure is not decoration around the feature — it IS the
+// feature. The Settings page still shows the literal payload.
+//
+// This is the single sanctioned exception to the panel's otherwise strict
+// no-phone-home stance; nothing else may report anything anywhere.
 //
 // The same binary can also BE the collector (receiver, also off by default): the
 // maintainer enables the receiver on one public instance and points installs at
@@ -72,10 +80,34 @@ func (s *Server) startBeaconLoop() {
 	}()
 }
 
+// beaconEnabled reports whether the beacon should ping.
+//
+// Unset means ON. That is a deliberate reversal — the beacon shipped off by
+// default — and it only holds together because the panel says so out loud: an
+// admin who has not yet acknowledged the notice sees a banner on sign-in
+// explaining what is sent and offering to switch it off in one click.
+// Default-on without that disclosure is the kind of thing that costs an open
+// source project its goodwill, so the notice is the feature and the flag is
+// the detail.
+//
+// An explicit "0" always wins. Unset and "0" therefore have to stay
+// distinguishable: an operator who deliberately turned this off must not have
+// it turned back on by an upgrade.
+func (s *Server) beaconEnabled(ctx context.Context) bool {
+	switch s.getSetting(ctx, "beacon_enabled") {
+	case "":
+		return true // never touched — the new default
+	case "1":
+		return true
+	default:
+		return false // explicitly disabled, and that decision stands
+	}
+}
+
 func (s *Server) maybeSendBeacon() {
 	defer recoverLog("maybeSendBeacon")
 	ctx := context.Background()
-	if s.getSetting(ctx, "beacon_enabled") != "1" {
+	if !s.beaconEnabled(ctx) {
 		return
 	}
 	// Ping once a day — but also whenever the version changes, which the day gate
@@ -210,12 +242,51 @@ func (s *Server) handleBeaconStats(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, st)
 }
 
+// --- First-login notice ---
+//
+// Default-on telemetry is only honest if the operator is told without having to
+// go looking, so the panel raises this once and then never again. It is a
+// panel-wide acknowledgement rather than a per-user one: the beacon is a
+// property of the install, and every admin dismissing the same notice would be
+// noise.
+
+// beaconNoticePending reports whether the beacon disclosure still needs showing.
+// An operator who has already made a deliberate choice — by turning the beacon
+// off, or on — has nothing left to be told.
+func (s *Server) beaconNoticePending(ctx context.Context) bool {
+	if s.getSetting(ctx, "beacon_notice_ack") == "1" {
+		return false
+	}
+	return s.getSetting(ctx, "beacon_enabled") == "" // untouched: they have not chosen yet
+}
+
+// handleAckBeaconNotice records that the notice was shown and acted on. keep=false
+// switches the beacon off in the same step, so declining is one click and does not
+// send the operator hunting through Settings for the toggle.
+func (s *Server) handleAckBeaconNotice(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Keep bool `json:"keep"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	s.setSetting(ctx, "beacon_notice_ack", "1")
+	if !req.Keep {
+		s.setSetting(ctx, "beacon_enabled", "0")
+	}
+	s.auditLog(r, "settings.beacon.notice", "beacon", map[string]any{"kept": req.Keep})
+	jsonOK(w, map[string]any{"enabled": s.beaconEnabled(ctx)})
+}
+
 // --- Settings (admin) ---
 
 func (s *Server) handleGetBeaconSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	jsonOK(w, map[string]any{
-		"enabled":              s.getSetting(ctx, "beacon_enabled") == "1",
+		"enabled":              s.beaconEnabled(ctx),
+		"notice_pending":       s.beaconNoticePending(ctx),
 		"url":                  s.beaconURL(),
 		"instance_id":          s.beaconInstanceID(),
 		"version":              s.version,

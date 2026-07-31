@@ -11,8 +11,10 @@ import (
 
 // Player/traffic anomaly detection — the Kvasir layer that notices *activity*
 // being wrong, not just log lines matching a pattern. Two deterministic
-// detectors run on a fixed tick, and each finding is both notified as-is and
-// (when the AI is configured) handed to kvasirReact for an explanation:
+// detectors run on a fixed tick; each finding goes to Kvasir for an explanation,
+// with the raw detection as the fallback if no model can be reached. Traffic
+// spikes pass through the alert policy first (see alert_policy.go), so a burst
+// of scanner noise is recorded rather than sent:
 //
 //   - players: a mass disconnect (most of the players gone between two samples
 //     while the server kept running) or an influx above the 14-day high — the
@@ -171,7 +173,7 @@ func (s *Server) checkPlayerAnomaly(serverID, containerID string) {
 	if kind == "" {
 		return
 	}
-	s.fireAnomaly(serverID, containerID, kind, detail)
+	s.fireAnomaly(serverID, containerID, kind, detail, 0)
 }
 
 func (s *Server) checkLogRateAnomaly(serverID, containerID string) {
@@ -187,17 +189,18 @@ func (s *Server) checkLogRateAnomaly(serverID, containerID string) {
 	if !ok {
 		return
 	}
-	s.fireAnomaly(serverID, containerID, "log-rate", detail)
+	s.fireAnomaly(serverID, containerID, "log-rate", detail, count)
 }
 
-func (s *Server) fireAnomaly(serverID, containerID, kind, detail string) {
+// fireAnomaly announces a detected anomaly, subject to the alert policy.
+//
+// hits is the volume behind the detection (log lines for a rate spike), or 0
+// where the notion doesn't apply.
+func (s *Server) fireAnomaly(serverID, containerID, kind, detail string, hits int) {
 	if s.anomalies.coolingDown(serverID, kind, time.Now()) {
 		return
 	}
 	name := s.serverName(serverID)
-	// The deterministic note goes out regardless of the AI: the detection is
-	// fact, only the explanation needs a model.
-	s.notifyServer(serverID, fmt.Sprintf("📈 Anomaly · **%s** — %s", name, detail))
 	tail := s.watcherLogLines(containerID, "10m")
 	if len(tail) > 20 {
 		tail = tail[len(tail)-20:]
@@ -205,5 +208,33 @@ func (s *Server) fireAnomaly(serverID, containerID, kind, detail string) {
 	for i, l := range tail {
 		tail[i] = stripANSI(l)
 	}
-	go s.kvasirReact(serverID, "anomaly", detail, strings.Join(tail, "\n"))
+
+	hint := ""
+	// Only the log-rate spike goes through the alert policy. A player drop or
+	// influx is a game-state signal with no sources and no hit count, so the
+	// traffic classifier would read it as "too small to matter" and silently
+	// swallow it — the policy is about traffic noise, and these are not that.
+	if kind == "log-rate" {
+		verdict, page := s.raiseAlert(serverID, alertInput{
+			Key:   "anomaly:" + kind,
+			Title: name + " — traffic spike",
+			Hits:  hits,
+			Lines: tail,
+		})
+		if !page {
+			return
+		}
+		hint = alertHint(verdict)
+	}
+
+	// Kvasir owns the announcement and falls back to this line if it can't
+	// reach the model — the detection is fact, only the explanation needs one.
+	go s.kvasirReactEvent(kvasirEvent{
+		ServerID: serverID,
+		Event:    "anomaly",
+		Detail:   detail,
+		LogTail:  strings.Join(tail, "\n"),
+		Fallback: fmt.Sprintf("📈 Anomaly · **%s** — %s", name, detail),
+		Hint:     hint,
+	})
 }

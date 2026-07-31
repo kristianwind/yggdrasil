@@ -173,6 +173,56 @@ Patterns are Go/RE2 regular expressions matched per line. Prefer patterns anchor
 log actually formats trouble — the suggestion flow exists precisely because a generic pattern
 either misses or matches routine lines.
 
+## The alert policy
+
+A watcher tripping is not the same as something being worth your attention. A site on the public
+internet is scanned continuously — requests for `/.env`, `/.git/config`, `/wp-admin/setup-config.php`
+arrive all day and are answered with a 404, which is already the correct response. If every one of
+those pages you, the alerts become noise and you switch detection off, which is worse than never
+having had it.
+
+So every detection from a watcher or a traffic-spike anomaly passes through a policy before anything
+is sent. It sorts each situation into one of two classes:
+
+| Class | What it means | What happens |
+|---|---|---|
+| `routine` | Vulnerability scanning the server already refused, or a handful of hits spread thinly across many sources | Recorded, summarised in the daily digest, never sent as an alert |
+| `incident` | One source hammering, or a flood large enough to matter whatever its shape | Sent to your notification channels |
+
+Three rules do the work:
+
+- **Concentration.** If one address accounts for most of the traffic, blocking that address would
+  actually stop it — so it is an incident, and Kvasir is told which address to propose blocking.
+- **Distribution.** If the traffic comes from many addresses with no dominant one, blocking them one
+  at a time cannot win; this panel has seen 56 distinct addresses against a single site in a day.
+  Such a situation only alerts once it is genuinely loud, and Kvasir is explicitly told *not* to
+  propose per-address blocks — the useful answer is a rate limit or a challenge at the edge.
+- **Volume.** Below a small threshold nothing pages on its own. Two failed logins is a normal day.
+
+A situation alerts at most **once per hour** per (server, rule), so an attack that runs all afternoon
+is one message rather than one per scan tick. And a rule that trips is announced **once**, not twice:
+when Kvasir is set to explain an event, its explanation *is* the message. If the AI provider can't be
+reached, the raw detection is sent instead — a detection is a fact and does not depend on a model.
+
+Nothing is thrown away. Every detection is recorded with the verdict and the reason for it, and the
+daily ops digest ends with what was handled quietly:
+
+```
+🔕 Handled quietly: 34 routine situations (612 hits) recorded without paging you
+• Watcher WordPress login attempts — 22× (410 hits)
+• Watcher PHP fatal errors — 12× (202 hits)
+```
+
+That line matters as much as the alerts do: without it, a quiet day and a broken detector look
+identical.
+
+The classification is deliberately made in code rather than by the AI. Whether you get woken up
+should be reproducible and testable, not a function of what a model felt like answering. The model
+explains what happened; it does not decide whether you hear about it.
+
+Player anomalies (a mass disconnect, an unusual influx) bypass this policy — they carry no traffic
+sources to judge, and are governed by their own cooldown instead.
+
 ## Host system info
 
 `GET /api/system/info` backs the dashboard's host panel (admin only):

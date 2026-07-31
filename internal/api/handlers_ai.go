@@ -619,6 +619,12 @@ func (s *Server) maybeSendOpsDigest() {
 	// Mark sent up-front so a slow LLM call can't double-fire on the next tick.
 	s.db.Exec("UPDATE ai_config SET digest_last_day=? WHERE id=1", today)
 
+	// What the alert policy handled quietly. Deterministic, so it is worth
+	// sending even when the model can't be reached — otherwise a day of
+	// suppressed noise is indistinguishable from a day with no detections,
+	// which is exactly the doubt that makes an admin switch detection off.
+	quiet := s.routineAlertSummary(24)
+
 	snapshot := s.gatherHealthSnapshot(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -627,7 +633,14 @@ func (s *Server) maybeSendOpsDigest() {
 		buildHealthDigestMessages(snapshot), aiReplyMaxTokens)
 	if err != nil {
 		log.Printf("ops digest: LLM request failed: %v", err)
+		if quiet != "" {
+			s.notifyAll("🧠 Daily ops digest — the AI summary was unavailable, but the detections stand.\n\n" + quiet)
+		}
 		return
 	}
-	s.notifyAll("🧠 Daily ops digest\n\n" + out)
+	body := "🧠 Daily ops digest\n\n" + out
+	if quiet != "" {
+		body += "\n\n" + quiet
+	}
+	s.notifyAll(body)
 }

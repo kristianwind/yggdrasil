@@ -201,6 +201,62 @@ regex, bounds are clamped) and nothing is created until you add it.</li>
 <p>Patterns are Go/RE2 regular expressions matched per line. Prefer patterns anchored in how <em>your</em>
 log actually formats trouble — the suggestion flow exists precisely because a generic pattern
 either misses or matches routine lines.</p>
+<h2 id="the-alert-policy">The alert policy</h2>
+<p>A watcher tripping is not the same as something being worth your attention. A site on the public
+internet is scanned continuously — requests for <code>/.env</code>, <code>/.git/config</code>, <code>/wp-admin/setup-config.php</code>
+arrive all day and are answered with a 404, which is already the correct response. If every one of
+those pages you, the alerts become noise and you switch detection off, which is worse than never
+having had it.</p>
+<p>So every detection from a watcher or a traffic-spike anomaly passes through a policy before anything
+is sent. It sorts each situation into one of two classes:</p>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>What it means</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>routine</code></td>
+<td>Vulnerability scanning the server already refused, or a handful of hits spread thinly across many sources</td>
+<td>Recorded, summarised in the daily digest, never sent as an alert</td>
+</tr>
+<tr>
+<td><code>incident</code></td>
+<td>One source hammering, or a flood large enough to matter whatever its shape</td>
+<td>Sent to your notification channels</td>
+</tr>
+</tbody>
+</table>
+<p>Three rules do the work:</p>
+<ul>
+<li><strong>Concentration.</strong> If one address accounts for most of the traffic, blocking that address would
+actually stop it — so it is an incident, and Kvasir is told which address to propose blocking.</li>
+<li><strong>Distribution.</strong> If the traffic comes from many addresses with no dominant one, blocking them one
+at a time cannot win; this panel has seen 56 distinct addresses against a single site in a day.
+Such a situation only alerts once it is genuinely loud, and Kvasir is explicitly told <em>not</em> to
+propose per-address blocks — the useful answer is a rate limit or a challenge at the edge.</li>
+<li><strong>Volume.</strong> Below a small threshold nothing pages on its own. Two failed logins is a normal day.</li>
+</ul>
+<p>A situation alerts at most <strong>once per hour</strong> per (server, rule), so an attack that runs all afternoon
+is one message rather than one per scan tick. And a rule that trips is announced <strong>once</strong>, not twice:
+when Kvasir is set to explain an event, its explanation <em>is</em> the message. If the AI provider can&rsquo;t be
+reached, the raw detection is sent instead — a detection is a fact and does not depend on a model.</p>
+<p>Nothing is thrown away. Every detection is recorded with the verdict and the reason for it, and the
+daily ops digest ends with what was handled quietly:</p>
+<pre><code>🔕 Handled quietly: 34 routine situations (612 hits) recorded without paging you
+• Watcher WordPress login attempts — 22× (410 hits)
+• Watcher PHP fatal errors — 12× (202 hits)
+</code></pre>
+<p>That line matters as much as the alerts do: without it, a quiet day and a broken detector look
+identical.</p>
+<p>The classification is deliberately made in code rather than by the AI. Whether you get woken up
+should be reproducible and testable, not a function of what a model felt like answering. The model
+explains what happened; it does not decide whether you hear about it.</p>
+<p>Player anomalies (a mass disconnect, an unusual influx) bypass this policy — they carry no traffic
+sources to judge, and are governed by their own cooldown instead.</p>
 <h2 id="host-system-info">Host system info</h2>
 <p><code>GET /api/system/info</code> backs the dashboard&rsquo;s host panel (admin only):</p>
 <ul>
@@ -276,7 +332,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

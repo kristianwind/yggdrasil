@@ -152,8 +152,18 @@ reacts to:
   disconnect** (from 4+ players, 75% or more gone between samples while the server stayed up), a
   **player influx** above the server's own 14-day high (from 8+ players), and a **log-volume spike**
   (the container suddenly logging 5× its own recent baseline; the baseline warms up for ~30 minutes
-  and quiet logs never alert). A detected anomaly is always notified as plain fact; the AI
-  explanation on top follows the proactive level. At most one alert per hour per server per kind.
+  and quiet logs never alert). At most one alert per hour per server per kind. Traffic spikes then
+  pass the alert policy described in the monitoring guide, so a burst of vulnerability scanning is
+  recorded rather than sent; player anomalies bypass it, having no traffic sources to weigh.
+
+You get **one message per situation**, not two. Where Kvasir is set to explain an event, its
+explanation is the message; if the provider can't be reached, the raw detection is sent on its own,
+because a detection is a fact and must not depend on a model being up.
+
+Kvasir does not decide whether you are alerted. That classification is made in code so it stays
+reproducible and testable — the model explains what happened and proposes a fix, and is told the
+measured shape of the traffic (one dominant source, or many) so it doesn't propose blocking
+addresses one at a time against a distributed attack.
 
 Log-pattern watching — regex rules over any server's log — is its own feature with its own guide
 section: see Kvasir Watchers in the monitoring guide. A watcher with action *Kvasir* is its own

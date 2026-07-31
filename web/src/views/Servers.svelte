@@ -720,7 +720,7 @@
                     </div>
                   {/if}
                 </td>
-                <td class="px-4 py-2 text-muted truncate">{s.gameskill_id}{#if s.rune_version} <span class="text-xs opacity-70">v{s.rune_version}</span>{/if}{#if runeStale(s)}<span class="text-warn text-xs" title="The rune has been updated since this container was created — restart to apply v{s.rune_version}.">*</span>{/if}</td>
+                <td class="px-4 py-2 text-muted truncate">{s.gameskill_id}{#if s.rune_version}&nbsp;<span class="text-xs opacity-70">v{s.rune_version}</span>{/if}{#if runeStale(s)}<span class="text-warn text-xs" title="The rune has been updated since this container was created — restart to apply v{s.rune_version}.">*</span>{/if}</td>
                 <td class="px-4 py-2 whitespace-nowrap">
                   <span
                     class="badge {s.status === 'running' ? 'bg-accent2/20 text-accent' : s.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
@@ -804,7 +804,7 @@
               </div>
             </div>
             <div class="flex items-center justify-between gap-2 mt-1">
-              <div class="text-xs text-muted truncate">{s.gameskill_id}{#if s.rune_version} v{s.rune_version}{/if}{#if runeStale(s)}<span class="text-warn" title="The rune has been updated since this container was created — restart to apply v{s.rune_version}.">*</span>{/if}</div>
+              <div class="text-xs text-muted truncate">{s.gameskill_id}{#if s.rune_version}&nbsp;v{s.rune_version}{/if}{#if runeStale(s)}<span class="text-warn" title="The rune has been updated since this container was created — restart to apply v{s.rune_version}.">*</span>{/if}</div>
               {#if s.status === "running" && miniMetrics[s.id]?.length > 1}
                 <span class="shrink-0" title="CPU, last ~3h"><MiniSpark values={miniMetrics[s.id]} /></span>
               {/if}

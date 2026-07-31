@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 17
+  version: 18
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -113,14 +113,27 @@ gameskill:
     # another panel never re-runs install — and its files arrive owned by the new
     # host's panel user, which is exactly when this bites.
     #
-    # keep_entrypoint means these args go to the image's docker-entrypoint.sh,
-    # which execs them after it has laid down WordPress core — so wp-content is
-    # guaranteed to exist by the time we touch it. The guard keeps a restart
-    # cheap on a large site (tens of thousands of files) once it is already right.
+    # keep_entrypoint sends these args to the image's docker-entrypoint.sh — but
+    # that script only lays down WordPress when the command it is given looks
+    # like the web server:
+    #
+    #   if [[ "${1-}" == apache2* ]] || [ "${1-}" = 'php-fpm' ] || …
+    #
+    # Our command is `sh`, so the whole install step was skipped and a FRESH
+    # server came up with an empty webroot: Apache found no index.php and
+    # answered 403 for the site. Existing sites hid the bug, because their files
+    # arrived by import rather than from the image.
+    #
+    # The same condition offers the way out — it also matches when the script is
+    # invoked as docker-ensure-installed.sh (a symlink to itself), which copies
+    # WordPress, writes wp-config.php from the WORDPRESS_* variables, and then
+    # `exec "$@"` with no arguments, i.e. returns. So call that first and the
+    # rest of this script can assume a populated webroot.
     exec:
       - "sh"
       - "-c"
       - |
+        docker-ensure-installed.sh
         d=/var/www/html/wp-content
         # g+rw, not g+w: applied to a file a plugin deliberately created as 0600
         # — Wordfence does this for its whole wflogs/ directory — a bare g+w
@@ -185,8 +198,15 @@ gameskill:
         if [ -f "$c" ]; then
           sed -i '/ygg-site-url/d' "$c"
           if [ -n "${YGG_SITE_URL:-}" ]; then
-            sed -i "1a define( 'WP_HOME', '$YGG_SITE_URL' ); define( 'WP_SITEURL', '$YGG_SITE_URL' ); // ygg-site-url" "$c"
-            echo "yggdrasil: pinned site address to $YGG_SITE_URL"
+            # A scheme-less value makes WordPress treat the host as a PATH, so
+            # every generated link gains the hostname twice
+            # (https://site/site/wp-admin/…) and the install redirect loops.
+            # Typing a bare hostname is the obvious mistake, so accept it.
+            u="$YGG_SITE_URL"
+            case "$u" in *://*) ;; *) u="https://$u" ;; esac
+            u="${u%/}"
+            sed -i "1a define( 'WP_HOME', '$u' ); define( 'WP_SITEURL', '$u' ); // ygg-site-url" "$c"
+            echo "yggdrasil: pinned site address to $u"
           fi
         fi
         exec apache2-foreground

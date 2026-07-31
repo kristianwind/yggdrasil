@@ -63,7 +63,53 @@ func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRunti
 	for portName, hostPort := range rt.ports {
 		rt.env[strings.ToUpper(portName)+"_PORT"] = strconv.Itoa(hostPort)
 	}
+	// The address this server answers on from outside. Plenty of apps have to be
+	// told their own public URL — WordPress stores it, Immich, Gitea and n8n build
+	// links and OAuth redirects from it — and none of them can be given a working
+	// default in a rune, because the port isn't chosen until the server is
+	// created (allocatePort ignores the rune's preferred port on purpose). So the
+	// panel, which is the only thing that knows the answer, supplies it.
+	rt.env["PUBLIC_URL"] = s.publicURL(ctx, serverID, rt.ports)
+	// Values the admin typed can reference it too, so a variable like a site URL
+	// can be set to "{{PUBLIC_URL}}" in the form instead of being retyped whenever
+	// the address changes. Only built-ins are expanded here, and only one level:
+	// this is a convenience, not a template language.
+	for k, v := range rt.env {
+		if k != "PUBLIC_URL" && strings.Contains(v, "{{PUBLIC_URL}}") {
+			rt.env[k] = strings.ReplaceAll(v, "{{PUBLIC_URL}}", rt.env["PUBLIC_URL"])
+		}
+	}
 	return rt, nil
+}
+
+// publicURL is the externally reachable base URL for a server: its own domain
+// when one is configured, else the panel host and the server's allocated port.
+// Empty when neither is known, so a caller can tell "no answer" from a guess.
+func (s *Server) publicURL(ctx context.Context, serverID string, ports map[string]int) string {
+	// A configured domain wins: it is what a visitor actually types, and it is
+	// already how the panel decides a server's hostname elsewhere (see
+	// serverBlockHost, which this deliberately reuses so the two never diverge).
+	if host := s.serverBlockHost(serverID); host != "" {
+		return "https://" + host
+	}
+	host := firstNonEmpty(s.getSetting(ctx, "public_hostname"), s.detectPublicAddr())
+	if host == "" {
+		return ""
+	}
+	port := ports["web"]
+	if port == 0 {
+		port = ports["game"]
+	}
+	if port == 0 {
+		for _, p := range ports { // any allocated port beats none
+			port = p
+			break
+		}
+	}
+	if port == 0 {
+		return "http://" + host
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
 }
 
 // queryPort returns the best host port to query: a "query" mapping if present,

@@ -60,6 +60,17 @@ The values come from the server's variables, plus two things the panel injects:
 |--------------|-------|
 | `SERVER_NAME` | The server's name as typed in the panel. Don't declare a variable for it. |
 | `<NAME>_PORT` | The allocated host port for each declared port, name uppercased — `game` becomes `GAME_PORT`. |
+| `PUBLIC_URL` | The address this server answers on from outside: `https://<its domain>` when one is configured, else `http://<panel host>:<port>`. Empty if neither is known. |
+
+`PUBLIC_URL` exists because a rune cannot hardcode it. Apps that need to know their own address —
+WordPress stores it, Immich, Gitea and n8n build links and OAuth redirects from it — can't be given a
+working default, since the port isn't chosen until the server is created and
+[port allocation ignores the rune's preferred port](#ports) on purpose. The panel is the only thing
+that knows the answer, so it supplies it.
+
+An operator can use it too: typing `{{PUBLIC_URL}}` as a variable's value in the server's settings
+expands the same way, so an address doesn't have to be retyped when it changes. Only this built-in is
+expanded inside operator-entered values, and only once — it's a convenience, not a template language.
 
 The same set is exported as real environment variables inside both the install and the runtime
 container. The runtime container additionally gets `PORT_<name>` (the same port, keyed by the

@@ -43,7 +43,7 @@ func (s *Server) handleListFileVersions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	id := chi.URLParam(r, "id")
-	path := r.URL.Query().Get("path")
+	path := filePathParam(r)
 	rows, err := s.db.QueryContext(r.Context(),
 		"SELECT id, size, created_at FROM file_versions WHERE server_id=? AND path=? ORDER BY created_at DESC, rowid DESC",
 		id, path)

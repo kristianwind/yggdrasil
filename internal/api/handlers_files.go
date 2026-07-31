@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -121,7 +122,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rel := r.URL.Query().Get("path")
+	rel := filePathParam(r)
 	dir, ok := safeJoin(dataDir, rel)
 	if !ok {
 		jsonError(w, "invalid path", http.StatusBadRequest)
@@ -148,12 +149,38 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, list)
 }
 
+// filePathParam reads the file path a request is about, preferring the
+// base64url-encoded form.
+//
+// A plain ?path=wp-config.php is a WordPress attack signature, and a web
+// application firewall in front of the panel blocks the request before it ever
+// arrives — the panel answers 403 for a file it can read perfectly well.
+// Observed on this project: Cloudflare refused
+// /api/servers/<id>/files/content?path=wp-config.php while the same request for
+// index.php went through, so the file browser could not open exactly the files
+// an operator most often needs. Encoding the path removes the signature without
+// hiding anything: it is the same value, and safeJoin still bounds it.
+//
+// ?path= is still accepted so older clients, scripts and bookmarks keep working.
+func filePathParam(r *http.Request) string {
+	if enc := r.URL.Query().Get("path_b64"); enc != "" {
+		if dec, err := base64.RawURLEncoding.DecodeString(enc); err == nil {
+			return string(dec)
+		}
+		// Tolerate padded input — some clients will not strip it.
+		if dec, err := base64.URLEncoding.DecodeString(enc); err == nil {
+			return string(dec)
+		}
+	}
+	return r.URL.Query().Get("path")
+}
+
 func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
 		return
 	}
-	rel := r.URL.Query().Get("path")
+	rel := filePathParam(r)
 	full, ok := safeJoin(dataDir, rel)
 	if !ok {
 		jsonError(w, "invalid path", http.StatusBadRequest)
@@ -244,7 +271,7 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	full, ok := safeJoin(dataDir, r.URL.Query().Get("path"))
+	full, ok := safeJoin(dataDir, filePathParam(r))
 	if !ok || full == dataDir {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return
@@ -302,7 +329,7 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	full, ok := safeJoin(dataDir, r.URL.Query().Get("path"))
+	full, ok := safeJoin(dataDir, filePathParam(r))
 	if !ok {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return

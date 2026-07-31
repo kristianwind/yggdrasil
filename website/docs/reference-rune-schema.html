@@ -189,8 +189,20 @@ is left in the text as-is.</p>
 <td><code>&lt;NAME&gt;_PORT</code></td>
 <td>The allocated host port for each declared port, name uppercased — <code>game</code> becomes <code>GAME_PORT</code>.</td>
 </tr>
+<tr>
+<td><code>PUBLIC_URL</code></td>
+<td>The address this server answers on from outside: <code>https://&lt;its domain&gt;</code> when one is configured, else <code>http://&lt;panel host&gt;:&lt;port&gt;</code>. Empty if neither is known.</td>
+</tr>
 </tbody>
 </table>
+<p><code>PUBLIC_URL</code> exists because a rune cannot hardcode it. Apps that need to know their own address —
+WordPress stores it, Immich, Gitea and n8n build links and OAuth redirects from it — can&rsquo;t be given a
+working default, since the port isn&rsquo;t chosen until the server is created and
+<a href="#ports">port allocation ignores the rune&rsquo;s preferred port</a> on purpose. The panel is the only thing
+that knows the answer, so it supplies it.</p>
+<p>An operator can use it too: typing <code>{{PUBLIC_URL}}</code> as a variable&rsquo;s value in the server&rsquo;s settings
+expands the same way, so an address doesn&rsquo;t have to be retyped when it changes. Only this built-in is
+expanded inside operator-entered values, and only once — it&rsquo;s a convenience, not a template language.</p>
 <p>The same set is exported as real environment variables inside both the install and the runtime
 container. The runtime container additionally gets <code>PORT_&lt;name&gt;</code> (the same port, keyed by the
 declared name as written) and <code>HOME=/data</code>.</p>

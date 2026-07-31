@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 16
+  version: 17
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -20,6 +20,10 @@ gameskill:
       WORDPRESS_DB_USER: "{{DB_USER}}"
       WORDPRESS_DB_PASSWORD: "{{DB_PASSWORD}}"
       WORDPRESS_DB_NAME: "{{DB_NAME}}"
+      # Read by the startup script below. Not WORDPRESS_CONFIG_EXTRA: the image
+      # only honours that while GENERATING wp-config.php, so it would silently do
+      # nothing on every existing site — which is exactly where this is needed.
+      YGG_SITE_URL: "{{SITE_URL}}"
 
   variables:
     - key: DB_NAME
@@ -38,6 +42,19 @@ gameskill:
       name: "Database root password (change this)"
       type: string
       default: "change-me-root"
+    # WordPress keeps its own address in the DATABASE, not in a config file, which
+    # is why a copied site sends visitors to the original and locks you out of its
+    # admin. Setting it here pins the address from outside the database instead.
+    #
+    # Empty means "leave WordPress alone" — the right answer for a live site that
+    # already knows its address, and the reason this is opt-in: forcing it on
+    # every server would rewrite a working production site's URL on next restart.
+    # Set it on a clone or a test copy. `{{PUBLIC_URL}}` expands to whatever the
+    # panel says this server is reachable at.
+    - key: SITE_URL
+      name: "Site address (optional — e.g. {{PUBLIC_URL}} for a clone or test copy)"
+      type: string
+      default: ""
 
   # The bundled database — reached by the app as "db". Its data lives in the panel
   # volume (under .stack/db), so a backup of this server captures the database too.
@@ -154,6 +171,23 @@ gameskill:
         if [ -f "$c" ] && ! grep -q FS_METHOD "$c"; then
           sed -i '1a define( "FS_METHOD", "direct" );' "$c"
           echo "yggdrasil: set FS_METHOD=direct (no FTP prompt on updates)"
+        fi
+        # Pin the site address when one was given. WordPress reads WP_HOME and
+        # WP_SITEURL ahead of the values in the database, so this makes a copied
+        # site answer on its own address instead of redirecting to the original
+        # — without touching the database it was cloned from.
+        #
+        # Rewritten on every start rather than only when absent, so changing the
+        # setting actually takes effect; the marker line makes that safe to
+        # repeat. Note this pins the address only: URLs stored INSIDE posts and
+        # serialised options still point at the old host, and need a
+        # serialisation-aware search-replace to move.
+        if [ -f "$c" ]; then
+          sed -i '/ygg-site-url/d' "$c"
+          if [ -n "${YGG_SITE_URL:-}" ]; then
+            sed -i "1a define( 'WP_HOME', '$YGG_SITE_URL' ); define( 'WP_SITEURL', '$YGG_SITE_URL' ); // ygg-site-url" "$c"
+            echo "yggdrasil: pinned site address to $YGG_SITE_URL"
+          fi
         fi
         exec apache2-foreground
     done_regex: 'Command line:'

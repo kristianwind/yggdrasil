@@ -4,6 +4,7 @@
   import { user, loadUser, logout } from "./lib/auth.js";
   import { getTheme, toggleTheme } from "./lib/theme.js";
   import { api } from "./lib/api.js";
+  import { toast } from "./lib/toast.js";
   import { DISCORD_INVITE } from "./lib/links.js";
   import Toasts from "./components/Toasts.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
@@ -40,6 +41,7 @@
     await loadUser();
     if (!location.hash) navigate("/");
     ready = true;
+    loadBeaconNotice();
     api.get("/version").then((v) => {
       build = v;
       // Reflect a custom panel name in the browser tab too, so several panels
@@ -47,6 +49,30 @@
       if (v?.panel_name) document.title = v.panel_name;
     }).catch(() => {});
   });
+
+  // Beacon disclosure. The beacon is on by default, so the panel has to say so
+  // unprompted rather than leave it for whoever opens Settings — an install that
+  // phones home without mentioning it is exactly what a self-hosted audience
+  // does not forgive. Raised once, for admins only (nobody else can change it),
+  // and dismissing it is a decision either way.
+  let beaconNotice = $state(null); // { url, instance_id, version } once known
+  async function loadBeaconNotice() {
+    if (!$user || $user.role !== "admin") return;
+    try {
+      const b = await api.get("/settings/beacon");
+      beaconNotice = b?.notice_pending ? b : null;
+    } catch {
+      /* not fatal — the notice reappears on the next load */
+    }
+  }
+  async function ackBeacon(keep) {
+    try {
+      await api.post("/settings/beacon/notice", { keep });
+      beaconNotice = null;
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
 
   // Surface rune updates in the nav so an admin sees them without opening Runes.
   // The endpoint is admin-only and shares a 10-minute GitHub cache, so refetching
@@ -258,6 +284,27 @@
         <span class="font-semibold">🌳 {build?.panel_name || "Yggdrasil Panel"}</span>
       </header>
       <main class="flex-1 p-4 md:p-6 overflow-auto">
+        {#if beaconNotice}
+          <!-- Shown once. It names the two fields verbatim rather than saying
+               "anonymous usage data", because the whole point is that the reader
+               can check the claim instead of trusting it. -->
+          <div class="card p-4 mb-4 border border-accent2/40">
+            <div class="font-semibold mb-1">📡 This panel reports two things to the Yggdrasil project</div>
+            <p class="text-sm text-muted mb-2">
+              Once a day it sends a random id that identifies this install to nobody
+              (<span class="font-mono text-xs">{beaconNotice.instance_id}</span>) and its version
+              (<span class="font-mono text-xs">{beaconNotice.version}</span>) to
+              <span class="font-mono text-xs">{beaconNotice.url}</span>. That is the entire message —
+              no server names, no addresses, no configuration, and the collector stores no IP.
+              It exists so the project can see roughly how many people run it.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button class="btn-primary" onclick={() => ackBeacon(true)}>Keep it on</button>
+              <button class="btn-ghost" onclick={() => ackBeacon(false)}>Turn it off</button>
+              <a class="btn-ghost" href="#/settings">Settings → Beacon</a>
+            </div>
+          </div>
+        {/if}
         {#if $route.parts[0] === "servers" && $route.parts[1]}
           <ServerDetail id={$route.parts[1]} />
         {:else if $route.parts[0] === "servers"}

@@ -2,9 +2,9 @@ gameskill:
   id: immich
   name: "Immich"
   category: "Apps"
-  description: "Self-hosted photo & video backup — a Google Photos alternative with mobile apps, timeline, search and face recognition. A four-container app stack the panel wires together on a private network: the server, its machine-learning worker, a Postgres database (with the vector extension Immich needs) and Redis. Point the mobile app at this server's address. NOTE: the machine-learning image and the models it downloads are large (several GB); first start takes a while. Photos are stored in the panel volume, so back it up."
+  description: "Self-hosted photo & video backup — a Google Photos alternative with mobile apps, timeline, search and face recognition. A four-container app stack the panel wires together on a private network: the server, its machine-learning worker, a Postgres database (with the vector extension Immich needs) and Redis. Point the mobile app at this server's address. NOTE: the machine-learning image and the models it downloads are large (several GB); first start takes a while — start it once and let it finish rather than retrying. Photos go in the panel volume by default; set the photo storage path to a host mount to keep them on a NAS instead."
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   docker:
@@ -21,6 +21,10 @@ gameskill:
       REDIS_HOSTNAME: "redis"
       IMMICH_MACHINE_LEARNING_URL: "http://immich-machine-learning:3003"
       TZ: "{{TZ}}"
+      # Where Immich writes originals, thumbnails and encoded video. Defaults to
+      # the panel volume; point it at a host mount to keep a photo library on a
+      # NAS. See the MEDIA_LOCATION variable below.
+      IMMICH_MEDIA_LOCATION: "{{MEDIA_LOCATION}}"
 
   variables:
     - key: DB_USERNAME
@@ -39,6 +43,21 @@ gameskill:
       name: "Timezone"
       type: string
       default: "Europe/Copenhagen"
+    # A photo library outgrows a panel volume faster than anything else here, so
+    # this is the one path worth making movable. The default keeps everything in
+    # the panel volume (backed up with the server); set it to the CONTAINER path
+    # of a host mount — Settings → Host mounts, e.g. /mnt/photos → /photos — to
+    # put originals on a NAS instead.
+    #
+    # Point it at a host mount, not at a subfolder of the panel volume: Immich
+    # moves files from upload/ to library/ with rename(), which fails across a
+    # filesystem boundary, so all of its subdirectories must share one mount.
+    # Moving this on an existing server does NOT migrate what is already stored —
+    # stop the server, copy the contents across, then change it.
+    - key: MEDIA_LOCATION
+      name: "Photo storage path (inside the container)"
+      type: string
+      default: "/usr/src/app/upload"
 
   services:
     # Postgres with the pgvector/vectorchord extension Immich requires (the stock

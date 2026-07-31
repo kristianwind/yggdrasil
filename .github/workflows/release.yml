@@ -95,6 +95,15 @@ jobs:
           git fetch --force --tags --quiet
           # The tag annotation is a hand-written summary of what shipped, which is
           # what a reader wants — better than a generated list of merge commits.
+          #
+          # It only works on an ANNOTATED tag. On a lightweight one %(contents)
+          # silently falls back to the tagged commit's message, so the commit body
+          # — trailers and all — goes out as the announcement. That has happened;
+          # say so in the log rather than let the next person wonder where the
+          # essay came from. The script strips the plumbing either way.
+          if [ "$(git cat-file -t "$TAG")" = "commit" ]; then
+            echo "::warning::$TAG is a lightweight tag, so the announcement falls back to the commit message. Use 'git tag -a $TAG -m \"<short summary>\"' for a written announcement."
+          fi
           git tag -l --format='%(contents)' "$TAG" > /tmp/notes.txt
           python3 .github/scripts/discord_release.py < /tmp/notes.txt
 

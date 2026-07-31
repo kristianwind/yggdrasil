@@ -28,6 +28,61 @@ INSTALL = (
 )
 
 
+# Lines that belong to the repository's plumbing, not to an announcement. A
+# lightweight tag makes `git tag -l --format='%(contents)'` fall back to the
+# tagged COMMIT's message, so whatever a commit body happens to contain lands in
+# front of users — which is how a co-author trailer ended up in a release post.
+# Annotated tags are the real fix; this is the guard for when someone forgets.
+TRAILER_PREFIXES = (
+    "co-authored-by:",
+    "signed-off-by:",
+    "reviewed-by:",
+    "acked-by:",
+    "tested-by:",
+    "reported-by:",
+    "suggested-by:",
+    "refs:",
+    "change-id:",
+)
+
+# An announcement is a headline and a couple of sentences. A commit body is not,
+# and neither is a PR description — the detail belongs on GitHub, which every
+# post links to.
+MAX_BODY_LINES = 6
+
+
+def strip_plumbing(body: str) -> str:
+    """Remove commit trailers and tool signatures from user-facing text.
+
+    Everything the project says in public is said in the project's voice: how a
+    release was authored is a fact about the repository, not news for the people
+    running it.
+    """
+    kept = []
+    for line in body.split("\n"):
+        low = line.strip().lower()
+        if low.startswith(TRAILER_PREFIXES):
+            continue
+        if "generated with" in low and "claude" in low:
+            continue
+        if low.startswith("🤖"):
+            continue
+        kept.append(line)
+    # Trailing blank lines left behind by the removals.
+    while kept and not kept[-1].strip():
+        kept.pop()
+    return "\n".join(kept)
+
+
+def first_paragraphs(body: str, max_lines: int = MAX_BODY_LINES) -> str:
+    """Keep the opening of the body — the part written as the summary."""
+    lines = body.split("\n")
+    if len(lines) <= max_lines:
+        return body
+    trimmed = "\n".join(lines[:max_lines]).rstrip()
+    return trimmed + "\n\n*Full notes on GitHub.*"
+
+
 def clamp(s: str, limit: int) -> str:
     s = s.strip()
     if len(s) <= limit:
@@ -43,7 +98,7 @@ def build_embed(tag: str, repo: str, notes: str) -> dict:
     """
     lines = notes.strip().split("\n")
     subject = lines[0].strip() if lines else tag
-    body = "\n".join(lines[1:]).strip()
+    body = first_paragraphs(strip_plumbing("\n".join(lines[1:]).strip()))
 
     # If the subject just repeats the tag, don't say it twice.
     title = subject if subject and subject != tag else f"Yggdrasil Panel {tag}"

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"sort"
@@ -74,6 +75,13 @@ const (
 	// situation is called routine.
 	alertNoiseShare = 0.8
 
+	// Above this, volume alone makes it an incident even if every request is
+	// being refused — at some point a flood is a flood regardless of the status
+	// code. Set well above what ordinary scanning produces here: the noisiest
+	// real spike this panel has recorded was 597 log lines in five minutes, and
+	// the rest sat between 105 and 360.
+	alertFloodHits = 1000
+
 	// How many source addresses to keep on the record.
 	alertMaxSources = 5
 )
@@ -84,6 +92,14 @@ type alertInput struct {
 	Title string   // human summary, used as the notification's first line
 	Hits  int      // how many times the thing matched
 	Lines []string // sample of the matching log lines (may be a tail, not all of them)
+
+	// Exempt are addresses that must never be treated as an attack source —
+	// in practice the panel's own operators (see recentOperatorIPs). An admin
+	// clicking through a WordPress dashboard looks exactly like a scraper:
+	// many requests, one source, in a burst. Without this the policy reads
+	// their own browsing as a concentrated attack and Kvasir proposes blocking
+	// them out of their own site.
+	Exempt map[string]bool
 }
 
 // alertVerdict is the policy's answer.
@@ -120,7 +136,7 @@ var probeStatusRe = regexp.MustCompile(`"\s+(?:404|403)\b`)
 // a tail of the matches. Shares are therefore computed within the sample and
 // treated as representative of the whole, which is what a tail of a burst is.
 func classifyAlert(in alertInput) alertVerdict {
-	sources, topShare := analyseSources(in.Lines)
+	sources, topShare := analyseSources(in.Lines, in.Exempt)
 	noise := probeShare(in.Lines)
 	hits := in.Hits
 	if hits <= 0 {
@@ -129,21 +145,36 @@ func classifyAlert(in alertInput) alertVerdict {
 
 	v := alertVerdict{Sources: sources}
 	switch {
+	// Volume first: past a point, a flood is a flood whatever the server answers.
+	case hits >= alertFloodHits:
+		v.Class = alertIncident
+		v.Concentrated = topShare >= alertConcentratedShare && len(sources) > 0
+		v.Reason = fmt.Sprintf("%d hits in the detection window — far beyond ordinary scanning, whatever the responses say", hits)
+
+	// Then refusal. A scan the server answered with 404/403 is settled: the
+	// answer was "no", and nothing about a person reading it makes it more
+	// "no". This is deliberately ahead of the single-source test, because the
+	// common case here is ONE scanner walking a wordlist — which is blockable
+	// in principle but not worth a message, and treating it as an incident is
+	// what buried the real alerts in noise.
+	case noise >= alertNoiseShare:
+		v.Class = alertRoutine
+		v.Reason = fmt.Sprintf("%.0f%% of these are vulnerability scans the server already answered with 404/403 — background noise, recorded but not paged",
+			noise*100)
+
+	// Now single-source concentration, which at this point means traffic that
+	// is largely getting THROUGH — a brute-force or scrape rather than a scan
+	// being refused.
 	case topShare >= alertConcentratedShare && hits >= alertIncidentHits:
 		v.Class = alertIncident
 		v.Concentrated = true
-		v.Reason = fmt.Sprintf("%d hits and %.0f%% of them from %s — a single source, so blocking it would stop this",
+		v.Reason = fmt.Sprintf("%d hits and %.0f%% of them from %s, not being refused — a single source, so blocking it would stop this",
 			hits, topShare*100, sources[0])
 
 	case len(sources) >= alertDistributedSources && hits >= alertDistributedHits:
 		v.Class = alertIncident
 		v.Reason = fmt.Sprintf("%d hits spread across %d different sources — distributed, so blocking individual addresses will not stop it",
 			hits, len(sources))
-
-	case noise >= alertNoiseShare:
-		v.Class = alertRoutine
-		v.Reason = fmt.Sprintf("%.0f%% of these are vulnerability scans the server already answered with 404/403 — background noise, recorded but not paged",
-			noise*100)
 
 	case len(sources) >= alertDistributedSources:
 		v.Class = alertRoutine
@@ -167,7 +198,7 @@ func classifyAlert(in alertInput) alertVerdict {
 // checkBlockable keeps "what counts as a source" identical to "what we are
 // willing to act on", so the classifier can never build a case around an
 // address the firewall would refuse anyway.
-func analyseSources(lines []string) (sources []string, topShare float64) {
+func analyseSources(lines []string, exempt map[string]bool) (sources []string, topShare float64) {
 	counts := map[string]int{}
 	total := 0
 	for _, l := range lines {
@@ -179,6 +210,9 @@ func analyseSources(lines []string) (sources []string, topShare float64) {
 			ip, err := checkBlockable(m)
 			if err != nil {
 				continue
+			}
+			if exempt[ip] {
+				continue // one of ours — never counts toward an attack
 			}
 			seen[m] = true
 			counts[ip]++
@@ -258,6 +292,9 @@ func alertHint(v alertVerdict) string {
 // alertPageCooldown per (server, situation) — that dedupe is what turns "an
 // attack is running" from a stream into a single message.
 func (s *Server) raiseAlert(serverID string, in alertInput) (alertVerdict, bool) {
+	if in.Exempt == nil {
+		in.Exempt = s.recentOperatorIPs(context.Background())
+	}
 	v := classifyAlert(in)
 	page := v.Class == alertIncident && !s.alertCoolingDown(serverID, in.Key)
 	paged := 0

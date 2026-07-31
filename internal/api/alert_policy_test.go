@@ -83,19 +83,97 @@ func TestClassifyAlertScannerNoiseIsRoutine(t *testing.T) {
 	}
 }
 
-// A scan that is answered 404 but comes overwhelmingly from ONE source is still
-// an incident: the concentration test runs before the noise test on purpose,
-// because a single host walking every path is doing something a scraper isn't.
-func TestClassifyAlertConcentrationBeatsNoise(t *testing.T) {
+// A refused scan stays routine even when ONE source is doing all of it. This
+// reverses an earlier judgement: concentration used to win, on the theory that
+// a single host walking a wordlist is doing something a scraper isn't. Real
+// traffic disagreed — nearly every spike on these sites is exactly this shape,
+// one scanner collecting 404s, and calling each one an incident is what buried
+// the alerts that mattered. The server already said no; a person reading it
+// does not make it more no.
+func TestClassifyAlertRefusedScanIsRoutineEvenFromOneSource(t *testing.T) {
 	var lines []string
 	for i := 0; i < 30; i++ {
 		lines = append(lines, accessLine("45.155.205.99", fmt.Sprintf("/.env.%d", i), "404"))
 	}
 	v := classifyAlert(alertInput{Key: "watcher:x", Hits: 30, Lines: lines})
 
+	if v.Class != alertRoutine {
+		t.Fatalf("a refused scan should be routine however concentrated, got class=%q (%s)", v.Class, v.Reason)
+	}
+	if v.Concentrated {
+		t.Error("routine traffic must not be marked blockable — that is what produces the block_ip proposals")
+	}
+	if hint := alertHint(v); strings.Contains(hint, "block_ip") {
+		t.Errorf("no block proposal should be suggested for refused scanning, got %q", hint)
+	}
+}
+
+// The same shape, but succeeding rather than being refused, IS an incident:
+// requests getting through from one dominant source is a scrape or a
+// brute-force, and blocking that source stops it.
+func TestClassifyAlertConcentratedAndSucceedingIsIncident(t *testing.T) {
+	var lines []string
+	for i := 0; i < 30; i++ {
+		lines = append(lines, accessLine("45.155.205.99", "/wp-admin/admin-ajax.php", "200"))
+	}
+	v := classifyAlert(alertInput{Key: "watcher:x", Hits: 30, Lines: lines})
+
 	if v.Class != alertIncident || !v.Concentrated {
-		t.Fatalf("one host scanning hard should still be a blockable incident, got class=%q concentrated=%v (%s)",
+		t.Fatalf("traffic getting through from one source should be a blockable incident, got class=%q concentrated=%v (%s)",
 			v.Class, v.Concentrated, v.Reason)
+	}
+}
+
+// Past a point volume alone decides. A refused flood is still a flood, and
+// going quiet through one would be the opposite failure to the one this policy
+// was written to fix.
+func TestClassifyAlertFloodIsIncidentEvenWhenRefused(t *testing.T) {
+	var lines []string
+	for i := 0; i < 40; i++ {
+		lines = append(lines, accessLine("45.155.205.99", "/.env", "404"))
+	}
+	v := classifyAlert(alertInput{Key: "watcher:x", Hits: alertFloodHits, Lines: lines})
+
+	if v.Class != alertIncident {
+		t.Fatalf("a flood should page whatever the status codes say, got class=%q (%s)", v.Class, v.Reason)
+	}
+	if !v.Concentrated {
+		t.Error("a flood from one dominant source is still worth blocking")
+	}
+	// One under the threshold is back to routine, so the boundary is the constant.
+	if v := classifyAlert(alertInput{Key: "watcher:x", Hits: alertFloodHits - 1, Lines: lines}); v.Class != alertRoutine {
+		t.Errorf("just below the flood threshold should stay routine, got %q (%s)", v.Class, v.Reason)
+	}
+}
+
+// The operator's own address must never be counted as an attack source. An
+// admin clicking through a WordPress dashboard produces one source, many
+// requests, in a burst — indistinguishable from a scrape by shape alone. This
+// panel really did propose blocking its owner's home address for doing that.
+func TestClassifyAlertIgnoresTheOperatorsOwnAddress(t *testing.T) {
+	home := "5.186.58.205"
+	var lines []string
+	for i := 0; i < 40; i++ {
+		lines = append(lines, accessLine(home, "/wp-admin/admin-ajax.php", "200"))
+	}
+	in := alertInput{Key: "anomaly:log-rate", Hits: 40, Lines: lines, Exempt: map[string]bool{home: true}}
+	v := classifyAlert(in)
+
+	for _, s := range v.Sources {
+		if s == home {
+			t.Fatalf("the operator's own address must not appear as an attack source, got %v", v.Sources)
+		}
+	}
+	if v.Concentrated {
+		t.Error("with the only source exempted there is nothing to concentrate on")
+	}
+	if hint := alertHint(v); strings.Contains(hint, home) {
+		t.Errorf("Kvasir must never be told to propose blocking the operator, got %q", hint)
+	}
+	// Without the exemption the same traffic reads as a blockable incident —
+	// which is exactly the false positive being prevented.
+	if bad := classifyAlert(alertInput{Key: "anomaly:log-rate", Hits: 40, Lines: lines}); !bad.Concentrated {
+		t.Error("guard test is not proving anything: this traffic should look blockable without the exemption")
 	}
 }
 
@@ -144,7 +222,7 @@ func TestAnalyseSourcesSkipsAddressesWeWouldNeverBlock(t *testing.T) {
 		accessLine("100.92.81.54", "/wp-login.php", "200"), // Tailscale CGNAT
 		accessLine("8.8.8.8", "/wp-login.php", "200"),
 	}
-	sources, share := analyseSources(lines)
+	sources, share := analyseSources(lines, nil)
 
 	if len(sources) != 1 || sources[0] != "8.8.8.8" {
 		t.Fatalf("only the public address should count as a source, got %v", sources)
@@ -162,7 +240,7 @@ func TestAnalyseSourcesOrdersByVolumeThenAddress(t *testing.T) {
 		accessLine("203.0.113.2", "/a", "200"),
 		accessLine("198.51.100.4", "/a", "200"),
 	}
-	sources, share := analyseSources(lines)
+	sources, share := analyseSources(lines, nil)
 
 	if sources[0] != "203.0.113.9" {
 		t.Fatalf("busiest source should come first, got %v", sources)
@@ -184,7 +262,7 @@ func TestAnalyseSourcesCountsOneVotePerLine(t *testing.T) {
 		`203.0.113.9 - - "POST /wp-login.php" 200 "-" "x-forwarded-for: 203.0.113.9"`,
 		accessLine("198.51.100.4", "/a", "200"),
 	}
-	sources, share := analyseSources(lines)
+	sources, share := analyseSources(lines, nil)
 
 	if len(sources) != 2 {
 		t.Fatalf("want both sources, got %v", sources)

@@ -1,0 +1,72 @@
+gameskill:
+  id: php-site
+  name: "PHP site (Apache)"
+  category: "Apps"
+  description: >
+    Host a website that includes PHP — a contact form, a small script, a
+    hand-built site — with Apache and PHP 8.3. The server's file area IS the web
+    root: upload from the Files tab and it is served immediately. Give it a
+    Subdomain to publish it.
+
+    Use this instead of "Static site" whenever the site contains .php files. A
+    static-site server has no PHP interpreter, so it does not run them — it
+    SERVES them, as plain text, to anyone who asks. A site can look perfectly
+    normal while handing out whatever its scripts contain, which on a real site
+    has meant SMTP credentials.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # php:8.3-apache is Apache with mod_php in one container, so there is no
+  # php-fpm sidecar to wire up and nothing to keep in sync — the whole point of
+  # this rune is that "my site has a PHP file in it" should not require an
+  # app stack. It serves static files exactly as nginx did.
+  #
+  # user 0:0 so the Apache master can bind :80 and read the panel-owned files;
+  # keep_entrypoint runs the image's own entrypoint, which configures Apache
+  # before handing over.
+  docker:
+    image: "php:8.3-apache"
+    keep_entrypoint: true
+    user: "0:0"
+    data_path: /var/www/html
+
+  install:
+    image: "busybox:latest"
+    script: |
+      if [ ! -f /data/index.php ] && [ ! -f /data/index.html ]; then
+        cat > /data/index.html <<'HTML'
+        <!doctype html><html lang="en"><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>It works</title>
+        <body style="font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem">
+        <h1>Your PHP site is running</h1>
+        <p>Replace this file from the panel's <strong>Files</strong> tab. Both
+        <code>.html</code> and <code>.php</code> files are served from here.</p>
+        HTML
+        echo "Placeholder page written."
+      else
+        echo "Existing site found — left untouched."
+      fi
+
+  startup:
+    # Apache reports readiness on its own line; the panel also treats a
+    # connectable web port as ready, so a wording change upstream cannot strand
+    # the server in "starting".
+    done_regex: 'resuming normal operations|Command line'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]
+
+  # The failure this rune exists to prevent, watched for directly: a PHP file
+  # being handed out as text means something is serving this content without an
+  # interpreter, and whatever those files contain is public.
+  watchers:
+    - name: "PHP source served as text"
+      pattern: '"(GET|HEAD)[^"]*\.php[^"]*" 200 [0-9]+ .*(octet-stream|text/plain)'
+      threshold: 1
+      window_secs: 300
+      action: kvasir

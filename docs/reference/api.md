@@ -287,6 +287,10 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `GET` | `/api/gameskills/updates` | Admin | Installed non-builtin runes the catalog has moved past: `{updates:[{id,name,installed_version,available_version,download_url}], checked_at, note?}`. Matched by rune id against the community catalog; a `note` means the check couldn't run, which is not the same as everything being current |
 | `POST` | `/api/gameskills/install-from-github` | Admin | Fetch, validate, and store one rune from GitHub |
 | `DELETE` | `/api/gameskills/{id}` | Admin | Delete a rune |
+| `GET` | `/api/rune-repos` | Admin | Saved rune repositories, the built-in catalog first. `has_token` says a repo carries its own GitHub token; the token itself is never returned |
+| `POST` | `/api/rune-repos` | Admin | Save a repository: `{name, repo, path, ref, token?}` |
+| `PUT` | `/api/rune-repos/{id}` | Admin | Edit one: `{name?, path?, ref?, token?}`. An omitted or masked `token` keeps what's stored, an empty string clears it |
+| `DELETE` | `/api/rune-repos/{id}` | Admin | Forget a repository (and its token) |
 
 **Moving a large server between panels — pull, don't push.** An export *streams*, so downloading a
 multi-gigabyte server works through a tunnel. An upload is a request *body*, and Cloudflare caps those
@@ -543,7 +547,7 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | `POST` | `/api/panel/remote/servers` | Admin | List the servers on **another** panel: `{url, token}`. Each entry adds `exists_here` so a name clash shows before a long transfer. Nothing is stored |
 | `POST` | `/api/panel/remote/import` | Admin | Copy one server **from** another panel: `{url, token, server_id, skip_existing?}`. Streams that panel's export straight into the normal import — see the note below |
 | `GET` | `/api/settings/github` | Admin | Whether a GitHub token is stored (`{configured}`); the token itself is never returned |
-| `PUT` | `/api/settings/github` | Admin | Store or clear the GitHub token (`{token}`; empty clears). Lets the rune browser read **private** repos and lifts the 60-req/hour anonymous limit |
+| `PUT` | `/api/settings/github` | Admin | Store or clear the GitHub token (`{token}`; empty clears). Lets the rune browser read **private** repos and lifts the 60-req/hour anonymous limit. A repository may override it with its own token — see `/api/rune-repos` — which is the only way to reach two private repos owned by different accounts |
 | `POST` | `/api/settings/github/test` | Admin | Verify the stored token and report the account it authenticates as |
 
 `GET /api/settings/network` is readable by any session because the connect address is what the UI

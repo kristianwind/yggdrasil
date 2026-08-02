@@ -212,6 +212,7 @@
   let ghRef = $state("main");
   let repos = $state([]); // saved repositories (incl. the built-in catalog)
   let savingRepo = $state(false);
+  let ghToken = $state(""); // optional token for THIS repo; never read back from the server
   let ghFilter = $state("");
   let ghFiltered = $derived(
     ((ghData && ghData.runes) || []).filter((r) => {
@@ -240,9 +241,30 @@
   async function saveRepo() {
     savingRepo = true;
     try {
-      await api.post("/rune-repos", { name: ghRepo.trim(), repo: ghRepo.trim(), path: ghPath.trim(), ref: ghRef.trim() });
+      await api.post("/rune-repos", {
+        name: ghRepo.trim(), repo: ghRepo.trim(), path: ghPath.trim(), ref: ghRef.trim(),
+        token: ghToken.trim(),
+      });
       toast("Repository saved", "success");
+      ghToken = "";
       await loadRepos();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingRepo = false;
+    }
+  }
+  // Attach (or clear) a token on a repository that's already saved, without
+  // having to remove and re-add it.
+  async function saveRepoToken() {
+    if (!currentRepo || currentRepo.default) return;
+    savingRepo = true;
+    try {
+      await api.put(`/rune-repos/${currentRepo.id}`, { token: ghToken.trim() });
+      toast(ghToken.trim() ? "Token saved for this repository" : "Token removed", "success");
+      ghToken = "";
+      await loadRepos();
+      loadGithub(true);
     } catch (e) {
       toast(e.message, "error");
     } finally {
@@ -258,9 +280,10 @@
       toast(e.message, "error");
     }
   }
-  const repoSaved = $derived(
-    repos.some((rp) => rp.repo === ghRepo.trim() && rp.path === ghPath.trim()),
+  const currentRepo = $derived(
+    repos.find((rp) => rp.repo === ghRepo.trim() && rp.path === ghPath.trim()),
   );
+  const repoSaved = $derived(!!currentRepo);
   async function loadGithub(refresh) {
     ghLoading = true;
     ghError = "";
@@ -460,7 +483,9 @@
           {#each repos as rp}
             <span class="inline-flex items-center rounded-full border border-border text-xs overflow-hidden">
               <button class="px-2.5 py-1 hover:bg-panel2 {ghRepo === rp.repo && ghPath === rp.path ? 'bg-accent/15 text-accent' : ''}"
-                onclick={() => pickRepo(rp)} title="{rp.repo}/{rp.path} @ {rp.ref}">{rp.name}</button>
+                onclick={() => pickRepo(rp)}
+                title="{rp.repo}/{rp.path} @ {rp.ref}{rp.has_token ? ' · uses its own GitHub token' : ''}"
+                >{rp.name}{#if rp.has_token}<span class="ml-1 text-xs" aria-label="has its own token">🔑</span>{/if}</button>
               {#if !rp.default}
                 <button class="px-1.5 py-1 text-muted hover:text-danger border-l border-border" title="Remove this repository" onclick={() => removeRepo(rp)}>✕</button>
               {/if}
@@ -482,14 +507,29 @@
           <label class="label" for="ghRef">Branch</label>
           <input id="ghRef" class="input" bind:value={ghRef} placeholder="main" />
         </div>
+        <div class="flex-1 min-w-[9rem]">
+          <label class="label" for="ghToken">Token for this repo (optional)</label>
+          <input id="ghToken" class="input" type="password" autocomplete="off" bind:value={ghToken}
+            placeholder={currentRepo?.has_token ? "•••••••• stored" : "ghp_… / github_pat_…"} />
+        </div>
         <button class="btn-ghost" onclick={() => loadGithub(true)} disabled={ghLoading}>
           {ghLoading ? "Loading…" : "Reload"}
         </button>
         {#if !repoSaved && ghRepo.trim()}
           <button class="btn-ghost" onclick={saveRepo} disabled={savingRepo}
             title="Save this repository so you can switch back to it later.">{savingRepo ? "Saving…" : "＋ Save repo"}</button>
+        {:else if currentRepo && !currentRepo.default && (ghToken.trim() || currentRepo.has_token)}
+          <button class="btn-ghost" onclick={saveRepoToken} disabled={savingRepo}
+            title="Use this token for this repository instead of the panel-wide one. Leave the field empty to remove it.">
+            {savingRepo ? "Saving…" : ghToken.trim() ? "Save token" : "Remove token"}</button>
         {/if}
       </div>
+      <p class="text-muted text-xs -mt-1">
+        A token here is used for this repository only, in place of the panel-wide one under
+        Settings → Integrations. That's what makes two private repos with different owners
+        reachable at the same time — a fine-grained token can only ever select repos its own
+        owner owns. It's stored encrypted and never shown again.
+      </p>
 
       {#if ghLoading}
         <div class="text-muted text-sm">Fetching from GitHub…</div>
@@ -497,8 +537,9 @@
         <div class="text-sm text-danger">{ghError || "Couldn't load the listing — check the repo/folder and try Reload."}</div>
         <div class="text-muted text-xs mt-1">
           Folder is a path inside the repo (e.g. <span class="font-mono">yggdrasil</span>), not a GitHub URL —
-          leave out <span class="font-mono">/tree/&lt;branch&gt;/</span>. Private repositories need a
-          GitHub token under Settings → Integrations.
+          leave out <span class="font-mono">/tree/&lt;branch&gt;/</span>. A private repository needs a
+          token — either the panel-wide one under Settings → Integrations, or one saved for this
+          repository in the field above (required when the repo belongs to someone else).
         </div>
       {:else if !ghData.runes.length}
         <div class="text-muted text-sm">No <span class="font-mono">.yaml</span> runes found in that folder.</div>

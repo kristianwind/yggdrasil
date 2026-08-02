@@ -214,6 +214,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/gameskills/install-from-github", s.requireAdmin(s.handleInstallGithubRune))
 		r.Get("/api/rune-repos", s.requireAdmin(s.handleListRuneRepos))
 		r.Post("/api/rune-repos", s.requireAdmin(s.handleCreateRuneRepo))
+		r.Put("/api/rune-repos/{id}", s.requireAdmin(s.handleUpdateRuneRepo))
 		r.Delete("/api/rune-repos/{id}", s.requireAdmin(s.handleDeleteRuneRepo))
 		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
 		r.Delete("/api/gameskills/{id}", s.requireAdmin(s.handleDeleteGameskill))

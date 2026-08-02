@@ -123,7 +123,7 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 
 // cachedGithubRunes lists a repo's runes, reusing the browser's 10-minute cache.
 func (s *Server) cachedGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, error) {
-	token := s.githubToken(ctx)
+	token := s.effectiveGithubToken(ctx, repo, path, ref)
 	cacheKey := repo + "|" + path + "|" + ref + "|" + ghTokenFingerprint(token)
 	ghRunesMu.Lock()
 	cached, ok := ghRunesCache[cacheKey]

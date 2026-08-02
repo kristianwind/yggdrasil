@@ -503,6 +503,12 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "gameskills", "source_repo", "TEXT NOT NULL DEFAULT ''")      // owner/repo
 	addColumnIfMissing(db, "gameskills", "source_path", "TEXT NOT NULL DEFAULT ''")      // dir within the repo
 	addColumnIfMissing(db, "gameskills", "source_ref", "TEXT NOT NULL DEFAULT ''")       // branch/tag
+	// An optional GitHub token for THIS repository, encrypted at rest. The panel
+	// otherwise holds a single token, which cannot cover two private repos owned by
+	// different people: a fine-grained token can only select repositories its owner
+	// owns, so reading someone else's private repo means holding their token — and
+	// with one slot that costs you access to your own.
+	addColumnIfMissing(db, "rune_repos", "token_enc", "TEXT NOT NULL DEFAULT ''")
 	// Where a watcher came from: '' = user-made, 'rune' = seeded from the rune's
 	// watchers: block (kept distinct so a reinstall can top up missing rune defaults
 	// without ever touching rules the user made or edited).

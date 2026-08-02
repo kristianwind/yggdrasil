@@ -34,3 +34,9 @@ config.yaml
 .claude/launch.json
 .dev/
 WISHLIST.md
+
+# Session handover notes. Deliberately NOT tracked: HANDOFF.md was removed from
+# this public repo in #245 because it carried internal access detail — box
+# addresses, sudo arrangements, paths to SSH keys and API tokens. The file is
+# useful locally and must never be committed again.
+HANDOFF.md

@@ -129,6 +129,37 @@ func (s *Server) githubToken(ctx context.Context) string {
 	return strings.TrimSpace(tok)
 }
 
+// effectiveGithubToken returns the credential to use for one repository: the
+// token saved with that repo if it has one, otherwise the panel-wide token,
+// otherwise none (public repos only).
+//
+// The panel holds a single GitHub token, which is enough right up until two
+// private repos have different owners. A fine-grained token can only ever select
+// repositories owned by the account that issued it, so reading a repo someone
+// else owns means holding a token they issued — and with one slot, storing
+// theirs takes away access to your own. A token per repo is the smallest thing
+// that answers that; leave it empty and nothing changes.
+//
+// Matching is by (repo, path, ref) — the same triple the listing is fetched with —
+// falling back to any saved row for the repo when only the folder or branch
+// differs, since a credential grants access to a repository, not to a directory.
+func (s *Server) effectiveGithubToken(ctx context.Context, repo, path, ref string) string {
+	if repo != "" && s.cipher != nil {
+		var enc string
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COALESCE(token_enc,'') FROM rune_repos
+			WHERE repo=? AND token_enc<>''
+			ORDER BY (path=? AND COALESCE(ref,'main')=?) DESC, created_at
+			LIMIT 1`, repo, path, ref).Scan(&enc)
+		if err == nil && enc != "" {
+			if tok, derr := s.cipher.Decrypt(enc); derr == nil {
+				return strings.TrimSpace(tok)
+			}
+		}
+	}
+	return s.githubToken(ctx)
+}
+
 // ghTokenFingerprint is a short, non-reversible tag for the token in use. It goes
 // into the listing cache key so that changing (or clearing) the token doesn't serve
 // a cached listing the new credential shouldn't see.
@@ -174,7 +205,7 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := s.githubToken(r.Context())
+	token := s.effectiveGithubToken(r.Context(), repo, path, ref)
 	cacheKey := repo + "|" + path + "|" + ref + "|" + ghTokenFingerprint(token)
 	refresh := r.URL.Query().Get("refresh") == "1"
 
@@ -378,7 +409,11 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	data, err := fetchGithubRaw(ctx, req.DownloadURL, s.githubToken(r.Context()))
+	// The download URL is all we have here, so recover the repo from it to pick the
+	// right credential — installing from a private repo must use the same token
+	// that could list it, not the panel-wide one.
+	srcRepo, srcPath, srcRef := parseRawGithubSource(req.DownloadURL)
+	data, err := fetchGithubRaw(ctx, req.DownloadURL, s.effectiveGithubToken(r.Context(), srcRepo, srcPath, srcRef))
 	if err != nil {
 		// 400 rather than 502 for the same reason as the listing above: the
 		// reason must survive any proxy between the panel and the browser.
@@ -398,9 +433,8 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 		jsonError(w, "cannot overwrite a built-in rune; use a different id", http.StatusConflict)
 		return
 	}
-	// Record where this came from so the update check can compare against its own
-	// source repo — works for any repo, not just the default catalog.
-	srcRepo, srcPath, srcRef := parseRawGithubSource(req.DownloadURL)
+	// The source (parsed above) is recorded so the update check can compare against
+	// its own repo — works for any repo, not just the default catalog.
 	_, err = s.db.ExecContext(r.Context(), `
 		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin, source_repo, source_path, source_ref)
 		VALUES (?,?,?,?,?,0,?,?,?)

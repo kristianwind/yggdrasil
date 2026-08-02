@@ -494,6 +494,30 @@ create-server form needs it; everything that changes the catalogue is admin-only
 <td>Admin</td>
 <td>Delete a rune</td>
 </tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/rune-repos</code></td>
+<td>Admin</td>
+<td>Saved rune repositories, the built-in catalog first. <code>has_token</code> says a repo carries its own GitHub token; the token itself is never returned</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/rune-repos</code></td>
+<td>Admin</td>
+<td>Save a repository: <code>{name, repo, path, ref, token?}</code></td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/rune-repos/{id}</code></td>
+<td>Admin</td>
+<td>Edit one: <code>{name?, path?, ref?, token?}</code>. An omitted or masked <code>token</code> keeps what&rsquo;s stored, an empty string clears it</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/rune-repos/{id}</code></td>
+<td>Admin</td>
+<td>Forget a repository (and its token)</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Moving a large server between panels — pull, don&rsquo;t push.</strong> An export <em>streams</em>, so downloading a
@@ -1504,7 +1528,7 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 <td><code>PUT</code></td>
 <td><code>/api/settings/github</code></td>
 <td>Admin</td>
-<td>Store or clear the GitHub token (<code>{token}</code>; empty clears). Lets the rune browser read <strong>private</strong> repos and lifts the 60-req/hour anonymous limit</td>
+<td>Store or clear the GitHub token (<code>{token}</code>; empty clears). Lets the rune browser read <strong>private</strong> repos and lifts the 60-req/hour anonymous limit. A repository may override it with its own token — see <code>/api/rune-repos</code> — which is the only way to reach two private repos owned by different accounts</td>
 </tr>
 <tr>
 <td><code>POST</code></td>

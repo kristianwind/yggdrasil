@@ -14,7 +14,7 @@ gameskill:
     normal while handing out whatever its scripts contain, which on a real site
     has meant SMTP credentials.
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # php:8.3-apache is Apache with mod_php in one container, so there is no
@@ -30,6 +30,20 @@ gameskill:
     keep_entrypoint: true
     user: "0:0"
     data_path: /var/www/html
+
+  # Optional mail settings. A PHP site is usually a site with a contact form, and
+  # the form needs an SMTP account — which is how those credentials end up written
+  # into the .php file itself, where a missing interpreter (see above) hands them
+  # out. Setting them here instead keeps them out of the web root entirely: the
+  # panel encrypts the password at rest and passes all five to the container as
+  # environment variables, so the script reads getenv('SMTP_PASS') and contains no
+  # secret to leak. Leave them empty if the site sends no mail.
+  variables:
+    - { key: SMTP_HOST, name: "SMTP host", type: string, default: "" }
+    - { key: SMTP_PORT, name: "SMTP port", type: string, default: "587" }
+    - { key: SMTP_USER, name: "SMTP username", type: string, default: "" }
+    - { key: SMTP_PASS, name: "SMTP password", type: string, default: "", secret: true }
+    - { key: MAIL_TO, name: "Send form mail to", type: string, default: "" }
 
   install:
     image: "busybox:latest"
@@ -50,6 +64,19 @@ gameskill:
       fi
 
   startup:
+    # php:8.3-apache ships no php.ini at all, and PHP's compiled-in default is
+    # display_errors=On. A site served that way answers a broken request with the
+    # error text — file paths, SQL, the line that failed — and a notice printed
+    # before a header('Location: …') breaks the redirect outright, so the failure
+    # is not even quiet. Write the production defaults before Apache starts and
+    # send errors to stderr, where the panel's console and log watchers see them
+    # instead of the visitor.
+    #
+    # exec keeps apache2-foreground as PID 1 so a stop signal still reaches it.
+    command: |
+      printf '%s\n' 'display_errors = Off' 'log_errors = On' 'error_log = /dev/stderr' 'expose_php = Off' \
+        > /usr/local/etc/php/conf.d/zz-yggdrasil-prod.ini
+      exec apache2-foreground
     # Apache reports readiness on its own line; the panel also treats a
     # connectable web port as ready, so a wording change upstream cannot strand
     # the server in "starting".

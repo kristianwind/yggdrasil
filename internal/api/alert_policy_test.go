@@ -300,3 +300,108 @@ func TestProbeShareIgnoresSuccessfulRequests(t *testing.T) {
 		t.Errorf("successful requests are not probes, probeShare = %v", got)
 	}
 }
+
+// ---- volume detections (the log-rate anomaly) ----
+//
+// These are written from the alerts kw01 actually produced: with every watcher
+// switched off it still paged 31 times in a day, all of them "traffic spike",
+// none of them anything a person needed to see.
+
+func TestVolumeSpikeWithNormalResponsesIsRoutine(t *testing.T) {
+	// 204 log lines, ordinary visitors and a crawler pass — the real shape of
+	// the alerts that woke the admin every 40 minutes.
+	var lines []string
+	for i := 0; i < 10; i++ {
+		lines = append(lines, accessLine("66.249.69.13", "/", "200"))
+		lines = append(lines, accessLine("77.243.53.207", "/kontakt.html", "200"))
+	}
+	v := classifyAlert(alertInput{Key: "anomaly:log-rate", Hits: 204, Lines: lines, Volume: true})
+	if v.Class != alertRoutine {
+		t.Fatalf("a busy site with normal responses must not page, got %q (%s)", v.Class, v.Reason)
+	}
+}
+
+func TestVolumeSpikeOfErrorsIsIncident(t *testing.T) {
+	var lines []string
+	for i := 0; i < 8; i++ {
+		lines = append(lines, accessLine("203.0.113.9", "/", "200"))
+	}
+	for i := 0; i < 4; i++ {
+		lines = append(lines, accessLine("203.0.113.9", "/", "502"))
+	}
+	v := classifyAlert(alertInput{Key: "anomaly:log-rate", Hits: 300, Lines: lines, Volume: true})
+	if v.Class != alertIncident {
+		t.Fatalf("a spike that is failing should page, got %q (%s)", v.Class, v.Reason)
+	}
+}
+
+func TestVolumeFloodStillPages(t *testing.T) {
+	lines := []string{accessLine("203.0.113.9", "/", "200")}
+	v := classifyAlert(alertInput{Key: "anomaly:log-rate", Hits: 4000, Lines: lines, Volume: true})
+	if v.Class != alertIncident {
+		t.Fatalf("4000 lines in five minutes is a flood whatever the status codes, got %q", v.Class)
+	}
+}
+
+// The same traffic reported by a WATCHER (which counts only matching lines) must
+// keep paging exactly as before — the volume rules apply to volume detectors only.
+func TestWatcherPathUnchangedByVolumeRules(t *testing.T) {
+	var lines []string
+	for i := 0; i < 20; i++ {
+		lines = append(lines, accessLine("149.36.51.138", "/wp-login.php", "200"))
+	}
+	v := classifyAlert(alertInput{Key: "watcher:x", Hits: 20, Lines: lines})
+	if v.Class != alertIncident || !v.Concentrated {
+		t.Fatalf("watcher detections must be unaffected, got %q concentrated=%v", v.Class, v.Concentrated)
+	}
+}
+
+// ---- source extraction ----
+
+// The policy reported "100% of hits from 120.0.0.0 ... blocking it would stop
+// this" for traffic whose only appearance of that string was Chrome's version.
+func TestUserAgentVersionIsNotASource(t *testing.T) {
+	line := `172.17.0.1 - - [04/Aug/2026:09:13:23 +0200] "GET /F0x.php HTTP/1.1" 404 536 "-" ` +
+		`"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"`
+	for _, ip := range lineSources(line) {
+		if ip == "120.0.0.0" || ip == "537.36" {
+			t.Fatalf("a version string was taken as a source address: %q", ip)
+		}
+	}
+	if got := lineSources(line); len(got) != 1 || got[0] != "172.17.0.1" {
+		t.Errorf("lineSources = %v, want just the client field", got)
+	}
+}
+
+func TestApacheErrorLineClientIsFound(t *testing.T) {
+	line := `[Tue Aug 04 09:13:23.336823 2026] [php:error] [pid 22:tid 22] ` +
+		`[client 203.0.113.7:44368] script '/var/www/html/F0x.php' not found or unable to stat`
+	got := lineSources(line)
+	if len(got) != 1 || got[0] != "203.0.113.7" {
+		t.Errorf("lineSources = %v, want the [client] address", got)
+	}
+}
+
+// A non-web log has no client field; those still get the whole-line scan.
+func TestNonWebLogStillYieldsSources(t *testing.T) {
+	line := `[Server] Player Steve (198.51.100.4) failed authentication`
+	got := lineSources(line)
+	if len(got) != 1 || got[0] != "198.51.100.4" {
+		t.Errorf("lineSources = %v, want the address from a plain log line", got)
+	}
+}
+
+// Apache logs a missing PHP script as an error line AND an access-log 404. The
+// error half didn't look like a probe, which dragged a pure scanner walk down to
+// 60% and flipped it from routine to incident.
+func TestApacheMissingScriptCountsAsProbe(t *testing.T) {
+	lines := []string{
+		`[Tue Aug 04 09:13:23.336823 2026] [php:error] [pid 22:tid 22] [client 172.17.0.1:44368] script '/var/www/html/F0x.php' not found or unable to stat`,
+		accessLine("172.17.0.1", "/F0x.php", "404"),
+		`[Tue Aug 04 09:13:23.362365 2026] [php:error] [pid 22:tid 22] [client 172.17.0.1:44368] script '/var/www/html/commonwp.php' not found or unable to stat`,
+		accessLine("172.17.0.1", "/commonwp.php", "404"),
+	}
+	if got := probeShare(lines); got != 1 {
+		t.Errorf("a scanner walk logged in both shapes is all probes, probeShare = %v", got)
+	}
+}

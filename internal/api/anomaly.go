@@ -216,10 +216,11 @@ func (s *Server) fireAnomaly(serverID, containerID, kind, detail string, hits in
 	// swallow it — the policy is about traffic noise, and these are not that.
 	if kind == "log-rate" {
 		verdict, page := s.raiseAlert(serverID, alertInput{
-			Key:   "anomaly:" + kind,
-			Title: name + " — traffic spike",
-			Hits:  hits,
-			Lines: tail,
+			Key:    "anomaly:" + kind,
+			Title:  name + " — traffic spike",
+			Hits:   hits,
+			Lines:  tail,
+			Volume: true, // hits is every log line, not a count of suspicious ones
 		})
 		if !page {
 			return

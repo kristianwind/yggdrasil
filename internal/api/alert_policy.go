@@ -82,6 +82,11 @@ const (
 	// the rest sat between 105 and 360.
 	alertFloodHits = 1000
 
+	// Share of a volume spike's sample that must be server-side errors before
+	// the spike is worth waking someone for. A site getting busier is not news;
+	// a site getting busier while it starts failing is.
+	alertErrorShare = 0.2
+
 	// How many source addresses to keep on the record.
 	alertMaxSources = 5
 )
@@ -100,6 +105,15 @@ type alertInput struct {
 	// their own browsing as a concentrated attack and Kvasir proposes blocking
 	// them out of their own site.
 	Exempt map[string]bool
+
+	// Volume marks a detection whose Hits counts EVERY log line rather than
+	// matches of a suspicious pattern — the log-rate anomaly is the only one.
+	// The thresholds below are written for "how many suspicious events", so
+	// feeding them total traffic makes ordinary popularity indistinguishable
+	// from an attack: a busy afternoon, a crawler pass and a newsletter send
+	// all clear "10 hits" instantly. That is what paged this panel 31 times in
+	// a day from a single host while every watcher was switched off.
+	Volume bool
 }
 
 // alertVerdict is the policy's answer.
@@ -128,6 +142,47 @@ var probePathRe = regexp.MustCompile(`(?i)/(\.env|\.git/|\.aws/|wp-admin/setup-c
 // already told the caller "no", which is the whole answer a scanner gets.
 var probeStatusRe = regexp.MustCompile(`"\s+(?:404|403)\b`)
 
+// errorStatusRe matches a 5xx status field: the server itself failed, which is
+// the one thing that makes a busy period worth interrupting someone for.
+var errorStatusRe = regexp.MustCompile(`"\s+5\d\d\b`)
+
+// missingScriptRe matches Apache's error-log form of a 404 for a PHP file. It
+// is the SAME event as the access-log 404 beside it, logged twice in different
+// shapes — and because this half doesn't look like a probe, a pure scanner walk
+// came out at 60% probes instead of 100% and was paged as an incident.
+var missingScriptRe = regexp.MustCompile(`script '.*' not found or unable to stat`)
+
+// accessClientRe and errorClientRe take the source address from the field that
+// actually holds it: the first field of an access-log line, or [client IP:port]
+// in an Apache error line.
+//
+// Scanning the whole line instead is how "Chrome/120.0.0.0" in a User-Agent was
+// recorded as an attacking address — 100% of the hits, not being refused, so
+// block it. The policy offered to firewall a browser version number.
+var accessClientRe = regexp.MustCompile(`^\s*(\d{1,3}(?:\.\d{1,3}){3})\b`)
+var errorClientRe = regexp.MustCompile(`\[client (\d{1,3}(?:\.\d{1,3}){3})`)
+
+// lineSources returns the source addresses a single log line genuinely claims.
+// Web logs name their client in a known field; anything else (a game server's
+// log, a database's) gets the old whole-line scan, minus addresses that are the
+// tail of a path or version token.
+func lineSources(line string) []string {
+	if m := accessClientRe.FindStringSubmatch(line); m != nil {
+		return []string{m[1]}
+	}
+	if m := errorClientRe.FindStringSubmatch(line); m != nil {
+		return []string{m[1]}
+	}
+	var out []string
+	for _, loc := range ipRe.FindAllStringIndex(line, -1) {
+		if loc[0] > 0 && line[loc[0]-1] == '/' {
+			continue // Chrome/120.0.0.0, HTTP/1.1 — a version, not a host
+		}
+		out = append(out, line[loc[0]:loc[1]])
+	}
+	return out
+}
+
 // classifyAlert decides whether a detection is worth a person's attention.
 // Pure: the thresholds above are the entire policy, so a change of behaviour is
 // a change to a named constant with a test, not a change of mood.
@@ -138,12 +193,40 @@ var probeStatusRe = regexp.MustCompile(`"\s+(?:404|403)\b`)
 func classifyAlert(in alertInput) alertVerdict {
 	sources, topShare := analyseSources(in.Lines, in.Exempt)
 	noise := probeShare(in.Lines)
+	errShare := errorShare(in.Lines)
 	hits := in.Hits
 	if hits <= 0 {
 		hits = len(in.Lines)
 	}
 
 	v := alertVerdict{Sources: sources}
+
+	// A volume detector counts all traffic, so the rules below — written for
+	// counts of suspicious events — would call every busy hour an attack. Judge
+	// it on what the traffic DID instead: a flood, a scanner storm, or the
+	// server starting to fail. Otherwise the site is simply being visited, and
+	// that goes in the digest, not to someone's phone.
+	if in.Volume {
+		v.Concentrated = topShare >= alertConcentratedShare && len(sources) > 0
+		switch {
+		case hits >= alertFloodHits:
+			v.Class = alertIncident
+			v.Reason = fmt.Sprintf("%d log lines in the detection window — far beyond this server's normal traffic", hits)
+		case noise >= alertNoiseShare:
+			v.Class = alertRoutine
+			v.Reason = fmt.Sprintf("busier than usual, but %.0f%% of it is vulnerability scanning the server already answered with 404/403",
+				noise*100)
+		case errShare >= alertErrorShare:
+			v.Class = alertIncident
+			v.Reason = fmt.Sprintf("%d log lines and %.0f%% of them server errors — the traffic is failing, not just arriving",
+				hits, errShare*100)
+		default:
+			v.Class = alertRoutine
+			v.Reason = fmt.Sprintf("%d log lines, but the responses look normal — a busy period, not an incident", hits)
+		}
+		return v
+	}
+
 	switch {
 	// Volume first: past a point, a flood is a flood whatever the server answers.
 	case hits >= alertFloodHits:
@@ -203,7 +286,7 @@ func analyseSources(lines []string, exempt map[string]bool) (sources []string, t
 	total := 0
 	for _, l := range lines {
 		seen := map[string]bool{}
-		for _, m := range ipRe.FindAllString(l, -1) {
+		for _, m := range lineSources(l) {
 			if seen[m] { // one line, one vote per address
 				continue
 			}
@@ -257,7 +340,7 @@ func probeShare(lines []string) float64 {
 			continue
 		}
 		total++
-		if probePathRe.MatchString(l) || probeStatusRe.MatchString(l) {
+		if probePathRe.MatchString(l) || probeStatusRe.MatchString(l) || missingScriptRe.MatchString(l) {
 			probes++
 		}
 	}
@@ -265,6 +348,25 @@ func probeShare(lines []string) float64 {
 		return 0
 	}
 	return float64(probes) / float64(total)
+}
+
+// errorShare is the fraction of non-empty sample lines whose status field is a
+// 5xx — the server's own failures, as opposed to its refusals.
+func errorShare(lines []string) float64 {
+	total, errs := 0, 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		total++
+		if errorStatusRe.MatchString(l) {
+			errs++
+		}
+	}
+	if total == 0 {
+		return 0
+	}
+	return float64(errs) / float64(total)
 }
 
 // alertHint turns a verdict into guidance for Kvasir's prompt, so the shape of

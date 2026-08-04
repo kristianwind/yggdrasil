@@ -405,3 +405,40 @@ func TestApacheMissingScriptCountsAsProbe(t *testing.T) {
 		t.Errorf("a scanner walk logged in both shapes is all probes, probeShare = %v", got)
 	}
 }
+
+// ---- the two cases from Kristian's Discord, 4 Aug 11:23 and 11:35 ----
+
+// 3dekoration.dk: a 404 spike from automated requests for PHP files that don't
+// exist. Kvasir's own explanation said "the server is successfully handling the
+// traffic with 404 responses" — and it paged anyway.
+func TestScannerWalkOn404sIsRoutine(t *testing.T) {
+	var lines []string
+	for _, p := range []string{"/F0x.php", "/commonwp.php", "/wp-includes/js/tinymce/plugins/charmap/",
+		"/.env", "/shell.php", "/wp-admin/setup-config.php", "/backup.zip", "/xmlrpc.php", "/old.php", "/db.php"} {
+		lines = append(lines, accessLine("203.0.113.55", p, "404"))
+	}
+	v := classifyAlert(alertInput{Key: "anomaly:log-rate", Hits: 260, Lines: lines, Volume: true})
+	if v.Class != alertRoutine {
+		t.Fatalf("a scan the server answered with 404s must not page, got %q (%s)", v.Class, v.Reason)
+	}
+}
+
+// lm-e.dk: a brute force from one address. As a VOLUME detection it is routine —
+// but the rune's "Login brute force" watcher counts matches, not traffic, and
+// must still page it. Losing that would be the one real risk of the volume fix.
+func TestBruteForceRoutineByVolumeButPagedByWatcher(t *testing.T) {
+	var lines []string
+	for i := 0; i < 20; i++ {
+		lines = append(lines, accessLine("20.218.182.51", "/wp-login.php", "200"))
+	}
+	if v := classifyAlert(alertInput{Key: "anomaly:log-rate", Hits: 240, Lines: lines, Volume: true}); v.Class != alertRoutine {
+		t.Errorf("as a traffic spike this is routine, got %q (%s)", v.Class, v.Reason)
+	}
+	v := classifyAlert(alertInput{Key: "watcher:login", Hits: 20, Lines: lines})
+	if v.Class != alertIncident || !v.Concentrated {
+		t.Fatalf("the brute-force WATCHER must still page and stay blockable, got %q concentrated=%v", v.Class, v.Concentrated)
+	}
+	if len(v.Sources) != 1 || v.Sources[0] != "20.218.182.51" {
+		t.Errorf("sources = %v, want the attacker", v.Sources)
+	}
+}

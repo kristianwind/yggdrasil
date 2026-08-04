@@ -14,7 +14,7 @@ gameskill:
     normal while handing out whatever its scripts contain, which on a real site
     has meant SMTP credentials.
   author: "yggdrasil-community"
-  version: 2
+  version: 3
   icon: "app"
 
   # php:8.3-apache is Apache with mod_php in one container, so there is no
@@ -72,10 +72,30 @@ gameskill:
     # send errors to stderr, where the panel's console and log watchers see them
     # instead of the visitor.
     #
+    # The second half is about who the visitor is. Behind a proxy — which every
+    # published site here is — Apache logs the proxy's address, so every request
+    # looks identical and every IP-based signal the panel has is worthless: the
+    # access log reads 172.17.0.1 for the whole internet. On a site being scanned
+    # that is not a cosmetic problem. mod_remoteip restores the real client from
+    # X-Forwarded-For, which is what the official WordPress image already does —
+    # this is that same configuration, and why WordPress servers here report real
+    # addresses while php-site ones reported the Docker bridge.
+    #
+    # InternalProxy lists only private ranges, so the header is trusted solely
+    # when the request arrives from one. A request straight from the internet
+    # keeps its real peer address and cannot spoof itself a different one.
+    #
     # exec keeps apache2-foreground as PID 1 so a stop signal still reaches it.
     command: |
       printf '%s\n' 'display_errors = Off' 'log_errors = On' 'error_log = /dev/stderr' 'expose_php = Off' \
         > /usr/local/etc/php/conf.d/zz-yggdrasil-prod.ini
+      printf '%s\n' 'RemoteIPHeader X-Forwarded-For' \
+        'RemoteIPInternalProxy 10.0.0.0/8' \
+        'RemoteIPInternalProxy 172.16.0.0/12' \
+        'RemoteIPInternalProxy 192.168.0.0/16' \
+        'RemoteIPInternalProxy 169.254.0.0/16' \
+        > /etc/apache2/conf-available/remoteip.conf
+      a2enmod -q remoteip && a2enconf -q remoteip
       exec apache2-foreground
     # Apache reports readiness on its own line; the panel also treats a
     # connectable web port as ready, so a wording change upstream cannot strand

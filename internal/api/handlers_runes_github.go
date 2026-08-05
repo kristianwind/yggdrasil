@@ -300,9 +300,16 @@ func ghListDir(ctx context.Context, repo, path, ref, token string) ([]ghDirEntry
 		// 403 has two unrelated causes and opposite remedies: wait, or fix the
 		// token. GitHub says which in the rate-limit header — remaining requests
 		// left means it isn't a rate limit — so read it rather than making the
-		// admin guess. A fine-grained token answers 403 (not 404) for a repo its
-		// owner owns but did not tick under "Only select repositories", which is
-		// the case this message is most often read in.
+		// admin guess.
+		//
+		// When it is the token, a fine-grained one can fall short in two separate
+		// ways, and naming only the first sends people to the wrong settings page.
+		// The repository has to be in the token's scope, AND the token needs
+		// Contents: Read — Metadata alone is enough to look a repository up but not
+		// to read a file out of it, which is what a rune listing does. The second is
+		// what actually happened here: a token set to "All repositories" with only
+		// Metadata ticked, failing on the first private repo it was ever asked to
+		// read while every public one had worked for weeks.
 		if remaining := resp.Header.Get("X-RateLimit-Remaining"); remaining == "0" {
 			reset := "shortly"
 			if v := resp.Header.Get("X-RateLimit-Reset"); v != "" {
@@ -312,7 +319,7 @@ func ghListDir(ctx context.Context, repo, path, ref, token string) ([]ghDirEntry
 			}
 			return nil, fmt.Errorf("github rate limit reached — the quota resets %s; nothing is wrong with the token", reset)
 		}
-		return nil, fmt.Errorf("github refused the request (403) — this token can't read %s. A fine-grained token only reaches repositories ticked under \"Only select repositories\" when it was created, even ones you own; add this repo there, or give it its own token here", repo)
+		return nil, fmt.Errorf("github refused the request (403) — this token can't read %s. On a fine-grained token check both: the repository must be in its Repository access, and Permissions must include Contents: Read-only (Metadata alone finds a repo but can't read files from it). Both apply to repositories you own. Otherwise give this repo its own token here", repo)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github returned %d", resp.StatusCode)

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -296,7 +297,22 @@ func ghListDir(ctx context.Context, repo, path, ref, token string) ([]ghDirEntry
 		if token == "" {
 			return nil, fmt.Errorf("github rate limit reached (60 requests/hour without a token) — add a GitHub token in Settings → Integrations, or try again later")
 		}
-		return nil, fmt.Errorf("github refused the request (403) — rate limited, or the token lacks access to this repository")
+		// 403 has two unrelated causes and opposite remedies: wait, or fix the
+		// token. GitHub says which in the rate-limit header — remaining requests
+		// left means it isn't a rate limit — so read it rather than making the
+		// admin guess. A fine-grained token answers 403 (not 404) for a repo its
+		// owner owns but did not tick under "Only select repositories", which is
+		// the case this message is most often read in.
+		if remaining := resp.Header.Get("X-RateLimit-Remaining"); remaining == "0" {
+			reset := "shortly"
+			if v := resp.Header.Get("X-RateLimit-Reset"); v != "" {
+				if ts, err := strconv.ParseInt(v, 10, 64); err == nil {
+					reset = "at " + time.Unix(ts, 0).Format("15:04")
+				}
+			}
+			return nil, fmt.Errorf("github rate limit reached — the quota resets %s; nothing is wrong with the token", reset)
+		}
+		return nil, fmt.Errorf("github refused the request (403) — this token can't read %s. A fine-grained token only reaches repositories ticked under \"Only select repositories\" when it was created, even ones you own; add this repo there, or give it its own token here", repo)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github returned %d", resp.StatusCode)

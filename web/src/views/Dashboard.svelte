@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { api } from "../lib/api.js";
+  import { livePoll } from "../lib/livePoll.js";
   import { user } from "../lib/auth.js";
   import { navigate } from "../lib/router.js";
   import { toast } from "../lib/toast.js";
@@ -96,6 +97,39 @@
     );
   }
 
+  let stopPolling = null;
+
+  // The Dashboard is the page you land on, so a status frozen at load is the one
+  // most likely to be believed. Refresh only what can move on its own — the status
+  // dots, the badges and the "N running" tile — rather than refetching fleet
+  // summary, backup coverage and host info every few seconds; those are the
+  // expensive half of onMount and none of them are per-server state.
+  async function refreshStatuses() {
+    const fresh = await api.get("/servers");
+    if (!Array.isArray(fresh)) return;
+    const next = new Map(fresh.map((s) => [s.id, s]));
+    // Only reassign when something actually moved, so a quiet fleet doesn't
+    // re-render the whole tile grid every five seconds.
+    let changed = fresh.length !== servers.length;
+    if (!changed) {
+      changed = servers.some((s) => {
+        const f = next.get(s.id);
+        return !f || f.status !== s.status || f.install_status !== s.install_status;
+      });
+    }
+    if (!changed) return;
+    // Created or deleted elsewhere: take the new list wholesale, since the rows
+    // carry fields this narrow refresh doesn't reason about.
+    if (fresh.length !== servers.length) {
+      servers = fresh;
+      return;
+    }
+    servers = servers.map((s) => {
+      const f = next.get(s.id);
+      return f ? { ...s, status: f.status, install_status: f.install_status, installed: f.installed } : s;
+    });
+  }
+
   onMount(async () => {
     try {
       [servers, gameskills] = await Promise.all([
@@ -112,7 +146,9 @@
     } catch (e) {
       error = e.message;
     }
+    stopPolling = livePoll(refreshStatuses, 5000);
   });
+  onDestroy(() => stopPolling?.());
 
   // Whole-host resource history for the Dashboard — the machine's CPU/RAM/disk over
   // time, the same trend charts each server page shows for itself. Admin-only, lazy

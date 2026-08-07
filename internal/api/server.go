@@ -264,6 +264,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/servers/{id}/kvasir-events", s.handleServerKvasirEvents)
 		r.Delete("/api/servers/{id}/kvasir-events", s.handleClearServerKvasirEvents)
 		r.Get("/api/fleet/summary", s.handleFleetSummary)
+		r.Get("/api/fleet/activity", s.requireAdmin(s.handleFleetActivity))
 		r.Get("/api/fleet/metrics", s.handleServersMetricsMini)
 		r.Get("/api/fleet/players", s.handleFleetPlayers)
 		r.Get("/api/servers/{id}/quiet-hours", s.handleQuietHours)

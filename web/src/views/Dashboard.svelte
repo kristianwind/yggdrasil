@@ -182,6 +182,58 @@
     hostMetrics.map((m) => (m.disk_total_mb > 0 ? (m.disk_used_mb / m.disk_total_mb) * 100 : -1)),
   );
 
+  // The activity feed — one timeline of what the panel recorded about itself
+  // across every server: detections, crashes, what Kvasir made of them, and who
+  // did what. Admin-only, lazy (loads when expanded), reloads when the window
+  // changes, and polls while it is open so it earns the word "live".
+  //
+  // It is also the first place the alerts table is visible at all. Routine
+  // detections appear here deliberately: without them a quiet fleet and a
+  // detector that silently stopped working look exactly the same.
+  let activity = $state([]);
+  let activityHours = $state(24);
+  let activityLoaded = $state(false);
+  // Closed by default — it is the densest module on the page, and someone who
+  // wants it will say so once and be remembered.
+  let showActivity = $state(localStorage.getItem("ygg_dash_activity") === "1");
+  function toggleActivity() {
+    showActivity = !showActivity;
+    localStorage.setItem("ygg_dash_activity", showActivity ? "1" : "0");
+  }
+  async function loadActivity() {
+    try {
+      const r = await api.get(`/fleet/activity?hours=${activityHours}`);
+      activity = Array.isArray(r?.items) ? r.items : [];
+    } catch {
+      activity = [];
+    }
+    activityLoaded = true;
+  }
+  const activityOpen = $derived(
+    showActivity && $user.role === "admin" && !modLayout.hidden.includes("activity"),
+  );
+  $effect(() => {
+    if (activityOpen) {
+      activityHours; // track for reload on window change
+      loadActivity();
+    }
+  });
+  // Polled only while open: a collapsed feed asking the panel for 200 rows every
+  // ten seconds is pure load for something nobody is looking at.
+  $effect(() => {
+    if (!activityOpen) return;
+    const stop = livePoll(loadActivity, 10000);
+    return stop;
+  });
+  const ACTIVITY_ICON = { alert: "🚨", crash: "💥", kvasir: "🧠", audit: "👤" };
+  function activityWhen(ts) {
+    // Timestamps arrive as SQLite UTC ("2026-08-06 15:30:00"); make it explicit
+    // before parsing or the browser reads it as local time and every entry is
+    // off by the timezone offset.
+    const d = new Date(ts.replace(" ", "T").replace(/Z?$/, "Z"));
+    return isNaN(d) ? ts : d.toLocaleString();
+  }
+
   // Beacon teaser: a gentle, dismissible nudge to opt into the anonymous install
   // ping. Shows only to admins, only while the beacon is off and not dismissed —
   // so it invites once and then gets out of the way (enabling or dismissing hides it).
@@ -385,6 +437,7 @@
     { id: "askkvasir", label: "Ask Kvasir", icon: "💬" },
     { id: "whosonline", label: "Who's online", icon: "👥" },
     { id: "recent", label: "Recent servers", icon: "🕘" },
+    { id: "activity", label: "Activity", icon: "📜" },
   ];
   const MODULE_LABEL = Object.fromEntries(MODULES.map((m) => [m.id, m]));
   const DEFAULT_ORDER = MODULES.map((m) => m.id);
@@ -821,6 +874,61 @@
 {/if}
 {/snippet}
 
+{#snippet modActivity()}
+{#if $user.role === "admin"}
+  <div class="mb-8">
+    <div class="flex items-center gap-2">
+      <button class="text-sm text-muted hover:text-text" onclick={toggleActivity}>
+        {showActivity ? "▾" : "▸"} 📜 Activity
+      </button>
+      {#if showActivity}
+        <div class="inline-flex rounded-md border border-border overflow-hidden text-xs ml-2">
+          {#each [[6, "6h"], [24, "24h"], [72, "3d"], [168, "7d"]] as [h, lbl]}
+            <button class="px-2 py-1 {activityHours === h ? 'bg-panel2 text-text' : 'text-muted hover:bg-panel2/50'}"
+              onclick={() => (activityHours = h)}>{lbl}</button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    {#if showActivity}
+      {#if activity.length === 0}
+        <p class="text-sm text-muted mt-3">
+          {activityLoaded ? "Nothing recorded in this window." : "Loading…"}
+        </p>
+      {:else}
+        <div class="mt-3 border border-border rounded-md divide-y divide-border max-h-96 overflow-y-auto">
+          {#each activity as e}
+            <div class="flex gap-3 px-3 py-2 text-sm">
+              <span class="shrink-0" title={e.kind}>{ACTIVITY_ICON[e.kind] || "•"}</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="{e.class === 'incident' ? 'font-semibold text-text' : 'text-text'}">{e.title}</span>
+                  {#if e.class === "incident"}
+                    <span class="badge bg-danger/15 text-danger">incident</span>
+                  {:else if e.class === "routine"}
+                    <span class="badge bg-border text-muted">routine</span>
+                  {/if}
+                  {#if e.paged}<span class="badge bg-warn/15 text-warn">paged</span>{/if}
+                  {#if e.server}
+                    <button class="text-xs text-muted hover:text-text underline"
+                      onclick={() => navigate(`/servers/${e.server_id}`)}>{e.server}</button>
+                  {/if}
+                </div>
+                {#if e.detail}<div class="text-xs text-muted break-words">{e.detail}</div>{/if}
+              </div>
+              <div class="shrink-0 text-xs text-muted text-right">
+                <div>{activityWhen(e.ts)}</div>
+                {#if e.actor}<div>{e.actor}</div>{/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+  </div>
+{/if}
+{/snippet}
+
 {#snippet modBody(id)}
   {#if id === "fleet"}{@render modFleet()}
   {:else if id === "cards"}{@render modCards()}
@@ -829,6 +937,7 @@
   {:else if id === "askkvasir"}{@render modAskKvasir()}
   {:else if id === "whosonline"}{@render modWhosOnline()}
   {:else if id === "recent"}{@render modRecent()}
+  {:else if id === "activity"}{@render modActivity()}
   {/if}
 {/snippet}
 

@@ -35,6 +35,7 @@ func render(apps []app) string {
 <div class="grid">%s</div>
 `, nApps, appCards.String())
 	}
+	b.WriteString(builtOn)
 	b.WriteString(foot)
 	return b.String()
 }
@@ -137,6 +138,30 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
   </div>
 </div>
 </nav>
+`
+
+// builtOn lists applications other people wrote that ship as a rune. It belongs
+// on this page rather than the front page: these are apps you can install, which
+// is what a reader is here for — and it does not earn its own nav entry.
+//
+// Hand-maintained on purpose. Everything above comes from the rune catalogue;
+// these are third-party projects whose repositories the generator has no reason
+// to read, and there are two of them.
+const builtOn = `<h2>Built on Yggdrasil <span class="count">2</span></h2>
+<p class="lede">Applications written by other people that install as a rune — one entry in the catalogue, and the panel builds, runs and backs them up like anything else.</p>
+<div class="grid">
+  <a class="app" href="https://github.com/kristianwind/uruz" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+    <div class="ic"><span class="glyph">ᚢ</span></div>
+    <div class="meta"><div class="name">Uruz <span class="badge">GitHub ↗</span></div><div class="desc">Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web.</div></div>
+  </a>
+  <!-- Kokkeri's repository is private, so this card deliberately has no link: one
+       that sends every visitor to a GitHub 404 is worse than one that promises no
+       destination. Swap the div for an <a href> the day it opens. -->
+  <div class="app">
+    <div class="ic"><span class="glyph">🍲</span></div>
+    <div class="meta"><div class="name">Kokkeri <span class="badge">private</span></div><div class="desc">Recipe library, meal planner and shopping list — a self-hosted answer to the subscription recipe apps. By Andreas Dinesen.</div></div>
+  </div>
+</div>
 `
 
 const foot = `</main>

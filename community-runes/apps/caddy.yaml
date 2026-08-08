@@ -1,0 +1,130 @@
+gameskill:
+  id: caddy
+  name: "Caddy (web server)"
+  category: "Apps"
+  description: >
+    Host a site with Caddy and a Caddyfile you own. The server's file area holds
+    the config and the site side by side: edit "Caddyfile" from the Files tab,
+    put the site in "site/", and restart to apply. Good when a static host is
+    not enough — redirects, rewrites, custom headers, basic auth, or proxying a
+    path through to another server.
+
+    Use "Static site" instead if you only need files served; it needs no config
+    at all. Use this when you want to say how they are served.
+
+    One thing to know before you pick it: Caddy is famous for getting HTTPS
+    certificates by itself, and that will NOT happen here. Issuing one requires
+    the internet to reach this container on ports 80 and 443, and the panel
+    publishes every server on its own assigned port instead. The shipped
+    Caddyfile therefore serves plain HTTP and expects the proxy already in front
+    of it — NPM, or a Cloudflare tunnel — to terminate TLS, which is how every
+    other published site here already works. Everything else Caddy does works
+    normally.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # caddy:2-alpine declares NO entrypoint — the whole invocation lives in CMD
+  # (["caddy","run","--config",...]) — so the exec argv below has to start with
+  # the binary itself. Dropping the leading "caddy" fails at container init with
+  # `exec: "run": executable file not found in $PATH`, which is what happened
+  # the first time this rune was tried. Its WORKDIR is already /srv, which is
+  # why that is the natural data_path here.
+  #
+  # user 0:0 so it can bind :80 inside the container and read the panel-owned
+  # files.
+  #
+  # data_path is /srv (Caddy's own convention for served content) and the shipped
+  # Caddyfile roots the site at the site/ SUBDIRECTORY rather than at /srv
+  # itself. That is deliberate: extra_volumes are created as subdirectories of
+  # the server's data dir, so /data and /config below also appear inside /srv.
+  # Rooting the site at /srv would publish them — handing out Caddy's private
+  # keys and the config with any basic-auth hashes in it to anyone who asked.
+  # A web root must never be the same directory as the config it is served by.
+  docker:
+    image: "caddy:2-alpine"
+    keep_entrypoint: true
+    user: "0:0"
+    data_path: /srv
+    # Caddy keeps issued certificates and OCSP staples in /data and an autosaved
+    # JSON copy of the running config in /config. Both must persist: a container
+    # rebuild that loses /data makes Caddy ask a CA for everything again, which
+    # is how people meet Let's Encrypt's rate limits.
+    extra_volumes:
+      - /data
+      - /config
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data/site
+      if [ ! -f /data/Caddyfile ]; then
+      cat > /data/Caddyfile <<'CADDY'
+      # Caddyfile — restart the server after editing to apply.
+      #
+      # Listening on :80 with no hostname keeps automatic HTTPS off, which is
+      # what you want behind NPM or a Cloudflare tunnel: TLS is terminated there
+      # and this speaks plain HTTP on the panel's assigned port.
+      #
+      # If you ever run this with the real ports 80 and 443 published straight
+      # to the internet, replace ":80" with your domain and Caddy will get a
+      # certificate on its own. It cannot do that on an arbitrary high port.
+      :80 {
+      	root * /srv/site
+      	file_server
+      	encode gzip zstd
+
+      	# The visitor's real address arrives in X-Forwarded-For from the proxy.
+      	# Without this, every line in the log reads as the proxy and no
+      	# IP-based signal the panel has is worth anything.
+      	log {
+      		output stderr
+      		format console
+      	}
+
+      	# Examples — uncomment and edit as needed:
+      	# redir /old /new permanent
+      	# handle_path /api/* {
+      	# 	reverse_proxy other-server:8080
+      	# }
+      	# basicauth /private/* {
+      	# 	# generate the hash with: caddy hash-password
+      	# 	admin $2a$14$...
+      	# }
+      }
+      CADDY
+        echo "Wrote a starting Caddyfile."
+      else
+        echo "Existing Caddyfile found — left untouched."
+      fi
+
+      if [ ! -f /data/site/index.html ]; then
+      cat > /data/site/index.html <<'HTML'
+      <!doctype html><html lang="en"><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>Caddy is running</title>
+      <body style="font-family:system-ui,sans-serif;background:#0b0f14;color:#e6edf3;display:grid;place-items:center;min-height:100vh;margin:0">
+      <div style="text-align:center;max-width:34rem;padding:2rem">
+      <h1 style="font-size:2rem">🧱 Caddy is running</h1>
+      <p style="color:#9aa7b4">Your site lives in <b>site/</b> — replace this file from the
+      <b>Files</b> tab. The <b>Caddyfile</b> next to it decides how it is served;
+      restart the server after editing it.</p></div></body></html>
+      HTML
+        echo "Placeholder page written to site/."
+      else
+        echo "Existing site found — left untouched."
+      fi
+
+  startup:
+    # The image's own CMD, with --config repointed from the baked-in
+    # /etc/caddy/Caddyfile to the one in the server's file area — so the file the
+    # user edits is the file that runs. The leading "caddy" is required: the
+    # image has no entrypoint to prepend it (see the docker block above).
+    exec: ["caddy", "run", "--config", "/srv/Caddyfile", "--adapter", "caddyfile"]
+    done_regex: 'serving initial configuration'
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  backup:
+    include: ["."]

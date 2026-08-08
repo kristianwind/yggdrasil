@@ -20,8 +20,14 @@ gameskill:
     of it — NPM, or a Cloudflare tunnel — to terminate TLS, which is how every
     other published site here already works. Everything else Caddy does works
     normally.
+    It can also be the front door for a whole host — reverse-proxying the other
+    servers on the box behind one name each. Two notes if you use it that way:
+    move its ports to 80/443 from Settings after creating it (a rune cannot claim
+    a privileged port itself), and address the other servers as
+    172.17.0.1:<port>, not localhost — inside a container, localhost is the
+    container.
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # caddy:2-alpine declares NO entrypoint — the whole invocation lives in CMD
@@ -123,8 +129,18 @@ gameskill:
     exec: ["caddy", "run", "--config", "/srv/Caddyfile", "--adapter", "caddyfile"]
     done_regex: 'serving initial configuration'
 
+  # Two ports, because Caddy is also useful as the thing everything else sits
+  # behind. The panel assigns both from its own range at creation; an admin can
+  # repoint them afterwards (Settings → ports), and there is no 1024 floor — so
+  # a server acting as the host's front door can be moved to 80 and 443. That is
+  # the only way to get there: a rune cannot claim a privileged port itself.
+  #
+  # Before pinning 443, check nothing already holds it. `tailscaled` takes it for
+  # Tailscale Serve on the boxes here, and Docker publishes on 0.0.0.0, so the
+  # bind fails outright rather than sharing.
   ports:
     - { name: web, default: 80, protocol: tcp }
+    - { name: https, default: 443, protocol: tcp }
 
   backup:
     include: ["."]

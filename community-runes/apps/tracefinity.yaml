@@ -1,0 +1,85 @@
+gameskill:
+  id: tracefinity
+  name: "Tracefinity"
+  category: "Apps"
+  description: >
+    Photograph your tools and get printable Gridfinity bins shaped to them. You
+    upload a picture of a drawer or a handful of tools, it traces each outline,
+    and you download the models to print.
+
+    Bring a Google Gemini API key if you want it to do the tracing for you —
+    it can also be typed in the web interface instead, so the key never has to
+    live on the server. Everything it produces is kept in the server's file
+    area.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # One container, one volume, no database — the project's own compose file is
+  # three lines, and this rune is that with the panel's plumbing attached.
+  #
+  # user 0:0 is required, not cosmetic: the image's entrypoint expects to start
+  # as root so it can map its internal user onto whoever owns the storage
+  # directory, then drop to it with gosu. Started non-root it refuses outright
+  # when it cannot write.
+  #
+  # :latest rather than the newest version tag. 0.4.0 — the most recent numbered
+  # release — predates the project's rootless work and ships NO entrypoint at
+  # all: it runs supervisord straight as root, so everything it writes into the
+  # server's data directory ends up owned by root and the panel can no longer
+  # manage its own files. :latest is a distinct digest from :dev, so this is the
+  # release channel and not a development build.
+  docker:
+    image: "ghcr.io/tracefinity/tracefinity:latest"
+    user: "0:0"
+    data_path: /app/storage
+
+  variables:
+    # Optional. The web interface can take a key per-session instead, which is
+    # the better answer for a shared install — set this only if you want every
+    # visitor to trace on your key. secret:true is what actually encrypts it at
+    # rest; the panel does not infer that from the name.
+    - { key: GOOGLE_API_KEY, name: "Google Gemini API key (optional — can be entered in the app instead)", type: string, default: "", secret: true }
+    - key: GEMINI_IMAGE_MODEL
+      name: "Gemini model"
+      type: select
+      default: "gemini-3-pro-image-preview"
+      options: ["gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
+    - { key: MAX_UPLOAD_MB, name: "Largest photo it will accept (MB)", type: int, default: 20, min: 1, max: 200 }
+
+  startup:
+    # The image maps its internal user to PUID/PGID and then chowns the whole
+    # storage directory to it. That directory is the panel's own data dir for
+    # this server, and PUID defaults to 1000 — so left alone the container hands
+    # the server's files to uid 1000 and the panel can no longer write its own
+    # Files tab, backups or restores.
+    #
+    # The panel's service user is created with `useradd --system`, so its uid is
+    # whatever the OS had free: 999 here, 996 on another box in this fleet.
+    # Hardcoding a number would therefore be right on one machine and wrong on
+    # the next. Reading it off the mount is correct everywhere, including installs
+    # that predate or postdate this rune.
+    #
+    # exec keeps the image's entrypoint as PID 1 so a stop signal still reaches
+    # supervisord and the app shuts down cleanly instead of being killed.
+    # The mkdir+chown below is NOT redundant with the entrypoint's own. The
+    # entrypoint creates uploads/, processed/ and outputs/ as root and only then
+    # decides whether to chown, and it decides by looking at the TOP directory
+    # alone. That directory already belongs to the panel, so the check passes and
+    # the three new root-owned subdirectories are left behind — where neither the
+    # app (which drops to PUID) nor the panel can write. Verified in a container:
+    # storage 999:982 but uploads/processed/outputs 0:0. Creating and chowning
+    # them here, while still root, closes it on first run and is a no-op after.
+    command: |
+      export PUID="$(stat -c %u /app/storage)" PGID="$(stat -c %g /app/storage)"
+      echo "tracefinity: running as ${PUID}:${PGID} to match the panel's data directory"
+      mkdir -p /app/storage/uploads /app/storage/processed /app/storage/outputs
+      chown -R "${PUID}:${PGID}" /app/storage
+      exec docker-entrypoint.sh supervisord -c /etc/supervisor/conf.d/tracefinity.conf
+    done_regex: 'entered RUNNING state'
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+
+  backup:
+    include: ["."]

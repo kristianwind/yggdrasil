@@ -146,21 +146,19 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 //
 // Hand-maintained on purpose. Everything above comes from the rune catalogue;
 // these are third-party projects whose repositories the generator has no reason
-// to read, and there are two of them.
-const builtOn = `<h2>Built on Yggdrasil <span class="count">2</span></h2>
+// to read.
+//
+// Kokkeri (Andreas Dinesen — recipe library, meal planner, shopping list) belongs
+// here too and was listed until 2026-08-09, but its repository is not public yet.
+// A card for something nobody can go and look at is an advert, not a reference,
+// so it comes back when the repository does — as an <a href>, alongside Uruz.
+const builtOn = `<h2>Built on Yggdrasil <span class="count">1</span></h2>
 <p class="lede">Applications written by other people that install as a rune — one entry in the catalogue, and the panel builds, runs and backs them up like anything else.</p>
 <div class="grid">
   <a class="app" href="https://github.com/kristianwind/uruz" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">ᚢ</span></div>
     <div class="meta"><div class="name">Uruz <span class="badge">GitHub ↗</span></div><div class="desc">Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web.</div></div>
   </a>
-  <!-- Kokkeri's repository is private, so this card deliberately has no link: one
-       that sends every visitor to a GitHub 404 is worse than one that promises no
-       destination. Swap the div for an <a href> the day it opens. -->
-  <div class="app">
-    <div class="ic"><span class="glyph">🍲</span></div>
-    <div class="meta"><div class="name">Kokkeri <span class="badge">private</span></div><div class="desc">Recipe library, meal planner and shopping list — a self-hosted answer to the subscription recipe apps. By Andreas Dinesen.</div></div>
-  </div>
 </div>
 `
 

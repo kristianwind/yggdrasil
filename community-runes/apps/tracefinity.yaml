@@ -12,7 +12,7 @@ gameskill:
     live on the server. Everything it produces is kept in the server's file
     area.
   author: "yggdrasil-community"
-  version: 2
+  version: 3
   icon: "app"
 
   # One container, one volume, no database — the project's own compose file is
@@ -42,6 +42,7 @@ gameskill:
     data_path: /app/storage
 
   variables:
+    # ── Who it runs as ────────────────────────────────────────────────────────
     # Same shape as the LinuxServer runes here. The image chowns its storage to
     # PUID:PGID, and that storage IS the panel's data directory for this server —
     # so a wrong value hands the server's files to a uid the panel isn't, and the
@@ -57,16 +58,67 @@ gameskill:
       name: "Run-as GID"
       type: int
       default: 982
-    # Optional. The web interface can take a key per-session instead, which is
-    # the better answer for a shared install — set this only if you want every
-    # visitor to trace on your key. secret:true is what actually encrypts it at
-    # rest; the panel does not infer that from the name.
-    - { key: GOOGLE_API_KEY, name: "Google Gemini API key (optional — can be entered in the app instead)", type: string, default: "", secret: true }
+
+    # ── Tracing: what draws the outlines ──────────────────────────────────────
+    # Leave empty and it picks for itself: a key below selects that service,
+    # otherwise it runs the local models. Nothing here is required — the default
+    # local tracer needs no account anywhere and no GPU, only AVX.
+    #
+    # RAM is in the labels because it is the deciding factor and the failure is
+    # not obvious: the tracer and the paper-detection model are both resident for
+    # the life of the container, so an under-provisioned box gets an OOM kill
+    # mid-trace rather than a message saying the model was too big.
+    - key: TRACERS
+      name: "Tracer (blank = choose automatically)"
+      type: select
+      default: ""
+      options: ["", "isnet", "birefnet-lite", "inspyrenet", "gemini", "replicate", "fal"]
+    - key: TRACEFINITY_ONNX_PROVIDER
+      name: "Local tracer hardware — auto, cpu, or cuda (NVIDIA only)"
+      type: select
+      default: "auto"
+      options: ["auto", "cpu", "cuda"]
+
+    # Remote tracers. Each is only consulted when its own key is filled in.
+    # secret:true is what actually encrypts these at rest; the panel does not
+    # infer that from the name.
+    - { key: GOOGLE_API_KEY, name: "Google Gemini API key — for the gemini tracer (optional; can also be typed in the app)", type: string, default: "", secret: true }
     - key: GEMINI_IMAGE_MODEL
       name: "Gemini model"
       type: select
-      default: "gemini-3-pro-image-preview"
-      options: ["gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
+      default: "gemini-3.1-flash-image-preview"
+      options: ["gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
+    - { key: REPLICATE_API_TOKEN, name: "Replicate API token — for the replicate tracer (optional)", type: string, default: "", secret: true }
+    - { key: FAL_KEY, name: "fal.ai key — for the fal tracer (optional)", type: string, default: "", secret: true }
+
+    # ── Naming traced tools (optional, off by default) ────────────────────────
+    # A different job from tracing, and a much smaller one: it sends a cropped
+    # picture of each unnamed outline and gets back a short name. Vision in, text
+    # out — so any vision-capable model can do it, unlike the tracers above,
+    # which have to GENERATE a mask image.
+    #
+    # `openrouter` is the bring-your-own option as much as it is OpenRouter: the
+    # endpoint below is overridable, and the request is ordinary OpenAI-style
+    # chat completions, so a local llama.cpp or vLLM server works by pointing
+    # OPENROUTER_URL at it and putting any non-empty string in the key. Use
+    # `ollama` only for a real Ollama server — that provider speaks Ollama's own
+    # API, not the OpenAI-compatible one.
+    - key: TOOL_LABEL_PROVIDER
+      name: "Name tools automatically"
+      type: select
+      default: "none"
+      options: ["none", "ollama", "openrouter"]
+    - { key: TOOL_LABEL_OLLAMA_URL, name: "Ollama server URL (ollama provider)", type: string, default: "http://localhost:11434" }
+    - { key: TOOL_LABEL_MODEL, name: "Ollama vision model (ollama provider)", type: string, default: "qwen3-vl:4b" }
+    - { key: OPENROUTER_URL, name: "Chat-completions endpoint — change this to use your own OpenAI-compatible server", type: string, default: "https://openrouter.ai/api/v1/chat/completions" }
+    - { key: OPENROUTER_API_KEY, name: "API key for that endpoint (any non-empty value for a local server)", type: string, default: "", secret: true }
+    # A comma-separated list is tried in order. That exists for OpenRouter's
+    # free tier, where the 20 requests/minute pool is shared per model across
+    # every user of the service — so a popular model returns 429 because of
+    # strangers, and the next one in the list takes over.
+    - { key: OPENROUTER_LABEL_MODEL, name: "Model, or comma-separated fallback list", type: string, default: "google/gemini-2.0-flash-001" }
+
+    # ── Uploads ───────────────────────────────────────────────────────────────
     - { key: MAX_UPLOAD_MB, name: "Largest photo it will accept (MB)", type: int, default: 20, min: 1, max: 200 }
 
   # Create the three working directories up front. The image's entrypoint makes

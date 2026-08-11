@@ -12,7 +12,7 @@ gameskill:
     live on the server. Everything it produces is kept in the server's file
     area.
   author: "yggdrasil-community"
-  version: 4
+  version: 5
   icon: "app"
 
   # One container, one volume, no database — the project's own compose file is
@@ -117,6 +117,18 @@ gameskill:
     # every user of the service — so a popular model returns 429 because of
     # strangers, and the next one in the list takes over.
     - { key: OPENROUTER_LABEL_MODEL, name: "Model, or comma-separated fallback list", type: string, default: "google/gemini-2.0-flash-001" }
+    # Naming runs SYNCHRONOUSLY, once per still-unnamed outline, so this timeout
+    # is spent per tool in the photo rather than per trace. It matters most with
+    # a local server that swaps models on demand: the first call pays the load,
+    # and a model that needs longer than this is simply never heard from — the
+    # outline keeps its generic "tool 1" and nothing says why. Measured against a
+    # llama-swap host: a 3B vision model answered in ~6s, a 32B one in ~39s, i.e.
+    # already past the default.
+    - { key: TOOL_LABEL_TIMEOUT_SECONDS, name: "Seconds to wait per tool before giving up on a name", type: int, default: 30, min: 5, max: 300 }
+    # Each crop is scaled to this on its longest edge before being sent. Larger
+    # is not obviously better: it costs prompt tokens and time on every tool, and
+    # a silhouette on paper is not a detail shot.
+    - { key: TOOL_LABEL_MAX_CROP_PX, name: "Longest edge of each cropped tool image (px)", type: int, default: 512, min: 128, max: 2048 }
 
     # ── Uploads ───────────────────────────────────────────────────────────────
     - { key: MAX_UPLOAD_MB, name: "Largest photo it will accept (MB)", type: int, default: 20, min: 1, max: 200 }

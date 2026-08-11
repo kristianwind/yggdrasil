@@ -12,7 +12,7 @@ gameskill:
     live on the server. Everything it produces is kept in the server's file
     area.
   author: "yggdrasil-community"
-  version: 3
+  version: 4
   icon: "app"
 
   # One container, one volume, no database — the project's own compose file is
@@ -143,7 +143,17 @@ gameskill:
     # and its own CMD (supervisord), which is what it should do — a custom
     # command here is what forced the passwd shim in v1 and broke the start.
     command: ""
-    done_regex: 'entered RUNNING state'
+    # Wait for the BACKEND, not for supervisord. supervisord reports its three
+    # programs up about three seconds in, but the backend then spends the best
+    # part of a minute loading the tracer and paper-detection models — they stay
+    # resident, so this is once per start, not per request. Measured on .164:
+    # container up 06:11:01, "entered RUNNING state" 06:11:04, backend actually
+    # serving 06:12:01.
+    #
+    # Finishing on the supervisord line marks the server running through that
+    # whole window, and a page opened in it gets nginx's 502 HTML where it
+    # expects JSON — which the app surfaces as the useless "[object Object]".
+    done_regex: 'Application startup complete'
 
   ports:
     - { name: web, default: 3000, protocol: tcp }

@@ -349,6 +349,19 @@ Recognised formats (`.properties`, `.env`, `.cfg`, `.conf`) open as a form with 
 per setting, with a raw view a click away. A file that isn't there yet — most are written
 by the game on first boot — says so instead of erroring.
 
+### Some settings are written again on every start
+
+A rune may re-apply certain values from **Settings** each time the server starts, so that
+changing one there actually takes effect instead of looking applied while the server keeps
+the old value. Minecraft (Java) does this for `difficulty`, `hardcore` and the whitelist.
+
+Those particular lines are therefore **not** yours to edit in Files: whatever you type is
+replaced at the next start by what Settings says. It looks like the panel resetting your
+change, and it is — set them in Settings instead, where the value survives.
+
+Everything else in the file is left alone. If a setting has a field in **Settings**, that
+field is where it lives; if it doesn't, Files is the place.
+
 Which files appear is the rune's decision, via
 [`config_files`](../reference/rune-schema.md#config_files). A rune that names none simply
 doesn't show the row.

@@ -336,6 +336,15 @@ keeps its config four directories down. The shortcut skips the hunt.</p>
 <p>Recognised formats (<code>.properties</code>, <code>.env</code>, <code>.cfg</code>, <code>.conf</code>) open as a form with one field
 per setting, with a raw view a click away. A file that isn&rsquo;t there yet — most are written
 by the game on first boot — says so instead of erroring.</p>
+<h3 id="some-settings-are-written-again-on-every-start">Some settings are written again on every start</h3>
+<p>A rune may re-apply certain values from <strong>Settings</strong> each time the server starts, so that
+changing one there actually takes effect instead of looking applied while the server keeps
+the old value. Minecraft (Java) does this for <code>difficulty</code>, <code>hardcore</code> and the whitelist.</p>
+<p>Those particular lines are therefore <strong>not</strong> yours to edit in Files: whatever you type is
+replaced at the next start by what Settings says. It looks like the panel resetting your
+change, and it is — set them in Settings instead, where the value survives.</p>
+<p>Everything else in the file is left alone. If a setting has a field in <strong>Settings</strong>, that
+field is where it lives; if it doesn&rsquo;t, Files is the place.</p>
 <p>Which files appear is the rune&rsquo;s decision, via
 <a href="reference-rune-schema.html#config_files"><code>config_files</code></a>. A rune that names none simply
 doesn&rsquo;t show the row.</p>
@@ -396,7 +405,7 @@ installing. You only ever see selection controls for servers you actually hold
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody’s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t3" href="#copying-and-downloading-a-log">Copying and downloading a log</a><a class="t2" href="#files">Files</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody’s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t3" href="#copying-and-downloading-a-log">Copying and downloading a log</a><a class="t2" href="#files">Files</a><a class="t3" href="#some-settings-are-written-again-on-every-start">Some settings are written again on every start</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

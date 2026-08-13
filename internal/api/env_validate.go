@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
@@ -88,6 +89,26 @@ func validateVar(v gameskill.Variable, raw string) error {
 		// literal "yes" in a config file that expects true/false.
 		if raw != "true" && raw != "false" {
 			return fmt.Errorf("must be true or false, got %q", raw)
+		}
+	}
+
+	// A shape the rune declares. This is the last chance to say something useful:
+	// past here the value is the container's problem, and what comes back is
+	// whatever that program prints before exiting — "invalid pihole format",
+	// naming neither the field nor what was wrong with it.
+	//
+	// Compiled rather than cached because validate() already proved it compiles
+	// at upload, and this runs once per save, not per request.
+	if v.Pattern != "" {
+		re, err := regexp.Compile(v.Pattern)
+		if err != nil {
+			return nil // a rune that cannot compile its own check does not get to block a save
+		}
+		if !re.MatchString(raw) {
+			if v.Hint != "" {
+				return fmt.Errorf("%s", v.Hint)
+			}
+			return fmt.Errorf("does not have the expected format")
 		}
 	}
 	return nil

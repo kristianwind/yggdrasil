@@ -334,11 +334,19 @@ func (s *Server) recordCrash(serverID, containerID string, exitCode int) {
 	// graceful terminations — a docker stop, a restart, or a host reboot — not crashes.
 	if isCrashExit(exitCode) {
 		name := s.serverName(serverID)
-		msg := fmt.Sprintf("💥 %s exited unexpectedly (code %d)", name, exitCode)
-		if reason != "" {
-			msg += "\n```\n" + reason + "\n```"
+		title := fmt.Sprintf("%s exited unexpectedly (code %d)", name, exitCode)
+		// Through the policy rather than straight to the notifier. Two things
+		// come from that: the crash is recorded in `alerts` like every other
+		// detection, so the activity feed can show it — it could not before —
+		// and a server crash-looping every few seconds becomes one message an
+		// hour instead of one per exit.
+		if s.raiseIncident(serverID, "crash", title, reason, alertPageCooldown) {
+			msg := "💥 " + title
+			if reason != "" {
+				msg += "\n```\n" + reason + "\n```"
+			}
+			go s.notifyServer(serverID, msg)
 		}
-		go s.notifyServer(serverID, msg)
 		go s.kvasirReact(serverID, "crash", fmt.Sprintf("exit %d", exitCode), reason)
 	}
 }

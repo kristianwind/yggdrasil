@@ -470,3 +470,43 @@ func (s *Server) routineAlertSummary(hours int) string {
 	return fmt.Sprintf("🔕 Handled quietly: %d routine situations (%d hits) recorded without paging you\n%s",
 		situations, totalHits, strings.Join(lines, "\n"))
 }
+
+// Some situations are incidents by nature rather than by measurement. A crash,
+// or a server still down hours later, has no sources and no hit count — feeding
+// it to classifyAlert would put it below every threshold and file it as routine,
+// which is the same trap player anomalies already sidestep by bypassing the
+// policy entirely.
+//
+// Bypassing it wholesale is what left crashes outside the record, though: they
+// notified directly, so nothing landed in `alerts`, nothing deduped, and the
+// activity feed could not show them. raiseIncident is the middle path — the
+// classifier is skipped because there is nothing for it to measure, but the
+// recording and the dedupe are the same ones every other detection gets.
+//
+// Returns whether the caller should notify now.
+func (s *Server) raiseIncident(serverID, key, title, detail string, cooldown time.Duration) bool {
+	page := !s.incidentCoolingDown(serverID, key, cooldown)
+	paged := 0
+	if page {
+		paged = 1
+	}
+	s.db.Exec(
+		`INSERT INTO alerts (id, server_id, key, class, title, detail, sources, hits, reason, paged)
+		 VALUES (?,?,?,?,?,?,'',0,?,?)`,
+		uuid.New().String(), serverID, key, string(alertIncident), title,
+		detail, "incident by nature: "+key, paged)
+	return page
+}
+
+// incidentCoolingDown is alertCoolingDown with a caller-chosen window. A crash
+// keeps the one-hour default; "still down" uses a much longer one, because the
+// useful reminder about a server that has been dead since 02:00 is daily, not
+// hourly — an hourly one is how a real outage becomes something you filter out.
+func (s *Server) incidentCoolingDown(serverID, key string, window time.Duration) bool {
+	var n int
+	s.db.QueryRow(
+		`SELECT COUNT(*) FROM alerts WHERE server_id=? AND key=? AND paged=1
+		 AND created_at >= datetime('now', ?)`,
+		serverID, key, fmt.Sprintf("-%d minutes", int(window.Minutes()))).Scan(&n) //nolint:errcheck
+	return n > 0
+}

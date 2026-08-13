@@ -267,6 +267,8 @@ variables:
 | `default` | any | Pre-filled value. Stringified when it reaches the container. |
 | `required` | bool | Marks the field with an asterisk in the form. |
 | `min`, `max` | int | Bounds for an `int`. Optional, and independent — you can set just one. |
+| `pattern` | string | A regular expression the value must match. |
+| `hint` | string | What to say when it doesn't. |
 | `secret` | bool | Treats the value as a secret. |
 
 There is no default type — a variable with no `type`, or an unknown one, fails validation.
@@ -291,6 +293,37 @@ Two details worth knowing if you're writing a rune:
   doesn't strand servers that already exist.
 - Only variables you declare are checked. The env a container sees has other sources (injected
   ports, `HOME`, `SERVER_NAME`), and those pass through untouched.
+
+### `pattern` — for values with a shape
+
+`type` and `min`/`max` cover a number or a choice, but not a field whose value has internal
+structure. Without something to check against, the first thing to notice a malformed value is the
+container, and what you get back is whatever that program prints before exiting.
+
+```yaml
+  - key: PRIMARY
+    name: "Primary Pi-hole — paste address AND password together, e.g. http://192.168.1.3|mypassword"
+    type: string
+    secret: true
+    pattern: '^https?://[^|\s]+\|.+$'
+    hint: "must be the address AND the password joined by a pipe, like http://192.168.1.3|mypassword — not the password on its own"
+```
+
+That example is from `nebula-sync`, and it exists because of what happened without it: the field
+takes `address|password` in one string, someone pasted the password alone, and the container exited
+two seconds after Start with `invalid pihole format` — naming neither the field nor what was wrong
+with it. The panel had the value in its hand and passed it through.
+
+Write the `hint` as the sentence you'd say to someone doing it wrong. It replaces the error
+entirely, so it should describe the value, not the regex.
+
+Two rules the panel applies:
+
+- **The pattern is compiled when the rune is uploaded.** One that doesn't compile is rejected there
+  and then, rather than silently validating nothing — protection that isn't there is worse than
+  none.
+- **An empty value still passes.** A blank optional field means "use the default", and a pattern
+  must not turn leaving a field alone into an error.
 
 `secret: true` does three things: the form renders a password field with show/generate/copy
 controls, the value is encrypted at rest in the database, and it's masked in API responses. The

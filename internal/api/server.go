@@ -104,6 +104,8 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.startDiskAlarmLoop()
 	s.startWatcherLoop()
 	s.startAnomalyLoop()
+	s.startStillDownLoop()
+	s.startDataAccessLoop()
 	return s
 }
 

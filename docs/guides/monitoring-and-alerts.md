@@ -237,6 +237,38 @@ explains what happened; it does not decide whether you hear about it.
 Player anomalies (a mass disconnect, an unusual influx) bypass this policy — they carry no traffic
 sources to judge, and are governed by their own cooldown instead.
 
+### Incidents that aren't traffic
+
+Some situations are incidents by their nature rather than by measurement. A crash has no sources
+and no hit count, so putting it through the traffic classifier would place it under every threshold
+and file it as routine. These skip the classifier but keep the record and the once-per-window
+dedupe every other detection gets:
+
+| Situation | Raised | Repeats |
+|---|---|---|
+| A container exited unexpectedly | Immediately | Hourly, so a crash-looping server is one message an hour rather than one per exit |
+| A server is **still** down | Two hours after the exit | Daily |
+| The panel can't write a server's files | Within an hour of it happening | Daily |
+
+**"Still down" is the one that matters most.** A crash tells you a server died; nothing used to
+tell you it was still dead. A DayZ server here exited at 02:04, the panel caught it, sent one
+message — and it stayed down for two days while the nightly schedules kept recording "update:
+skipped — server is stopped". One message at two in the morning is a report that a server *went*
+down, not that a server *is* down.
+
+It only fires when the last thing that happened to the server was an unexpected exit with no
+operator action after it. Someone who stops a server has said what they want, and paging about
+those would drown the ones that fell over.
+
+**"Can't write a server's files"** catches the commonest way a server quietly half-breaks. Images
+that start as root often chown their data directory to `PUID:PGID` and drop to it, and `PUID`
+defaults to 1000 in most of them — while the panel's account is whatever `useradd --system` picked.
+When they differ, the container takes the directory, and backups, restores and the Files tab fail
+for that server while the app itself carries on looking healthy. The check is a write probe rather
+than a comparison of user ids: comparing would flag the runes that use a different uid on purpose
+(mosquitto runs as the broker's own) and would miss a directory that matches on paper but still
+can't be written because of its mode.
+
 ## The History tab
 
 Every server has a **History** tab answering "what happened to this, and who did it":

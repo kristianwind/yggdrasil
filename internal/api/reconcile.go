@@ -44,6 +44,7 @@ func (s *Server) watchStartupReadyFrom(serverID, containerID, doneRegex string, 
 	webPort := s.firstWebHostPort(serverID)
 	deadline := start.Add(startupReadyDeadline)
 	warnedSlow := false
+	logSaysReady := false // the rune's regex matched; still waiting on the port
 	for time.Now().Before(deadline) {
 		time.Sleep(3 * time.Second)
 		// A server that stays in "starting" far longer than usual (but hasn't crashed)
@@ -69,18 +70,38 @@ func (s *Server) watchStartupReadyFrom(serverID, containerID, doneRegex string, 
 			s.markStarted(serverID)
 			return
 		}
-		if rc, err := s.docker.LogsSnapshot(context.Background(), containerID, readinessScanTail); err == nil {
-			var buf bytes.Buffer
-			_ = docker.DemuxCopy(&buf, rc)
-			rc.Close()
-			// Strip ANSI so a rune's regex isn't defeated by colour codes an app wraps
-			// its log lines in (NestJS/Immich do this heavily).
-			if re.Match([]byte(stripANSI(buf.String()))) {
-				s.markStarted(serverID)
-				return
+		// Once the log has said ready there is nothing more to learn from it, and
+		// re-reading 2000 lines every three seconds while waiting on a port is
+		// work for nobody.
+		if !logSaysReady {
+			if rc, err := s.docker.LogsSnapshot(context.Background(), containerID, readinessScanTail); err == nil {
+				var buf bytes.Buffer
+				_ = docker.DemuxCopy(&buf, rc)
+				rc.Close()
+				// Strip ANSI so a rune's regex isn't defeated by colour codes an app wraps
+				// its log lines in (NestJS/Immich do this heavily).
+				if re.Match([]byte(stripANSI(buf.String()))) {
+					// The log says ready. For a server with no web port that is the
+					// whole answer, and for a game it is the only one available.
+					//
+					// With a web port it is only half. A rune's regex matches the
+					// first line that looks like readiness, and an app can print
+					// that well before it serves: Tracefinity's supervisord reports
+					// its three programs up after three seconds, then spends the
+					// best part of a minute loading models. The panel called it
+					// running for that whole window, and a page opened in it got
+					// nginx's 502 where it expected JSON — which the app showed as
+					// "[object Object]". So when there is a port, it has to answer.
+					if webPort == 0 {
+						s.markStarted(serverID)
+						return
+					}
+					logSaysReady = true
+				}
 			}
 		}
-		// App-readiness fallback: the web port is now serving.
+		// The port is serving. On its own this is enough — the regex is a hint
+		// about a log, this is the thing the user is actually waiting for.
 		if webPort > 0 {
 			conn, derr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", webPort), time.Second)
 			if derr == nil {
@@ -334,12 +355,34 @@ func (s *Server) recordCrash(serverID, containerID string, exitCode int) {
 	// graceful terminations — a docker stop, a restart, or a host reboot — not crashes.
 	if isCrashExit(exitCode) {
 		name := s.serverName(serverID)
-		msg := fmt.Sprintf("💥 %s exited unexpectedly (code %d)", name, exitCode)
-		if reason != "" {
-			msg += "\n```\n" + reason + "\n```"
+		title := fmt.Sprintf("%s exited unexpectedly (code %d)", name, exitCode)
+		// Through the policy rather than straight to the notifier. Two things
+		// come from that: the crash is recorded in `alerts` like every other
+		// detection, so the activity feed can show it — it could not before —
+		// and a server crash-looping every few seconds becomes one message an
+		// hour instead of one per exit.
+		if s.raiseIncident(serverID, "crash", title, reason, alertPageCooldown) {
+			msg := "💥 " + title
+			if reason != "" {
+				msg += "\n```\n" + reason + "\n```"
+			}
+			go s.notifyServer(serverID, msg)
 		}
-		go s.notifyServer(serverID, msg)
-		go s.kvasirReact(serverID, "crash", fmt.Sprintf("exit %d", exitCode), reason)
+		// Tell Kvasir whether the kernel did it, rather than leaving it to infer
+		// memory pressure from the number. 137 is SIGKILL, which the OOM killer
+		// produces — and so does Docker when a container overruns its stop
+		// timeout on an ordinary shutdown. Given only "exit 137" the model
+		// reasonably guesses out-of-memory, which is what it did for a DayZ
+		// server that had shut down cleanly and merely taken too long to go.
+		detail := fmt.Sprintf("exit %d", exitCode)
+		if _, oom, err := s.docker.ExitDetail(context.Background(), containerID); err == nil {
+			if oom {
+				detail += " (killed by the kernel's OOM killer — the container hit its memory limit)"
+			} else {
+				detail += " (NOT an OOM kill — Docker reports the memory limit was not the cause)"
+			}
+		}
+		go s.kvasirReact(serverID, "crash", detail, reason)
 	}
 }
 

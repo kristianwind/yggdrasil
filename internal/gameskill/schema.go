@@ -212,6 +212,21 @@ type Variable struct {
 	// the generate/copy controls) — e.g. an API key. The VarForm also auto-detects
 	// password/secret/token by name; this is the explicit opt-in for others.
 	Secret bool `yaml:"secret" json:"secret,omitempty"`
+
+	// Pattern is a regular expression the value must match, and Hint is what to
+	// say when it does not.
+	//
+	// It exists because the alternative is a container that dies two seconds
+	// after Start with a message only its own author can read. Nebula Sync
+	// wants "http://host|password" in one field; given a bare password it exits
+	// with `invalid pihole format`, which names neither the field nor what was
+	// wrong with it. The panel had the value in its hand and let it through.
+	//
+	// Deliberately not applied to a secret's stored value in the UI: the check
+	// runs where the value is known, so an empty optional field is skipped and a
+	// masked one is still validated on save.
+	Pattern string `yaml:"pattern" json:"pattern,omitempty"`
+	Hint    string `yaml:"hint"    json:"hint,omitempty"`
 }
 
 type Install struct {
@@ -399,6 +414,14 @@ func validate(gs *Gameskill) error {
 		}
 		if v.Type == "select" && len(v.Options) == 0 {
 			return fmt.Errorf("variable %q is type select but has no options", v.Key)
+		}
+		// Reject a bad pattern at parse time. A rune that cannot compile its own
+		// validator would otherwise silently validate nothing, which is worse
+		// than having no pattern at all — it reads as protection that isn't there.
+		if v.Pattern != "" {
+			if _, err := regexp.Compile(v.Pattern); err != nil {
+				return fmt.Errorf("variable %q has an invalid pattern: %v", v.Key, err)
+			}
 		}
 	}
 

@@ -270,6 +270,53 @@ should be reproducible and testable, not a function of what a model felt like an
 explains what happened; it does not decide whether you hear about it.</p>
 <p>Player anomalies (a mass disconnect, an unusual influx) bypass this policy — they carry no traffic
 sources to judge, and are governed by their own cooldown instead.</p>
+<h3 id="incidents-that-arent-traffic">Incidents that aren&rsquo;t traffic</h3>
+<p>Some situations are incidents by their nature rather than by measurement. A crash has no sources
+and no hit count, so putting it through the traffic classifier would place it under every threshold
+and file it as routine. These skip the classifier but keep the record and the once-per-window
+dedupe every other detection gets:</p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Raised</th>
+<th>Repeats</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A container exited unexpectedly</td>
+<td>Immediately</td>
+<td>Hourly, so a crash-looping server is one message an hour rather than one per exit</td>
+</tr>
+<tr>
+<td>A server is <strong>still</strong> down</td>
+<td>Two hours after the exit</td>
+<td>Daily</td>
+</tr>
+<tr>
+<td>The panel can&rsquo;t write a server&rsquo;s files</td>
+<td>Within an hour of it happening</td>
+<td>Daily</td>
+</tr>
+</tbody>
+</table>
+<p><strong>&ldquo;Still down&rdquo; is the one that matters most.</strong> A crash tells you a server died; nothing used to
+tell you it was still dead. A DayZ server here exited at 02:04, the panel caught it, sent one
+message — and it stayed down for two days while the nightly schedules kept recording &ldquo;update:
+skipped — server is stopped&rdquo;. One message at two in the morning is a report that a server <em>went</em>
+down, not that a server <em>is</em> down.</p>
+<p>It only fires when the last thing that happened to the server was an unexpected exit with no
+operator action after it. Someone who stops a server has said what they want, and paging about
+those would drown the ones that fell over.</p>
+<p><strong>&ldquo;Can&rsquo;t write a server&rsquo;s files&rdquo;</strong> catches the commonest way a server quietly half-breaks. Images
+that start as root often chown their data directory to <code>PUID:PGID</code> and drop to it, and <code>PUID</code>
+defaults to 1000 in most of them — while the panel&rsquo;s account is whatever <code>useradd --system</code> picked.
+When they differ, the container takes the directory, and backups, restores and the Files tab fail
+for that server while the app itself carries on looking healthy. The check is a write probe rather
+than a comparison of user ids: comparing would flag the runes that use a different uid on purpose
+(mosquitto runs as the broker&rsquo;s own) and would miss a directory that matches on paper but still
+can&rsquo;t be written because of its mode.</p>
 <h2 id="the-history-tab">The History tab</h2>
 <p>Every server has a <strong>History</strong> tab answering &ldquo;what happened to this, and who did it&rdquo;:</p>
 <ul>
@@ -367,7 +414,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

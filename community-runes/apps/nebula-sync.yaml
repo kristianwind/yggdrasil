@@ -21,7 +21,7 @@ gameskill:
     Supersedes Orbital Sync, which was archived in 2026 and never released
     Pi-hole v6 support beyond a prerelease build.
   author: "yggdrasil-community"
-  version: 2
+  version: 3
   icon: "app"
 
   # The image ships ENTRYPOINT ["nebula-sync"] + CMD ["run"] and already runs as
@@ -48,8 +48,22 @@ gameskill:
     # Both are marked secret because the password is INSIDE the value — there is
     # no separate password field to protect. secret:true is what encrypts them at
     # rest and masks them in the API; the panel does not infer that from a name.
-    - { key: PRIMARY, name: "Primary Pi-hole — paste address AND password together, e.g. http://192.168.1.3|mypassword", type: string, default: "", required: true, secret: true }
-    - { key: REPLICAS, name: "Replicas — same form, comma-separated, e.g. http://192.168.1.4|mypassword", type: string, default: "", required: true, secret: true }
+    - key: PRIMARY
+      name: "Primary Pi-hole — paste address AND password together, e.g. http://192.168.1.3|mypassword"
+      type: string
+      default: ""
+      required: true
+      secret: true
+      pattern: '^https?://[^|\s]+\|.+$'
+      hint: "must be the address AND the password joined by a pipe, like http://192.168.1.3|mypassword — not the password on its own"
+    - key: REPLICAS
+      name: "Replicas — same form, comma-separated, e.g. http://192.168.1.4|mypassword"
+      type: string
+      default: ""
+      required: true
+      secret: true
+      pattern: '^https?://[^|\s]+\|[^,]+(,\s*https?://[^|\s]+\|[^,]+)*$'
+      hint: "each replica must be address|password, comma-separated, like http://192.168.1.4|mypassword"
 
     # Without a schedule the job syncs once and exits, which as a panel server
     # would look like an immediate crash. An hourly schedule keeps it resident

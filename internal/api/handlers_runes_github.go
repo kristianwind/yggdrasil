@@ -215,8 +215,18 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 	ghRunesMu.Unlock()
 
 	var runes []ghRune
+	// Age of what is being served, so the UI can say so. The listing is cached
+	// for ten minutes and nothing showed that: a rune updated in the catalogue
+	// and then updated from the panel gave the OLD version back, twice in a row,
+	// with the button appearing to work both times. The fetch is the expensive
+	// part (GitHub's 60-req/hour budget), so the cache stays — it just stops
+	// being invisible.
+	fetchedAt := time.Now()
+	fromCache := false
 	if ok && !refresh && time.Since(cached.at) < 10*time.Minute {
 		runes = cached.runes
+		fetchedAt = cached.at
+		fromCache = true
 	} else {
 		var err error
 		runes, err = fetchGithubRunes(r.Context(), repo, path, ref, token)
@@ -260,7 +270,12 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		out[i] = g
 	}
 
-	jsonOK(w, map[string]any{"repo": repo, "path": path, "ref": ref, "runes": out})
+	jsonOK(w, map[string]any{
+		"repo": repo, "path": path, "ref": ref, "runes": out,
+		"fetched_at":    fetchedAt.UTC().Format(time.RFC3339),
+		"from_cache":    fromCache,
+		"cache_seconds": int(time.Since(fetchedAt).Seconds()),
+	})
 }
 
 type ghDirEntry struct {

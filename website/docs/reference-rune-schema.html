@@ -461,6 +461,16 @@ var in the install and runtime containers.</p>
 <td>Bounds for an <code>int</code>. Optional, and independent — you can set just one.</td>
 </tr>
 <tr>
+<td><code>pattern</code></td>
+<td>string</td>
+<td>A regular expression the value must match.</td>
+</tr>
+<tr>
+<td><code>hint</code></td>
+<td>string</td>
+<td>What to say when it doesn&rsquo;t.</td>
+</tr>
+<tr>
 <td><code>secret</code></td>
 <td>bool</td>
 <td>Treats the value as a secret.</td>
@@ -511,6 +521,31 @@ boot. On update only the fields being changed are checked, so tightening a rune&
 doesn&rsquo;t strand servers that already exist.</li>
 <li>Only variables you declare are checked. The env a container sees has other sources (injected
 ports, <code>HOME</code>, <code>SERVER_NAME</code>), and those pass through untouched.</li>
+</ul>
+<h3 id="pattern--for-values-with-a-shape"><code>pattern</code> — for values with a shape</h3>
+<p><code>type</code> and <code>min</code>/<code>max</code> cover a number or a choice, but not a field whose value has internal
+structure. Without something to check against, the first thing to notice a malformed value is the
+container, and what you get back is whatever that program prints before exiting.</p>
+<pre><code class="language-yaml">  - key: PRIMARY
+    name: &quot;Primary Pi-hole — paste address AND password together, e.g. http://192.168.1.3|mypassword&quot;
+    type: string
+    secret: true
+    pattern: '^https?://[^|\s]+\|.+$'
+    hint: &quot;must be the address AND the password joined by a pipe, like http://192.168.1.3|mypassword — not the password on its own&quot;
+</code></pre>
+<p>That example is from <code>nebula-sync</code>, and it exists because of what happened without it: the field
+takes <code>address|password</code> in one string, someone pasted the password alone, and the container exited
+two seconds after Start with <code>invalid pihole format</code> — naming neither the field nor what was wrong
+with it. The panel had the value in its hand and passed it through.</p>
+<p>Write the <code>hint</code> as the sentence you&rsquo;d say to someone doing it wrong. It replaces the error
+entirely, so it should describe the value, not the regex.</p>
+<p>Two rules the panel applies:</p>
+<ul>
+<li><strong>The pattern is compiled when the rune is uploaded.</strong> One that doesn&rsquo;t compile is rejected there
+and then, rather than silently validating nothing — protection that isn&rsquo;t there is worse than
+none.</li>
+<li><strong>An empty value still passes.</strong> A blank optional field means &ldquo;use the default&rdquo;, and a pattern
+must not turn leaving a field alone into an error.</li>
 </ul>
 <p><code>secret: true</code> does three things: the form renders a password field with show/generate/copy
 controls, the value is encrypted at rest in the database, and it&rsquo;s masked in API responses. The
@@ -1338,7 +1373,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

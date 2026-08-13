@@ -120,6 +120,19 @@ func (a *accountLocker) reset(key string) {
 	a.mu.Unlock()
 }
 
+// lockedUntil reports when a lock expires, or the zero time when the account is
+// not locked. The admin view needs to say WHEN someone gets back in — "locked"
+// on its own only prompts the next question.
+func (a *accountLocker) lockedUntil(key string) time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	f := a.fails[key]
+	if f == nil || f.until.IsZero() || time.Now().After(f.until) {
+		return time.Time{}
+	}
+	return f.until
+}
+
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := r.RemoteAddr
 	if !loginLimiter.allow(ip) {

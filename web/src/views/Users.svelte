@@ -55,6 +55,19 @@
     }
   }
 
+  // Ten wrong passwords in fifteen minutes locks an account for fifteen more.
+  // The lock lives in the panel's memory, so before this the only way to lift
+  // one was restarting the panel — which drops every lock on the instance.
+  async function unlock(u) {
+    try {
+      await api.post(`/users/${u.id}/unlock`, {});
+      toast(`${u.username} can sign in again.`, "success");
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   async function toggleDisabled(u) {
     try {
       await api.put(`/users/${u.id}`, { disabled: !u.disabled });
@@ -93,8 +106,17 @@
         <div class="font-medium">{u.username}</div>
         <div class="text-xs text-muted">
           {u.role}{u.disabled ? " · disabled" : ""}{u.email ? ` · ${u.email}` : " · no email"}
+          {#if u.locked_until}
+            · <span class="text-warn">locked until {new Date(u.locked_until).toLocaleTimeString()}</span>
+          {/if}
         </div>
       </div>
+      {#if u.locked_until}
+        <button class="btn-ghost" onclick={() => unlock(u)}
+          title="Ten wrong passwords in fifteen minutes locks an account for fifteen more. This lifts it for this user only — restarting the panel would clear everyone's, including any that are holding a real attack off.">
+          Unlock
+        </button>
+      {/if}
       <button class="btn-ghost" onclick={() => openEdit(u)} title="Change this user's role or password.">Edit</button>
       {#if u.role !== "admin"}
         <button class="btn-ghost" onclick={() => (permUser = u)}

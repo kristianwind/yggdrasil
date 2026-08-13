@@ -299,6 +299,16 @@ successful login clears the counter. Failures counted include an unknown or disa
 username, a wrong password, a wrong TOTP code, and a replayed TOTP code.</p>
 <p>Passwords are hashed with Argon2id. Login never distinguishes &ldquo;no such user&rdquo; from &ldquo;wrong
 password&rdquo; — both return &ldquo;invalid credentials&rdquo;.</p>
+<h3 id="unlocking-someone-who-just-mistyped-it">Unlocking someone who just mistyped it</h3>
+<p>The lockout is right for an attack and irritating for a colleague who got their own password
+wrong a few times and then remembered it. <strong>Users</strong> shows a locked account with the time it
+frees itself, and an <strong>Unlock</strong> button beside it that lifts that one lock immediately. The
+action is written to the audit log — lifting a brute-force protection should leave a trace.</p>
+<p>Three things clear a lock: the fifteen minutes running out, a successful login, or that
+button.</p>
+<p>A restart of the panel also clears every lock, because they are held in memory rather than in
+the database. That was the only lever there used to be, and it is a poor one: it drops the
+locks that are holding a real attack off along with the one you meant to lift.</p>
 <h2 id="sessions-and-revocation">Sessions and revocation</h2>
 <p>Login mints a JWT (HS256) and sets it as the <code>ygg_token</code> cookie: HttpOnly, <code>SameSite=Strict</code>,
 <code>Path=/</code>. The same token is also returned in the response body for clients that prefer
@@ -342,7 +352,7 @@ in the sidebar.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#admins-and-delegates">Admins and delegates</a><a class="t2" href="#realms">Realms</a><a class="t2" href="#the-eight-permissions">The eight permissions</a><a class="t2" href="#scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</a><a class="t2" href="#the-permission-editor">The permission editor</a><a class="t2" href="#per-server-delegates">Per-server delegates</a><a class="t3" href="#worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</a><a class="t2" href="#two-factor-authentication-totp">Two-factor authentication (TOTP)</a><a class="t2" href="#passkeys-webauthn">Passkeys (WebAuthn)</a><a class="t2" href="#api-tokens">API tokens</a><a class="t2" href="#login-protection">Login protection</a><a class="t2" href="#sessions-and-revocation">Sessions and revocation</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#admins-and-delegates">Admins and delegates</a><a class="t2" href="#realms">Realms</a><a class="t2" href="#the-eight-permissions">The eight permissions</a><a class="t2" href="#scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</a><a class="t2" href="#the-permission-editor">The permission editor</a><a class="t2" href="#per-server-delegates">Per-server delegates</a><a class="t3" href="#worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</a><a class="t2" href="#two-factor-authentication-totp">Two-factor authentication (TOTP)</a><a class="t2" href="#passkeys-webauthn">Passkeys (WebAuthn)</a><a class="t2" href="#api-tokens">API tokens</a><a class="t2" href="#login-protection">Login protection</a><a class="t3" href="#unlocking-someone-who-just-mistyped-it">Unlocking someone who just mistyped it</a><a class="t2" href="#sessions-and-revocation">Sessions and revocation</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

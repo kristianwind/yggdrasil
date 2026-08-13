@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -35,6 +36,14 @@ type userInfo struct {
 	Role      string `json:"role"`
 	Disabled  bool   `json:"disabled"`
 	CreatedAt string `json:"created_at"`
+	// LockedUntil is set while repeated failed logins have the account locked
+	// out, so the admin list can show it. Empty when the account is fine.
+	//
+	// The lock lives in memory, not in the users table — which is why it could
+	// not be seen or cleared before, and why "restart the panel" was the only
+	// way to lift one. That worked because it wiped every lock on the instance,
+	// which is a blunt answer to one person mistyping their password.
+	LockedUntil string `json:"locked_until,omitempty"`
 }
 
 // normalizeEmail trims an optional email and validates its shape. An empty
@@ -67,6 +76,9 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		u.Disabled = disabled == 1
+		if until := loginAccountLock.lockedUntil(strings.ToLower(u.Username)); !until.IsZero() {
+			u.LockedUntil = until.UTC().Format(time.RFC3339)
+		}
 		list = append(list, u)
 	}
 	jsonOK(w, list)
@@ -221,3 +233,32 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 // closed set: rbac scoping is what grants a non-admin anything, so there is no
 // third tier to add here.
 func validRole(r string) bool { return r == "admin" || r == "user" }
+
+// handleUnlockUser clears a login lockout for one account.
+//
+// Ten failed logins in fifteen minutes lock a username for fifteen more,
+// independent of source IP so the limit cannot be walked around by rotating
+// X-Forwarded-For. That is the right behaviour for an attack and the wrong
+// experience for someone who mistyped their password twice and then found the
+// right one — they wait a quarter of an hour with nothing to do about it.
+//
+// Until now an admin had no way to lift one. The lock is in memory, so the only
+// thing that cleared it was restarting the panel, which drops every lock on the
+// instance — including the ones actually holding an attack off.
+//
+// Admin-only, and audited: lifting a brute-force protection is exactly the kind
+// of action that should leave a trace.
+func (s *Server) handleUnlockUser(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var username string
+	if err := s.db.QueryRowContext(r.Context(),
+		"SELECT username FROM users WHERE id=?", id).Scan(&username); err != nil {
+		jsonError(w, "user not found", http.StatusNotFound)
+		return
+	}
+	key := strings.ToLower(strings.TrimSpace(username))
+	wasLocked := !loginAccountLock.lockedUntil(key).IsZero()
+	loginAccountLock.reset(key)
+	s.auditLog(r, "user.unlock", "user:"+id, map[string]any{"username": username, "was_locked": wasLocked})
+	jsonOK(w, map[string]any{"unlocked": true, "was_locked": wasLocked})
+}

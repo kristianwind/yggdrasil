@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 8
+  version: 9
   icon: "minecraft"
 
   docker:
@@ -39,11 +39,21 @@ gameskill:
       type: select
       options: [normal, flat, large_biomes, amplified]
       default: normal
+    # Hardcore is NOT one of these. Minecraft's difficulty is peaceful/easy/
+    # normal/hard, and hardcore is a separate boolean that forces hard and makes
+    # death permanent. Players who wanted it were typing "hardcore" into
+    # server.properties by hand, where it is not a value Minecraft accepts — and
+    # the startup re-stamp below then wrote this setting back over the edit, so
+    # it looked like the panel was resetting their difficulty. It was.
     - key: DIFFICULTY
-      name: "Difficulty"
+      name: "Difficulty (hardcore is the separate switch below)"
       type: select
       options: [peaceful, easy, normal, hard]
       default: easy
+    - key: HARDCORE
+      name: "Hardcore — death is permanent and the world is locked to hard"
+      type: bool
+      default: false
     - key: RCON_PORT
       name: "RCON port (container-internal)"
       type: int
@@ -186,6 +196,10 @@ gameskill:
       setprop() { if grep -q "^$1=" server.properties 2>/dev/null; then sed -i "s/^$1=.*/$1=$2/" server.properties; else echo "$1=$2" >> server.properties; fi; }
       echo eula={{EULA}} > eula.txt
       setprop difficulty {{DIFFICULTY}}
+      # Hardcore belongs with the re-stamped settings, not the install-only ones:
+      # it can be turned on and off on an existing world, and Minecraft ignores
+      # the difficulty line while it is on.
+      setprop hardcore {{HARDCORE}}
       setprop white-list {{ENABLE_WHITELIST}}
       setprop enforce-whitelist {{ENABLE_WHITELIST}}
       exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui

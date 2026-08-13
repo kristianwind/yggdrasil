@@ -347,7 +347,21 @@ func (s *Server) recordCrash(serverID, containerID string, exitCode int) {
 			}
 			go s.notifyServer(serverID, msg)
 		}
-		go s.kvasirReact(serverID, "crash", fmt.Sprintf("exit %d", exitCode), reason)
+		// Tell Kvasir whether the kernel did it, rather than leaving it to infer
+		// memory pressure from the number. 137 is SIGKILL, which the OOM killer
+		// produces — and so does Docker when a container overruns its stop
+		// timeout on an ordinary shutdown. Given only "exit 137" the model
+		// reasonably guesses out-of-memory, which is what it did for a DayZ
+		// server that had shut down cleanly and merely taken too long to go.
+		detail := fmt.Sprintf("exit %d", exitCode)
+		if _, oom, err := s.docker.ExitDetail(context.Background(), containerID); err == nil {
+			if oom {
+				detail += " (killed by the kernel's OOM killer — the container hit its memory limit)"
+			} else {
+				detail += " (NOT an OOM kill — Docker reports the memory limit was not the cause)"
+			}
+		}
+		go s.kvasirReact(serverID, "crash", detail, reason)
 	}
 }
 

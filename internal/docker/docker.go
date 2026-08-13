@@ -548,6 +548,27 @@ func (c *Client) State(ctx context.Context, id string) (running bool, exitCode i
 	return info.State.Running, info.State.ExitCode, nil
 }
 
+// ExitDetail reports how a stopped container ended: its exit code, and whether
+// the kernel's OOM killer was what stopped it.
+//
+// The distinction is not cosmetic, and 137 is exactly where it bites. 137 is
+// 128+9 — killed by SIGKILL — which the OOM killer produces, and so does
+// Docker when a container overruns its stop timeout during an ordinary
+// shutdown. Read from the code alone they are the same event, and a DayZ
+// server that shut down cleanly and took a moment too long to exit got
+// diagnosed here as out of memory, with more memory proposed as the fix.
+// Docker knows which it was; nothing was asking it.
+func (c *Client) ExitDetail(ctx context.Context, id string) (exitCode int, oomKilled bool, err error) {
+	info, err := c.dc.ContainerInspect(ctx, id)
+	if err != nil {
+		return 0, false, err
+	}
+	if info.State == nil {
+		return 0, false, nil
+	}
+	return info.State.ExitCode, info.State.OOMKilled, nil
+}
+
 // UsedHostPorts returns the set of host ports currently published by any
 // container (running or not). This is the authoritative view for avoiding port
 // conflicts, independent of Docker's userland-proxy mode.

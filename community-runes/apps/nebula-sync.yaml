@@ -21,7 +21,7 @@ gameskill:
     Supersedes Orbital Sync, which was archived in 2026 and never released
     Pi-hole v6 support beyond a prerelease build.
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # The image ships ENTRYPOINT ["nebula-sync"] + CMD ["run"] and already runs as
@@ -37,14 +37,19 @@ gameskill:
     keep_entrypoint: true
 
   variables:
-    # Address and password in one field, separated by a pipe, exactly as the
+    # Address and password in ONE field, separated by a pipe, exactly as the
     # project expects: http://pihole.example.com|thepassword
+    #
+    # The example is in the field label because the first person to fill this in
+    # pasted only the password — the label said "url|password" and read as an
+    # instruction to enter a password. The container then exits immediately with
+    # "invalid pihole format", which does not say which field or what was wrong.
     #
     # Both are marked secret because the password is INSIDE the value — there is
     # no separate password field to protect. secret:true is what encrypts them at
     # rest and masks them in the API; the panel does not infer that from a name.
-    - { key: PRIMARY, name: "Primary Pi-hole — url|password", type: string, default: "", required: true, secret: true }
-    - { key: REPLICAS, name: "Replicas — url|password, comma-separated", type: string, default: "", required: true, secret: true }
+    - { key: PRIMARY, name: "Primary Pi-hole — paste address AND password together, e.g. http://192.168.1.3|mypassword", type: string, default: "", required: true, secret: true }
+    - { key: REPLICAS, name: "Replicas — same form, comma-separated, e.g. http://192.168.1.4|mypassword", type: string, default: "", required: true, secret: true }
 
     # Without a schedule the job syncs once and exits, which as a panel server
     # would look like an immediate crash. An hourly schedule keeps it resident

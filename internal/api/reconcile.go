@@ -341,6 +341,56 @@ func (s *Server) reconcileStatuses() {
 			s.stoppedCleanup(x.id)
 		}
 	}
+	s.adoptRunningContainers()
+}
+
+// adoptRunningContainers is the reconciler in the other direction: a server the
+// panel believes is stopped, whose container is in fact up.
+//
+// The loop above only ever looked at servers already marked running or
+// starting, so it could correct "the panel thinks it is up and it is not" and
+// never the reverse. A container started by anything other than the panel —
+// `docker start` during recovery work, a restart policy bringing one back after
+// the daemon restarted, a host reboot — stayed invisible: the server ran, took
+// players, and the panel showed it stopped, with the console refusing to attach
+// and the watchdog declining to watch something it believed was off.
+//
+// The container is the truth. If it is running, the panel says running.
+//
+// A server mid-recreate is briefly in this state too, and adopting it is
+// harmless: the container is removed moments later and the loop above puts it
+// back to stopped on the next tick.
+func (s *Server) adoptRunningContainers() {
+	rows, err := s.db.Query(
+		"SELECT id, COALESCE(container_id,'') FROM servers WHERE status='stopped' AND container_id<>''")
+	if err != nil {
+		return
+	}
+	type sv struct{ id, cid string }
+	var list []sv
+	for rows.Next() {
+		var x sv
+		if rows.Scan(&x.id, &x.cid) == nil {
+			list = append(list, x)
+		}
+	}
+	rows.Close()
+
+	for _, x := range list {
+		running, _, err := s.docker.State(context.Background(), x.cid)
+		if err != nil || !running {
+			continue
+		}
+		// Guarded on the status so a start already in flight is not overwritten
+		// by this one, and so nothing happens when the row moved on since the
+		// query above.
+		if res, err := s.db.Exec(
+			"UPDATE servers SET status='running' WHERE id=? AND status='stopped'", x.id); err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				log.Printf("reconcile: %s was running but marked stopped — adopting it", x.id)
+			}
+		}
+	}
 }
 
 // recordCrash logs an unexpected container exit to the stability history, grabbing

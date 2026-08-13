@@ -1157,6 +1157,12 @@ grant boundaries.</p>
 <td>Delete a user</td>
 </tr>
 <tr>
+<td><code>POST</code></td>
+<td><code>/api/users/{id}/unlock</code></td>
+<td>Admin</td>
+<td>Clear a login lockout for one account. Audited. Harmless when the account is not locked — the reply says which it was</td>
+</tr>
+<tr>
 <td><code>GET</code></td>
 <td><code>/api/users/{id}/permissions</code></td>
 <td>Admin</td>

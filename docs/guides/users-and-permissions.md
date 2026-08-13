@@ -258,6 +258,20 @@ username, a wrong password, a wrong TOTP code, and a replayed TOTP code.
 Passwords are hashed with Argon2id. Login never distinguishes "no such user" from "wrong
 password" — both return "invalid credentials".
 
+### Unlocking someone who just mistyped it
+
+The lockout is right for an attack and irritating for a colleague who got their own password
+wrong a few times and then remembered it. **Users** shows a locked account with the time it
+frees itself, and an **Unlock** button beside it that lifts that one lock immediately. The
+action is written to the audit log — lifting a brute-force protection should leave a trace.
+
+Three things clear a lock: the fifteen minutes running out, a successful login, or that
+button.
+
+A restart of the panel also clears every lock, because they are held in memory rather than in
+the database. That was the only lever there used to be, and it is a poor one: it drops the
+locks that are holding a real attack off along with the one you meant to lift.
+
 ## Sessions and revocation
 
 Login mints a JWT (HS256) and sets it as the `ygg_token` cookie: HttpOnly, `SameSite=Strict`,

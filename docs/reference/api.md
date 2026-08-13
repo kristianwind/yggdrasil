@@ -453,6 +453,7 @@ grant boundaries.
 | `POST` | `/api/users` | Admin | Create a user |
 | `PUT` | `/api/users/{id}` | Admin | Update a user's password, role, or disabled flag |
 | `DELETE` | `/api/users/{id}` | Admin | Delete a user |
+| `POST` | `/api/users/{id}/unlock` | Admin | Clear a login lockout for one account. Audited. Harmless when the account is not locked — the reply says which it was |
 | `GET` | `/api/users/{id}/permissions` | Admin | A user's grants |
 | `PUT` | `/api/users/{id}/permissions` | Admin | Replace a user's grants |
 | `GET` | `/api/permissions/catalog` | Admin | The assignable permissions and scope types, for building an editor |

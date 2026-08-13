@@ -12,7 +12,7 @@ gameskill:
     live on the server. Everything it produces is kept in the server's file
     area.
   author: "yggdrasil-community"
-  version: 5
+  version: 6
   icon: "app"
 
   # One container, one volume, no database — the project's own compose file is
@@ -68,8 +68,22 @@ gameskill:
     # not obvious: the tracer and the paper-detection model are both resident for
     # the life of the container, so an under-provisioned box gets an OOM kill
     # mid-trace rather than a message saying the model was too big.
+    # 🔴 Leaving this blank is not neutral. On blank the app picks for itself,
+    # and the FIRST thing it looks at is whether any remote key is filled in —
+    # including the OpenRouter key further down, which is there for naming
+    # tools, a completely different job. Fill that in to name tools on your own
+    # server and tracing silently moves off the local model too, then asks your
+    # server for Google's image model and fails with a 404 that names neither.
+    #
+    # Observed exactly that: "AI tracing failed (404 Not Found for
+    # .../v1/chat/completions)" from a llama.cpp host that answers that URL
+    # perfectly well — it simply has no model called
+    # google/gemini-3.1-flash-image-preview.
+    #
+    # So: if you set any key below, set this too. isnet is the local default and
+    # needs no account anywhere.
     - key: TRACERS
-      name: "Tracer (blank = choose automatically)"
+      name: "Tracer — set this explicitly if you fill in ANY key below, or a naming key will move tracing off the local model"
       type: select
       default: ""
       options: ["", "isnet", "birefnet-lite", "inspyrenet", "gemini", "replicate", "fal"]
@@ -88,6 +102,11 @@ gameskill:
       type: select
       default: "gemini-3.1-flash-image-preview"
       options: ["gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
+    # Only used when the tracer is gemini/openrouter AND the request is routed
+    # through OPENROUTER_URL below. Its default is a Google model, which is
+    # right for real OpenRouter and wrong for a local server — point it at a
+    # model that host actually has, or tracing 404s.
+    - { key: OPENROUTER_IMAGE_MODEL, name: "Image model for remote tracing (only if tracing through the endpoint below)", type: string, default: "google/gemini-3.1-flash-image-preview" }
     - { key: REPLICATE_API_TOKEN, name: "Replicate API token — for the replicate tracer (optional)", type: string, default: "", secret: true }
     - { key: FAL_KEY, name: "fal.ai key — for the fal tracer (optional)", type: string, default: "", secret: true }
 
@@ -111,7 +130,9 @@ gameskill:
     - { key: TOOL_LABEL_OLLAMA_URL, name: "Ollama server URL (ollama provider)", type: string, default: "http://localhost:11434" }
     - { key: TOOL_LABEL_MODEL, name: "Ollama vision model (ollama provider)", type: string, default: "qwen3-vl:4b" }
     - { key: OPENROUTER_URL, name: "Chat-completions endpoint — change this to use your own OpenAI-compatible server", type: string, default: "https://openrouter.ai/api/v1/chat/completions" }
-    - { key: OPENROUTER_API_KEY, name: "API key for that endpoint (any non-empty value for a local server)", type: string, default: "", secret: true }
+    # ⚠️ Filling this in ALSO changes which tracer is used unless TRACERS above
+    # is set explicitly. See the note there.
+    - { key: OPENROUTER_API_KEY, name: "API key for that endpoint (any non-empty value for a local server — see the tracer note above)", type: string, default: "", secret: true }
     # A comma-separated list is tried in order. That exists for OpenRouter's
     # free tier, where the 20 requests/minute pool is shared per model across
     # every user of the service — so a popular model returns 429 because of

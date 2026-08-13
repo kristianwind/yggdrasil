@@ -284,6 +284,17 @@
     repos.find((rp) => rp.repo === ghRepo.trim() && rp.path === ghPath.trim()),
   );
   const repoSaved = $derived(!!currentRepo);
+  // The listing is cached for ten minutes, and nothing said so. A rune updated
+  // in the catalogue and then updated from here returned the OLD version twice
+  // in a row, with the button appearing to work both times. Showing the age —
+  // and offering the refetch that already existed behind ?refresh=1 — is the
+  // difference between "nothing happened" and "you are looking at a copy".
+  function cacheAge(seconds) {
+    if (!seconds || seconds < 60) return "just now";
+    const m = Math.round(seconds / 60);
+    return m === 1 ? "1 min ago" : `${m} min ago`;
+  }
+
   async function loadGithub(refresh) {
     ghLoading = true;
     ghError = "";
@@ -579,8 +590,16 @@
             </div>
           {/each}
         </div>
-        <p class="text-muted text-xs">
-          {ghData.repo}/{ghData.path} @ {ghData.ref}
+        <p class="text-muted text-xs flex items-center gap-2 flex-wrap">
+          <span>{ghData.repo}/{ghData.path} @ {ghData.ref}</span>
+          {#if ghData.from_cache}
+            <span>· cached {cacheAge(ghData.cache_seconds)}</span>
+            <button class="underline hover:text-text" onclick={() => loadGithub(true)}>
+              fetch again
+            </button>
+          {:else}
+            <span>· just fetched</span>
+          {/if}
         </p>
       {/if}
     </div>

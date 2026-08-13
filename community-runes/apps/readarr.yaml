@@ -16,14 +16,25 @@ gameskill:
     user: "0:0"
 
   variables:
+    # 999:982 is the panel's own service account, and matching it is the whole
+    # point: this image starts as root and chowns its data directory to
+    # PUID:PGID, and that directory is the panel's. Left at 1000 the container
+    # takes the server's files from the panel — the Files tab, restores and any
+    # panel-side write then fail on that server alone, with nothing announcing
+    # it. Observed live on .164: 23 files under a Readarr server owned 1000:1000
+    # while the panel ran as 999.
+    #
+    # The account is made with `useradd --system`, so the number is whatever the
+    # OS had free — 999 on two boxes in this fleet, 996 on a third. Check with
+    # `id yggdrasil` if this install is neither.
     - key: PUID
       name: "Run-as UID (must own the data dir + library)"
       type: int
-      default: 1000
+      default: 999
     - key: PGID
       name: "Run-as GID"
       type: int
-      default: 1000
+      default: 982
     - key: TZ
       name: "Timezone"
       type: string

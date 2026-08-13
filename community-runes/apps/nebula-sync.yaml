@@ -1,0 +1,89 @@
+gameskill:
+  id: nebula-sync
+  name: "Nebula Sync (Pi-hole v6)"
+  category: "Apps"
+  description: >
+    Keep several Pi-hole v6 instances identical. Point it at a primary and one or
+    more replicas, and it copies the configuration across on a schedule — so the
+    blocklists, DNS records and settings you change on one are on the others
+    within the hour.
+
+    This has no web interface: it is a background job, and the Console tab is
+    where it tells you what it did. It also has nothing to configure on disk, so
+    the server's file area stays empty.
+
+    A note on failure, because it is deliberate and looks alarming: if a Pi-hole
+    cannot be reached or a password is wrong, the sync fails and the server
+    STOPS rather than retrying quietly. The console then names the instance and
+    the reason on its last line. A sync that silently never ran would be worse —
+    the replicas would drift apart and nothing would say so.
+
+    Supersedes Orbital Sync, which was archived in 2026 and never released
+    Pi-hole v6 support beyond a prerelease build.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # The image ships ENTRYPOINT ["nebula-sync"] + CMD ["run"] and already runs as
+  # its own non-root user (1001), so the rune neither overrides the user nor
+  # supplies a command — which also means the panel never writes its minimal
+  # /etc/passwd shim over the image's own accounts.
+  #
+  # No data_path: the job holds no state, reads no config file and writes
+  # nothing it needs to keep. The server's data directory still exists, it is
+  # simply empty — nothing is mounted into the container.
+  docker:
+    image: "ghcr.io/lovelaze/nebula-sync:latest"
+    keep_entrypoint: true
+
+  variables:
+    # Address and password in one field, separated by a pipe, exactly as the
+    # project expects: http://pihole.example.com|thepassword
+    #
+    # Both are marked secret because the password is INSIDE the value — there is
+    # no separate password field to protect. secret:true is what encrypts them at
+    # rest and masks them in the API; the panel does not infer that from a name.
+    - { key: PRIMARY, name: "Primary Pi-hole — url|password", type: string, default: "", required: true, secret: true }
+    - { key: REPLICAS, name: "Replicas — url|password, comma-separated", type: string, default: "", required: true, secret: true }
+
+    # Without a schedule the job syncs once and exits, which as a panel server
+    # would look like an immediate crash. An hourly schedule keeps it resident
+    # and is the project's own suggested value.
+    - { key: CRON, name: "Schedule (cron)", type: string, default: "0 * * * *" }
+    - { key: TZ, name: "Timezone for the schedule and log timestamps", type: string, default: "Europe/Copenhagen" }
+
+    # Full sync copies everything through Pi-hole's Teleporter export/import.
+    # Turning it off enables the per-area switches further down — and with all of
+    # them left false, a non-full sync copies nothing at all.
+    - { key: FULL_SYNC, name: "Sync everything (off = choose areas below)", type: bool, default: true }
+    - { key: RUN_GRAVITY, name: "Run gravity on the replicas after syncing", type: bool, default: false }
+
+    # Only consulted when FULL_SYNC is off.
+    - { key: SYNC_CONFIG_DNS, name: "Area: DNS settings (only when full sync is off)", type: bool, default: false }
+    - { key: SYNC_CONFIG_DHCP, name: "Area: DHCP settings", type: bool, default: false }
+    - { key: SYNC_CONFIG_NTP, name: "Area: NTP settings", type: bool, default: false }
+    - { key: SYNC_CONFIG_RESOLVER, name: "Area: resolver settings", type: bool, default: false }
+    - { key: SYNC_CONFIG_DATABASE, name: "Area: database settings", type: bool, default: false }
+    - { key: SYNC_CONFIG_MISC, name: "Area: miscellaneous settings", type: bool, default: false }
+    - { key: SYNC_GRAVITY_DHCP_LEASES, name: "Area: DHCP leases", type: bool, default: false }
+
+    # A Pi-hole behind HTTPS with a self-signed certificate needs this; one on
+    # plain http does not care either way.
+    - { key: CLIENT_SKIP_TLS_VERIFICATION, name: "Accept self-signed certificates", type: bool, default: false }
+    - { key: CLIENT_TIMEOUT_SECONDS, name: "Give up on an instance after (seconds)", type: int, default: 20, min: 1, max: 300 }
+    - { key: CLIENT_RETRY_DELAY_SECONDS, name: "Wait between connection attempts (seconds)", type: int, default: 1, min: 0, max: 60 }
+
+  startup:
+    # The image's own entrypoint and CMD; nothing to add.
+    command: ""
+    # The banner it prints before doing anything. It is the only marker available:
+    # the sync itself starts immediately after, and its result is not a startup
+    # signal — a failing sync ends the process rather than reporting readiness.
+    done_regex: 'Starting nebula-sync'
+
+  # No ports on purpose. It serves nothing and listens on nothing; it reaches OUT
+  # to each Pi-hole's API. Publishing a port would only invite someone to look
+  # for a web interface that does not exist.
+
+  backup:
+    include: ["."]

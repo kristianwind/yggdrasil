@@ -23,6 +23,7 @@ type Gameskill struct {
 	Docker      Docker     `yaml:"docker"      json:"docker"`
 	Variables   []Variable `yaml:"variables"   json:"variables"`
 	Install     *Install   `yaml:"install"     json:"install,omitempty"`
+	Update      *Update    `yaml:"update,omitempty" json:"update,omitempty"`
 	Import      *Importer  `yaml:"import,omitempty" json:"import,omitempty"`
 	Startup     Startup    `yaml:"startup"     json:"startup"`
 	Query       *Query     `yaml:"query"       json:"query,omitempty"`
@@ -232,6 +233,33 @@ type Variable struct {
 type Install struct {
 	Image  string `yaml:"image"  json:"image"`
 	Script string `yaml:"script" json:"script"`
+}
+
+// Update declares how to update an app that is ALREADY installed — the
+// counterpart to install, for the data the image itself never touches again.
+//
+// Re-running install is not that. An app image populates the data dir only when
+// it finds it empty (the official WordPress image guards on
+// `[ ! -e index.php ] && [ ! -e wp-includes/version.php ]`), so on an existing
+// installation the install path is a no-op: "Update / Reinstall" appears to work
+// and changes nothing. And a rune that hardens its data against the app closes
+// the app's own updater too — the WordPress rune keeps core read-only to PHP so
+// a compromised plugin cannot rewrite it, which is also why WordPress cannot
+// update itself from its dashboard ("some files could not be copied"). Without
+// this hook such a site cannot be patched at all, which is the worse risk.
+//
+// The script runs as ROOT in a one-shot container against the server's data dir
+// at /data, streamed to the install log. Root writes through a mode it does not
+// own, so the rune's hardening survives the update intact. For an app-stack rune
+// the container joins the stack network, so a sidecar database answers on its
+// service name ("db") exactly as it does for the app itself.
+type Update struct {
+	// Image defaults to the app's own image. Set it when the update needs a
+	// different toolchain than the app runs on (WordPress updates via wordpress:cli).
+	Image  string `yaml:"image,omitempty" json:"image,omitempty"`
+	Script string `yaml:"script"          json:"script"`
+	// Label overrides the button text. Default: "Update app".
+	Label string `yaml:"label,omitempty" json:"label,omitempty"`
 }
 
 // Importer declares how to bring an EXISTING deployment of this app into a
@@ -534,6 +562,10 @@ func validate(gs *Gameskill) error {
 				return fmt.Errorf("gameskill.admin_log.events %q regex does not compile: %w", e.Type, err)
 			}
 		}
+	}
+
+	if gs.Update != nil && strings.TrimSpace(gs.Update.Script) == "" {
+		return fmt.Errorf("gameskill.update.script is required when update is set")
 	}
 
 	if gs.Import != nil {

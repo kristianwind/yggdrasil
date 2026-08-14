@@ -246,6 +246,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/install", s.handleInstallServer)
 		r.Get("/api/servers/{id}/import-data", s.handleImportInfo)
 		r.Post("/api/servers/{id}/import-data", s.handleImportData)
+		r.Get("/api/servers/{id}/app-update", s.handleAppUpdateInfo)
+		r.Post("/api/servers/{id}/app-update", s.handleAppUpdate)
 		r.Get("/api/servers/{id}/install/log", s.handleInstallLog) // WebSocket
 		r.Get("/api/servers/{id}/install/log/export", s.handleExportInstallLog)
 		r.Post("/api/servers/{id}/start", s.handleStartServer)

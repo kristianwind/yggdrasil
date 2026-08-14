@@ -34,6 +34,7 @@ image's own `CMD` is the command). Everything else is optional and adds a panel 
 | `docker` | map | **Required.** The image and how the container is built. |
 | `variables` | list | The settings form, and the env vars/`{{KEY}}` values. |
 | `install` | map | One-time setup script. |
+| `update` | map | Update an app that is already installed. |
 | `startup` | map | **Required.** How the server runs, stops, and reports readiness. |
 | `ports` | list | Host ports to allocate and publish. |
 | `query` | map | Player count and liveness polling. |
@@ -361,6 +362,43 @@ install has finished, and re-running an install on a running server recreates th
 afterwards so the new files take effect.
 
 For Steam runes, the install container gets extra help — see [`steam`](#steam).
+
+## `update`
+
+Updates an app that is **already** installed. Optional, and separate from `install` on purpose:
+most app images populate the data directory only when they find it empty, so re-running the install
+script on an existing installation changes nothing at all.
+
+```yaml
+update:
+  image: "wordpress:cli"        # defaults to docker.image
+  label: "Update WordPress"     # button text; defaults to "Update app"
+  script: |
+    wp core update --path=/data --allow-root
+    wp core update-db --path=/data --allow-root
+```
+
+A rune that declares this gets an **Update app** button on the server page, next to Update /
+Reinstall. Admin-only, audited, and the output streams to the same install log.
+
+The mechanics match `install` — root, `/bin/sh -c`, data directory at `/data` — with three
+differences that matter:
+
+- **The app is stopped first** and started again afterwards if it was running, so nothing writes
+  underneath the update. For an app-stack rune the sidecars stay up (or are brought up if the server
+  was stopped), and the update container joins the stack network, so a database answers on its
+  service name just as it does for the app.
+- **Ownership is reclaimed, the group is not touched.** `install` chowns `/data` to the panel's
+  user *and* group; an update chowns only the user. Runes that grant the app access through the
+  group — WordPress hands `www-data` group write while the panel stays owner — would otherwise have
+  that access revoked by their own update.
+- **File modes are left exactly as they were.** Root writes through a mode it does not own, so a
+  rune that deliberately keeps files read-only to the app keeps them that way.
+
+That last point is the reason this exists. The WordPress rune keeps core `644` and read-only to PHP
+so a compromised plugin cannot rewrite `wp-login.php` — which also stops WordPress updating itself
+from its dashboard ("some files could not be copied… inconsistent file permissions"). An update
+declared here runs outside PHP's permission model and leaves the hardening intact.
 
 ## `startup`
 

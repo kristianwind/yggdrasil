@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 18
+  version: 19
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -99,6 +99,40 @@ gameskill:
         chmod 644 /data/.htaccess
       fi
       echo "WordPress webroot ready (PHP upload limit raised to 128M)"
+
+  # WordPress cannot update its own core here, and that is deliberate: the startup
+  # block below keeps core read-only to PHP so a compromised plugin cannot rewrite
+  # wp-login.php. The dashboard's updater then fails with "some files could not be
+  # copied… inconsistent file permissions", and re-running install fixes nothing —
+  # the image populates the webroot only when it finds it EMPTY. So the update runs
+  # here instead: as root, through WP-CLI, outside PHP's permission model. Root
+  # writes through a mode it does not own, so the hardening is exactly as it was
+  # afterwards (owner, group and 644 all preserved).
+  #
+  # Core only. Plugins, themes and translations live in wp-content, which IS
+  # writable by PHP, so they keep updating from the dashboard as normal.
+  update:
+    image: "wordpress:cli"
+    label: "Update WordPress"
+    script: |
+      set -e
+      # The panel brings the database sidecar up for the update, but MariaDB starts
+      # accepting connections a few seconds AFTER its container is running — and
+      # WP-CLI's first act is a database query. Poll rather than race it.
+      echo "waiting for the database ..."
+      i=0
+      until wp option get siteurl --path=/data --allow-root >/dev/null 2>&1; do
+        i=$((i+1))
+        if [ $i -ge 30 ]; then echo "the database did not answer within 60s"; exit 1; fi
+        sleep 2
+      done
+      echo "currently on WordPress $(wp core version --path=/data --allow-root)"
+      wp core update --path=/data --allow-root
+      # The schema migration WordPress otherwise leaves for the first admin to
+      # trigger from the browser, so the site is never serving new code against an
+      # old schema. A no-op when there is nothing to migrate.
+      wp core update-db --path=/data --allow-root
+      echo "now on WordPress $(wp core version --path=/data --allow-root)"
 
   startup:
     # PHP runs as www-data (uid/gid 33) while the webroot is owned by the panel's

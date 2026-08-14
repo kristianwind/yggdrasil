@@ -106,6 +106,11 @@ image&rsquo;s own <code>CMD</code> is the command). Everything else is optional 
 <td>One-time setup script.</td>
 </tr>
 <tr>
+<td><code>update</code></td>
+<td>map</td>
+<td>Update an app that is already installed.</td>
+</tr>
+<tr>
 <td><code>startup</code></td>
 <td>map</td>
 <td><strong>Required.</strong> How the server runs, stops, and reports readiness.</td>
@@ -575,6 +580,37 @@ can both write to it. A non-zero exit fails the install.</p>
 install has finished, and re-running an install on a running server recreates the container
 afterwards so the new files take effect.</p>
 <p>For Steam runes, the install container gets extra help — see <a href="#steam"><code>steam</code></a>.</p>
+<h2 id="update"><code>update</code></h2>
+<p>Updates an app that is <strong>already</strong> installed. Optional, and separate from <code>install</code> on purpose:
+most app images populate the data directory only when they find it empty, so re-running the install
+script on an existing installation changes nothing at all.</p>
+<pre><code class="language-yaml">update:
+  image: &quot;wordpress:cli&quot;        # defaults to docker.image
+  label: &quot;Update WordPress&quot;     # button text; defaults to &quot;Update app&quot;
+  script: |
+    wp core update --path=/data --allow-root
+    wp core update-db --path=/data --allow-root
+</code></pre>
+<p>A rune that declares this gets an <strong>Update app</strong> button on the server page, next to Update /
+Reinstall. Admin-only, audited, and the output streams to the same install log.</p>
+<p>The mechanics match <code>install</code> — root, <code>/bin/sh -c</code>, data directory at <code>/data</code> — with three
+differences that matter:</p>
+<ul>
+<li><strong>The app is stopped first</strong> and started again afterwards if it was running, so nothing writes
+underneath the update. For an app-stack rune the sidecars stay up (or are brought up if the server
+was stopped), and the update container joins the stack network, so a database answers on its
+service name just as it does for the app.</li>
+<li><strong>Ownership is reclaimed, the group is not touched.</strong> <code>install</code> chowns <code>/data</code> to the panel&rsquo;s
+user <em>and</em> group; an update chowns only the user. Runes that grant the app access through the
+group — WordPress hands <code>www-data</code> group write while the panel stays owner — would otherwise have
+that access revoked by their own update.</li>
+<li><strong>File modes are left exactly as they were.</strong> Root writes through a mode it does not own, so a
+rune that deliberately keeps files read-only to the app keeps them that way.</li>
+</ul>
+<p>That last point is the reason this exists. The WordPress rune keeps core <code>644</code> and read-only to PHP
+so a compromised plugin cannot rewrite <code>wp-login.php</code> — which also stops WordPress updating itself
+from its dashboard (&ldquo;some files could not be copied… inconsistent file permissions&rdquo;). An update
+declared here runs outside PHP&rsquo;s permission model and leaves the hardening intact.</p>
 <h2 id="startup"><code>startup</code></h2>
 <pre><code class="language-yaml">startup:
   command: &quot;java -Xmx{{MEMORY_MB}}M -jar server.jar nogui&quot;
@@ -1373,7 +1409,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

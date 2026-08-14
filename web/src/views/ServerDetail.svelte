@@ -1307,6 +1307,36 @@
   async function loadImportInfo() {
     importInfo = await api.get(`/servers/${id}/import-data`).catch(() => null);
   }
+
+  // App update — only for runes that declare one. Re-running the install script
+  // cannot update an app that is already installed (the image only populates an
+  // empty data dir), so this is a separate action, not the same button.
+  let appUpdate = $state(null); // { supported, label }
+  let appUpdating = $state(false);
+  async function loadAppUpdate() {
+    appUpdate = await api.get(`/servers/${id}/app-update`).catch(() => null);
+  }
+  async function runAppUpdate() {
+    if (
+      !(await confirmDialog({
+        title: appUpdate?.label || "Update app",
+        body: "Updates the installed app itself (not the panel). The app is stopped while it runs and started again after — a minute or two of downtime. Back up first if this is a live site.",
+        confirmText: appUpdate?.label || "Update app",
+      }))
+    )
+      return;
+    appUpdating = true;
+    try {
+      await api.post(`/servers/${id}/app-update`);
+      tab = "install";
+      connectInstallLog();
+      toast("Update started — watch the log", "info");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      appUpdating = false;
+    }
+  }
   async function submitImportData() {
     const missing = (importInfo?.inputs || []).filter((i) => !i.optional && !importFiles[i.key]);
     if (missing.length) return toast(`Choose a file for: ${missing.map((i) => i.label).join(", ")}`, "error");
@@ -1517,6 +1547,7 @@
     loadCrashes();
     loadKvasirEvents();
     loadImportInfo();
+    loadAppUpdate();
     await loadServer();
     // Pre-load installed mods (if this rune supports them) so the "N updates" badge
     // on the Mods tab is visible without having to open the tab first.
@@ -1635,6 +1666,11 @@
       <button class="btn-ghost" disabled={exporting} onclick={exportServer}
         title="Download this server as a portable bundle (its config, rune and data) to import on another Yggdrasil panel. The bundle contains decrypted secrets — treat it like a credential.">
         {exporting ? `Exporting… ${fmtBytes(exportedBytes)}` : "⤓ Export"}</button>
+    {/if}
+    {#if $user?.role === "admin" && appUpdate?.supported && server.installed}
+      <button class="btn-ghost {appUpdating ? 'is-busy' : ''}" disabled={appUpdating} onclick={runAppUpdate}
+        title="Update the installed app to its latest version. This is not the same as Update / Reinstall: the app's own image only sets up an empty data directory, so a reinstall leaves an existing installation exactly as it was. The app is stopped while the update runs and started again after.">
+        ⬆️ {appUpdating ? "Updating…" : appUpdate.label}</button>
     {/if}
     {#if $user?.role === "admin" && importInfo?.supported}
       <button class="btn-ghost" onclick={() => (showImportData = true)}

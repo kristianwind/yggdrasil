@@ -1,0 +1,99 @@
+gameskill:
+  id: duplicati
+  name: "Duplicati"
+  category: "Apps"
+  description: >
+    Scheduled, encrypted, incremental backups of anything on this host to
+    somewhere else — another disk, a NAS over SMB, S3, Backblaze B2, Google
+    Drive, WebDAV, SFTP. It backs up what you mount into it and stores it
+    encrypted at the destination, so the copy is unreadable without your
+    passphrase even if the destination is not yours.
+
+    Give it two admin host mounts: what to back up (read-only) and where to put
+    it. Then create the backup job in the web interface — the schedule, retention
+    and passphrase live there, not in the rune.
+
+    Two passwords below, and they are not the same thing. The **web interface
+    password** keeps other people out of this server's backup configuration. The
+    **settings key** encrypts the local database that holds your destination
+    credentials — Duplicati will not start without it, and changing it later
+    makes the existing database unreadable, so set it once and keep a copy.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # linuxserver.io image: an s6 init that starts as root, applies PUID/PGID, then
+  # drops. Keep its entrypoint and give it root to do that with.
+  docker:
+    image: "lscr.io/linuxserver/duplicati:latest"
+    data_path: /config
+    keep_entrypoint: true
+    user: "0:0"
+    env:
+      PUID: "{{PUID}}"
+      PGID: "{{PGID}}"
+      TZ: "{{TZ}}"
+      DUPLICATI__WEBSERVICE_PASSWORD: "{{UI_PASSWORD}}"
+      SETTINGS_ENCRYPTION_KEY: "{{SETTINGS_KEY}}"
+
+  variables:
+    # 999:982 is the panel's own service account, and matching it is the point:
+    # this image chowns its config directory to PUID:PGID, and that directory is
+    # the panel's. Left at the image's default of 1000 the container takes the
+    # server's files from the panel — the Files tab, restores and every
+    # panel-side write then fail on that one server, with nothing announcing it.
+    #
+    # It is also the identity the backup READS your data as, so it must be able to
+    # read whatever you mount in. The account is made with `useradd --system`, so
+    # the number is whatever the OS had free — 999:982 on two boxes in this fleet,
+    # 996:987 on a third. Check with `id yggdrasil` if this install is neither.
+    - key: PUID
+      name: "Run-as UID (must match the panel's own account)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: UI_PASSWORD
+      name: "Web interface password"
+      type: string
+      default: ""
+      required: true
+      secret: true
+    - key: SETTINGS_KEY
+      name: "Settings key (encrypts the local database — keep a copy, never change it)"
+      type: string
+      default: ""
+      required: true
+      secret: true
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Duplicati configuration directory ready"
+
+  startup:
+    command: ""
+    done_regex: 'Server has started and is listening'
+
+  ports:
+    - { name: web, default: 8200, protocol: tcp }
+
+  # What to back up, and where to, live OUTSIDE this data dir. As an admin, open
+  # this server's Settings → "Host mounts" and add them, e.g.:
+  #   /mnt/tank/photos → /source/photos   (read-only — a backup never needs write)
+  #   /mnt/backups     → /backups
+  # Then in the web interface the source is /source/... and a local destination is
+  # /backups/... . Host mounts are admin-only and per server — never in the rune.
+  #
+  # This backs up Duplicati's own configuration (the job definitions and the local
+  # database), which is what you need to restore a destination you still have. It
+  # does not, and must not, contain the backup data itself.
+  backup:
+    include: ["."]

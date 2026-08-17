@@ -1,0 +1,106 @@
+gameskill:
+  id: syncthing
+  name: "Syncthing"
+  category: "Apps"
+  description: >
+    Keep folders identical across your machines, continuously and without a
+    cloud in the middle. Every device holds the whole folder, changes propagate
+    peer to peer over an encrypted connection, and there is no account and no
+    quota — the classic answer to "Dropbox, but it is my own disk".
+
+    Pair a device by exchanging IDs: open the web interface, copy this server's
+    device ID into the other machine and accept the request on both sides. It
+    finds peers through Syncthing's own discovery and relays, so it works
+    without opening a port; give the other side `host:port` from the Ports tab
+    (the sync port, not the web one) if you want a direct connection.
+
+    The web interface is protected by the username and password below, applied by
+    the install step — change them here and press Update / Reinstall to re-apply.
+    Do not skip them: the panel publishes the port, and Syncthing's interface is
+    full control of every folder it syncs.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Starts as root, chowns /var/syncthing to PUID:PGID, then drops to it — so
+  # keep the image's entrypoint and give it root to do that with.
+  docker:
+    image: "syncthing/syncthing:latest"
+    data_path: /var/syncthing
+    keep_entrypoint: true
+    user: "0:0"
+    env:
+      PUID: "{{PUID}}"
+      PGID: "{{PGID}}"
+      TZ: "{{TZ}}"
+      # The container's default is localhost-only for the API; the panel reaches
+      # it from outside the container, so bind the interface to all addresses and
+      # let the published port and the GUI password be the boundary.
+      STGUIADDRESS: "0.0.0.0:8384"
+
+  variables:
+    # 999:982 is the panel's own service account, and matching it is the point:
+    # this image chowns its whole data directory to PUID:PGID, and that directory
+    # is the panel's. Left at the image's default of 1000 the container takes the
+    # server's files from the panel — the Files tab, restores and every
+    # panel-side write then fail on that one server, with nothing announcing it.
+    #
+    # The account is made with `useradd --system`, so the number is whatever the
+    # OS had free — 999:982 on two boxes in this fleet, 996:987 on a third. Check
+    # with `id yggdrasil` if this install is neither.
+    - key: PUID
+      name: "Run-as UID (must match the panel's own account)"
+      type: int
+      default: 999
+    - key: PGID
+      name: "Run-as GID"
+      type: int
+      default: 982
+    - key: GUI_USER
+      name: "Web interface username"
+      type: string
+      default: "admin"
+    - key: GUI_PASSWORD
+      name: "Web interface password"
+      type: string
+      default: ""
+      required: true
+      secret: true
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "syncthing/syncthing:latest"
+    # `generate` is the only place Syncthing takes a GUI user and password from
+    # the command line (`serve` does not), and it is safe to re-run: it creates
+    # the config and device keys if they are missing and updates the credentials
+    # if they are not. That also makes "Update / Reinstall" the way to apply a
+    # changed password — the running container has no such flag to pass.
+    script: |
+      set -e
+      mkdir -p /data/config
+      /bin/syncthing generate --home=/data/config \
+        --gui-user="{{GUI_USER}}" --gui-password="{{GUI_PASSWORD}}"
+      echo "Syncthing config ready; web interface credentials applied"
+
+  startup:
+    # The image's entrypoint already runs syncthing with the right arguments.
+    command: ""
+    done_regex: 'GUI and API listening'
+
+  ports:
+    # 8384 is the web interface. 22000 is the sync protocol itself: it is only
+    # needed for a DIRECT connection to another device — discovery and relays
+    # work without it — and the peer has to be told the port the panel allocated.
+    - { name: web, default: 8384, protocol: tcp }
+    - { name: sync, default: 22000, protocol: tcp }
+
+  # Folders to sync can live OUTSIDE this data dir. As an admin, open this
+  # server's Settings → "Host mounts" and add them, e.g.:
+  #   /mnt/tank/documents → /sync/documents
+  # then add /sync/documents as a folder in the web interface. Host mounts are
+  # admin-only and per server — never in the rune.
+  backup:
+    include: ["."]

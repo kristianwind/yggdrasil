@@ -424,7 +424,21 @@
     }
   }
 
+  // Same guard as the server page: a stop or a restart acts immediately, and here
+  // the buttons repeat down a list of rows/cards where the wrong one is a row
+  // away. Start is left alone.
   async function action(s, verb) {
+    if ($user?.confirm_actions !== false && verb !== "start") {
+      const ok = await confirmDialog({
+        title: verb === "stop" ? "Stop server" : "Restart server",
+        body:
+          verb === "stop"
+            ? `${s.name} — stopped now. Anyone connected is disconnected immediately.`
+            : `${s.name} — restarted now, with no warning to anyone connected.`,
+        confirmText: verb === "stop" ? "Stop" : "Restart",
+      });
+      if (!ok) return;
+    }
     try {
       await api.post(`/servers/${s.id}/${verb}`);
       toast(`${s.name}: ${verb}`, "success");
@@ -485,6 +499,21 @@
       return verb === "start" ? !up : up;
     });
     if (!eligible.length) return toast(`No selected servers to ${verb}`, "warn");
+    // Ask before stopping or restarting several live servers at once — the same
+    // guard the single-server buttons have, and this is where a mis-click is
+    // widest. Names them, because "3 servers" is not enough to check against.
+    if ($user?.confirm_actions !== false && verb !== "start") {
+      const names = eligible.map((s) => s.name).join(", ");
+      const ok = await confirmDialog({
+        title: `${verb === "stop" ? "Stop" : "Restart"} ${eligible.length} server${eligible.length === 1 ? "" : "s"}`,
+        body:
+          verb === "stop"
+            ? `${names} — stopped now. Anyone connected to them is disconnected immediately.`
+            : `${names} — restarted now, with no warning to anyone connected.`,
+        confirmText: verb === "stop" ? "Stop them" : "Restart them",
+      });
+      if (!ok) return;
+    }
     bulkBusy = true;
     try {
       const results = await Promise.allSettled(eligible.map((s) => api.post(`/servers/${s.id}/${verb}`)));

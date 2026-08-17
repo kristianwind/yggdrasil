@@ -342,6 +342,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/backups/{id}/verify", s.handleVerifyBackup)
 		r.Get("/api/settings/backup-verify", s.requireAdmin(s.handleGetBackupVerify))
 		r.Put("/api/settings/backup-verify", s.requireAdmin(s.handleSetBackupVerify))
+		// The value itself also rides on /api/auth/me, so every caller's UI knows
+		// whether to ask; only changing it is admin-only.
+		r.Get("/api/settings/confirm-actions", s.requireAdmin(s.handleGetConfirmActions))
+		r.Put("/api/settings/confirm-actions", s.requireAdmin(s.handleSetConfirmActions))
 		r.Delete("/api/backups/{id}", s.handleDeleteBackup)
 
 		// Schedules

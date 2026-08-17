@@ -142,6 +142,18 @@ neither command still gets the full grace period.
 The same graceful stop runs before every recreate, so a restart doesn't cut a save in
 half either.
 
+### Confirmations
+
+**Stop** and **Restart** ask before they act, on a single server and on a selection from the
+Servers list. Both take effect the moment they are pressed, both disconnect whoever is
+connected, and they sit next to each other in the action bar — so the prompt names the
+server and what will happen to it. **Start** is never held up.
+
+It is on by default and switches off panel-wide under **Settings → System → Confirmations**.
+The prompt is a guard against a mis-click, not a permission: schedules, the Discord bot,
+Kvasir's confirmed actions and direct API calls all act immediately regardless. Who may stop
+a server at all is decided by [permissions](users-and-permissions.md), not by this.
+
 ### Safe restart
 
 **Safe restart** is the one to use on a populated server. It broadcasts the rune's

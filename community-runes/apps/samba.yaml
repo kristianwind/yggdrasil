@@ -1,0 +1,133 @@
+gameskill:
+  id: samba
+  name: "Samba (SMB network share)"
+  category: "Apps"
+  description: >
+    A network share, the way a NAS does it: one SMB folder that Windows, macOS
+    and Linux mount natively — `\\host\NAS`, `smb://host/NAS` — with no client
+    software and no web interface. Use the server's own file area, or point the
+    share at existing storage with an admin host mount.
+
+    Files written from a client land in the panel's group with group write, so
+    the Files tab can edit them; files you put there from the panel are visible
+    over SMB and a client can read, replace or delete them. Both sides share one
+    folder rather than one side owning it. (One rough edge: a client cannot write
+    *into* a file the panel created, only replace it — which is what Windows and
+    macOS do when they save anyway.)
+
+    ⚠️ Two things to do after creating it. **Set the port to 445** under Ports —
+    SMB clients expect 445 and Windows cannot be told to use another one, while a
+    new server is given a port from the panel's own range (needs panel v0.2.230 or
+    newer: before that the panel refused to assign any port below 1024). And **set
+    a password**: the share has one account, `nas`, and it is the password below
+    that lets a client in.
+
+    Network discovery (seeing the server in "Network") is deliberately off. It
+    needs host networking, which the panel does not use, so mount by address.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Samba must run as root (it binds 445 and switches identity per connection),
+  # and this image's entrypoint builds smb.conf from the environment before
+  # starting smbd — so keep it and hand it root.
+  docker:
+    image: "ghcr.io/servercontainers/samba:latest"
+    data_path: /share
+    keep_entrypoint: true
+    user: "0:0"
+    env:
+      TZ: "{{TZ}}"
+      SAMBA_CONF_SERVER_STRING: "{{SERVER_NAME}}"
+
+      # The account. Its name is fixed at `nas` because the image carries the
+      # name in the VARIABLE NAME (`ACCOUNT_<name>`), and a rune templates
+      # values, never keys. One share, one account — the password is yours.
+      ACCOUNT_nas: "{{SMB_PASSWORD}}"
+
+      # Ownership, which is the whole design of this rune.
+      #
+      # The obvious approach — run the SMB account AS the panel's user, the way
+      # every other rune with a data dir does — is impossible here: the image
+      # creates accounts with `adduser -u <uid>` and no group, so busybox tries
+      # to make a group with the same id, and gid 999 is already Alpine's `ping`
+      # group. `adduser: uid '999' in use`, the account is never created, and
+      # nobody can log in to the share. Measured, not guessed.
+      #
+      # So the account keeps its own uid (1000 inside the container) and gets the
+      # panel's GROUP instead, and the share forces every new file and directory
+      # into that group with group write. The panel's user owns the directory and
+      # is in that group, so both can read and write everything — the same
+      # arrangement the WordPress rune uses for PHP, with the sides swapped.
+      GROUP_yggdrasil: "{{PGID}}"
+      GROUPS_nas: "yggdrasil"
+      SAMBA_VOLUME_CONFIG_yggdrasil: >-
+        [{{SHARE_NAME}}]; path = /share; valid users = nas; guest ok = no;
+        read only = no; browseable = yes; force group = yggdrasil;
+        create mask = 0664; force create mode = 0664;
+        directory mask = 02775; force directory mode = 02775
+
+      # Zeroconf/mDNS (avahi), Windows discovery (wsdd2) and legacy NetBIOS
+      # (nmbd) all advertise on the LAN, which only works with host networking.
+      # With published ports they are three services that cannot do their job, so
+      # they are off: less to run, less to attack, and no half-working "Network"
+      # entry to explain.
+      AVAHI_DISABLE: "1"
+      WSDD2_DISABLE: "1"
+      NETBIOS_DISABLE: "1"
+
+  variables:
+    - key: SMB_PASSWORD
+      name: "Share password (for the user `nas`)"
+      type: string
+      default: ""
+      required: true
+      secret: true
+    - key: SHARE_NAME
+      name: "Share name as clients see it"
+      type: string
+      default: "NAS"
+      pattern: '^[A-Za-z0-9][A-Za-z0-9 _-]{0,30}$'
+      hint: "letters, numbers, spaces, - and _ only, up to 31 characters (SMB share names are limited)"
+    # The panel's own group. Not a PUID/PGID pair: only the group is shared with
+    # the container (see the ownership note above). `useradd --system` picks the
+    # number, so it is 982 on two boxes in this fleet and 987 on a third — check
+    # with `id yggdrasil` if this install is neither, or the share will be
+    # writable by the client and invisible to the Files tab.
+    - key: PGID
+      name: "Panel group id (must match the panel's own account)"
+      type: int
+      default: 982
+    - key: TZ
+      name: "Timezone"
+      type: string
+      default: "Europe/Copenhagen"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      # 2775, not 755: the SMB account writes into this directory as a member of
+      # the panel's group, so the group needs write. setgid makes every new file
+      # and directory inherit the group, which is what keeps the Files tab able
+      # to edit what a client uploads. The panel's post-install chown sets the
+      # owner and group; it does not touch the mode, so this survives.
+      chmod 2775 /data
+      echo "Share directory ready (group-writable, setgid)"
+
+  startup:
+    # The image's entrypoint generates smb.conf from the environment and then
+    # runs its own supervisor, so the rune supplies no command of its own.
+    command: ""
+    done_regex: 'smbd version .* started'
+
+  ports:
+    - { name: smb, default: 445, protocol: tcp }
+
+  # Existing storage belongs OUTSIDE this data dir. As an admin, open this
+  # server's Settings → "Host mounts" and add it, e.g.:
+  #   /mnt/tank/media → /share/media
+  # Host mounts are admin-only and per server — never in the rune. Anything
+  # mounted under /share appears in the same SMB share as a subfolder.
+  backup:
+    include: ["."]

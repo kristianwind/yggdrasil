@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -1259,10 +1260,19 @@ func (s *Server) portAvailable(ctx context.Context, port int) bool {
 
 // hostPortAvailable reports whether a TCP host port can be bound right now —
 // catching ports held by other containers/processes that aren't in our table.
+//
+// A privileged port (<1024) is the exception: the panel runs as an unprivileged
+// service account, so binding one fails with EACCES no matter who holds it. That
+// is "we cannot test this", not "it is taken" — the Docker daemon binds published
+// ports as root and has no such limit. Treating it as unavailable made every
+// privileged port unassignable, which is exactly where a port has to be exact: an
+// SMB share on 445 (Windows cannot be told another number), a site on 80 or 443,
+// NFS on 2049. A port genuinely in use still fails, just later and louder — the
+// container refuses to start with docker's own "address already in use".
 func hostPortAvailable(port int) bool {
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
-		return false
+		return errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM)
 	}
 	ln.Close()
 	return true

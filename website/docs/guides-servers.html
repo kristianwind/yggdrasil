@@ -181,6 +181,15 @@ writes its entire Central Economy and sets <code>stop_timeout: 90</code>. A rune
 neither command still gets the full grace period.</p>
 <p>The same graceful stop runs before every recreate, so a restart doesn&rsquo;t cut a save in
 half either.</p>
+<h3 id="confirmations">Confirmations</h3>
+<p><strong>Stop</strong> and <strong>Restart</strong> ask before they act, on a single server and on a selection from the
+Servers list. Both take effect the moment they are pressed, both disconnect whoever is
+connected, and they sit next to each other in the action bar — so the prompt names the
+server and what will happen to it. <strong>Start</strong> is never held up.</p>
+<p>It is on by default and switches off panel-wide under <strong>Settings → System → Confirmations</strong>.
+The prompt is a guard against a mis-click, not a permission: schedules, the Discord bot,
+Kvasir&rsquo;s confirmed actions and direct API calls all act immediately regardless. Who may stop
+a server at all is decided by <a href="guides-users-and-permissions.html">permissions</a>, not by this.</p>
 <h3 id="safe-restart">Safe restart</h3>
 <p><strong>Safe restart</strong> is the one to use on a populated server. It broadcasts the rune&rsquo;s
 restart countdown in-game — each warning fires at its declared time before the restart,
@@ -405,7 +414,7 @@ installing. You only ever see selection controls for servers you actually hold
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody’s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t3" href="#copying-and-downloading-a-log">Copying and downloading a log</a><a class="t2" href="#files">Files</a><a class="t3" href="#some-settings-are-written-again-on-every-start">Some settings are written again on every start</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#confirmations">Confirmations</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody’s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t3" href="#copying-and-downloading-a-log">Copying and downloading a log</a><a class="t2" href="#files">Files</a><a class="t3" href="#some-settings-are-written-again-on-every-start">Some settings are written again on every start</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

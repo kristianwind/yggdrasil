@@ -1479,8 +1479,28 @@
   // status badge moves, a button that looks untouched reads as a missed click.
   let busy = $state("");
 
+  // Stop and Restart take effect the moment they are pressed — players are
+  // disconnected, an app drops its connections — and they sit next to each other
+  // in the action bar. So they ask first, unless an admin has turned the
+  // confirmations off panel-wide (Settings → General). Start needs no such guard:
+  // the worst case is a server that is running.
+  const CONFIRM_ACTION = {
+    stop: {
+      title: "Stop server",
+      body: "Stops it now. Anyone connected is disconnected immediately.",
+      confirmText: "Stop",
+    },
+    restart: {
+      title: "Restart server",
+      body: "Restarts it now, with no warning to anyone connected. Safe restart gives them a countdown first.",
+      confirmText: "Restart",
+    },
+  };
+
   async function action(verb) {
     if (busy) return; // one control action at a time
+    const ask = $user?.confirm_actions !== false && CONFIRM_ACTION[verb];
+    if (ask && !(await confirmDialog({ ...ask, body: `${server?.name || "This server"} — ${ask.body}` }))) return;
     busy = verb;
     try {
       await api.post(`/servers/${id}/${verb}`);

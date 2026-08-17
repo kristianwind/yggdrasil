@@ -276,10 +276,14 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	jsonOK(w, map[string]interface{}{
-		"id":         claims.UserID,
-		"username":   claims.Username,
-		"role":       claims.Role,
-		"can_create": createGlobal || len(createRealms) > 0 || len(createGameskills) > 0,
+		"id":       claims.UserID,
+		"username": claims.Username,
+		"role":     claims.Role,
+		// Panel-wide, and delivered here rather than from the settings endpoint
+		// because a delegate with server.control has to be asked too and cannot
+		// read admin settings.
+		"confirm_actions": s.confirmActionsEnabled(r.Context()),
+		"can_create":      createGlobal || len(createRealms) > 0 || len(createGameskills) > 0,
 		"create": map[string]interface{}{
 			"global":     createGlobal,
 			"realms":     createRealms,

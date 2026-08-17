@@ -5,6 +5,7 @@
   import { formatTime } from "../lib/time.js";
   import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { registerPasskey, passkeysSupported } from "../lib/webauthn.js";
+  import { loadUser } from "../lib/auth.js";
   import RealmManager from "../components/RealmManager.svelte";
   import SectionNav from "../components/SectionNav.svelte";
 
@@ -773,6 +774,31 @@
     }
   }
 
+  // Confirmation prompts before a stop or a restart. Panel-wide and on by
+  // default; the value also rides on /auth/me, so after saving the user store is
+  // reloaded and the buttons change behaviour without a page refresh.
+  let confirmActions = $state({ enabled: true });
+  let savingConfirmActions = $state(false);
+  async function loadConfirmActions() {
+    try {
+      confirmActions = await api.get("/settings/confirm-actions");
+    } catch {
+      /* non-fatal */
+    }
+  }
+  async function saveConfirmActions() {
+    savingConfirmActions = true;
+    try {
+      confirmActions = await api.put("/settings/confirm-actions", { enabled: !!confirmActions.enabled });
+      await loadUser();
+      toast(confirmActions.enabled ? "Stop and restart will ask first" : "Stop and restart act immediately", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingConfirmActions = false;
+    }
+  }
+
   let backupVerify = $state({ enabled: false, last_run: "" });
   let savingBackupVerify = $state(false);
   async function loadBackupVerify() {
@@ -1251,6 +1277,7 @@
     loadBeacon();
     loadDiscord();
     loadBot();
+    loadConfirmActions();
     loadBackupVerify();
     loadBackupPolicy();
     loadUnifi();
@@ -1381,6 +1408,21 @@
   <input class="input flex-1" bind:value={panelName} maxlength="60" placeholder="Yggdrasil Panel"
     onkeydown={(e) => e.key === "Enter" && savePanelName()} />
   <button class="btn-primary shrink-0" onclick={savePanelName} disabled={savingPanelName}>Save</button>
+</div>
+
+<!-- Confirmations -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Confirmations</h2>
+<p class="text-muted mb-3 text-sm">
+  Stop and Restart act the instant they are pressed — anyone connected is disconnected, with no undo
+  — and they sit right next to each other. With this on, both ask first, on a single server and on a
+  selection. Start is never held up, and this is a guard against mis-clicks, not a permission:
+  schedules, the Discord bot and the API are unaffected.
+</p>
+<div class="card p-4 mb-10 max-w-xl">
+  <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={confirmActions.enabled} onchange={saveConfirmActions} disabled={savingConfirmActions} />
+    Ask before stopping or restarting a server
+  </label>
 </div>
 
 <!-- Panel updates -->

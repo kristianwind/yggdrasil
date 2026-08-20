@@ -30,7 +30,7 @@
   </div>
 </header>
 <div class="shell">
-<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-runes-with-an-llm.html">Runes with an LLM</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-migration.html">Migrating hosts</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="reference-api.html" class="on">HTTP API</a><a href="reference-rune-schema.html">Rune schema</a></nav>
+<input type="checkbox" id="sidetoggle" class="sidetoggle" aria-hidden="true" /><label for="sidetoggle" class="sidebtn">📖 All pages</label><nav class="side" aria-label="Documentation"><a href="index.html">Overview</a><a href="getting-started.html">Getting started</a><div class="sec">Guides</div><a href="guides-servers.html">Servers</a><a href="guides-runes.html">Runes</a><a href="guides-runes-with-an-llm.html">Runes with an LLM</a><a href="guides-backups-and-schedules.html">Backups &amp; schedules</a><a href="guides-migration.html">Migrating hosts</a><a href="guides-networking.html">Networking</a><a href="guides-monitoring-and-alerts.html">Monitoring &amp; alerts</a><a href="guides-notifications.html">Notifications</a><a href="guides-users-and-permissions.html">Users &amp; permissions</a><a href="guides-status-page-and-beacon.html">Status page &amp; beacon</a><a href="guides-kvasir-ai.html">Kvasir (AI)</a><a href="guides-claude-connector.html">Claude connector</a><a href="guides-dayz-norn.html">DayZ loot (Norn)</a><div class="sec">Reference</div><a href="reference-configuration.html">Configuration</a><a href="reference-api.html" class="on">HTTP API</a><a href="reference-rune-schema.html">Rune schema</a></nav>
 <main>
   <div class="search">
   <input id="q" type="search" placeholder="Search the docs…" autocomplete="off" aria-label="Search the docs" />
@@ -427,6 +427,88 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 </tr>
 </tbody>
 </table>
+<h3 id="claude-connector-mcp">Claude connector (MCP)</h3>
+<p>The panel speaks the Model Context Protocol at <code>/api/mcp</code> so Claude can read and drive it — see
+<a href="guides-claude-connector.html">Claude connector</a>. The endpoint is Streamable HTTP: a JSON-RPC
+message in a POST, one JSON object back, no server-initiated stream (<code>GET</code> and <code>DELETE</code> answer
+<code>405</code>, which is how the transport spec says to advertise that).</p>
+<p>Authorization is OAuth 2.1 with the panel as its own authorization server, so a client registers
+itself and the user approves it in a browser. Those endpoints are public by necessity — they are
+what a client uses <em>before</em> it has a token — and grant nothing until someone presses Allow.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/mcp</code></td>
+<td>MCP token or API token</td>
+<td>JSON-RPC: <code>initialize</code>, <code>ping</code>, <code>tools/list</code>, <code>tools/call</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/mcp/info</code></td>
+<td>Session</td>
+<td>The connector URL, tool count, and whether this address is publicly reachable</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/mcp/connections</code></td>
+<td>Session</td>
+<td>Clients the caller has connected</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/mcp/connections/{id}</code></td>
+<td>Session</td>
+<td>Revoke one client&rsquo;s access immediately</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/.well-known/oauth-protected-resource</code></td>
+<td>Public</td>
+<td>Resource metadata (RFC 9728) — also served under <code>/api/mcp</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/.well-known/oauth-authorization-server</code></td>
+<td>Public</td>
+<td>Authorization server metadata (RFC 8414)</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/oauth/register</code></td>
+<td>Public</td>
+<td>Dynamic client registration (RFC 7591)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/oauth/authorize</code></td>
+<td>Public</td>
+<td>The consent screen</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/oauth/authorize</code></td>
+<td>Session cookie</td>
+<td>Approve or decline; issues the authorization code</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/oauth/token</code></td>
+<td>Public (PKCE)</td>
+<td>Code → access token, and refresh-token rotation</td>
+</tr>
+</tbody>
+</table>
+<p>An unauthenticated request to <code>/api/mcp</code> answers <code>401</code> with
+<code>WWW-Authenticate: Bearer resource_metadata=&quot;…&quot;</code>, which is how a client discovers the flow.</p>
 <h3 id="runes">Runes</h3>
 <p>The API spells a rune <code>gameskill</code>. Reading the catalogue is open to any session because the
 create-server form needs it; everything that changes the catalogue is admin-only.</p>
@@ -1821,7 +1903,7 @@ progress; the install itself runs in the background and does not block the POST.
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#host-migration">Host migration</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#watchers">Watchers</a><a class="t3" href="#ip-blocking">IP blocking</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#claude-connector-mcp">Claude connector (MCP)</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#host-migration">Host migration</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#watchers">Watchers</a><a class="t3" href="#ip-blocking">IP blocking</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

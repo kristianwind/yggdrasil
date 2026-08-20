@@ -409,6 +409,40 @@ CREATE TABLE IF NOT EXISTS app_settings (
 	value TEXT NOT NULL DEFAULT ''
 );
 
+-- OAuth 2.1, so this panel can be added to Claude as a connector. Claude (and any
+-- other MCP client) registers itself, sends the user here to approve, and gets an
+-- access token bound to this panel's MCP endpoint. Three short-lived tables: the
+-- clients that registered, the authorization codes in flight, and the tokens
+-- issued. Nothing here is a password — codes and tokens are stored as SHA-256
+-- hashes, like API tokens.
+CREATE TABLE IF NOT EXISTS oauth_clients (
+	id            TEXT PRIMARY KEY,             -- client_id we minted at registration
+	name          TEXT NOT NULL DEFAULT '',
+	redirect_uris TEXT NOT NULL,                -- JSON array; matched exactly at authorize time
+	created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS oauth_codes (
+	code_hash    TEXT PRIMARY KEY,
+	client_id    TEXT NOT NULL,
+	user_id      TEXT NOT NULL,
+	redirect_uri TEXT NOT NULL,
+	challenge    TEXT NOT NULL,                 -- PKCE S256 challenge
+	resource     TEXT NOT NULL DEFAULT '',      -- RFC 8707 audience the token is for
+	expires_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+	token_hash   TEXT PRIMARY KEY,
+	refresh_hash TEXT NOT NULL DEFAULT '',
+	client_id    TEXT NOT NULL,
+	user_id      TEXT NOT NULL,
+	resource     TEXT NOT NULL DEFAULT '',
+	expires_at   TEXT NOT NULL,
+	created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_tokens_refresh ON oauth_tokens(refresh_hash);
+
 CREATE TABLE IF NOT EXISTS migrations (
 	version INTEGER PRIMARY KEY,
 	applied_at TEXT NOT NULL DEFAULT (datetime('now'))

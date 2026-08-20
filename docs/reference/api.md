@@ -271,6 +271,33 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 | `POST` | `/api/tokens` | Session | Mint an API token; the plaintext is returned once |
 | `DELETE` | `/api/tokens/{id}` | Session | Delete one of the caller's own API tokens |
 
+### Claude connector (MCP)
+
+The panel speaks the Model Context Protocol at `/api/mcp` so Claude can read and drive it — see
+[Claude connector](../guides/claude-connector.md). The endpoint is Streamable HTTP: a JSON-RPC
+message in a POST, one JSON object back, no server-initiated stream (`GET` and `DELETE` answer
+`405`, which is how the transport spec says to advertise that).
+
+Authorization is OAuth 2.1 with the panel as its own authorization server, so a client registers
+itself and the user approves it in a browser. Those endpoints are public by necessity — they are
+what a client uses *before* it has a token — and grant nothing until someone presses Allow.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/mcp` | MCP token or API token | JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call` |
+| `GET` | `/api/mcp/info` | Session | The connector URL, tool count, and whether this address is publicly reachable |
+| `GET` | `/api/mcp/connections` | Session | Clients the caller has connected |
+| `DELETE` | `/api/mcp/connections/{id}` | Session | Revoke one client's access immediately |
+| `GET` | `/.well-known/oauth-protected-resource` | Public | Resource metadata (RFC 9728) — also served under `/api/mcp` |
+| `GET` | `/.well-known/oauth-authorization-server` | Public | Authorization server metadata (RFC 8414) |
+| `POST` | `/oauth/register` | Public | Dynamic client registration (RFC 7591) |
+| `GET` | `/oauth/authorize` | Public | The consent screen |
+| `POST` | `/oauth/authorize` | Session cookie | Approve or decline; issues the authorization code |
+| `POST` | `/oauth/token` | Public (PKCE) | Code → access token, and refresh-token rotation |
+
+An unauthenticated request to `/api/mcp` answers `401` with
+`WWW-Authenticate: Bearer resource_metadata="…"`, which is how a client discovers the flow.
+
 ### Runes
 
 The API spells a rune `gameskill`. Reading the catalogue is open to any session because the

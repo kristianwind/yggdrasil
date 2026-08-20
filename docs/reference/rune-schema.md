@@ -111,20 +111,45 @@ images that resolve relative paths against their `WORKDIR`, and it's why `builti
 sets `data_path: /data` even though `/data` is already the default — same mount, but the image keeps
 its own working directory.
 
-### `user` and the `/etc/passwd` shim
+### `user`, image `USER`, and the `/etc/passwd` shim
 
-By default the container runs as the panel's uid:gid, which keeps every file the server writes
-editable from the Files tab. Set `user: "0:0"` for images that must start as root in order to drop
-to their own `PUID`/`PGID` (linuxserver.io images, Gitea's s6 init, Nginx Proxy Manager). The
-install script always runs as root regardless of this field.
+**The container always runs as a uid Yggdrasil picks.** Leave `user` unset and it is the panel's own
+service account — 999:982 on a typical install, though the account is made with `useradd --system`,
+so the number is whatever the OS had free (`id yggdrasil` tells you). That is also the account that
+owns the server's data directory: the panel creates the directory as itself, and Docker never chowns
+a bind mount. So the default user is exactly the one that can write the server's files, and
+everything the server writes stays editable from the Files tab.
 
-Running as a uid that doesn't exist in the image's `/etc/passwd` breaks any binary that calls
-`getpwuid()` — Steam-based servers segfault on the NULL result, which surfaces as a misleading
-`CrashReporter: not found`. So when a rune does **not** set `keep_entrypoint`, Yggdrasil mounts a
-minimal read-only `/etc/passwd` (root, the run-as user with home `/data`, and nobody) into the
-container. Runes with `keep_entrypoint` don't get the shim on purpose: those images run their own
-init and need their own named users (`git`, `www-data`), and overwriting `/etc/passwd` would delete
-them.
+**An image's own `USER` is overridden, not honoured.** A Dockerfile that does `adduser -u 1000 app`
+followed by `USER app` still runs as the panel's uid here. If the image's code then looks itself up
+— Go's `os/user`, a `getpwuid` call, `id -un`, an entrypoint that does `chown app:app` — that lookup
+fails, because the uid it is running as is not in the image's `/etc/passwd`.
+
+Yggdrasil normally papers over that by mounting a minimal `/etc/passwd` containing the uid it chose
+— **but only when `keep_entrypoint` is false**, because that file would otherwise erase the named
+users an image's own init depends on (Gitea's `git`, WordPress's `www-data`). So `keep_entrypoint:
+true` with no `user:` is the one combination where an image runs as a uid it has never heard of. It
+surfaces as `unknown userid 999`, `id: 'app': no such user`, or an init that exits immediately and
+takes the container with it.
+
+The shim is a read-only file with three entries: root, the run-as user with home `/data`, and
+nobody. It exists because the failure it prevents is so misleading — a Steam-based server segfaults
+on `getpwuid()` returning NULL, and reports it as `CrashReporter: not found`.
+
+Three ways out, in the order to reach for them:
+
+| your image | what to write |
+|---|---|
+| your own, or one that does not care what uid it runs as | leave `user` unset — the panel's account owns the data dir, so this is the least surprising |
+| starts as root and drops privileges itself (linuxserver.io, s6, Gitea, WordPress) | `user: "0:0"` together with `keep_entrypoint: true` |
+| honours `PUID`/`PGID` | expose them as variables **defaulting to the panel's account** — never 1000 |
+
+That last row is the most common bug in this catalogue. An image that chowns its data directory to
+`PUID` (1000 in most of them) takes the server's files away from the panel: the app goes on working
+while the Files tab, restores and backups fail on that one server, with nothing announcing it.
+
+`HOME` is always `/data`, so a non-root process has a writable home for caches. The install script
+runs as root regardless of this field.
 
 ### `keep_entrypoint`
 
@@ -135,6 +160,27 @@ arguments to its own entrypoint.
 Set `keep_entrypoint: true` to run an off-the-shelf image the way a plain `docker run` would. The
 startup command then becomes optional: leave it empty and the image's default `CMD` runs, or use
 `startup.exec` to pass arguments to the image's entrypoint.
+
+**With `keep_entrypoint`, everything in `startup` becomes arguments to the image's entrypoint —
+including `command`.** That is easy to miss, because `command` reads like "the command to run" and
+here it is not. Yggdrasil wraps it as `/bin/sh -c "<your command>"` and hands *those three
+arguments* to the entrypoint, so the container really runs:
+
+```
+<image ENTRYPOINT>  /bin/sh  -c  "<your command>"
+```
+
+Whether that is right depends entirely on the entrypoint. A wrapper that `exec`s its arguments —
+`docker-php-entrypoint`, most `docker-entrypoint.sh` scripts — does exactly what you meant, which is
+how `community-runes/apps/php-site.yaml` uses it. A binary that parses its arguments as a
+subcommand does not: it sees `/bin/sh` as the subcommand, prints its usage, exits non-zero, and the
+container restarts until the panel gives up. Nothing in the logs points at the rune — the give-up
+alert carries a usage message, and the natural suspicion is the data directory or permissions.
+
+So with `keep_entrypoint: true`, reach for `startup.exec` (`exec: ["mimir", "serve"]`) or leave
+startup empty and let the image's `CMD` run. Use `command` only when you know the entrypoint runs
+what it is given. Without `keep_entrypoint` there is no such trap: the entrypoint is cleared and
+`command` is the command.
 
 ### `extra_volumes`
 
@@ -353,9 +399,14 @@ install:
 
 The script runs as root via `/bin/sh -c`, with the server's data directory mounted at `/data` and
 the working directory set to `/data` — always `/data`, regardless of `docker.data_path`. Whatever
-the script writes there persists as the server's files. The host filesystem is never exposed. When
-the script finishes, Yggdrasil chowns `/data` to the panel's user so the server and the Files tab
-can both write to it. A non-zero exit fails the install.
+the script writes there persists as the server's files. The host filesystem is never exposed. A
+non-zero exit fails the install.
+
+When the script finishes, Yggdrasil chowns `/data` to the panel's user so the server and the Files
+tab can both write to it. That runs **after** your script, so a `chown` of your own does not survive
+— create the files and directories you need and let the reclaim set ownership; the install container
+runs as root, so it can create anything. Handing the data directory to a different uid is not
+something the install step can do.
 
 A rune with no `install` block is marked installed immediately. A server cannot be started until its
 install has finished, and re-running an install on a running server recreates the container
@@ -447,8 +498,24 @@ A freshly started server is `starting`, not `running`. Every three seconds Yggdr
 Without a `done_regex`, a container that stays up is called `running` on the next poll.
 
 Pick a line the game prints exactly once, when it's actually accepting players. Alternatives with
-`|` are fine. If the container exits before the pattern matches, the server goes to `stopped` and
-the start-failure path takes over.
+`|` are fine.
+
+**A rune with a port named `web` has to satisfy both.** A log line is a claim, a connectable port is
+the thing the reader is waiting for — and apps do print readiness early (Tracefinity's supervisord
+reports its programs up in three seconds, then spends a minute loading models). So for those runes
+the pattern matching is not enough: the port has to answer too. A connectable `web` port on its own
+*is* enough, even if the pattern never matches.
+
+**A pattern that never matches restarts nothing.** If the process is alive and the line simply never
+appears, the server sits in `starting`: one "taking a long time" notification after 5 minutes, and
+the watcher gives up after 10. Nothing is killed, nothing is retried.
+
+**A container that exits is the other story**, and telling the two apart is most of debugging a new
+rune. The panel marks the server `stopped` and retries the start **three times, 15 seconds apart**,
+then sends one alert carrying the container's last 40 log lines. With autostart on, Docker is
+independently restarting the container under its own `on-failure` policy (at most 3). So: rising
+uptime in `docker ps` while the panel says "starting" is a `done_regex` problem; a container that
+keeps vanishing and reappearing is your process exiting, and the give-up alert carries the reason.
 
 A `done_regex` that never matches is not fatal, but it is a bad time: the server sits in `starting`
 for five minutes, you get a "taking a long time" notification, and at ten minutes Yggdrasil gives up

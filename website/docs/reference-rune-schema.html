@@ -287,18 +287,53 @@ then leaves the working directory alone, so the image&rsquo;s own <code>WORKDIR<
 images that resolve relative paths against their <code>WORKDIR</code>, and it&rsquo;s why <code>builtin-runes/vaultwarden.yaml</code>
 sets <code>data_path: /data</code> even though <code>/data</code> is already the default — same mount, but the image keeps
 its own working directory.</p>
-<h3 id="user-and-the-etcpasswd-shim"><code>user</code> and the <code>/etc/passwd</code> shim</h3>
-<p>By default the container runs as the panel&rsquo;s uid:gid, which keeps every file the server writes
-editable from the Files tab. Set <code>user: &quot;0:0&quot;</code> for images that must start as root in order to drop
-to their own <code>PUID</code>/<code>PGID</code> (linuxserver.io images, Gitea&rsquo;s s6 init, Nginx Proxy Manager). The
-install script always runs as root regardless of this field.</p>
-<p>Running as a uid that doesn&rsquo;t exist in the image&rsquo;s <code>/etc/passwd</code> breaks any binary that calls
-<code>getpwuid()</code> — Steam-based servers segfault on the NULL result, which surfaces as a misleading
-<code>CrashReporter: not found</code>. So when a rune does <strong>not</strong> set <code>keep_entrypoint</code>, Yggdrasil mounts a
-minimal read-only <code>/etc/passwd</code> (root, the run-as user with home <code>/data</code>, and nobody) into the
-container. Runes with <code>keep_entrypoint</code> don&rsquo;t get the shim on purpose: those images run their own
-init and need their own named users (<code>git</code>, <code>www-data</code>), and overwriting <code>/etc/passwd</code> would delete
-them.</p>
+<h3 id="user-image-user-and-the-etcpasswd-shim"><code>user</code>, image <code>USER</code>, and the <code>/etc/passwd</code> shim</h3>
+<p><strong>The container always runs as a uid Yggdrasil picks.</strong> Leave <code>user</code> unset and it is the panel&rsquo;s own
+service account — 999:982 on a typical install, though the account is made with <code>useradd --system</code>,
+so the number is whatever the OS had free (<code>id yggdrasil</code> tells you). That is also the account that
+owns the server&rsquo;s data directory: the panel creates the directory as itself, and Docker never chowns
+a bind mount. So the default user is exactly the one that can write the server&rsquo;s files, and
+everything the server writes stays editable from the Files tab.</p>
+<p><strong>An image&rsquo;s own <code>USER</code> is overridden, not honoured.</strong> A Dockerfile that does <code>adduser -u 1000 app</code>
+followed by <code>USER app</code> still runs as the panel&rsquo;s uid here. If the image&rsquo;s code then looks itself up
+— Go&rsquo;s <code>os/user</code>, a <code>getpwuid</code> call, <code>id -un</code>, an entrypoint that does <code>chown app:app</code> — that lookup
+fails, because the uid it is running as is not in the image&rsquo;s <code>/etc/passwd</code>.</p>
+<p>Yggdrasil normally papers over that by mounting a minimal <code>/etc/passwd</code> containing the uid it chose
+— <strong>but only when <code>keep_entrypoint</code> is false</strong>, because that file would otherwise erase the named
+users an image&rsquo;s own init depends on (Gitea&rsquo;s <code>git</code>, WordPress&rsquo;s <code>www-data</code>). So <code>keep_entrypoint: true</code> with no <code>user:</code> is the one combination where an image runs as a uid it has never heard of. It
+surfaces as <code>unknown userid 999</code>, <code>id: 'app': no such user</code>, or an init that exits immediately and
+takes the container with it.</p>
+<p>The shim is a read-only file with three entries: root, the run-as user with home <code>/data</code>, and
+nobody. It exists because the failure it prevents is so misleading — a Steam-based server segfaults
+on <code>getpwuid()</code> returning NULL, and reports it as <code>CrashReporter: not found</code>.</p>
+<p>Three ways out, in the order to reach for them:</p>
+<table>
+<thead>
+<tr>
+<th>your image</th>
+<th>what to write</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>your own, or one that does not care what uid it runs as</td>
+<td>leave <code>user</code> unset — the panel&rsquo;s account owns the data dir, so this is the least surprising</td>
+</tr>
+<tr>
+<td>starts as root and drops privileges itself (linuxserver.io, s6, Gitea, WordPress)</td>
+<td><code>user: &quot;0:0&quot;</code> together with <code>keep_entrypoint: true</code></td>
+</tr>
+<tr>
+<td>honours <code>PUID</code>/<code>PGID</code></td>
+<td>expose them as variables <strong>defaulting to the panel&rsquo;s account</strong> — never 1000</td>
+</tr>
+</tbody>
+</table>
+<p>That last row is the most common bug in this catalogue. An image that chowns its data directory to
+<code>PUID</code> (1000 in most of them) takes the server&rsquo;s files away from the panel: the app goes on working
+while the Files tab, restores and backups fail on that one server, with nothing announcing it.</p>
+<p><code>HOME</code> is always <code>/data</code>, so a non-root process has a writable home for caches. The install script
+runs as root regardless of this field.</p>
 <h3 id="keep_entrypoint"><code>keep_entrypoint</code></h3>
 <p>Yggdrasil clears the image&rsquo;s <code>ENTRYPOINT</code> by default so that your startup command is the actual
 command. Without this, an image like <code>cm2network/steamcmd</code> would pass your startup command as
@@ -306,6 +341,22 @@ arguments to its own entrypoint.</p>
 <p>Set <code>keep_entrypoint: true</code> to run an off-the-shelf image the way a plain <code>docker run</code> would. The
 startup command then becomes optional: leave it empty and the image&rsquo;s default <code>CMD</code> runs, or use
 <code>startup.exec</code> to pass arguments to the image&rsquo;s entrypoint.</p>
+<p><strong>With <code>keep_entrypoint</code>, everything in <code>startup</code> becomes arguments to the image&rsquo;s entrypoint —
+including <code>command</code>.</strong> That is easy to miss, because <code>command</code> reads like &ldquo;the command to run&rdquo; and
+here it is not. Yggdrasil wraps it as <code>/bin/sh -c &quot;&lt;your command&gt;&quot;</code> and hands <em>those three
+arguments</em> to the entrypoint, so the container really runs:</p>
+<pre><code>&lt;image ENTRYPOINT&gt;  /bin/sh  -c  &quot;&lt;your command&gt;&quot;
+</code></pre>
+<p>Whether that is right depends entirely on the entrypoint. A wrapper that <code>exec</code>s its arguments —
+<code>docker-php-entrypoint</code>, most <code>docker-entrypoint.sh</code> scripts — does exactly what you meant, which is
+how <code>community-runes/apps/php-site.yaml</code> uses it. A binary that parses its arguments as a
+subcommand does not: it sees <code>/bin/sh</code> as the subcommand, prints its usage, exits non-zero, and the
+container restarts until the panel gives up. Nothing in the logs points at the rune — the give-up
+alert carries a usage message, and the natural suspicion is the data directory or permissions.</p>
+<p>So with <code>keep_entrypoint: true</code>, reach for <code>startup.exec</code> (<code>exec: [&quot;mimir&quot;, &quot;serve&quot;]</code>) or leave
+startup empty and let the image&rsquo;s <code>CMD</code> run. Use <code>command</code> only when you know the entrypoint runs
+what it is given. Without <code>keep_entrypoint</code> there is no such trap: the entrypoint is cleared and
+<code>command</code> is the command.</p>
 <h3 id="extra_volumes"><code>extra_volumes</code></h3>
 <p>For images that insist on more than one mount. Each listed container path gets its own directory
 under the server&rsquo;s data dir, named after the path (<code>/etc/letsencrypt</code> becomes <code>_etc_letsencrypt</code>),
@@ -573,9 +624,13 @@ install log in the UI.</p>
 </code></pre>
 <p>The script runs as root via <code>/bin/sh -c</code>, with the server&rsquo;s data directory mounted at <code>/data</code> and
 the working directory set to <code>/data</code> — always <code>/data</code>, regardless of <code>docker.data_path</code>. Whatever
-the script writes there persists as the server&rsquo;s files. The host filesystem is never exposed. When
-the script finishes, Yggdrasil chowns <code>/data</code> to the panel&rsquo;s user so the server and the Files tab
-can both write to it. A non-zero exit fails the install.</p>
+the script writes there persists as the server&rsquo;s files. The host filesystem is never exposed. A
+non-zero exit fails the install.</p>
+<p>When the script finishes, Yggdrasil chowns <code>/data</code> to the panel&rsquo;s user so the server and the Files
+tab can both write to it. That runs <strong>after</strong> your script, so a <code>chown</code> of your own does not survive
+— create the files and directories you need and let the reclaim set ownership; the install container
+runs as root, so it can create anything. Handing the data directory to a different uid is not
+something the install step can do.</p>
 <p>A rune with no <code>install</code> block is marked installed immediately. A server cannot be started until its
 install has finished, and re-running an install on a running server recreates the container
 afterwards so the new files take effect.</p>
@@ -687,8 +742,21 @@ startup:
 2000 lines of the container log for <code>done_regex</code>; the first match flips the server to <code>running</code>.
 Without a <code>done_regex</code>, a container that stays up is called <code>running</code> on the next poll.</p>
 <p>Pick a line the game prints exactly once, when it&rsquo;s actually accepting players. Alternatives with
-<code>|</code> are fine. If the container exits before the pattern matches, the server goes to <code>stopped</code> and
-the start-failure path takes over.</p>
+<code>|</code> are fine.</p>
+<p><strong>A rune with a port named <code>web</code> has to satisfy both.</strong> A log line is a claim, a connectable port is
+the thing the reader is waiting for — and apps do print readiness early (Tracefinity&rsquo;s supervisord
+reports its programs up in three seconds, then spends a minute loading models). So for those runes
+the pattern matching is not enough: the port has to answer too. A connectable <code>web</code> port on its own
+<em>is</em> enough, even if the pattern never matches.</p>
+<p><strong>A pattern that never matches restarts nothing.</strong> If the process is alive and the line simply never
+appears, the server sits in <code>starting</code>: one &ldquo;taking a long time&rdquo; notification after 5 minutes, and
+the watcher gives up after 10. Nothing is killed, nothing is retried.</p>
+<p><strong>A container that exits is the other story</strong>, and telling the two apart is most of debugging a new
+rune. The panel marks the server <code>stopped</code> and retries the start <strong>three times, 15 seconds apart</strong>,
+then sends one alert carrying the container&rsquo;s last 40 log lines. With autostart on, Docker is
+independently restarting the container under its own <code>on-failure</code> policy (at most 3). So: rising
+uptime in <code>docker ps</code> while the panel says &ldquo;starting&rdquo; is a <code>done_regex</code> problem; a container that
+keeps vanishing and reappearing is your process exiting, and the give-up alert carries the reason.</p>
 <p>A <code>done_regex</code> that never matches is not fatal, but it is a bad time: the server sits in <code>starting</code>
 for five minutes, you get a &ldquo;taking a long time&rdquo; notification, and at ten minutes Yggdrasil gives up
 waiting and marks it <code>running</code> anyway if the container is still alive. Ten minutes of a wrong status
@@ -1409,7 +1477,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-and-the-etcpasswd-shim">user and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

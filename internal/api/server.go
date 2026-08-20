@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"embed"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -182,6 +183,20 @@ func (s *Server) buildRouter() *chi.Mux {
 	// Public install count for the website (404s unless a collector opted in).
 	r.Get("/api/beacon/count", s.handlePublicBeaconCount)
 
+	// MCP connector: the discovery documents and the whole OAuth flow have to be
+	// reachable before any token exists, so they sit outside authMiddleware. The
+	// MCP endpoint itself is authenticated (below) — these only describe it and
+	// hand out tokens for it. The path-suffixed forms are what MCP clients
+	// actually request when the resource has a path (RFC 9728 §3.1).
+	r.Get("/.well-known/oauth-protected-resource", s.handleOAuthProtectedResource)
+	r.Get("/.well-known/oauth-protected-resource/api/mcp", s.handleOAuthProtectedResource)
+	r.Get("/.well-known/oauth-authorization-server", s.handleOAuthServerMetadata)
+	r.Get("/.well-known/oauth-authorization-server/api/mcp", s.handleOAuthServerMetadata)
+	r.Post("/oauth/register", s.handleOAuthRegister)
+	r.Get("/oauth/authorize", s.handleAuthorize)
+	r.Post("/oauth/authorize", s.handleAuthorizeSubmit)
+	r.Post("/oauth/token", s.handleToken)
+
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
 		r.Use(s.authMiddleware)
@@ -344,6 +359,15 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Put("/api/settings/backup-verify", s.requireAdmin(s.handleSetBackupVerify))
 		// The value itself also rides on /api/auth/me, so every caller's UI knows
 		// whether to ask; only changing it is admin-only.
+		// Model Context Protocol — one endpoint Claude (or any MCP client) drives
+		// the panel through. GET/DELETE answer 405: no server-initiated stream,
+		// no sessions.
+		r.Get("/api/mcp/info", s.handleMCPInfo)
+		r.Get("/api/mcp/connections", s.handleListConnections)
+		r.Delete("/api/mcp/connections/{id}", s.handleRevokeConnection)
+		r.Post("/api/mcp", s.handleMCP)
+		r.Get("/api/mcp", s.handleMCPUnsupported)
+		r.Delete("/api/mcp", s.handleMCPUnsupported)
 		r.Get("/api/settings/confirm-actions", s.requireAdmin(s.handleGetConfirmActions))
 		r.Put("/api/settings/confirm-actions", s.requireAdmin(s.handleSetConfirmActions))
 		r.Delete("/api/backups/{id}", s.handleDeleteBackup)
@@ -576,7 +600,20 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 		tokenStr := extractToken(r)
 		if tokenStr == "" {
-			jsonError(w, "unauthorized", http.StatusUnauthorized)
+			s.unauthorized(w, r)
+			return
+		}
+		// MCP connector tokens are checked FIRST: they are issued with the prefix
+		// "ygg_mcp_", which also matches the plain API-token prefix "ygg_", so the
+		// order of these two branches is what makes them distinguishable at all.
+		if strings.HasPrefix(tokenStr, oauthTokenPrefix) {
+			claims := s.claimsForOAuthToken(r, tokenStr)
+			if claims == nil {
+				s.unauthorized(w, r)
+				return
+			}
+			r = r.WithContext(withClaims(r.Context(), claims))
+			next.ServeHTTP(w, r)
 			return
 		}
 		// API tokens (prefix) authenticate automation as their owning user.
@@ -609,6 +646,17 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		r = r.WithContext(withClaims(r.Context(), claims))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// unauthorized answers a failed authentication. On the MCP endpoint it also says
+// WHERE to get a token, which is how an MCP client discovers the OAuth flow: the
+// spec has it read the resource-metadata URL out of this header after a 401.
+func (s *Server) unauthorized(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, mcpResourcePath) {
+		w.Header().Set("WWW-Authenticate",
+			fmt.Sprintf(`Bearer resource_metadata="%s%s"`, panelBaseURL(r), oauthMetadataPath))
+	}
+	jsonError(w, "unauthorized", http.StatusUnauthorized)
 }
 
 // claimsForAPIToken resolves an API token to its owner's claims, or nil.

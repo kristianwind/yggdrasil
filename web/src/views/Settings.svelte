@@ -799,6 +799,31 @@
     }
   }
 
+  // Claude connector (MCP). The panel speaks the Model Context Protocol at
+  // /api/mcp; adding it in Claude runs an OAuth flow against this panel, so the
+  // only thing to show here is the URL, what is connected, and a way to cut it.
+  let mcp = $state(null); // { url, public, tools }
+  let connections = $state([]);
+  async function loadMCP() {
+    mcp = await api.get("/mcp/info").catch(() => null);
+    connections = (await api.get("/mcp/connections").catch(() => [])) || [];
+  }
+  async function revokeConnection(c) {
+    if (!(await confirmDialog({
+      title: "Disconnect " + c.name,
+      body: c.name + " will lose access to this panel immediately. It can reconnect only by asking you to approve again.",
+      confirmText: "Disconnect",
+      danger: true,
+    }))) return;
+    try {
+      await api.del(`/mcp/connections/${c.client_id}`);
+      toast(c.name + " disconnected", "success");
+      await loadMCP();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   let backupVerify = $state({ enabled: false, last_run: "" });
   let savingBackupVerify = $state(false);
   async function loadBackupVerify() {
@@ -1278,6 +1303,7 @@
     loadDiscord();
     loadBot();
     loadConfirmActions();
+    loadMCP();
     loadBackupVerify();
     loadBackupPolicy();
     loadUnifi();
@@ -1423,6 +1449,44 @@
     <input type="checkbox" bind:checked={confirmActions.enabled} onchange={saveConfirmActions} disabled={savingConfirmActions} />
     Ask before stopping or restarting a server
   </label>
+</div>
+
+<!-- Claude connector -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Claude connector</h2>
+<p class="text-muted mb-3 text-sm">
+  Let Claude read and drive this panel in conversation — "is anything down?", "show me the last
+  hundred lines from the Minecraft server", "restart it". Add the URL below in Claude under
+  <b>Settings → Connectors → Add custom connector</b>; Claude opens this panel so you can approve it,
+  and it then acts with <em>your</em> permissions and shows up in the audit log like anything else.
+</p>
+<div class="card p-4 mb-10 max-w-xl">
+  {#if mcp}
+    <div class="flex gap-2 items-center">
+      <input class="input flex-1 font-mono text-sm" readonly value={mcp.url} onclick={(e) => e.target.select()} />
+      <button class="btn-ghost shrink-0" onclick={() => { navigator.clipboard.writeText(mcp.url); toast("Copied", "success"); }}>Copy</button>
+    </div>
+    <p class="text-xs text-muted mt-2">{mcp.tools} tools available to a connected client.</p>
+    {#if !mcp.public}
+      <p class="text-xs text-warn mt-2">
+        This address is not reachable from the internet, so Claude's servers cannot connect to it.
+        A connector needs a public HTTPS address; on a LAN-only panel, use an API token with a local
+        MCP client instead.
+      </p>
+    {/if}
+    {#if connections.length}
+      <div class="mt-4 border-t border-border pt-3">
+        <p class="text-sm font-medium mb-2">Connected</p>
+        {#each connections as c}
+          <div class="flex items-center justify-between gap-2 py-1">
+            <span class="text-sm">{c.name} <span class="text-muted text-xs">· since {formatTime(c.connected_at)}</span></span>
+            <button class="btn-ghost text-warn px-2 py-1 text-xs" onclick={() => revokeConnection(c)}>Disconnect</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {:else}
+    <p class="text-muted text-sm">Loading…</p>
+  {/if}
 </div>
 
 <!-- Panel updates -->

@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 9
+  version: 10
   icon: "minecraft"
 
   docker:
@@ -110,8 +110,11 @@ gameskill:
           fi
           need "$VER" "could not resolve Paper version"
           BJSON=$(curl -fsSL -A "$UA" "https://fill.papermc.io/v3/projects/paper/versions/$VER/builds/latest")
-          URL=$(echo "$BJSON" | jq -r '.downloads["server:default"].url')
-          BUILD=$(echo "$BJSON" | jq -r '.id // .build // empty')
+          # printf, not echo: dash's echo expands backslash escapes, and Paper's
+          # build JSON carries \n inside the commit message — echo turns those into
+          # real newlines and jq then rejects the string as unescaped control chars.
+          URL=$(printf '%s' "$BJSON" | jq -r '.downloads["server:default"].url')
+          BUILD=$(printf '%s' "$BJSON" | jq -r '.id // .build // empty')
           need "$URL" "no Paper build for $VER"
           curl -fsSL -A "$UA" -o server.jar "$URL"
           ;;

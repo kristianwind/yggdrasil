@@ -19,7 +19,7 @@ For people running a panel.
 | [Networking](guides/networking.md) | Ports, reachability, UPnP, UniFi, Nginx Proxy Manager, Cloudflare Tunnel |
 | [Monitoring and alerts](guides/monitoring-and-alerts.md) | Metrics, resource alarms, the watchdog, auto-restart, quiet hours |
 | [Notifications](guides/notifications.md) | Telegram, Discord, webhooks, email — and what actually triggers them |
-| [Status page and beacon](guides/status-page-and-beacon.md) | The public `/status` board, the Discord status embed, the opt-in beacon |
+| [Status page and beacon](guides/status-page-and-beacon.md) | The public `/status` board, the Discord status embed, the on-by-default beacon and how to turn it off |
 | [Kvasir (AI)](guides/kvasir-ai.md) | The optional AI assistant, its providers, and its safety model |
 | [DayZ loot economy (Norn)](guides/dayz-norn.md) | Lifetimes, globals, mod loot, and surviving a reinstall |
 

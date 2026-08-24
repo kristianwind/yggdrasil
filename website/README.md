@@ -47,7 +47,9 @@ are already on GitHub. Publishing it here is one flag, not a rewrite.
   the reader at the top of a long page.
 - Adds a copy button to every code block, and a lightbox to every screenshot.
 - Search runs client-side over one small JSON file. There is no search service and no
-  analytics: consistent with the project's [no-telemetry stance](../docs/guides/status-page-and-beacon.md).
+  analytics — the site itself measures nothing. (The panel's own
+  [beacon](../docs/guides/status-page-and-beacon.md) is a separate thing: one daily ping
+  with an install id and a version, and it can be turned off.)
 
 ## Host it with Yggdrasil itself
 

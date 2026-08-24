@@ -160,14 +160,14 @@
         aria-label={collapsed ? "Expand menu" : "Collapse menu"}
       >{collapsed ? "›" : "‹"}</button>
       <button
-        class="shrink-0 py-4 text-lg font-semibold flex items-center gap-2 hover:bg-panel2/50 text-left px-5 {collapsed ? 'md:px-0 md:justify-center' : ''}"
+        class="shrink-0 py-4 text-base font-semibold flex items-center gap-2 hover:bg-panel2/50 text-left px-4 {collapsed ? 'md:px-0 md:justify-center' : ''}"
         title="Go to dashboard"
         onclick={() => {
           navigate("/");
           mobileOpen = false;
         }}
       >
-        <span>🌳</span><span class="whitespace-nowrap {collapsed ? 'md:hidden' : ''}">{build?.panel_name || "Yggdrasil Panel"}</span>
+        <span class="shrink-0">🌳</span><span class="truncate {collapsed ? 'md:hidden' : ''}">{build?.panel_name || "Yggdrasil Panel"}</span>
       </button>
       <!-- Command palette trigger — keeps ⌘K discoverable and works on touch. -->
       <button

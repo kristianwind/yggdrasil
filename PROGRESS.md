@@ -1,297 +1,120 @@
 # Yggdrasil — Progress
 
-Last updated: 2026-07-27
+Last updated: 2026-08-24 · current release: **v0.3.0**
 
-## Live releases changelog (v0.2.x — post-launch, from real-VM testing)
+## Where the project is
 
-Worked through the WISHLIST against a real x86 Ubuntu VM (Docker) + SSH debugging.
-Each item is built, verified, GitHub-released, and auto-deployed to the VM.
+Yggdrasil is **built, in daily use, and past the point where "early development" described it**.
+The panel has been running real game and app servers in production since June 2026 — Minecraft,
+DayZ, Rust, WordPress sites, the *arr media stack, Immich, Vaultwarden, Gitea and more — on
+amd64 boxes and on arm64.
 
-- **v0.2.212** — **History tab + Karakeep rune.** Per-server "History" tab surfaces recorded player sessions and security/health events (with source IPs) in the panel, not just via Kvasir (`GET /api/servers/{id}/activity`, gated by a `has_activity` flag). New **Karakeep** community rune (self-hostable Raindrop.io/Pocket alternative) as an app stack — web + Meilisearch + headless Chrome — runtime-tested on both amd64 and arm64.
-- **v0.2.211** — **Update no longer restarts stopped servers + fleet security scan + proactive XML-RPC watcher + unified Kvasir icon.** Root-caused "my servers restart on their own": the nightly Update schedule reinstalled+started *every* server, including stopped ones — now skips `stopped`. Kvasir's `events` lookup gained a fleet mode (`server:"*"`). WordPress rune (v12) adds an XML-RPC-flood watcher → proactive Telegram/Discord alert. Icon aligned to 🧠.
-- **v0.2.210** — **Rune-declared app events + WordPress security tracking.** New rune `events:` block (regex → aggregated per subject/hour into `app_events`), so a brute-force flood is one row/IP/hour, not thousands of raw lines. WordPress ships xmlrpc/wp-login/5xx events (client IP). New tier-1 Kvasir `events` lookup. Live-verified against a real distributed XML-RPC attack on a production WP site.
-- **v0.2.209** — **Persistent player-session history.** Rune `players.session_join`/`session_leave` regexes; the metrics sampler turns join/leave log events (Docker per-line timestamps → game-log-format-agnostic) into `player_sessions` rows, so "who was on yesterday" survives log rotation. Bedrock gets named history with no RCON. New tier-1 Kvasir `player_sessions` lookup.
-- **v0.2.208** — **Admin-tunable Kvasir data access + roster + local/cloud log warning.** `ai_config.chat_data_level` (0 snapshot / 1 panel-data / 2 +logs); logs are now opt-in. The panel detects whether the configured LLM is local (private/loopback/tailscale) or cloud and warns before log data would leave the box. New read-only `roster` lookup.
-- **v0.2.207** — **Kvasir read-only lookups.** A prompt-based ```lookup protocol (chosen over native tool_calls because the target model is a local Gemma via llama.cpp/vLLM): player_history, metrics_window, list_backups, search_logs — read-only, scoped to servers the caller controls, chained up to 3×. Verified the local model follows the protocol.
-- **v0.2.206** — **Kvasir metrics in context + arm64/Pi advertised.** The chat snapshot now carries per-server player/load readings (current + 24h peak + last-active), so Kvasir can answer "were there players the last 6h". Docs/README/landing now advertise arm64/Raspberry-Pi (always built + installable; just never said so).
-- **v0.2.205** — **Autostart name-conflict fix.** At boot, `autostart=1`'s Docker restart policy raced the panel's autostart loop for the same container name; the loop now starts the existing container in place instead of recreating (which hit "name already in use").
-- **v0.2.204** — **Forgot-password via email.** Self-service reset from the login page + admin bring-your-own-SMTP (Yggdrasil never runs a mail server) + a `yggdrasil reset-password` break-glass CLI. No-enumeration, single-use tokens.
-- **v0.2.68–.203** — *changelog fell behind here (this file was last maintained at v0.2.67 on 2026-06-03).* Not back-filled entry-by-entry; the GitHub releases and git tags are the record. Major milestones in this range: the big v0.2.194 batch (Kvasir streaming chat + docs-grounding + anomaly watchers), host→host panel migration + app-data import (incl. `.wpress`), the full *arr media stack + more app runes, Bedrock online-mode fixed via the itzg image, and `web/dist` taken out of git (built in CI).
-- **v0.2.67** — **`startup.exec` (raw argv) + Headscale rune.** New `startup.exec: [..]` runs a raw, templated argv with no `/bin/sh -c` wrapper — needed for distroless/ko-built images (no shell) and to pass arguments to an image's own ENTRYPOINT (with `keep_entrypoint`). Added a **Headscale** rune (self-hosted Tailscale control server, juanfont/headscale, pinned 0.23.0): keep_entrypoint + `exec: [serve, -c, …]`, config seeded via busybox (the headscale image has no shell), control `unix_socket` pointed at the writable volume. Verified live (listening + `/health` 200). Starter template — set `SERVER_URL`.
-- **v0.2.66** — **Rename `gameskills/` → `builtin-runes/`** (the embedded folder), pairing with `community-runes/` and the `builtin=1` flag. Folder + 3 path references only; the gameskill *concept* (package/table/`/api/gameskills`/types) is unchanged and rune ids re-seed identically — no DB/API/data impact. (v0.2.65 was the same change but its commit missed the `go:embed` path edit → CI build failed; v0.2.66 fixed + verified the 4 built-ins seed.)
-- **v0.2.64** — Runes page header buttons wrap on narrow/mobile screens (primary button was overflowing off-screen).
-- **v0.2.63** — **Rune folders + GitHub-browser recursion + ~10 new runes.** `community-runes/` reorganized into `databases/`, `apps/`, `games/`; the GitHub rune browser now descends one level into subfolders so grouped runes still list. New community runes (each verified live): apps — IT-Tools, Excalidraw, CyberChef, linkding, Stirling-PDF, Dozzle, FreshRSS, Mealie; games — Factorio, Luanti (Minetest).
-- **v0.2.62** — **Restart/Reinstall now recreate the container** so rune/env/mod changes actually apply. The startup command + `-mod` + env are baked in at container-create time; Restart used to do a plain `docker restart` (same container) and Reinstall only downloaded files — so neither picked up changes (you had to Stop→Start). Extracted a shared `recreateAndStart(ctx,id)` used by start, restart, the scheduled restart action, and runInstall (auto-recreates a server that was running when a (re)install finishes). Verified live (restart → new container id).
-- **v0.2.61** — **Fix keep_entrypoint app runes (gitea, nextcloud, wordpress) failing to start.** The minimal `/etc/passwd` shim for Steam games' getpwuid was being mounted over images that need their own named users (gitea's `git`, nextcloud/wordpress's `www-data`), deleting them → "unknown user git" / "apache2: bad user name www-data". Now only applied to own-command runes (`!KeepEntrypoint`).
-- **v0.2.60** — **GitHub rune browser + DayZ Mods tab + Vaultwarden fix.** (1) Browse + one-click install community runes straight from a repo's YAML folder (`GET /api/gameskills/github`, `POST /api/gameskills/install-from-github`; SSRF-guarded, cached). (2) Per-server DayZ **Mods** tab: each Workshop mod's on-disk + live Steam Workshop status (ok/removed) + orphan detection, with one-click prune — surfaces silently-dropped mods that block joins. (3) Vaultwarden `data_path: /data` so the image keeps WORKDIR `/` and finds its web vault (was 503).
-- **v0.2.59** — API accepts a top-level `mods` field on server create/update (alias for `env.MODS`).
-- **v0.2.52** — **Norn** — DayZ loot-economy / despawn helper (new "Norn (loot)" tab on DayZ servers). Reads the mission economy (db/types.xml + any modded types.xml registered in cfgeconomycore.xml + globals.xml) and offers: a one-click **minimum-lifetime floor** (raises every item whose `<lifetime>` is below N hours, across vanilla + modded types — the fix for "modded loot despawns too fast"), editable **globals cleanup timers**, and a per-file overview (items + shortest lifetime). Regex edits preserve file formatting; changes apply on restart. Backend: /api/servers/{id}/dayz/economy|min-lifetime|globals.
-- **v0.2.48** — Seeder now **self-prunes**: builtin runes that are no longer shipped (moved to community-runes/) AND aren't used by any server are removed on boot. Cleans the stale MongoDB/MariaDB/PostgreSQL builtin rows off existing installs after the v0.2.47 move, while keeping any rune still in use (e.g. Terraria while a Terraria server exists) until its servers are deleted.
-- **v0.2.47** — **Game *and app* server.** Re-positioned Yggdrasil as a game+app panel (README + login + manifest). New rune-schema fields make off-the-shelf Docker apps first-class: `docker.data_path` (mount target ≠ /data, e.g. /var/www/html, /app/data), `docker.user` (override runtime uid — "0:0" for images that drop to PUID/PGID), `docker.keep_entrypoint` (run the image's own ENTRYPOINT; startup command then optional). WorkingDir stays /data only for games. Slimmed the embedded core to the **four games** (DayZ, Rust, Minecraft Java/Bedrock); moved Terraria + the 3 DB runes to `community-runes/`. Added **10 homelab app runes** (community): Uptime Kuma, Vaultwarden, Gitea, n8n, Grafana, Jellyfin, WordPress, Nextcloud, Memos, Homepage. Both runtime patterns verified live on the VM — uptime-kuma (uid 999, cleared entrypoint, "Listening on 3001") and Grafana (keep_entrypoint + root, HTTP 200 on /login).
-- **v0.2.46** — **"Online from outside" check + per-server firewall toggle.** Reachability: `GET /api/servers/{id}/reachability` probes the server via its **public** connect address (public hostname / detected IP) — A2S/SLP/Bedrock-ping on the query port, else a TCP connect on the game port — so a hit proves both the server is up *and* the port is forwarded (works from the panel host when the router does NAT loopback; the user's UDM does — verified hairpin TCP+A2S). A 🌐/🚫 badge shows on the server page and the Servers list (cached 30s). Firewall: new per-server `auto_forward` flag (default **on**, toggle on the server Settings tab); `handleStartServer` only calls UPnP/UniFi forwarding when it's set, so a server can be kept LAN-only.
-- **v0.2.45** — WISHLIST: **BattleMetrics status + readable backup names.** BattleMetrics: optional per-server `bm_server_id` (edited on the server Settings tab) drives a live status badge on the server page (online + players/max + rank, links to the BM page) from the public BattleMetrics API (`GET /api/servers/{id}/battlemetrics`, 30s cache); an optional account token (Settings → Network) raises the rate limit — public lookups work without it. Backups: stored under a readable `"<server-name>-<short-id>/<timestamp>.tar.gz"` folder instead of a bare UUID, and the Backups tab shows a localized date + file name + size (retention works off the DB path, so the layout change is safe).
-- **v0.2.44** — WISHLIST: **Database runes — MongoDB, MariaDB, PostgreSQL** (official images, category "Databases"). They reuse each image's own entrypoint (the panel clears ENTRYPOINT, so the startup command is `exec docker-entrypoint.sh …` → first-run init from the standard env vars still runs) and keep data on the panel volume (mongo `/data/db`, mariadb `--datadir=/data/mysql`, postgres `PGDATA=/data/pgdata`). The existing `.ygg-passwd` uid mount satisfies getpwuid (postgres needs it). VM-verified all three as uid 999: each reaches its ready log and a `SELECT 1`/ping authenticates. Useful as backing stores for other runes (e.g. Grasscutter→MongoDB). No A2S query (status = container + connect address).
-- **v0.2.43** — WISHLIST: **Terraria rune** (new gameskill — official terraria.org dedicated server, downloaded at install into the ubuntu runtime; headless boot via the bundled-Mono `TerrariaServer.bin.x86_64` with all settings as flags; TCP 7777; no A2S query). VM-verified the binary runs on ubuntu:22.04 with no missing libs and generates the world. Plus **"+ New Server" button on the Dashboard** (admin only) that deep-links to the Servers create modal via `#/servers?new=1`.
-- **v0.2.42** — Minecraft Bedrock online-mode fix + sidebar polish. **Bedrock now works with `online-mode=true`** (Xbox/Microsoft auth) — it kept logging "Could not connect to Minecraft services" and stopping. Root-caused live on the VM by isolation testing: the runtime `ubuntu:22.04` ships no CA bundle, and bedrock_server's libcurl reads the CA bundle from its **compiled-in default path only** (`/etc/ssl/certs/ca-certificates.crt`) — it ignores `SSL_CERT_FILE`/`CURL_CA_BUNDLE`. Proven: bundled-libs+env→fail, system-libs-as-uid999→OK, bundled-libs+CA-at-default-path→OK. Fix: install stages the CA bundle to `/data/.certs/` + bundles libcurl's full closure; `docker.Create` mounts `<data>/.certs/ca-certificates.crt` → `/etc/ssl/certs/ca-certificates.crt` at runtime (generic, only when present). Also: desktop sidebar footer (version/user/Sign out) is now pinned (sticky full-height sidebar, nav scrolls internally) instead of scrolling away — last open WISHLIST item.
-- **v0.2.41** — Rust ports fix: `rust.yaml` hardcoded `+server.port 28015`, but Steam games publish 1:1 (host port == container port), so Rust bound a port that was never published → unreachable/invisible in the server browser even though it booted fine. Now uses `+server.port {{GAME_PORT}}` + `+server.queryport {{QUERY_PORT}}`, matching the DayZ fix. Verified live: 6 servers provisioned on a clean VM, all UniFi forwards auto-created, MC + both DayZ reachable from the public internet (A2S replies); this fixes Rust to match.
-- **v0.2.40** — Delete now reliably reclaims disk: a failed Steam install can leave root-owned files the panel user can't `rm`, so deleting "all servers" still left ~44 GB of multi-GB data dirs behind (disk hit 100%). `handleDeleteServer` now falls back to a **root container that empties the data dir** before removing it. README features brought up to date (auto port-forwarding/UPnP+UniFi, connect-address, update banner, live status, disk reclaim, community runes).
-- **v0.2.39** — Reclaim disk on delete (`os.RemoveAll` the data dir + clear port_allocations) — root cause of the VM filling up; DayZ/Rust installs **pre-check free space** (df) and fail with a clear "only N MB free — needs ~XGB" instead of SteamCMD's cryptic state 0x202 "Not enough disk quota".
-- **v0.2.36–38** — Per-server ports for Steam games: `loadRuntime` injects `<NAME>_PORT` env (GAME_PORT/QUERY_PORT) and steam containers publish 1:1 so each DayZ advertises its real external port; ports come from the configured range. Regression test added.
-- **v0.2.35** — Minecraft: silence Java 24 JNA native-access warnings (`--enable-native-access=ALL-UNNAMED`).
-- **v0.2.34** — Port-forward refinements: status reconciler now releases UPnP/UniFi forwards when a server crashes (not just on graceful stop); DayZ rune sets `steamQueryPort` (new QUERY_PORT var, 27016) so the server is visible in the browser. (Each server already gets a unique port, so forwards are per-server — opened on its start, removed on its stop/crash; no shared-port refcounting needed.)
-- **v0.2.33** — UniFi: default to https:// when the controller URL omits the scheme.
-- **v0.2.32** — UniFi automatic WAN port forwarding (UniFi OS): Settings → Network → UniFi (URL/user/encrypted-password/site/enable + Test). Creates a port-forward per port on server start, removes on stop/delete. **Verified live against a real UDM** (login/create/list/delete; encrypted at rest). **WISHLIST fully cleared.**
-- **v0.2.31** — UPnP automatic port forwarding (off by default; huin/goupnp; add on start / remove on stop+delete; "Check gateway" status). UPnP confirmed off on the UniFi network → UniFi integration is the relevant one.
-- **v0.2.30** — Yggdrasil update notification: sidebar shows "↑ Update available: vX.Y.Z" by comparing the running build to the latest GitHub release.
-- **v0.2.29** — Global public hostname (Settings → Network) + per-server "Connect address" (host:port), external-IP fallback.
-- **v0.2.28** — "starting" server status (amber) that promotes to "running" on the gameskill done_regex; crash-during-start → stopped.
-- **v0.2.27** — UI polish: clickable sidebar logo → dashboard, narrower desktop menu (w-60→w-52), DayZ MODS field reminds to Update/Reinstall after changing mods.
-- **v0.2.26** — DayZ/Rust **reinstall** finally fixed: SteamCMD drops to uid 1000 even in a root container, so it couldn't rewrite the panel-owned steamapps; prepend `chmod -R a+rwX /data` (runs as root) before SteamCMD. Verified live (download → 99.6%).
-- **v0.2.22–25** — DayZ now boots end-to-end (debugged live over SSH): `LD_LIBRARY_PATH=/data`, an `/etc/passwd` entry for the runtime uid (Steam `getpwuid` segfault), dropped `-BEpath`, SteamCMD retry loop, install-as-root.
-- **v0.2.21** — console shows crash logs instead of "attach 409"; restart policy on-failure:3 (no crash-loop); DayZ skips missing mods.
-- **v0.2.18–20** — file-edit permission self-heal; 🌳 PWA icon cache-bust; version in sidebar; Genshin (Grasscutter) community rune; DayZ mission selection.
-- **v0.2.10–17** — NPM reverse-proxy (WS keepalive + docs), list/table toggles, host CPU/RAM dashboard, per-server delegation (+ deadlock fix), DayZ password + mods, config web-forms editor.
+What that means concretely:
 
-## Current state (read me first)
+- **Every phase of the original plan is shipped and verified against real Docker**, not just
+  compiled. The install flow, query/RCON, backups, schedules, RBAC, bans and the PWA all work
+  end-to-end on a clean Debian/Ubuntu box installed from the published one-liner.
+- **~220 releases** since v0.1.0 (2026-05-31), each built, released and auto-deployed.
+- **343 Go tests** across 103 test files; CI runs `go vet` + `go test` + a full frontend build on
+  every PR, and the release workflow ships static amd64 + arm64 binaries with checksums.
+- **The documentation is written from the code**: 22 pages under [`docs/`](docs/), plus a full
+  [HTTP API reference](docs/reference/api.md) and [rune schema](docs/reference/rune-schema.md).
 
-**END-TO-END VERIFIED AGAINST REAL DOCKER (2026-05-31):** installed + ran an
-actual Minecraft Paper server — install flow pulled the JRE image and downloaded
-Paper (54 MB), the container started ("Done (28s)!"), the live Minecraft **query**
-returned player count/version, and **RCON** executed `list` successfully. This
-closes the long-standing "coded but not Docker-verified" caveat for Phases 3/4.
-The test surfaced one real bug (RCON wasn't enabled in server.properties) — fixed
-in the Minecraft gameskill install script.
+**The releases are the changelog.** Every version has an annotated tag and a GitHub release
+describing what changed, so that history is not duplicated here — see
+[Releases](https://github.com/kristianwind/yggdrasil/releases). This file covers the current
+state and what is *not* done.
 
+## Support and stability
 
-**Phase 0 is complete and verified** — the binary builds (`CGO_ENABLED=0`),
-`go vet` and `go test` pass, and a live smoke test confirms: boot → SQLite
-schema → builtin gameskill load → JWT login → authed API call → 401 on bad/missing
-auth → graceful Docker-absent degradation.
+- **The latest release is the supported one.** Fixes ship forward as a new version rather than
+  being backported; updating is a binary swap and a service restart, and the panel can do it
+  itself. See [SECURITY.md](SECURITY.md).
+- **Database migrations run automatically on boot** and are forward-only. Upgrading in place is
+  the normal path and is exercised on every deploy.
+- **The rune schema is still allowed to grow.** New fields are added regularly; existing fields
+  are treated as a contract, because community runes depend on them. Anything that would break
+  an existing rune gets a migration or a fallback, not a silent change.
+- Version numbers stay in the **0.x** range while that remains true. See *Toward 1.0* below.
 
-**Phase 1 (Svelte web shell) is complete and visually verified.** The frontend
-is a Svelte 5 + Vite + Tailwind SPA (72 KB JS / 26 KB gzipped) embedded in the
-binary. Verified in a real browser: login → JWT session → dashboard with live
-stats → sidebar nav → Runes list. Backend for Phases 2/5/6 also has matching UI
-(server list+create form, console/logs, file manager, users, audit log).
+## What's built
 
-The next milestone is **Phase 3/4: the real gameskill install flow** (wiring
-`docker.RunEphemeral` into server creation with progress streaming) and the
-remaining three gameskills (Bedrock, Rust, DayZ) with query/RCON.
+**Core** — one static Go binary with the Svelte PWA embedded, SQLite, no Redis, no external
+database, no required reverse proxy. Runs on amd64 and arm64 (Raspberry Pi 4/5 included).
 
-Run backend: `go run ./cmd/yggdrasil --config dev-config.yaml`.
-Dev frontend (proxy to :8080): `cd web && npm run dev`.
-Build embedded binary: `cd web && npm run build && cd .. && go build ./cmd/yggdrasil`.
+| Area | State |
+| --- | --- |
+| Server lifecycle | Install / start / stop / restart / delete per Docker container, CPU + RAM limits, `installing → starting → running → stopped` with rune-declared readiness, crash detection, auto-restart, watchdog auto-heal, graceful stop with pre-stop save |
+| Runes | 5 built in, 60+ community runes in [`community-runes/`](community-runes/), one-click install from a GitHub folder, app stacks with sidecars, Pterodactyl egg / XML / Docker Compose import |
+| Console & files | WebSocket console with command input, live log streaming, file manager, config editor with generated web forms |
+| Live admin | Safe restart with in-game countdowns, wipe with backup-first, live players roster with kick / broadcast / lock, activity feed, per-server history that survives log rotation |
+| Backups | Local / SFTP / SMB targets, on-demand or scheduled, restore, retention, verification |
+| Scheduler | Cron for backups, restarts, updates, start/stop, console commands, in-game messages, wipes, with a run log and a skip-if-players-online guard |
+| Networking | Automatic port forwarding (UPnP + UniFi), per-server firewall toggle, public reachability probe, connect addresses, per-server subdomains via Nginx Proxy Manager or Cloudflare Tunnel |
+| Access | Scoped multi-admin RBAC, realms, delegation, 2FA (TOTP), passkeys, self-service email password reset, `yggdrasil reset-password` break-glass CLI, API tokens, full audit log |
+| Monitoring | Host and per-server CPU / RAM / disk with history and sparklines, low-disk alerts, anomaly watchers, rune-declared app events, security-event tracking, public status page + Discord board |
+| Notifications | Telegram, Discord, generic webhook, email (bring your own SMTP) |
+| Kvasir (AI) | Optional, off until configured. Streaming chat grounded in panel data and docs, read-only lookups scoped by permission, admin-tunable data level with a local-vs-cloud warning, proactive crash/anomaly explanation, propose-then-confirm actions |
+| Integrations | Claude connector over MCP, BattleMetrics status, Steam authorization for games that need an account |
+| Operations | Host-to-host panel migration with secrets, app-data import (including WordPress `.wpress`), self-update, opt-out beacon |
 
-## Requested features / backlog (from VM testing)
+## Not done
 
-User-requested items to implement next (not yet done):
-- [ ] **Steam Authorize fails** with "Steam login failed: check the username,
-      password, and Steam Guard code" on the VM. Investigate the cm2network
-      steamcmd invocation / output parsing (handlers_steam.go); the success check
-      (`Logged in OK`) or the steamcmd.sh/HOME path may be wrong. Capture more of
-      the (masked) output to diagnose. Can't fully test without DayZ-owning creds.
-- [ ] **List ⇄ Table view toggle** for the Servers page (compact table vs cards).
-- [ ] **Download Runes from a GitHub folder** — a built-in rune library/registry
-      (e.g. fetch gameskill YAML from a GitHub repo/dir and import with one click).
-- [ ] **User delegation to specific server(s)** — simpler flow to give a non-admin
-      user access to one or more individual servers (builds on the RBAC server
-      scope + permission editor; make it a one-click "share server with user").
-- [ ] **Mobile navigation** — the responsive sidebar drawer needs fixing/finishing
-      on mobile (hamburger menu reportedly missing on some pages).
-- [x] **Favicon: transparent tree** — done (favicon.svg, no background rect).
+Honest gaps, so nobody discovers them the hard way:
 
-Also fixed during VM testing (done):
-- [x] Console "attach error 409": don't attach to a non-running container; show a
-      friendly message + reconcile status to stopped.
-- [x] Crash/exit detection: background reconciler flips "running"→"stopped" when a
-      container is no longer running (every 20s).
+- **Multi-node.** One panel manages one host. There is no wings-style agent and no scheduling
+  across machines. This is the largest thing on the "someday" list, not a near-term plan.
+- **Importing servers that already run outside Yggdrasil** (a live Pterodactyl or AMP instance).
+  Rune *definitions* import; running servers do not. Adopting a foreign container would mean
+  guessing at its lifecycle, and guessing wrong takes someone's world down.
+- **No high availability.** A single binary on a single box, with SQLite. Back up the data
+  directory; that is the recovery story.
+- **Windows and macOS hosts.** Debian/Ubuntu with Docker only. Other distros mostly work but are
+  not what the installer is tested against.
+- **A community.** The code is mature; the project is not yet widely used. Expect to be early,
+  and expect the maintainer to have hit your bug before you do only if it happened on his boxes.
 
-## Phase Checklist
+## Backlog
 
-### Phase 0 — Repo skeleton ✅ DONE
-- [x] ARCHITECTURE.md + PROGRESS.md
-- [x] go.mod + go.sum (Docker SDK v28, modernc sqlite, chi, jwt, gorilla/ws)
-- [x] cmd/yggdrasil/main.go (config, DB, admin, gameskill load, graceful shutdown, subcommands)
-- [x] internal/config package (+ validation, gen-config)
-- [x] internal/db package (full schema + migrations)
-- [x] deploy/yggdrasil.service (hardened systemd unit)
-- [x] deploy/config.yaml.example
-- [x] install.sh (distro check, Docker install, user, binary, systemd — idempotent)
-- [x] .github/workflows/release.yml (static amd64+arm64, checksums, test job)
-- [x] .gitignore + README.md
-- [x] Tests: gameskill parser, auth (hash + JWT)
-- [x] Verified: builds, vets, tests, live boot smoke test
-- [ ] Initial git commit + push (pending user confirmation for push)
+Next up, roughly in order:
 
-### Phase 1 — Auth + web shell + login ✅ DONE
-- [x] internal/auth: argon2id, session JWT
-- [x] API: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
-- [x] First-run admin creation (from config; generated password if none)
-- [x] Rate limiting middleware (5/min/IP on login)
-- [x] Secure headers + HttpOnly/SameSite=Strict cookie + token query-param for WS
-- [x] Svelte 5 + Vite + Tailwind SPA: login, session store, hash router, app shell
-- [x] Responsive sidebar (mobile drawer), dark theme, toast notifications
-- [x] PWA: manifest, SVG icon, service worker (app-shell cache, /api never cached)
-- [x] SPA fallback in Go static handler (deep links work)
-- [x] Verified in real browser (login → dashboard → nav → runes)
-- [ ] CSRF double-submit token (cookie path; Bearer path is CSRF-immune)
+- Auto-ban rules driven by a live kick/ban event feed (the rules exist; the live feed does not).
+- Broader rune coverage for games — the app catalogue has outgrown the game catalogue.
+- More end-to-end coverage of the upgrade path in CI, not just the install path.
 
-### Phase 2 — Docker integration 🟡 BACKEND DONE, FRONTEND PENDING
-- [x] internal/docker: Create/Start/Stop/Restart/Delete (Docker SDK v28)
-- [x] WebSocket log streaming (/api/servers/:id/logs, stdcopy demux)
-- [x] WebSocket console (/api/servers/:id/console) — stdin passthrough
-- [x] Resource stats (CPU/RAM) via /api/servers/:id/stats
-- [x] API: CRUD for servers (gameskill-driven, with port allocation)
-- [x] Restart-on-crash (container RestartPolicy unless-stopped)
-- [x] Frontend: server list (grouped by realm), create form, console + live stats
-- [ ] Crash detection → status reconciliation loop (poll container state)
-- [ ] Disk usage stat (currently CPU/RAM only)
-- [ ] Resource mini-graph (currently numeric stats only)
+## Toward 1.0
 
-### Phase 3 — Gameskill parser + variable form + install flow ✅ DONE (Docker-untested)
-- [x] internal/gameskill: YAML parser, schema validation, clear errors
-- [x] Variable types: string, int, bool, select (validated)
-- [x] Docker image templating ({{VAR}})
-- [x] API: upload/validate gameskill, list, get, delete (builtins protected)
-- [x] minecraft-java.yaml with REAL install logic (Paper/Purpur/Mojang/Fabric
-      APIs + "latest" resolution; Forge flagged as manual)
-- [x] Install flow wired: create → background install (docker.RunEphemeral) with
-      live progress over a WebSocket hub; install_status tracked in DB
-- [x] Start gated on install completion (409 until installed)
-- [x] Startup command from gameskill passed as the container command (was missing)
-- [x] Per-server CPU/RAM caps applied at container create
-- [x] Frontend: auto-generated creation form (select/int/bool/string), "Carve a
-      Rune" upload UI, install-log streaming panel, install/reinstall buttons
-- [x] Verified wiring end-to-end (create→install→error-without-docker→start 409)
-- NOTE: actual container download/run needs a Docker daemon to verify; the path
-  is coded + the control flow proven, but not run against real images here.
+1.0 is a promise about compatibility, and it should be made when it can be kept. The bar:
 
-### Phase 4 — Remaining gameskills + query/RCON 🟡 GAMESKILLS + PROTOCOLS DONE
-- [x] minecraft-bedrock.yaml (Mojang links API, no RCON, x86_64 caveat)
-- [x] rust.yaml (SteamCMD 258550 anon, A2S query, WebSocket RCON)
-- [x] dayz.yaml (SteamCMD 223350 owned-account, BattlEye RCON, A2S, caveats)
-- [x] App IDs verified via web research (Rust 258550, DayZ 223350/221100)
-- [x] Query protocols: A2S, Minecraft Java SLP, Bedrock ping (internal/query, tested)
-- [x] RCON: Source/Minecraft, Rust WebSocket, BattlEye (internal/rcon, tested)
-- [x] API: GET /servers/:id/query, POST /servers/:id/rcon
-- [x] Frontend: live player-count on server detail
-- [x] Steam authorization flow: one-time UI (username/password/Guard), interactive
-      SteamCMD login in a container, persisted sentry cache (/steamcache) reused by
-      all installs; password/code never stored or logged; non-anonymous installs
-      gated on an authorized account + inject STEAM_USER + mount the cache.
-      (Login itself not e2e-tested — needs real DayZ-owning Steam credentials.)
-- [ ] Resource graphs (time-series in SQLite, frontend charts)
-- [ ] startup done_regex → running-state detection at runtime
-- [ ] Wire real install flow (docker.RunEphemeral) into server creation with
-      progress streaming + real Minecraft/Steam download logic
-      (NOTE: full install/run path needs a Docker daemon to verify; the dev
-      machine here has none, so these are coded but not yet end-to-end tested)
+1. Real external installs, not just the maintainer's — enough that a breaking change would
+   actually hurt someone.
+2. Several consecutive releases with no rune-schema break and no manual migration step.
+3. The upgrade path covered by CI on a clean box, not only by hand.
 
-### Phase 5 — Realms + file management + config editor 🟡 BACKEND MOSTLY DONE
-- [x] Realms: CRUD API
-- [x] Default realm = gameskill category (auto-created on server create)
-- [x] File browser API (list/read/write/upload/download/delete) with ../ guard
-- [x] Frontend: file manager panel (browse/edit/upload, realm-grouped servers)
-- [ ] Move servers between realms (endpoint + UI)
-- [ ] Config editor surfacing gameskill-declared config_files specifically
+Until then 0.x is the honest number, and it does not mean unfinished.
 
-### Phase 6 — Multi-admin RBAC + audit log ✅ DONE
-- [x] Basic roles: global admin vs user; admin-only routes enforced
-- [x] User CRUD API (last-admin / self-delete guards)
-- [x] Audit log: written on state-changing actions; admin-only read API
-- [x] Frontend: user management (create/disable/delete), audit log viewer
-- [x] internal/rbac: permission bits (view/control/console/files/create/delete/
-      backup/schedule) × scopes (global/realm/gameskill/server), unit-tested
-- [x] Enforcement across server handlers (list filtered to visible; get/stats/
-      query=view; start/stop/restart/install=control; console/logs/rcon=console;
-      files=files; create=create; delete=delete). Global admins bypass.
-- [x] Permission management API: GET/PUT /users/:id/permissions + catalog
-- [x] Frontend: scoped permission editor (grants per realm/gameskill/server)
-- [x] Verified: rbac unit tests, API enforcement test (403/filter/persist),
-      browser-verified editor + end-to-end scoped-user access checks
+## Notes & decisions
 
-### Phase 7 — Backup + restore + schedules ✅ DONE
-- [x] internal/crypto: AES-256-GCM, key from panel secret (unit-tested)
-- [x] internal/backup: tar.gz archive honoring backup.include, restore (traversal-
-      guarded), retention (keep-N / keep-days) — unit-tested
-- [x] Backup targets: local (also covers mounted NFS/CIFS), SFTP (pkg/sftp),
-      SMB/CIFS direct (go-smb2); credentials encrypted at rest
-- [x] On-demand backups (async, status on backups row), list, delete, restore
-      (stops container first); retention applied after each backup
-- [x] Backup targets API (admin) + per-server backups API (RBAC server.backup)
-- [x] Frontend: Settings→targets (type-conditional form, test/delete) + ServerDetail
-      Backups tab (run/list/restore/delete)
-- [x] Verified end-to-end without Docker (target create→test→backup done→file on
-      disk; browser-verified UI)
-- [x] Scheduler: cron task runner (robfig/cron, rebuilt on change), started on boot
-- [x] Schedule types: backup, restart, start, stop, command, message, update
-- [x] Scope: single server / realm / all servers; manual "run now" trigger
-- [x] internal/scheduler: template render + action/cron validation (unit-tested)
-- [x] Message templates: 5 defaults seeded, editable, {{minutes}}/{{server_name}}
-- [x] Player-online check (skip_if_players) before restart/update via query
-- [x] Command/message delivery via RCON with container-stdin fallback (Bedrock)
-- [x] API: schedules CRUD + run; templates CRUD (RBAC: server.schedule / admin)
-- [x] Frontend: Schedules page (action-conditional form) + templates editor
-- [x] Verified: unit tests, API (seed/validate/CRUD/run/toggle), browser UI
-
-### Phase 8 — Anti-cheat + ban management ✅ DONE
-- [x] Per-rune anti-cheat surface in ServerDetail (anti-xray / BattlEye hints +
-      recommended plugins, from the gameskill's anticheat block)
-- [x] Paper anti-xray hint + link to the config file editor (Minecraft Java)
-- [x] BattlEye config surface (DayZ); Rust EAC/VAC noted
-- [x] gameskill `bans` block: ban/unban console commands ({{player}}/{{reason}})
-      added to Minecraft Java, Rust, DayZ (Bedrock has none — allowlist-based)
-- [x] Centralized cross-server ban list (admin): ban one server or all at once,
-      reason + audit; pushes the ban command to running servers via RCON/console
-- [x] Bans UI (list/ban/unban) + anti-cheat tab; API + browser verified
-- [ ] (deferred to later) violation-driven auto-ban rules; live kick/ban event feed
-
-### Phase 9 — Notifications + API tokens + importer ✅ MOSTLY DONE
-- [x] internal/notify: Telegram, Discord webhook, generic webhook (httptest-tested)
-- [x] Notification channels (admin): CRUD + test send; secrets encrypted at rest
-- [x] Event hooks: backup done/failed, server start/stop → notifyAll
-- [x] API tokens (per-user, inherit owner role): create (shown once)/list/delete,
-      ygg_ prefix, SHA-256 stored; auth middleware accepts them (API-verified)
-- [x] Pterodactyl egg importer (internal/gameskill/egg.go): maps image/startup/
-      done_regex/install/config_files/variables (rules→type), unit-tested + UI
-- [x] Frontend: egg import on Runes; tokens + notifications in Settings
-- [x] Verified: notify unit tests, egg import test, API (token auth 200 / bad 401,
-      egg import), bundle embeds all new UI
-- [x] Email/SMTP notifications (net/smtp; host/port/user/pass/from/to + UI)
-- [x] XML gameskill import (internal/gameskill/xml.go, unit-tested + UI button)
-- [x] docs/API.md (done in Phase 10)
-
-### Phase 10 — PWA polish + docs + end-to-end test 🟡 MOSTLY DONE
-- [x] PWA manifest (SVG + 192/512 PNG icons), service worker (v2), installable
-- [x] Manifest served as application/manifest+json; apple-touch-icon fixed (was 404)
-- [x] Dark mode default, responsive sidebar/drawer, touch-friendly (done since P1)
-- [x] install.sh full implementation (Docker install, user, binary, systemd, idempotent)
-- [x] README.md (+ Claude Code / no-liability disclaimer)
-- [x] docs/GAMESKILL_SCHEMA.md, docs/API.md
-- [x] **End-to-end test against real Docker** (install + run a Paper server,
-      query + RCON verified) — see top of file
-- [ ] End-to-end oneliner install test on a clean Debian VM (needs a VM; install.sh
-      is complete but not yet run on a fresh box from the published release)
-
-### Optional / Later
-- [x] Violation-driven auto-ban rules: per-server log-tailing watcher applies
-      admin regex rules (group 1 = player); N hits in a window → auto-kick/ban
-      (optionally cross-server) + notify. CRUD UI on the Bans page.
-- [ ] Import running servers from Pterodactyl / AMP (out of scope — risks the
-      gameskill model; skipped per the spec's own caution)
-- [ ] Multi-node / wings-style (large; future)
-- [x] 2FA on login (TOTP, RFC 6238, dependency-free): enroll (setup→confirm),
-      required at login, disable with a code; secret encrypted at rest. Verified
-      end-to-end against an independent TOTP implementation.
-- [x] Disk dashboard with alerts: host disk free/total in system info + on the
-      Dashboard; a background monitor notifies once when free drops below 10%
-      (re-arms above 15%).
-
-## Notes & Decisions
-
-- **Svelte** chosen over React: smaller bundle (~50 KB gzipped), no virtual DOM at runtime.
+- **Svelte** over React: smaller bundle (~50 KB gzipped), no virtual DOM at runtime.
 - **Docker per server**: CPU/RAM cgroup limits, clean isolation, portable game runtimes.
 - **cgo-free SQLite** (`modernc.org/sqlite`): enables true static cross-compilation in CI.
-- **Port range**: default 25000–30000, tracked in SQLite to avoid conflicts.
-- **DayZ Linux caveat**: DayZ dedicated server on Linux has historically been experimental / Wine-required. Research current (2025+) status at implementation time; document in gameskill if still restricted.
-- **Gameskill install scripts** run in ephemeral Docker containers with only the server volume mounted — no host filesystem access.
+- **Port range**: default 25000–30000, tracked in SQLite to avoid conflicts. Steam games publish
+  1:1 (host port == container port) so they advertise the port players actually connect to.
+- **Rune install scripts** run in ephemeral containers with only the server volume mounted — no
+  host filesystem access.
+- **Containers run as the panel's service account**, not the image's `USER`. A rune with a data
+  path must default PUID/PGID to that account; defaulting to 1000 takes the files away from the
+  panel. This is the single most common bug when writing a rune — see
+  [the rune guide](docs/guides/runes.md).
+- **`web/dist` is git-ignored** and built in CI; a local `go build` needs `npm run build` first.
+- **The beacon is on by default and says so on first login**, sends only a random install id and
+  a version, stores no IP, and stays off permanently once turned off. It exists so the project
+  can count installs without tracking anyone.
+
+## How it got here
+
+The build followed a ten-phase plan — repo skeleton, auth and web shell, Docker integration, the
+rune parser and install flow, realms and file management, RBAC and audit log, backups and
+schedules, anti-cheat and bans, notifications and API tokens, PWA polish and docs. All ten are
+complete; the phase-by-phase checklist that used to live here was retired once every box in it
+was ticked and the release notes took over as the record.

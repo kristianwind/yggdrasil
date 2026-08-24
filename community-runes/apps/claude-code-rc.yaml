@@ -1,0 +1,69 @@
+gameskill:
+  id: claude-code-rc
+  name: "Claude Code (Remote Control)"
+  category: "Apps"
+  description: >
+    EXPERIMENTAL / COMMUNITY. A headless Claude Code agent you drive from
+    claude.ai/code or the Claude mobile app — it keeps working on your repo when
+    your laptop is closed. Run one server per project. It dials out to Anthropic,
+    so it needs no ports and nothing forwarded. A Claude subscription is required;
+    you pay Anthropic for the usage, not the panel. SIGNING IN IS A ONE-TIME STEP
+    ON FIRST START: the log prints a URL, you approve it in a browser, and you
+    paste the code it gives you into this server's Console tab. (A token from
+    `claude setup-token` will NOT work — those are inference-only and Remote
+    Control rejects them.) Point REPO_URL at a git repo to have it cloned on first
+    start, and give the agent a GitHub token if you want it to open pull requests.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # No docker.user and no keep_entrypoint on purpose: the panel then runs the
+  # container as its own service account (which already owns the data dir) and
+  # applies its /etc/passwd shim, so the agent's files stay editable from the Files
+  # tab. Setting PUID here would be the classic way to lose the data dir.
+  docker:
+    image: "ghcr.io/kristianwind/claude-code-rc:latest"
+    data_path: /data
+
+  variables:
+    - key: RC_NAME
+      name: "Agent name (this is the name you'll see in claude.ai/code)"
+      type: string
+      default: "yggdrasil-agent"
+    - key: REPO_URL
+      name: "Git repo to clone on first start (optional, e.g. https://github.com/you/app.git)"
+      type: string
+      default: ""
+    - key: PERMISSION_MODE
+      name: "Permission mode — 'default' asks before acting, 'auto' does not"
+      type: select
+      options: [default, auto, plan]
+      default: default
+    - key: GH_TOKEN
+      name: "GitHub token, for cloning private repos and opening PRs (optional)"
+      type: string
+      default: ""
+      secret: true
+    - { key: GIT_USER_NAME,  name: "git commit author name",  type: string, default: "Claude Code" }
+    - { key: GIT_USER_EMAIL, name: "git commit author email", type: string, default: "noreply@anthropic.com" }
+
+  install:
+    image: "ghcr.io/kristianwind/claude-code-rc:latest"
+    script: |
+      mkdir -p /data/work
+      claude --version
+      echo "Claude Code is installed. Start the server, then watch the Console tab:"
+      echo "it prints a sign-in URL once and waits for you to paste the code back."
+
+  startup:
+    # Run through tini so the processes Claude Code spawns for each session get
+    # reaped instead of piling up as zombies.
+    command: "/usr/bin/tini -- /usr/local/bin/claude-rc-start"
+    done_regex: 'Connected|Capacity: [0-9]+/[0-9]+'
+
+  # Outbound-only, exactly like the cloudflared connector.
+  ports: []
+
+  backup:
+    # The agent's credentials, its config and its working copies all live here.
+    include: ["."]

@@ -54,6 +54,7 @@ forward it / reverse-proxy it as you like.
 | `it-tools.yaml` | corentinth/it-tools | 80 | big collection of dev/sysadmin tools (static) |
 | `excalidraw.yaml` | excalidraw/excalidraw | 80 | hand-drawn-style whiteboard (static) |
 | `cyberchef.yaml` | ghcr.io/gchq/cyberchef | 80 | the "cyber swiss-army knife" data tool (static) |
+| `claude-code-rc.yaml` | ghcr.io/kristianwind/claude-code-rc | none | a headless Claude Code agent you drive from claude.ai/code or the mobile app. Outbound-only, so no ports. Needs a Claude subscription; sign-in is a one-time code paste in the Console tab on first start; one server per project |
 | `linkding.yaml` | sissbruecker/linkding | 9090 | minimal bookmark manager (SQLite) |
 | `stirling-pdf.yaml` | stirlingtools/stirling-pdf | 8080 | local PDF toolbox (merge/split/OCR/convert) |
 | `freshrss.yaml` | lscr.io/linuxserver/freshrss | 80 | RSS/Atom aggregator (SQLite; PUID/PGID) |

@@ -98,8 +98,9 @@
 
   footer{border-top:1px solid var(--border);padding:2.5rem 0;color:var(--muted);font-size:.9rem}
   footer .wrap{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between}
-  .warn{background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.35);color:#eab308;
+  .note{background:var(--panel);border:1px solid var(--border);color:var(--muted);
     border-radius:.6rem;padding:.8rem 1rem;font-size:.85rem;max-width:48rem;margin:1.5rem auto 0;text-align:center}
+  .note a{color:var(--accent)}
 
   /* clickable screenshots + lightbox */
   .shots img,.shot-hero img{cursor:zoom-in;transition:transform .15s}
@@ -165,6 +166,12 @@
       <code id="cmd">curl -fsSL https://raw.githubusercontent.com/kristianwind/yggdrasil/main/install.sh | sudo bash</code>
       <button class="copy" onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1200)">Copy</button>
     </div>
+    <div class="tag-pills" style="margin-top:1.25rem">
+      <span class="pill">Open source · AGPL-3.0</span>
+      <span class="pill">amd64 &amp; arm64</span>
+      <span class="pill">Updates itself</span>
+      <span class="pill">No account, no cloud</span>
+    </div>
     <div class="shot-hero">
       <img src="screenshots/dashboard.png" alt="Yggdrasil Panel dashboard" loading="lazy" />
     </div>
@@ -181,9 +188,10 @@
         <p>One static binary + embedded PWA + SQLite. Install with a single command; updating is just swap &amp; restart.
           Runs on <b>amd64 and arm64</b> — including a <b>Raspberry Pi 4/5</b>.</p></div>
       <div class="card"><div class="ic">ᚱ</div><h3>Runes for everything</h3>
-        <p>A game <i>or</i> app = one declarative YAML “Rune”. Minecraft, Rust, DayZ built in; a library of
-          community runes (databases + homelab apps) one click away — including <b>app stacks</b> that
-          bring their own database, wired up automatically (WordPress, Immich, Karakeep).</p></div>
+        <p>A game <i>or</i> app = one declarative YAML “Rune”. Minecraft, Uptime Kuma and Vaultwarden are
+          built in; <b>60+ community runes</b> — games, databases and homelab apps, Rust and DayZ among
+          them — are one click away, including <b>app stacks</b> that bring their own database and get
+          wired up automatically (WordPress, Immich, Karakeep).</p></div>
       <div class="card"><div class="ic">🖥️</div><h3>Real-time console &amp; stats</h3>
         <p>Live WebSocket console with command input, log streaming, per-server CPU/RAM limits and monitoring,
           and a clear installing → running → stopped lifecycle.</p></div>
@@ -232,10 +240,10 @@
 <section id="screens" style="background:var(--bg2)">
   <div class="wrap">
     <h2>See it in action</h2>
-    <p class="sub">Installable PWA, dark mode, mobile-friendly — works as an app on iOS/Android.</p>
+    <p class="sub">Installable PWA, light and dark themes, mobile-friendly — works as an app on iOS/Android.</p>
     <div class="shots">
       <figure><img src="screenshots/servers.png" alt="Servers" loading="lazy" /><figcaption>Servers — grid/table, reachability badges</figcaption></figure>
-      <figure><img src="screenshots/server-admin.png" alt="Live admin controls" loading="lazy" /><figcaption>Live admin — safe restart, auto-restart, watchdog &amp; wipe</figcaption></figure>
+      <figure><img src="screenshots/server-admin.png" alt="A server's page" loading="lazy" /><figcaption>A server — safe restart, watchdog, wipe, and every rune setting as a form</figcaption></figure>
       <figure><img src="screenshots/runes.png" alt="Runes" loading="lazy" /><figcaption>Runes — one-click games &amp; apps</figcaption></figure>
       <figure><img src="screenshots/runes-github.png" alt="Browse runes on GitHub" loading="lazy" /><figcaption>Browse GitHub — install community runes in one click</figcaption></figure>
       <figure><img src="screenshots/server-console.png" alt="Console" loading="lazy" /><figcaption>Real-time console &amp; logs</figcaption></figure>
@@ -303,8 +311,10 @@
       <a class="btn" href="/docs/getting-started.html">Read the getting-started guide →</a>
       <a class="btn ghost" href="/docs/">All documentation</a>
     </div>
-    <div class="warn">⚠️ Early development &amp; built with Claude Code. Provided <b>as-is</b>, with no warranty
-      and no liability whatsoever — you use it entirely at your own risk.</div>
+    <div class="note">A hobby project, maintained by one person and built with Claude Code. The latest
+      release is the supported one — fixes ship forward, and the panel can update itself. Provided
+      <b>as-is</b>, with no warranty and no liability whatsoever; you run it at your own risk.
+      <a href="https://github.com/kristianwind/yggdrasil/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy ↗</a></div>
   </div>
 </section>
 

@@ -72,7 +72,7 @@ var pages = []Page{
 	{Src: "guides/monitoring-and-alerts.md", Section: "Guides", Nav: "Monitoring & alerts", Blurb: "Metrics, alarms, the watchdog, auto-restart.", OnSite: true},
 	{Src: "guides/notifications.md", Section: "Guides", Nav: "Notifications", Blurb: "Telegram, Discord, webhooks — and what triggers them.", OnSite: true},
 	{Src: "guides/users-and-permissions.md", Section: "Guides", Nav: "Users & permissions", Blurb: "Realms, permission bits, delegates, 2FA, tokens.", OnSite: true},
-	{Src: "guides/status-page-and-beacon.md", Section: "Guides", Nav: "Status page & beacon", Blurb: "The public board, the Discord embed, the opt-in beacon.", OnSite: true},
+	{Src: "guides/status-page-and-beacon.md", Section: "Guides", Nav: "Status page & beacon", Blurb: "The public board, the Discord embed, and the beacon you can switch off.", OnSite: true},
 	{Src: "guides/kvasir-ai.md", Section: "Guides", Nav: "Kvasir (AI)", Blurb: "The optional AI assistant and its safety model.", OnSite: true},
 	{Src: "guides/claude-connector.md", Section: "Guides", Nav: "Claude connector", Blurb: "Let Claude read and drive the panel over MCP.", OnSite: true},
 	{Src: "guides/dayz-norn.md", Section: "Guides", Nav: "DayZ loot (Norn)", Blurb: "Lifetimes, globals, mod loot, surviving a reinstall.", OnSite: true},

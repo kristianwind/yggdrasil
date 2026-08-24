@@ -21,9 +21,12 @@ same one-click "Runes".
   are built in; a growing library of **community runes** — DayZ, Rust, Terraria,
   Factorio, databases and homelab apps — is in [`community-runes/`](community-runes/)
   to import in one click.
-- **Installable PWA.** Mobile-friendly, dark mode, works as an app on iOS/Android.
+- **Installable PWA.** Mobile-friendly, light and dark themes, works as an app on iOS/Android.
 
-> ⚠️ Early development. See [PROGRESS.md](PROGRESS.md) for the phase-by-phase status.
+> **A hobby project, maintained by one person, in the open.** The latest release is the supported
+> one — fixes ship forward instead of being backported, and the panel can update itself in place.
+> The [releases](https://github.com/kristianwind/yggdrasil/releases) are the changelog;
+> [SECURITY.md](SECURITY.md) has the threat model and how to report a vulnerability.
 >
 > 🤖 **Built with [Claude Code](https://claude.com/claude-code).** Provided **as‑is**,
 > with **no warranty and no liability whatsoever** — you use it entirely at your own
@@ -47,7 +50,7 @@ one-liner — it's idempotent).
 Yggdrasil Panel phones home, **on by default**, and this is the whole of it:
 
 ```json
-{ "instance_id": "a random uuid generated on this install", "version": "v0.2.221" }
+{ "instance_id": "a random uuid generated on this install", "version": "v0.3.0" }
 ```
 
 Once a day, to `https://beacon.yggdrasilpanel.com/api/beacon`. No server names, no addresses, no
@@ -116,27 +119,43 @@ Reference: [configuration](docs/reference/configuration.md),
 - **Activity feed** — the game's admin log parsed into joins / disconnects /
   deaths / kills, newest first (rune declares the log path + parse patterns)
 
-**AI assistant** (optional, advisory — bring your own LLM)
-- Wire up **any** provider — OpenAI, Anthropic, OpenRouter, DeepSeek, Mistral,
-  Ollama, or any OpenAI-compatible endpoint — key stored **encrypted**; off by default
-- **Activity digest** — a plain-language *"what happened while I was away"* summary
-  of the admin-log feed with anomaly flags. Strictly **opt-in**, **read-only**, and
-  it never acts on a server by itself; nothing is sent anywhere you didn't configure
+**Kvasir — the AI assistant** (optional; a fresh install has no AI at all)
+- Bring your own LLM — Anthropic, OpenAI, OpenRouter, DeepSeek, Mistral, Ollama or any
+  OpenAI-compatible endpoint. The key is **encrypted at rest** and never echoed back
+- **Chat that knows *your* panel** — streaming answers grounded in the panel's own data
+  and its documentation: *"were there players overnight?"*, *"why did it crash?"*, *"is
+  any site being attacked?"*. Read-only lookups (player sessions, metrics, backups, log
+  search, security events) run scoped to the servers the asker is allowed to see
+- **You choose how much it may read** — snapshot only, panel data, or panel data plus
+  logs. The panel detects whether the configured model is local or in the cloud and
+  **warns before log content would leave the box**
+- **Proactive watchers** explain crashes and anomalies in plain language; anything that
+  changes a server is propose-then-confirm, never automatic
+- **Claude connector (MCP)** — add the panel to Claude and ask it directly. It acts as
+  *you*, with exactly your permissions, and everything it does lands in the audit log
 
 **Games & apps (gameskills / "Runes")**
-- Bundled core: **Minecraft Java, Minecraft Bedrock, Rust, DayZ** — DayZ with
-  **Workshop mods** (auto-downloaded + signed) and BattlEye RCON, plus a **Mods
-  tab** that shows each mod's on-disk + live Steam Workshop status (so a mod
-  removed upstream is flagged instead of silently breaking joins)
+- **Built in** (no import needed): Minecraft Java, Minecraft Bedrock, Uptime Kuma,
+  Vaultwarden and Cloudflare Tunnel — useful the minute the installer finishes
+- **Steam games** as community runes: **Rust** and **DayZ** — DayZ with **Workshop
+  mods** (auto-downloaded + signed) and BattlEye RCON, plus a **Mods tab** that shows
+  each mod's on-disk + live Steam Workshop status (so a mod removed upstream is
+  flagged instead of silently breaking joins), and **Norn**, a loot-economy editor
+  that fixes modded loot despawning too fast
 - **Browse GitHub** — install community runes with one click straight from a repo's
   YAML folder (defaults to this repo's [`community-runes/`](community-runes/),
   grouped into `databases/` `apps/` `games/`); or upload a `.yaml` yourself
-- **Community runes** (grouped, ~25 and growing): **databases** (MongoDB, MariaDB,
-  PostgreSQL); **apps** (Vaultwarden, Gitea, Uptime Kuma, Grafana, Jellyfin,
-  WordPress, Nextcloud, n8n, Memos, Homepage, phpMyAdmin, Adminer, Portainer,
-  Pi-hole, IT-Tools, Excalidraw, CyberChef, linkding, Stirling-PDF, Dozzle,
-  FreshRSS, Mealie); **games** (Terraria, Factorio, Luanti/Minetest,
+- **Community runes** (grouped, 60+ and growing): **databases** (MongoDB, MariaDB,
+  PostgreSQL); **apps** — media (Jellyfin, Plex, Navidrome, Audiobookshelf, Immich,
+  the *arr stack), homelab (Gitea, Grafana, Portainer, Uptime Kuma, Home Assistant,
+  Pi-hole, AdGuard Home, Nginx Proxy Manager, ntfy, Beszel), productivity (Nextcloud,
+  Paperless-ngx, Karakeep, linkding, Memos, Mealie, FreshRSS, Excalidraw,
+  Stirling-PDF, IT-Tools), publishing (WordPress, static + PHP sites), NAS (Samba,
+  Syncthing, Duplicati); **games** (Terraria, Factorio, Luanti/Minetest,
   Genshin/Grasscutter)
+- **App stacks** — a rune can bring its own sidecars (database, cache, search) and the
+  panel wires them together on a private network: WordPress + MariaDB, Immich +
+  Postgres + Redis, Karakeep + Meilisearch, all as one server you start and stop
 - **Not just games** — a rune is just a Docker image + ports + env, so most things
   that run in Docker run here. Rune fields `data_path` (where the volume mounts),
   `user` (run-as uid) and `keep_entrypoint` (use the image's own entrypoint) make
@@ -156,7 +175,9 @@ Reference: [configuration](docs/reference/configuration.md),
 - Built-in **file manager** + config editor (browse, edit, upload, download)
 - Full **audit log** of admin actions; **API tokens** to drive everything from
   automation (a documented REST API)
-- Optional **2FA (TOTP)** on login
+- **2FA (TOTP) and passkeys** on login, self-service password reset by email
+  (bring your own SMTP — Yggdrasil never runs a mail server), and a
+  `yggdrasil reset-password` break-glass CLI for a lockout
 
 **Networking & connectivity**
 - **Automatic port forwarding** — when a server starts, Yggdrasil opens its ports
@@ -174,8 +195,11 @@ Reference: [configuration](docs/reference/configuration.md),
   a hostname you set) and shows the exact `host:port` players join on
 - **BattleMetrics** (optional) — set a server's BattleMetrics ID for a live
   online/players/rank badge on its page
+- **Per-server subdomains** for HTTP apps — the panel creates the proxy host for you
+  in **Nginx Proxy Manager** (with the certificate) or a **Cloudflare Tunnel** route,
+  so an app is reachable at `app.example.com` without touching a router
 - **Update notifications** — the panel checks GitHub releases and shows an
-  in-app banner when a newer Yggdrasil is available
+  in-app banner when a newer Yggdrasil is available, and can update itself
 
 **Automation & operations**
 - **Backups** to local / mounted NFS-CIFS, **SFTP**, or **SMB** — on-demand or
@@ -186,6 +210,16 @@ Reference: [configuration](docs/reference/configuration.md),
 - **Notifications** via Telegram, Discord, generic webhook, or email (SMTP) —
   server up/down, backup done/failed, **low disk**
 - **Disk dashboard** with a low-space alert
+
+**Migrate, import & move**
+- **Move the whole panel to another host** with one command — servers, data,
+  settings and secrets travel together
+- **Import an app you already run** — a WordPress site from an All-in-One
+  `.wpress` archive, or files plus a database dump
+- **Import rune definitions** — a Pterodactyl **egg**, an **XML** definition, or a
+  **Docker Compose** file turned into a rune
+- **Public status page** — an opt-in, per-server board (plus a Discord status embed)
+  that shows what's up without handing anyone a panel login
 
 **Anti-cheat & moderation**
 - Per-game **anti-cheat surface** (Paper anti-xray hints, BattlEye/EAC status,
@@ -217,7 +251,7 @@ Reference: [configuration](docs/reference/configuration.md),
 | **File manager** | **Backups & restore** |
 | [![Files](docs/screenshots/server-files.png)](docs/screenshots/server-files.png) | [![Backups](docs/screenshots/server-backups.png)](docs/screenshots/server-backups.png) |
 
-<sub>Dark mode by default; the UI is fully responsive and installable as a PWA.</sub>
+<sub>Light and dark themes; the UI is fully responsive and installable as a PWA.</sub>
 
 ## Concepts
 
@@ -286,7 +320,7 @@ location / {
 
 ## Development
 
-Requirements: Go 1.23+, and Node 20+ for the frontend.
+Requirements: Go 1.26+, and Node 20+ for the frontend.
 
 The frontend (`web/dist`) is **git-ignored** and embedded at build time via
 `//go:embed all:web/dist`, so build it before `go build` — otherwise the binary

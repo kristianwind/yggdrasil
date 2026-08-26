@@ -4,7 +4,7 @@ gameskill:
   category: "DayZ"
   description: "DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)"
   author: "yggdrasil-core"
-  version: 3
+  version: 4
   icon: "dayz"
 
   # CAVEAT: The DayZ Linux dedicated server is supported via SteamCMD (app 223350)
@@ -44,9 +44,11 @@ gameskill:
       type: string
       default: ""
     - key: RCON_PASSWORD
-      name: "BattlEye RCON password"
+      name: "BattlEye RCON password (required — anyone who reaches this port with it controls the server)"
       type: string
-      default: "change-me"
+      required: true
+      secret: true
+      default: ""
     - key: MISSION
       name: "Mission / map (chernarusplus = Chernarus, enoch = Livonia, or a custom modded mission)"
       type: string
@@ -194,7 +196,12 @@ gameskill:
       RConPort {{GAME_PORT}}
       RestrictRCon 0
       BECFG
-      rm -f /data/battleye/BEServer_x64_active_*.cfg 2>/dev/null || true
+      # Both cases on purpose: BattlEye writes this file lowercase on Linux
+      # (beserver_x64_active_<hash>.cfg) and the original capitalised glob never
+      # matched a thing, so the "re-stamped every start" promise above was not
+      # kept — BattlEye went on reading its stale copy and a changed
+      # RCON_PASSWORD silently had no effect.
+      rm -f /data/battleye/BEServer_x64_active_*.cfg /data/battleye/beserver_x64_active_*.cfg 2>/dev/null || true
       # NOTE: do NOT pass -BEpath here. An explicit -BEpath=battleye makes
       # BattlEye init fail and the server abort with "Server creation failed";
       # DayZ finds and initialises BattlEye on its own from the server dir.

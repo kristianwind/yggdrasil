@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -52,15 +53,29 @@ func (s *Server) warnedRestart(serverID string, backupFirst bool, targetID strin
 		}
 	}
 	sort.Slice(ws, func(i, j int) bool { return ws[i].at > ws[j].at })
+	delivered, failed := 0, 0
 	for i, w := range ws {
 		if w.msg != "" {
-			s.sendToServer(serverID, w.msg)
+			if err := s.sendToServer(serverID, w.msg); err != nil {
+				failed++
+				log.Printf("safe restart: %s — could not warn players (%q): %v",
+					s.serverName(serverID), w.msg, err)
+			} else {
+				delivered++
+			}
 		}
 		next := time.Duration(0)
 		if i+1 < len(ws) {
 			next = ws[i+1].at
 		}
 		time.Sleep(w.at - next)
+	}
+	// A safe restart whose warnings all failed is just a restart, and the admin
+	// who pressed the button believed players were told. Say so where they will
+	// see it rather than only in the journal.
+	if failed > 0 && delivered == 0 {
+		s.notifyAll(fmt.Sprintf("⚠️ %s restarted, but the in-game warnings could not be delivered — check the server's RCON settings.",
+			s.serverName(serverID)))
 	}
 	s.recreateAndStart(ctx, serverID)
 }

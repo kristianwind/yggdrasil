@@ -339,10 +339,19 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 
 // sendToServer delivers a command to a server via RCON, falling back to the
 // container's stdin (console) for games without RCON.
-func (s *Server) sendToServer(serverID, command string) {
+// sendToServer delivers one command to a running server — over RCON where the
+// rune has it, otherwise on the container's stdin.
+//
+// It reports why it failed, and that matters more than it looks. This used to
+// return nothing and, when the RCON dial failed, quietly fall back to stdin —
+// which for a game that has no console stdin (DayZ) means the command
+// evaporates. A safe restart then broadcast its countdown to nobody, reported
+// success, and left no line anywhere to explain it. Silence is the worst
+// possible outcome for something whose whole job is to warn players.
+func (s *Server) sendToServer(serverID, command string) error {
 	rt, err := s.loadRuntime(context.Background(), serverID)
 	if err != nil {
-		return
+		return fmt.Errorf("load runtime: %w", err)
 	}
 	if rt.gs.RCON != nil && rt.gs.RCON.Enabled {
 		port := rt.ports["rcon"]
@@ -356,16 +365,22 @@ func (s *Server) sendToServer(serverID, command string) {
 		client, err := rcon.Dial(rcon.Config{
 			Type: rt.gs.RCON.Type, Host: "127.0.0.1", Port: port, Password: pw, Timeout: 5 * time.Second,
 		})
-		if err == nil {
-			defer client.Close()
-			client.Execute(command)
-			return
+		if err != nil {
+			// No stdin fallback here on purpose: a rune that declares RCON is a
+			// game whose console is RCON. Falling back would hide this.
+			return fmt.Errorf("rcon %s on port %d: %w", rt.gs.RCON.Type, port, err)
 		}
+		defer client.Close()
+		if _, err := client.Execute(command); err != nil {
+			return fmt.Errorf("rcon %s command failed: %w", rt.gs.RCON.Type, err)
+		}
+		return nil
 	}
-	// Fallback: write to container stdin.
-	if cid := s.containerID(serverID); cid != "" {
-		s.docker.SendStdin(context.Background(), cid, command)
+	cid := s.containerID(serverID)
+	if cid == "" {
+		return fmt.Errorf("server is not running")
 	}
+	return s.docker.SendStdin(context.Background(), cid, command)
 }
 
 // playersOnline queries a server's player count; returns -1 if unknown.

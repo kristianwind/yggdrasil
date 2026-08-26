@@ -74,6 +74,37 @@
     }
   }
 
+  // Security advisories. Pulled from the project's repo (never pushed — there is
+  // no registry of installs), filtered server-side to the ones that apply to the
+  // version running here, and dismissed per advisory for the whole panel.
+  let advisories = $state([]);
+  async function loadAdvisories() {
+    if (!$user || $user.role !== "admin") return;
+    try {
+      const r = await api.get("/advisories");
+      advisories = r?.advisories || [];
+    } catch {
+      /* not fatal — retried on the next load */
+    }
+  }
+  async function ackAdvisory(id) {
+    try {
+      await api.post(`/advisories/${encodeURIComponent(id)}/ack`, {});
+      advisories = advisories.filter((a) => a.id !== id);
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  // Keyed on the user, not onMount: onMount runs while the login page is showing,
+  // where $user is still null, so a loader called there never runs again for
+  // somebody who just signed in. (The beacon notice above has that shape and is
+  // saved by the Dashboard fetching the same endpoint for its own card.) Reads
+  // only ready/$user, so this fires once when the session appears — and the
+  // six-hour server-side cache makes a repeat free anyway.
+  $effect(() => {
+    if (ready && $user) loadAdvisories();
+  });
+
   // Surface rune updates in the nav so an admin sees them without opening Runes.
   // The endpoint is admin-only and shares a 10-minute GitHub cache, so refetching
   // on navigation is cheap and keeps the badge fresh after an update-and-leave.
@@ -284,6 +315,44 @@
         <span class="font-semibold">🌳 {build?.panel_name || "Yggdrasil Panel"}</span>
       </header>
       <main class="flex-1 p-4 md:p-6 overflow-auto">
+        {#each advisories as a (a.id)}
+          <!-- Deliberately plain text plus one link. An advisory is never
+               something the panel acts on, and it is the most attractive thing
+               here to hijack, so nothing in it is rendered as markup. -->
+          <div
+            class="card p-4 mb-4 border {a.severity === 'critical'
+              ? 'border-danger/60 bg-danger/5'
+              : a.severity === 'high'
+                ? 'border-warn/60 bg-warn/5'
+                : 'border-border'}"
+            role={a.severity === "critical" ? "alert" : "status"}
+          >
+            <div class="font-semibold mb-1">
+              {a.severity === "critical" ? "🔴" : a.severity === "high" ? "🟠" : "ℹ️"}
+              Security advisory{a.severity === "critical" ? " — act now" : ""}: {a.title}
+            </div>
+            <p class="text-sm text-muted mb-2 whitespace-pre-line">{a.detail}</p>
+            {#if a.fixed_in}
+              <p class="text-sm mb-2">
+                Fixed in <span class="font-mono text-xs">{a.fixed_in}</span> — you are on
+                <span class="font-mono text-xs">{build?.version || "?"}</span>.
+              </p>
+            {/if}
+            <div class="flex flex-wrap gap-2">
+              <!-- Only offer the update path when there is something to update TO.
+                   An advisory published ahead of its patch (fixed_in empty) is a
+                   mitigation to read, and sending the reader to Updates for a
+                   release that does not exist wastes the one action they have. -->
+              {#if a.fixed_in}
+                <a class="btn-primary" href="#/settings">Settings → Updates</a>
+              {/if}
+              {#if a.url}
+                <a class="btn-ghost" href={a.url} target="_blank" rel="noopener noreferrer">Read the advisory ↗</a>
+              {/if}
+              <button class="btn-ghost" onclick={() => ackAdvisory(a.id)}>Dismiss</button>
+            </div>
+          </div>
+        {/each}
         {#if beaconNotice}
           <!-- Shown once. It names the two fields verbatim rather than saying
                "anonymous usage data", because the whole point is that the reader

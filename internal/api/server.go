@@ -421,6 +421,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/settings/beacon/notice", s.requireAdmin(s.handleAckBeaconNotice))
 		r.Get("/api/beacon/stats", s.requireAdmin(s.handleBeaconStats))
 
+		// Security advisories: pulled from the project's repo, shown as a banner.
+		r.Get("/api/advisories", s.requireAdmin(s.handleAdvisories))
+		r.Post("/api/advisories/{id}/ack", s.requireAdmin(s.handleAckAdvisory))
+
 		// Discord status board (admin-only)
 		r.Get("/api/settings/discord-status", s.requireAdmin(s.handleGetDiscordStatus))
 		r.Put("/api/settings/discord-status", s.requireAdmin(s.handleSetDiscordStatus))

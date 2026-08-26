@@ -62,3 +62,38 @@ gameskill:
 		t.Fatalf("service ports not parsed: %+v", gs.Services)
 	}
 }
+
+// TestStartStackForAutostartSkipsNonStack pins the contract that the boot path
+// depends on: for a rune WITHOUT sidecars, startStackForAutostart is a pure
+// no-op that touches nothing. s.docker is nil in these tests, so anything that
+// started reaching for Docker on this path — a lookup hoisted above the
+// services check, say — shows up here as a panic instead of at boot on a live
+// box. It does not prove the stack path itself; that one needs a real daemon.
+func TestStartStackForAutostartSkipsNonStack(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+
+	yaml := `
+gameskill:
+  id: plainapp
+  name: "Plain app"
+  version: 1
+  docker: { image: "nginx:alpine", data_path: /data }
+  startup: { command: "" }
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+`
+	if _, err := s.db.Exec("INSERT INTO gameskills (id, name, yaml_blob, builtin, version) VALUES ('plainapp','Plain app',?,0,1)", yaml); err != nil {
+		t.Fatalf("seed rune: %v", err)
+	}
+	s.db.Exec("INSERT INTO servers (id, name, gameskill_id, status, env_json, ports_json, data_dir) VALUES ('srv1','Plain','plainapp','running','{}','{}','/tmp/x')") //nolint:errcheck
+
+	// No sidecars => must return without dereferencing the (nil) Docker client.
+	s.startStackForAutostart(ctx, "srv1")
+}
+
+// A server that no longer exists must not panic the whole boot loop either.
+func TestStartStackForAutostartUnknownServer(t *testing.T) {
+	s := testServer(t)
+	s.startStackForAutostart(context.Background(), "does-not-exist")
+}

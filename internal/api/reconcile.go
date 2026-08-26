@@ -278,6 +278,14 @@ func (s *Server) startAutostartServers() {
 				// gone yet). Re-check after starting so a concurrent restart-policy
 				// start still counts as success; only fall through to a full recreate
 				// if the existing container genuinely can't be brought up.
+				//
+				// An app stack needs its sidecars back FIRST. A host reboot stops
+				// every container with exit 0, and the restart policy is on-failure,
+				// so Docker never revives a cleanly-stopped database — starting the
+				// app in place on its own brought WordPress up with no database
+				// behind it (lm-e.dk and all three kw01 sites, 2026-08-26). A
+				// no-op for a single-container rune.
+				s.startStackForAutostart(ctx, x.id)
 				s.docker.Start(ctx, x.cid) //nolint:errcheck // re-checked below
 				if r2, _, e2 := s.docker.State(ctx, x.cid); e2 == nil && r2 {
 					continue
@@ -292,6 +300,35 @@ func (s *Server) startAutostartServers() {
 	// Docker is confirmed up now — re-attach readiness detection to any server left
 	// mid-"starting" by this restart (its watcher goroutine didn't survive).
 	s.resumeStartingWatchers(ctx)
+}
+
+// startStackForAutostart brings a stack server's sidecars up before its app
+// container is started in place at boot. Does nothing for a rune without
+// services, and nothing when every sidecar is already running — startStack
+// removes and recreates each one, which would needlessly bounce a healthy
+// database.
+func (s *Server) startStackForAutostart(ctx context.Context, id string) {
+	rt, err := s.loadRuntime(ctx, id)
+	if err != nil || rt.gs == nil || len(rt.gs.Services) == 0 {
+		return
+	}
+	allUp := true
+	for _, svc := range rt.gs.Services {
+		if running, _, err := s.docker.State(ctx, sidecarName(id, svc.Name)); err != nil || !running {
+			allUp = false
+			break
+		}
+	}
+	if allUp {
+		return
+	}
+	srv, err := s.getServer(ctx, id)
+	if err != nil {
+		return
+	}
+	if err := s.startStack(ctx, id, srv.DataDir, rt.gs, rt.env); err != nil {
+		log.Printf("autostart: server %s: could not start its services: %v", id, err)
+	}
 }
 
 // startStatusReconciler periodically checks servers marked "running" and flips

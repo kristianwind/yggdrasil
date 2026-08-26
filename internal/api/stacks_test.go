@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
@@ -96,4 +97,28 @@ gameskill:
 func TestStartStackForAutostartUnknownServer(t *testing.T) {
 	s := testServer(t)
 	s.startStackForAutostart(context.Background(), "does-not-exist")
+}
+
+// healthcheckEnabled decides whether startStack waits on a sidecar at all. It has
+// to distinguish three real cases seen on the fleet: Immich's postgres (a real
+// healthcheck, wait for it), Immich's redis and mariadb:lts (none, don't), and an
+// image whose inherited healthcheck has been switched off with ["NONE"] — waiting
+// on that one would spend the whole two-minute timeout achieving nothing.
+func TestHealthcheckEnabled(t *testing.T) {
+	cases := []struct {
+		name string
+		hc   *container.HealthConfig
+		want bool
+	}{
+		{"no healthcheck at all (redis, mariadb:lts)", nil, false},
+		{"empty test", &container.HealthConfig{}, false},
+		{"explicitly disabled", &container.HealthConfig{Test: []string{"NONE"}}, false},
+		{"CMD-SHELL (immich postgres)", &container.HealthConfig{Test: []string{"CMD-SHELL", "/usr/local/bin/healthcheck.sh"}}, true},
+		{"CMD form", &container.HealthConfig{Test: []string{"CMD", "pg_isready"}}, true},
+	}
+	for _, c := range cases {
+		if got := healthcheckEnabled(c.hc); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
 }

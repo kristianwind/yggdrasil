@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/kristianwind/yggdrasil/internal/docker"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
@@ -87,7 +90,64 @@ func (s *Server) startStack(ctx context.Context, id, dataDir string, gs *gameski
 			return fmt.Errorf("start sidecar %s: %w", svc.Name, err)
 		}
 	}
+	s.waitForSidecarHealth(ctx, id, gs)
 	return nil
+}
+
+// sidecarHealthTimeout bounds the total wait for a stack's sidecars. Generous,
+// because a Postgres that was killed by a host reboot replays its WAL before it
+// reports healthy, and that is exactly the case this exists for — but bounded,
+// because the boot path walks the servers one at a time and a sidecar that never
+// goes healthy must not hold the whole fleet down.
+const sidecarHealthTimeout = 2 * time.Minute
+
+// waitForSidecarHealth blocks until every sidecar that ships a Docker HEALTHCHECK
+// reports healthy, or the deadline passes.
+//
+// startStack used to start the sidecars and return straight away, leaving the app
+// container to race its own database. On a host reboot that race is lost reliably:
+// after .164 rebooted on 2026-08-26 Immich's server resolved the hostname
+// 'database' before the sidecar was on the network and exited 1. WordPress only
+// ever survived the same race because its entrypoint retries.
+//
+// Only an image that declares a healthcheck can be waited on. A sidecar without
+// one is skipped rather than guessed at — "running" is all Docker can say about
+// it, and that is already true by the time we get here. (Immich's postgres has
+// one; its redis does not, and mariadb:lts does not either.)
+func (s *Server) waitForSidecarHealth(ctx context.Context, id string, gs *gameskill.Gameskill) {
+	deadline := time.Now().Add(sidecarHealthTimeout)
+	for _, svc := range gs.Services {
+		name := sidecarName(id, svc.Name)
+		info, err := s.docker.Inspect(ctx, name)
+		if err != nil || info.Config == nil || !healthcheckEnabled(info.Config.Healthcheck) {
+			continue
+		}
+		for {
+			info, err := s.docker.Inspect(ctx, name)
+			if err != nil || info.State == nil || info.State.Health == nil {
+				break // it went away, or reports nothing we can wait on
+			}
+			if info.State.Health.Status == "healthy" {
+				break
+			}
+			if time.Now().After(deadline) {
+				log.Printf("stack %s: sidecar %s is still %q after %s — starting the app anyway",
+					s.serverName(id), svc.Name, info.State.Health.Status, sidecarHealthTimeout)
+				break
+			}
+			time.Sleep(time.Second)
+		}
+	}
+}
+
+// healthcheckEnabled reports whether a container actually has a healthcheck worth
+// waiting on. A Test of ["NONE"] is how Docker switches an inherited healthcheck
+// off, and waiting on one of those would burn the entire timeout for nothing.
+func healthcheckEnabled(hc *container.HealthConfig) bool {
+	if hc == nil || len(hc.Test) == 0 {
+		return false
+	}
+	return hc.Test[0] != "NONE"
 }
 
 // stopStack removes a server's sidecar containers (data persists in their volumes).

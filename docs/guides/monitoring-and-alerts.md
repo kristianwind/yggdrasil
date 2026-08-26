@@ -339,6 +339,35 @@ rebooting, asleep or offline during that one hour silently skipped the whole day
 restarts only the panel binary; your game and app containers keep running, so the impact is a few
 seconds of UI downtime.
 
+## Security advisories
+
+If something in Yggdrasil turns out to be dangerous, the panel tells you where you already are —
+at the top of every page, until somebody dismisses it.
+
+There is no push. The project has no register of installs and does not want one, so nothing can be
+sent to your panel; instead your panel **fetches** a small public file from the project's
+repository, on the same six-hour cadence as the release check. That request says nothing about you:
+no instance id, no version, no configuration. It is an anonymous GET for a file anyone can read.
+
+It works whether or not the [beacon](status-page-and-beacon.md) is on. Carrying advisories on the
+beacon would have been simpler, but the beacon is opt-out — and an admin who switched it off is
+exactly the person who still needs to hear that their panel has a hole in it.
+
+**You only see what concerns you.** Each advisory names the release that introduced the problem and
+the release that fixes it, and your panel shows it only if the version you are running falls in
+between. Once you are on the fixed release it stops appearing by itself, with nothing to dismiss.
+A build the panel can't place — a dev build, something compiled by hand — is treated as affected,
+because for a security notice the safe mistake is the one that shows it to you anyway.
+
+**An advisory is text.** It is a headline, a short explanation, and at most one link, all rendered
+as plain text; a link anywhere other than the project's own repository or website is dropped and the
+advisory shows without it. Nothing in an advisory is a command, and nothing the panel reads there can
+make it install anything: the in-panel updater only ever installs an official release whose checksum
+matches. That boundary is the point — a channel that could be made to *act* would be worth attacking.
+
+**Dismissing** is per advisory and applies to the whole panel, not to your own account: the question
+is whether somebody dealt with it, not whether everyone read it. It is recorded in the audit log.
+
 ## Host operating system
 
 **Settings → System → Operating system** reports what the host has pending: how many updates, how

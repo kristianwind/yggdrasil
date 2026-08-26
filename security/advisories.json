@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "Security advisories for Yggdrasil Panel. Every install pulls this file every",
+    "six hours and shows any entry that applies to the version it is running.",
+    "There is no push channel and no registry of installs — see",
+    "internal/api/advisories.go for why.",
+    "",
+    "Fields: id (stable, also the dismissal key), severity (critical|high|notice),",
+    "title, detail, introduced_in (first affected release, inclusive, optional),",
+    "fixed_in (first release WITHOUT the flaw, exclusive, optional — leave empty to",
+    "publish a mitigation before a patch exists), url (github.com or",
+    "yggdrasilpanel.com only; anything else is dropped).",
+    "",
+    "This is a one-way megaphone into other people's servers. Adding an entry is a",
+    "release-grade decision: it is text on their screen that they cannot mute except",
+    "by dismissing it. Keep it for things that actually need doing, and write the",
+    "detail so a reader knows within one sentence whether it concerns them."
+  ],
+  "advisories": []
+}

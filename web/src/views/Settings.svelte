@@ -1802,6 +1802,28 @@
     </div>
   {/if}
 </div>
+
+<!-- Support. A plain link on purpose: Buy Me a Coffee's own button is a script
+     from their CDN, which would put a third-party request on the page for every
+     admin of every install — the one thing this project promises not to do. An
+     anchor costs nothing and asks nothing. -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Support Yggdrasil</h2>
+<p class="text-muted mb-4 text-sm">
+  Yggdrasil is free software under the AGPL, with no paid tier and nothing held back — this
+  panel is the whole thing. If it saved you an afternoon, you can buy the maintainer a coffee.
+  Entirely optional, and nothing in the panel changes either way.
+</p>
+<a class="btn-ghost inline-flex items-center gap-2" href="https://buymeacoffee.com/kristianwind"
+   target="_blank" rel="noopener noreferrer">
+  <!-- Inline, not the ☕ emoji: that is a different drawing on every platform and a
+       hollow box on a machine with no emoji font. Inherits the button's colour. -->
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d="M4 9h13v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V9Z"/>
+    <path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17"/>
+    <path d="M7.5 5.6c0-.9.8-1.1.8-2M11 5.6c0-.9.8-1.1.8-2M14.5 5.6c0-.9.8-1.1.8-2"/>
+  </svg>
+  Buy me a coffee ↗</a>
 {/if}
 
 {#if tab === "network"}

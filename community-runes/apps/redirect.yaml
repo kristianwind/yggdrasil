@@ -1,0 +1,110 @@
+gameskill:
+  id: redirect
+  name: "Redirect (domain forwarder)"
+  category: "Apps"
+  description: >
+    Point one domain at another. Park a domain you own, move a site to a new
+    address without breaking old links, or send www to the bare domain — the
+    server answers every request with a redirect and nothing else.
+
+    Needs no reverse proxy of its own: give it a Subdomain (NPM / Cloudflare
+    Tunnel) like any other app, put your own Caddy/Traefik/nginx in front of its
+    port, or — if you run nothing at all — pin its host port to 80 when you
+    create it and point the old domain's DNS straight here.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # nginx:alpine, but WITHOUT keep_entrypoint: the config is generated on every
+  # start from the variables below, so changing the destination is a Restart
+  # rather than a reinstall. (A setting written only at install time looks
+  # applied while the running server keeps the old value — that trap has bitten
+  # this catalogue repeatedly.) Nothing is persisted, so there is no data_path
+  # and no PUID to get wrong: the container runs as the panel's own account and
+  # listens on 8080, which needs no root.
+  docker:
+    image: "nginx:alpine"
+
+  variables:
+    - key: TARGET
+      name: "Redirect to (full URL, e.g. https://example.com)"
+      type: string
+      required: true
+      default: ""
+    - key: STATUS
+      name: "Kind of redirect"
+      type: select
+      options: ["302 temporary", "301 permanent"]
+      default: "302 temporary"
+    - key: PRESERVE_PATH
+      name: "Keep the path and query (/old/page?a=1 → target/old/page?a=1)"
+      type: bool
+      default: true
+
+  install:
+    image: "busybox:latest"
+    script: |
+      echo "Nothing to install — this server holds no data."
+      echo "It answers every request with a redirect to the address you set."
+
+  startup:
+    # Written fresh on every start so the destination is a mutable setting.
+    # Everything nginx wants to write goes to /tmp, so the container needs no
+    # writable image layer and no root.
+    command: |
+      TARGET="{{TARGET}}"
+      if [ -z "$TARGET" ]; then
+        echo "No destination set. Open Settings and put a full URL in 'Redirect to',"
+        echo "for example https://example.com, then start the server again."
+        exit 1
+      fi
+      # Accept example.com as well as https://example.com — a bare host without a
+      # scheme makes nginx emit a relative Location that browsers resolve against
+      # the ORIGINAL domain, which silently redirects the site to itself.
+      case "$TARGET" in
+        http://*|https://*) ;;
+        *) TARGET="https://$TARGET" ;;
+      esac
+      TARGET="${TARGET%/}"
+
+      case "{{STATUS}}" in
+        301*) CODE=301 ;;
+        *)    CODE=302 ;;
+      esac
+
+      if [ "{{PRESERVE_PATH}}" = "true" ]; then
+        DEST="$TARGET\$request_uri"
+      else
+        DEST="$TARGET/"
+      fi
+
+      mkdir -p /tmp/nginx
+      cat > /tmp/nginx/redirect.conf <<NGINXCONF
+      worker_processes 1;
+      error_log /dev/stderr notice;
+      pid /tmp/nginx/nginx.pid;
+      events { worker_connections 256; }
+      http {
+        access_log off;
+        client_body_temp_path /tmp/nginx/body;
+        proxy_temp_path       /tmp/nginx/proxy;
+        fastcgi_temp_path     /tmp/nginx/fastcgi;
+        uwsgi_temp_path       /tmp/nginx/uwsgi;
+        scgi_temp_path        /tmp/nginx/scgi;
+        server {
+          listen 8080;
+          server_name _;
+          # Not redirected, so a health probe (and a proxy's own check) gets a
+          # plain 200 instead of chasing the redirect off this server.
+          location = /healthz { return 200 "ok\n"; }
+          location / { return $CODE "$DEST"; }
+        }
+      }
+      NGINXCONF
+
+      echo "Redirecting every request to $TARGET with HTTP $CODE (path kept: {{PRESERVE_PATH}})"
+      exec nginx -c /tmp/nginx/redirect.conf -g 'daemon off;'
+    done_regex: 'start worker process'
+
+  ports:
+    - { name: web, default: 8080, protocol: tcp }

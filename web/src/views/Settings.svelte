@@ -15,6 +15,47 @@
   let editingId = $state(null); // null = creating a new target; else the target id being edited
   let form = $state(blank());
 
+  // Report a problem. The bundle is built server-side from an allowlist
+  // (internal/api/diagnostics.go) and is shown to the admin in full before it can
+  // go anywhere: the panel itself transmits nothing. Fetched on demand rather
+  // than on page load, so an admin who never files a bug never builds one.
+  let diag = $state(null);
+  let diagBusy = $state(false);
+
+  async function loadDiagnostics() {
+    diagBusy = true;
+    try {
+      diag = await api.get("/diagnostics");
+    } catch (e) {
+      toast(e.message || "Could not build the report", "error");
+    } finally {
+      diagBusy = false;
+    }
+  }
+
+  // The base URL already carries ?template=, so these append with &. GitHub issue
+  // forms prefill a field by its id in the template — version, host, diagnostics.
+  function issueURL() {
+    if (!diag) return "#";
+    const q = new URLSearchParams({
+      version: diag.version || "",
+      host: diag.host || "",
+      diagnostics: diag.report || "",
+    });
+    return `${diag.url}&${q}`;
+  }
+
+  async function copyDiagnostics() {
+    try {
+      await navigator.clipboard.writeText(diag.report);
+      toast("Diagnostics copied", "success");
+    } catch {
+      // Clipboard access needs a secure context; a panel reached over plain HTTP
+      // on a LAN address doesn't have one. The text is on screen and selectable.
+      toast("Couldn't copy — select the text above and copy it", "error");
+    }
+  }
+
   // Settings are grouped into tabs so the page doesn't grow into one long scroll.
   const settingsTabs = [
     { id: "system", label: "System" },
@@ -1802,6 +1843,39 @@
     </div>
   {/if}
 </div>
+
+<!-- Report a problem. The panel had no door: an issue tracker and a Discord both
+     existed, and nothing in the UI pointed at either, so an admin who hit a bug
+     had nowhere to look. Everything here is opt-in and visible — the diagnostics
+     are rendered on screen before any of it moves. -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Report a problem</h2>
+<p class="text-muted mb-4 text-sm">
+  Something not doing what it says it does? Generate a summary of this install and open a
+  bug report with it filled in. It's versions and counts only — no server names, paths,
+  addresses or variable values — and you'll see all of it before anything is sent.
+</p>
+
+{#if !diag}
+  <button class="btn-ghost" onclick={loadDiagnostics} disabled={diagBusy}>
+    {diagBusy ? "Collecting…" : "Generate diagnostics"}
+  </button>
+{:else}
+  <pre class="font-mono text-xs bg-panel2 border border-border rounded p-3 overflow-x-auto mb-3">{diag.report}</pre>
+  <div class="flex flex-wrap gap-2">
+    <a class="btn-primary inline-flex items-center gap-2" href={issueURL()}
+       target="_blank" rel="noopener noreferrer">Open a bug report ↗</a>
+    <button class="btn-ghost" onclick={copyDiagnostics}>Copy</button>
+    <button class="btn-ghost" onclick={() => (diag = null)}>Close</button>
+  </div>
+  <p class="text-muted text-xs mt-3">
+    Prefer to ask first? <a class="text-accent hover:underline" href="https://discord.gg/QM6TmJYvMS"
+    target="_blank" rel="noopener noreferrer">Discord</a> is faster for "is this even a bug".
+    Found a security flaw? Report it
+    <a class="text-accent hover:underline"
+       href="https://github.com/kristianwind/yggdrasil/security/advisories/new"
+       target="_blank" rel="noopener noreferrer">privately</a>, not in a public issue.
+  </p>
+{/if}
 
 <!-- Support. A plain link on purpose: Buy Me a Coffee's own button is a script
      from their CDN, which would put a third-party request on the page for every

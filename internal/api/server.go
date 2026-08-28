@@ -425,6 +425,10 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/advisories", s.requireAdmin(s.handleAdvisories))
 		r.Post("/api/advisories/{id}/ack", s.requireAdmin(s.handleAckAdvisory))
 
+		// Diagnostics for a bug report: an allowlisted summary of this install,
+		// rendered for the admin to read before it goes anywhere. See diagnostics.go.
+		r.Get("/api/diagnostics", s.requireAdmin(s.handleDiagnostics))
+
 		// Discord status board (admin-only)
 		r.Get("/api/settings/discord-status", s.requireAdmin(s.handleGetDiscordStatus))
 		r.Put("/api/settings/discord-status", s.requireAdmin(s.handleSetDiscordStatus))

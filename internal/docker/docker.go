@@ -47,6 +47,17 @@ func (c *Client) Ping(ctx context.Context) error {
 	return err
 }
 
+// Version reports the daemon's version and negotiated API version. Both empty
+// when the daemon can't be reached — callers render it as "unknown" rather than
+// failing, because this only ever feeds diagnostics.
+func (c *Client) Version(ctx context.Context) (version, apiVersion string) {
+	v, err := c.dc.ServerVersion(ctx)
+	if err != nil {
+		return "", ""
+	}
+	return v.Version, v.APIVersion
+}
+
 type CreateOptions struct {
 	Name      string
 	Image     string

@@ -29,6 +29,16 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Optional. **Settings → System → Report a problem** in the panel generates this and
+        can open this form with it already filled in. It contains versions and counts only —
+        no server names, paths, addresses or variable values.
+      render: text
+
   - type: input
     id: rune
     attributes:

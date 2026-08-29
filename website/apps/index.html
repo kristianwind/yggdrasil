@@ -68,237 +68,279 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
   <h1>Supported apps &amp; games</h1>
   <p class="lede">68 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
 <h2>Games <span class="count">8</span></h2>
-<div class="grid"><div class="app">
+<div class="grid"><div class="app" title="DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)">
   <div class="ic"><span class="glyph">🎮</span></div>
   <div class="meta"><div class="name">DayZ</div><div class="desc">DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)</div></div>
-</div><div class="app">
+</div><div class="app" title="Factorio dedicated server (factoriotools image). Auto-creates a save on first boot; no Steam account needed. Connect in-game via the host + UDP port.">
   <div class="ic"><span class="glyph">🎮</span></div>
   <div class="meta"><div class="name">Factorio</div><div class="desc">Factorio dedicated server (factoriotools image).</div></div>
-</div><div class="app">
+</div><div class="app" title="EXPERIMENTAL / COMMUNITY rune. Genshin Impact has no official dedicated server, so this runs Grasscutter — an open-source private-server emulator. It is NOT bundled with Yggdrasil (import it from community-runes/ on GitHub).
+Requirements you must provide yourself:
+  • A MongoDB reachable from the container (set MONGO_URI). Grasscutter stores
+    accounts/players in MongoDB — run one as another server or on the host.
+  • grasscutter.jar in the server&#39;s data dir (upload it via the Files tab).
+  • A Resources/ folder with the game data (upload via Files). These are NOT
+    downloaded automatically for legal reasons.
+After uploading those, press Start. See the Grasscutter wiki for client redirection (Fiddler/UA patch). Use responsibly and only with content you are legally allowed to run.
+">
   <div class="ic"><span class="glyph">🎮</span></div>
   <div class="meta"><div class="name">Genshin Impact (Grasscutter)</div><div class="desc">EXPERIMENTAL / COMMUNITY rune.</div></div>
-</div><div class="app">
+</div><div class="app" title="Luanti (formerly Minetest) dedicated server — an open-source voxel game engine. Free, tiny, mod-friendly. Connect via the host + UDP port.">
   <div class="ic"><span class="glyph">🎮</span></div>
   <div class="meta"><div class="name">Luanti (Minetest)</div><div class="desc">Luanti (formerly Minetest) dedicated server — an open-source voxel game engine.</div></div>
-</div><div class="app">
+</div><div class="app" title="Mojang Bedrock dedicated server via the maintained itzg/minecraft-bedrock-server image. It handles the BDS download, a proper libcurl + CA trust, and the Minecraft-services handshake that a bare base image gets wrong — so ONLINE MODE and the allow-list actually work. No RCON — console only.">
   <div class="ic"><img loading="lazy" src="/icons/minecraft-bedrock.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Minecraft (Bedrock)</div><div class="desc">Mojang Bedrock dedicated server via the maintained itzg/minecraft-bedrock-server image.</div></div>
-</div><div class="app">
+</div><div class="app" title="Vanilla / Paper / Purpur / Fabric / Forge Java server">
   <div class="ic"><img loading="lazy" src="/icons/minecraft-java.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Minecraft (Java)</div><div class="desc">Vanilla / Paper / Purpur / Fabric / Forge Java server</div></div>
-</div><div class="app">
+</div><div class="app" title="Facepunch Rust dedicated server (SteamCMD, anonymous login)">
   <div class="ic"><img loading="lazy" src="/icons/rust.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Rust</div><div class="desc">Facepunch Rust dedicated server (SteamCMD, anonymous login)</div></div>
-</div><div class="app">
+</div><div class="app" title="Terraria dedicated server (official build from terraria.org)">
   <div class="ic"><img loading="lazy" src="/icons/terraria.png" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Terraria</div><div class="desc">Terraria dedicated server (official build from terraria.</div></div>
 </div></div>
 <h2>Apps <span class="count">60</span></h2>
-<div class="grid"><div class="app">
+<div class="grid"><div class="app" title="Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole. The admin UI runs on the panel-allocated web port; first launch shows a setup wizard. NOTE: the DNS service lands on the panel-allocated high port, not :53 — to use it as your real network DNS you need a fixed/host port mapping, which the panel&#39;s per-server port model doesn&#39;t provide.">
   <div class="ic"><img loading="lazy" src="/icons/adguardhome.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">AdGuard Home</div><div class="desc">Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole.</div></div>
-</div><div class="app">
+</div><div class="app" title="Lightweight single-file database manager (MySQL/MariaDB, PostgreSQL, SQLite, and more). A leaner alternative to phpMyAdmin.">
   <div class="ic"><img loading="lazy" src="/icons/adminer.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Adminer</div><div class="desc">Lightweight single-file database manager (MySQL/MariaDB, PostgreSQL, SQLite, and more).</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted audiobook and podcast server">
   <div class="ic"><img loading="lazy" src="/icons/audiobookshelf.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Audiobookshelf</div><div class="desc">Self-hosted audiobook and podcast server</div></div>
-</div><div class="app">
+</div><div class="app" title="Companion to Sonarr and Radarr that manages and downloads subtitles for your movies and TV. Part of the *arr media stack.">
   <div class="ic"><img loading="lazy" src="/icons/bazarr.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Bazarr</div><div class="desc">Companion to Sonarr and Radarr that manages and downloads subtitles for your movies and TV.</div></div>
-</div><div class="app">
+</div><div class="app" title="Lightweight server and Docker monitoring with a clean dashboard, historical CPU/memory/disk/network charts and configurable alerts. This is the Beszel hub (web UI + datastore, built on PocketBase). To monitor a machine, install the Beszel agent on it and add it from this UI with the key the hub shows. Very low overhead.">
   <div class="ic"><img loading="lazy" src="/icons/beszel.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Beszel</div><div class="desc">Lightweight server and Docker monitoring with a clean dashboard, historical CPU/memory/disk/network charts and configurable alerts.</div></div>
-</div><div class="app">
+</div><div class="app" title="Host a site with Caddy and a Caddyfile you own. The server&#39;s file area holds the config and the site side by side: edit &#34;Caddyfile&#34; from the Files tab, put the site in &#34;site/&#34;, and restart to apply. Good when a static host is not enough — redirects, rewrites, custom headers, basic auth, or proxying a path through to another server.
+Use &#34;Static site&#34; instead if you only need files served; it needs no config at all. Use this when you want to say how they are served.
+One thing to know before you pick it: Caddy is famous for getting HTTPS certificates by itself, and that will NOT happen here. Issuing one requires the internet to reach this container on ports 80 and 443, and the panel publishes every server on its own assigned port instead. The shipped Caddyfile therefore serves plain HTTP and expects the proxy already in front of it — NPM, or a Cloudflare tunnel — to terminate TLS, which is how every other published site here already works. Everything else Caddy does works normally. It can also be the front door for a whole host — reverse-proxying the other servers on the box behind one name each. Two notes if you use it that way: move its ports to 80/443 from Settings after creating it (a rune cannot claim a privileged port itself), and address the other servers as 172.17.0.1:&lt;port&gt;, not localhost — inside a container, localhost is the container.
+">
   <div class="ic"><img loading="lazy" src="/icons/caddy.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Caddy (web server)</div><div class="desc">Host a site with Caddy and a Caddyfile you own.</div></div>
-</div><div class="app">
+</div><div class="app" title="EXPERIMENTAL / COMMUNITY. A headless Claude Code agent you drive from claude.ai/code or the Claude mobile app — it keeps working on your repo when your laptop is closed. Run one server per project. It dials out to Anthropic, so it needs no ports and nothing forwarded. A Claude subscription is required; you pay Anthropic for the usage, not the panel. SIGNING IN IS A ONE-TIME STEP ON FIRST START: the log prints a URL, you approve it in a browser, and you paste the code it gives you into this server&#39;s Console tab. (A token from `claude setup-token` will NOT work — those are inference-only and Remote Control rejects them.) Point REPO_URL at a git repo to have it cloned on first start, and give the agent a GitHub token if you want it to open pull requests.
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Claude Code (Remote Control)</div><div class="desc">EXPERIMENTAL / COMMUNITY.</div></div>
-</div><div class="app">
+</div><div class="app" title="The Cloudflare Tunnel connector. Run this once to link your VM to a Cloudflare Tunnel — then enable &#34;Cloudflare Tunnel (subdomains)&#34; under Settings → Network and give your app servers a Subdomain; Yggdrasil will route them through this tunnel with no port forwarding or public IP. Create a tunnel in the Cloudflare dashboard (Zero Trust → Networks → Tunnels), copy its connector token, and paste it below as TUNNEL_TOKEN. The connector is outbound-only, so it needs no ports.
+">
   <div class="ic"><img loading="lazy" src="/icons/cloudflared.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Cloudflare Tunnel (cloudflared)</div><div class="desc">The Cloudflare Tunnel connector.</div></div>
-</div><div class="app">
+</div><div class="app" title="The Cyber Swiss-Army Knife — encode/decode, encrypt, compress and analyse data in the browser (GCHQ). Static site.">
   <div class="ic"><img loading="lazy" src="/icons/cyberchef.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">CyberChef</div><div class="desc">The Cyber Swiss-Army Knife — encode/decode, encrypt, compress and analyse data in the browser (GCHQ).</div></div>
-</div><div class="app">
+</div><div class="app" title="Scheduled, encrypted, incremental backups of anything on this host to somewhere else — another disk, a NAS over SMB, S3, Backblaze B2, Google Drive, WebDAV, SFTP. It backs up what you mount into it and stores it encrypted at the destination, so the copy is unreadable without your passphrase even if the destination is not yours.
+Give it two admin host mounts: what to back up (read-only) and where to put it. Then create the backup job in the web interface — the schedule, retention and passphrase live there, not in the rune.
+Two passwords below, and they are not the same thing. The **web interface password** keeps other people out of this server&#39;s backup configuration. The **settings key** encrypts the local database that holds your destination credentials — Duplicati will not start without it, and changing it later makes the existing database unreadable, so set it once and keep a copy.
+">
   <div class="ic"><img loading="lazy" src="/icons/duplicati.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Duplicati</div><div class="desc">Scheduled, encrypted, incremental backups of anything on this host to somewhere else — another disk, a NAS over SMB, S3, Backblaze B2, Google Drive, WebDAV, S…</div></div>
-</div><div class="app">
+</div><div class="app" title="Virtual hand-drawn-style whiteboard for diagrams and sketches. Static site; drawings live in the browser/local storage.">
   <div class="ic"><img loading="lazy" src="/icons/excalidraw.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Excalidraw</div><div class="desc">Virtual hand-drawn-style whiteboard for diagrams and sketches.</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted RSS/Atom feed aggregator — fast, light, multi-user. SQLite by default (no external DB needed).">
   <div class="ic"><img loading="lazy" src="/icons/freshrss.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">FreshRSS</div><div class="desc">Self-hosted RSS/Atom feed aggregator — fast, light, multi-user.</div></div>
-</div><div class="app">
+</div><div class="app" title="Lightweight self-hosted Git service (repos, issues, PRs, CI)">
   <div class="ic"><img loading="lazy" src="/icons/gitea.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Gitea</div><div class="desc">Lightweight self-hosted Git service (repos, issues, PRs, CI)</div></div>
-</div><div class="app">
+</div><div class="app" title="Dashboards and visualization for metrics, logs and more">
   <div class="ic"><img loading="lazy" src="/icons/grafana.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Grafana</div><div class="desc">Dashboards and visualization for metrics, logs and more</div></div>
-</div><div class="app">
+</div><div class="app" title="Feature-complete web UI for a Headscale control server (manage nodes, users, pre-auth keys; DNS/ACL editing where integration is enabled). Pair it with a Headscale rune. Set HEADSCALE_URL to your Headscale server&#39;s address, then log in with a Headscale API key (`headscale apikeys create`).
+">
   <div class="ic"><img loading="lazy" src="/icons/headplane.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Headplane (Headscale UI)</div><div class="desc">Feature-complete web UI for a Headscale control server (manage nodes, users, pre-auth keys; DNS/ACL editing where integration is enabled).</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted, open-source implementation of the Tailscale control server (juanfont/headscale). STARTER TEMPLATE: the install step writes a working config, but you MUST set SERVER_URL to the address your devices reach this server on (e.g. https://vpn.example.com), and there&#39;s no web signup — add nodes from the console with `headscale users create &lt;name&gt;` and `headscale preauthkeys create --user &lt;name&gt; --reusable`, then `tailscale up --login-server &lt;SERVER_URL&gt; --authkey &lt;key&gt;` on each client.
+">
   <div class="ic"><img loading="lazy" src="/icons/headscale.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Headscale</div><div class="desc">Self-hosted, open-source implementation of the Tailscale control server (juanfont/headscale).</div></div>
-</div><div class="app">
+</div><div class="app" title="EXPERIMENTAL / COMMUNITY. Hermes — a self-improving AI agent by Nous Research (github.com/NousResearch/hermes-agent). Web dashboard + optional OpenAI-compatible API. Pick your LLM provider below — Anthropic, OpenAI, OpenRouter, DeepSeek, Gemini, or any OpenAI-compatible endpoint (Mistral, OVH, a local Ollama/vLLM) via &#34;custom&#34; + a base URL. You pay the provider&#39;s API usage. Set a dashboard password too. You can always fine-tune the model later in the dashboard or in config.yaml (Files tab).
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Hermes Agent</div><div class="desc">EXPERIMENTAL / COMMUNITY.</div></div>
-</div><div class="app">
+</div><div class="app" title="Open-source home automation hub. The dashboard runs on the panel-allocated web port; first launch walks you through onboarding. NOTE: it runs bridged, not host-network, so the cloud/API integrations work but local auto-discovery (mDNS) and directly-attached USB radios (Zigbee/Z-Wave dongles) are not available through the panel&#39;s per-server model — use network-based integrations, or run those on a host-network deployment.">
   <div class="ic"><img loading="lazy" src="/icons/home-assistant.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Home Assistant</div><div class="desc">Open-source home automation hub.</div></div>
-</div><div class="app">
+</div><div class="app" title="Bridge non-HomeKit smart-home devices into Apple HomeKit. Runs Homebridge plus its web config UI (homebridge-config-ui-x) for installing plugins and editing config.json in the browser. IMPORTANT — HomeKit pairing needs the accessory&#39;s mDNS/Bonjour advertisement to reach your LAN, and the panel runs containers on a bridge network (no host networking). The config UI works out of the box; actual HomeKit pairing only works if the host relays mDNS between the docker bridge and your LAN (an avahi-daemon reflector on the host) AND you pin a fixed HomeKit port. See the notes below the ports.">
   <div class="ic"><img loading="lazy" src="/icons/homebridge.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Homebridge</div><div class="desc">Bridge non-HomeKit smart-home devices into Apple HomeKit.</div></div>
-</div><div class="app">
+</div><div class="app" title="A modern, fully static, fast homelab start page / dashboard">
   <div class="ic"><img loading="lazy" src="/icons/homepage.png" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Homepage</div><div class="desc">A modern, fully static, fast homelab start page / dashboard</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted photo &amp; video backup — a Google Photos alternative with mobile apps, timeline, search and face recognition. A four-container app stack the panel wires together on a private network: the server, its machine-learning worker, a Postgres database (with the vector extension Immich needs) and Redis. Point the mobile app at this server&#39;s address. NOTE: the machine-learning image and the models it downloads are large (several GB); first start takes a while — start it once and let it finish rather than retrying. Photos go in the panel volume by default; set the photo storage path to a host mount to keep them on a NAS instead.">
   <div class="ic"><img loading="lazy" src="/icons/immich.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Immich<span class="badge">stack</span></div><div class="desc">Self-hosted photo &amp; video backup — a Google Photos alternative with mobile apps, timeline, search and face recognition.</div></div>
-</div><div class="app">
+</div><div class="app" title="A big collection of handy online dev/sysadmin tools (encoders, converters, generators, …). Static site, nothing to configure.">
   <div class="ic"><img loading="lazy" src="/icons/it-tools.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">IT-Tools</div><div class="desc">A big collection of handy online dev/sysadmin tools (encoders, converters, generators, …).</div></div>
-</div><div class="app">
+</div><div class="app" title="Proxy server that translates queries from apps like Sonarr and Radarr into tracker-site searches, giving them a unified indexer API. Part of the *arr media stack.">
   <div class="ic"><img loading="lazy" src="/icons/jackett.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Jackett</div><div class="desc">Proxy server that translates queries from apps like Sonarr and Radarr into tracker-site searches, giving them a unified indexer API.</div></div>
-</div><div class="app">
+</div><div class="app" title="Free software media server — stream your movies, TV and music">
   <div class="ic"><img loading="lazy" src="/icons/jellyfin.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Jellyfin</div><div class="desc">Free software media server — stream your movies, TV and music</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted &#39;bookmark everything&#39; — links, articles, notes, images and PDFs — with full-text search and optional AI auto-tagging. A privacy-first, self-hosted alternative to Raindrop.io / Pocket (which are cloud-only). An app stack: the panel runs Karakeep together with its own Meilisearch (full-text search) and a headless Chrome (link previews + full-page archiving) on a private network — nothing to wire up by hand.">
   <div class="ic"><img loading="lazy" src="/icons/karakeep.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Karakeep<span class="badge">stack</span></div><div class="desc">Self-hosted &#39;bookmark everything&#39; — links, articles, notes, images and PDFs — with full-text search and optional AI auto-tagging.</div></div>
-</div><div class="app">
+</div><div class="app" title="Minimal, fast self-hosted bookmark manager. SQLite by default — no external DB needed.">
   <div class="ic"><img loading="lazy" src="/icons/linkding.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">linkding</div><div class="desc">Minimal, fast self-hosted bookmark manager.</div></div>
-</div><div class="app">
+</div><div class="app" title="MariaDB (MySQL-compatible) database server (official image) — a backing store for other runes/apps">
   <div class="ic"><img loading="lazy" src="/icons/mariadb.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">MariaDB</div><div class="desc">MariaDB (MySQL-compatible) database server (official image) — a backing store for other runes/apps</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted recipe manager and meal planner with a clean web UI. SQLite by default.">
   <div class="ic"><img loading="lazy" src="/icons/mealie.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Mealie</div><div class="desc">Self-hosted recipe manager and meal planner with a clean web UI.</div></div>
-</div><div class="app">
+</div><div class="app" title="A lightweight, privacy-first note-taking / knowledge-base service">
   <div class="ic"><img loading="lazy" src="/icons/memos.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Memos</div><div class="desc">A lightweight, privacy-first note-taking / knowledge-base service</div></div>
-</div><div class="app">
+</div><div class="app" title="MongoDB 4.4 (avoids the AVX requirement of Mongo 5+, which a default Proxmox VM CPU can&#39;t satisfy) — a backing store for other runes/apps (e.g. Grasscutter).">
   <div class="ic"><img loading="lazy" src="/icons/mongodb.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">MongoDB</div><div class="desc">MongoDB 4.</div></div>
-</div><div class="app">
+</div><div class="app" title="Eclipse Mosquitto — a lightweight MQTT broker for home automation and IoT, so your sensors and Home Assistant talk to each other on your own hardware instead of a vendor&#39;s cloud.">
   <div class="ic"><img loading="lazy" src="/icons/mosquitto.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Mosquitto (MQTT)</div><div class="desc">Eclipse Mosquitto — a lightweight MQTT broker for home automation and IoT, so your sensors and Home Assistant talk to each other on your own hardware instead…</div></div>
-</div><div class="app">
+</div><div class="app" title="Workflow automation — connect apps and APIs with a visual editor">
   <div class="ic"><img loading="lazy" src="/icons/n8n.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">n8n</div><div class="desc">Workflow automation — connect apps and APIs with a visual editor</div></div>
-</div><div class="app">
+</div><div class="app" title="Your own music streaming server — a self-hosted, Subsonic-compatible alternative to Spotify for your personal library. Browse, search and stream from the web player or any Subsonic app (Symfonium, play:Sub, DSub, Amperfy). Point it at your music library, which you add as an admin host mount (read-only); it scans and keeps its index in the panel data dir.">
   <div class="ic"><img loading="lazy" src="/icons/navidrome.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Navidrome</div><div class="desc">Your own music streaming server — a self-hosted, Subsonic-compatible alternative to Spotify for your personal library.</div></div>
-</div><div class="app">
+</div><div class="app" title="Keep several Pi-hole v6 instances identical. Point it at a primary and one or more replicas, and it copies the configuration across on a schedule — so the blocklists, DNS records and settings you change on one are on the others within the hour.
+This has no web interface: it is a background job, and the Console tab is where it tells you what it did. It also has nothing to configure on disk, so the server&#39;s file area stays empty.
+A note on failure, because it is deliberate and looks alarming: if a Pi-hole cannot be reached or a password is wrong, the sync fails and the server STOPS rather than retrying quietly. The console then names the instance and the reason on its last line. A sync that silently never ran would be worse — the replicas would drift apart and nothing would say so.
+Supersedes Orbital Sync, which was archived in 2026 and never released Pi-hole v6 support beyond a prerelease build.
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Nebula Sync (Pi-hole v6)</div><div class="desc">Keep several Pi-hole v6 instances identical.</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted files, calendar, contacts and more (LinuxServer image; SQLite by default, can use a DB rune). Serves HTTPS with a self-signed cert.">
   <div class="ic"><img loading="lazy" src="/icons/nextcloud.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Nextcloud</div><div class="desc">Self-hosted files, calendar, contacts and more (LinuxServer image; SQLite by default, can use a DB rune).</div></div>
-</div><div class="app">
+</div><div class="app" title="Reverse proxy with a friendly web UI + free Let&#39;s Encrypt SSL (jc21/NPM). Admin UI is on port 81 — default login admin@example.com / changeme (change it immediately). NOTE: only /data persists (config + SQLite); the /etc/letsencrypt certs aren&#39;t persisted in the single-volume model, so they&#39;re re-issued if the container is recreated. For real proxying, forward your router&#39;s 80/443 to this server&#39;s allocated http/https ports.
+">
   <div class="ic"><img loading="lazy" src="/icons/nginx-proxy-manager.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Nginx Proxy Manager</div><div class="desc">Reverse proxy with a friendly web UI + free Let&#39;s Encrypt SSL (jc21/NPM).</div></div>
-</div><div class="app">
+</div><div class="app" title="Send push notifications to your phone, desktop or any device from a simple HTTP PUT/POST — self-hosted, no accounts required. Subscribe from the ntfy mobile/desktop apps or the web UI, and fire a notification from any script (curl), cron job or app. Set the public base URL below so notification links and attachments resolve; it sits behind the panel&#39;s reverse proxy on the web port.">
   <div class="ic"><img loading="lazy" src="/icons/ntfy.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">ntfy</div><div class="desc">Send push notifications to your phone, desktop or any device from a simple HTTP PUT/POST — self-hosted, no accounts required.</div></div>
-</div><div class="app">
+</div><div class="app" title="Scan, index and archive your documents with full-text search and OCR. An app stack: the panel runs Paperless plus its required Redis broker together on a private network. Uses SQLite by default (fine for personal use). First launch creates the admin user from the variables below; drop files into the consume volume (Files tab → consume) to import them.">
   <div class="ic"><img loading="lazy" src="/icons/paperless-ngx.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Paperless-ngx<span class="badge">stack</span></div><div class="desc">Scan, index and archive your documents with full-text search and OCR.</div></div>
-</div><div class="app">
+</div><div class="app" title="Host a website that includes PHP — a contact form, a small script, a hand-built site — with Apache and PHP 8.3. The server&#39;s file area IS the web root: upload from the Files tab and it is served immediately. Give it a Subdomain to publish it.
+Use this instead of &#34;Static site&#34; whenever the site contains .php files. A static-site server has no PHP interpreter, so it does not run them — it SERVES them, as plain text, to anyone who asks. A site can look perfectly normal while handing out whatever its scripts contain, which on a real site has meant SMTP credentials.
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">PHP site (Apache)</div><div class="desc">Host a website that includes PHP — a contact form, a small script, a hand-built site — with Apache and PHP 8.</div></div>
-</div><div class="app">
+</div><div class="app" title="Web UI to manage MySQL/MariaDB databases. Point it at a MariaDB rune (or type any DB host at login).">
   <div class="ic"><img loading="lazy" src="/icons/phpmyadmin.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">phpMyAdmin</div><div class="desc">Web UI to manage MySQL/MariaDB databases.</div></div>
-</div><div class="app">
+</div><div class="app" title="Network-wide ad blocker + local DNS. The admin web UI works out of the box; NOTE the DNS service lands on the panel-allocated high port (not :53), so to use it as your real DNS you&#39;d need a fixed/host-network port mapping (not supported by the panel&#39;s per-server port model).">
   <div class="ic"><img loading="lazy" src="/icons/pihole.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Pi-hole</div><div class="desc">Network-wide ad blocker + local DNS.</div></div>
-</div><div class="app">
+</div><div class="app" title="Organise and stream your movies, TV, music and photos to any device with the Plex apps. Point it at your media library (added as an admin host mount) and Plex catalogs it with artwork and metadata. Remote streaming works through Plex&#39;s relay, so publishing the single web port is enough for most setups. Sign in and claim the server on first run with a short-lived claim token from plex.tv/claim.">
   <div class="ic"><img loading="lazy" src="/icons/plex.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Plex Media Server</div><div class="desc">Organise and stream your movies, TV, music and photos to any device with the Plex apps.</div></div>
-</div><div class="app">
+</div><div class="app" title="Docker/Kubernetes management UI. Serves HTTPS (self-signed). NOTE: managing the LOCAL Docker needs /var/run/docker.sock mounted, which the panel does not mount — use it for remote endpoints / Portainer agents, or add the socket mount manually.">
   <div class="ic"><img loading="lazy" src="/icons/portainer.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Portainer</div><div class="desc">Docker/Kubernetes management UI.</div></div>
-</div><div class="app">
+</div><div class="app" title="PostgreSQL database server (official image) — a backing store for other runes/apps">
   <div class="ic"><img loading="lazy" src="/icons/postgresql.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">PostgreSQL</div><div class="desc">PostgreSQL database server (official image) — a backing store for other runes/apps</div></div>
-</div><div class="app">
+</div><div class="app" title="qBittorrent torrent client routed entirely through an OpenVPN or WireGuard tunnel (binhex/arch-qbittorrentvpn). All traffic — including the WebUI&#39;s peer connections — stays inside the VPN, with a built-in kill-switch. Includes an optional Privoxy HTTP proxy.">
   <div class="ic"><img loading="lazy" src="/icons/qbittorrentvpn.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">qBittorrent + VPN</div><div class="desc">qBittorrent torrent client routed entirely through an OpenVPN or WireGuard tunnel (binhex/arch-qbittorrentvpn).</div></div>
-</div><div class="app">
+</div><div class="app" title="PVR for Usenet and BitTorrent — monitors and manages your movies, grabbing releases as they become available. Part of the *arr media stack.">
   <div class="ic"><img loading="lazy" src="/icons/radarr.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Radarr</div><div class="desc">PVR for Usenet and BitTorrent — monitors and manages your movies, grabbing releases as they become available.</div></div>
-</div><div class="app">
+</div><div class="app" title="eBook and audiobook collection manager for the *arr stack — monitors authors and grabs new releases via your indexers and download client. NOTE: Readarr was retired upstream in 2025 and is no longer maintained; LinuxServer deprecated the image, so only a pinned version tag works (the latest/develop/nightly tags are gone). This rune pins the last working build. Your library + downloads come in as admin host mounts, never the rune.">
   <div class="ic"><img loading="lazy" src="/icons/readarr.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Readarr</div><div class="desc">eBook and audiobook collection manager for the *arr stack — monitors authors and grabs new releases via your indexers and download client.</div></div>
-</div><div class="app">
+</div><div class="app" title="Point one domain at another. Park a domain you own, move a site to a new address without breaking old links, or send www to the bare domain — the server answers every request with a redirect and nothing else.
+Needs no reverse proxy of its own: give it a Subdomain (NPM / Cloudflare Tunnel) like any other app, put your own Caddy/Traefik/nginx in front of its port, or — if you run nothing at all — pin its host port to 80 when you create it and point the old domain&#39;s DNS straight here.
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Redirect (domain forwarder)</div><div class="desc">Point one domain at another.</div></div>
-</div><div class="app">
+</div><div class="app" title="A network share, the way a NAS does it: one SMB folder that Windows, macOS and Linux mount natively — `\\host\NAS`, `smb://host/NAS` — with no client software and no web interface. Use the server&#39;s own file area, or point the share at existing storage with an admin host mount.
+Files written from a client land in the panel&#39;s group with group write, so the Files tab can edit them; files you put there from the panel are visible over SMB and a client can read, replace or delete them. Both sides share one folder rather than one side owning it. (One rough edge: a client cannot write *into* a file the panel created, only replace it — which is what Windows and macOS do when they save anyway.)
+⚠️ Two things to do after creating it. **Set the port to 445** under Ports — SMB clients expect 445 and Windows cannot be told to use another one, while a new server is given a port from the panel&#39;s own range (needs panel v0.2.230 or newer: before that the panel refused to assign any port below 1024). And **set a password**: the share has one account, `nas`, and it is the password below that lets a client in.
+Network discovery (seeing the server in &#34;Network&#34;) is deliberately off. It needs host networking, which the panel does not use, so mount by address.
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Samba (SMB network share)</div><div class="desc">A network share, the way a NAS does it: one SMB folder that Windows, macOS and Linux mount natively — `\\host\NAS`, `smb://host/NAS` — with no client softwa…</div></div>
-</div><div class="app">
+</div><div class="app" title="Request-management and media-discovery for Plex, Jellyfin and Emby — the official successor that merged Overseerr and Jellyseerr into one app. Users request movies/TV; it hands them to Sonarr/Radarr. Migrates an existing Overseerr or Jellyseerr config automatically on first start.">
   <div class="ic"><img loading="lazy" src="/icons/seerr.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Seerr</div><div class="desc">Request-management and media-discovery for Plex, Jellyfin and Emby — the official successor that merged Overseerr and Jellyseerr into one app.</div></div>
-</div><div class="app">
+</div><div class="app" title="PVR for Usenet and BitTorrent — monitors and manages your TV series, grabbing episodes as they release. Part of the *arr media stack.">
   <div class="ic"><img loading="lazy" src="/icons/sonarr.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Sonarr</div><div class="desc">PVR for Usenet and BitTorrent — monitors and manages your TV series, grabbing episodes as they release.</div></div>
-</div><div class="app">
+</div><div class="app" title="Host a static website (HTML / CSS / JS / images) with nginx. The server&#39;s file area IS the web root — upload your site from the Files tab (drag &amp; drop a folder or several files at once) and it&#39;s served immediately. Give it a Subdomain (NPM / Cloudflare) to publish it on the internet.
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Static site (nginx)</div><div class="desc">Host a static website (HTML / CSS / JS / images) with nginx.</div></div>
-</div><div class="app">
+</div><div class="app" title="A full toolbox of local PDF operations — merge, split, convert, OCR, sign, compress, and more. Runs entirely on your server.">
   <div class="ic"><img loading="lazy" src="/icons/stirling-pdf.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Stirling-PDF</div><div class="desc">A full toolbox of local PDF operations — merge, split, convert, OCR, sign, compress, and more.</div></div>
-</div><div class="app">
+</div><div class="app" title="Keep folders identical across your machines, continuously and without a cloud in the middle. Every device holds the whole folder, changes propagate peer to peer over an encrypted connection, and there is no account and no quota — the classic answer to &#34;Dropbox, but it is my own disk&#34;.
+Pair a device by exchanging IDs: open the web interface, copy this server&#39;s device ID into the other machine and accept the request on both sides. It finds peers through Syncthing&#39;s own discovery and relays, so it works without opening a port; give the other side `host:port` from the Ports tab (the sync port, not the web one) if you want a direct connection.
+The web interface is protected by the username and password below, applied by the install step — change them here and press Update / Reinstall to re-apply. Do not skip them: the panel publishes the port, and Syncthing&#39;s interface is full control of every folder it syncs.
+">
   <div class="ic"><img loading="lazy" src="/icons/syncthing.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Syncthing</div><div class="desc">Keep folders identical across your machines, continuously and without a cloud in the middle.</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted data logger for your Tesla — detailed drive/charge history, efficiency, battery health and beautiful Grafana dashboards. An app stack: the panel runs TeslaMate together with its own PostgreSQL, an MQTT broker and a pre-provisioned Grafana on a private network.">
   <div class="ic"><img loading="lazy" src="/icons/teslamate.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">TeslaMate<span class="badge">stack</span></div><div class="desc">Self-hosted data logger for your Tesla — detailed drive/charge history, efficiency, battery health and beautiful Grafana dashboards.</div></div>
-</div><div class="app">
+</div><div class="app" title="Photograph your tools and get printable Gridfinity bins shaped to them. You upload a picture of a drawer or a handful of tools, it traces each outline, and you download the models to print.
+Bring a Google Gemini API key if you want it to do the tracing for you — it can also be typed in the web interface instead, so the key never has to live on the server. Everything it produces is kept in the server&#39;s file area.
+">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Tracefinity</div><div class="desc">Photograph your tools and get printable Gridfinity bins shaped to them.</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-host the UniFi Network controller to adopt and manage Ubiquiti access points, switches and gateways — the same application that runs on a Cloud Key, but in a container. A two-container app stack the panel wires together on a private network: the network application and its MongoDB database. Adopt devices on the same LAN via the inform port (8080); manage them from the web UI on 8443 (https). NOTE: this is the Network application only — UniFi Protect (cameras) requires UniFi OS hardware and has no supported container image.">
   <div class="ic"><img loading="lazy" src="/icons/unifi-network.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">UniFi Network<span class="badge">stack</span></div><div class="desc">Self-host the UniFi Network controller to adopt and manage Ubiquiti access points, switches and gateways — the same application that runs on a Cloud Key, but…</div></div>
-</div><div class="app">
+</div><div class="app" title="Self-hosted uptime monitoring with status pages and alerts">
   <div class="ic"><img loading="lazy" src="/icons/uptime-kuma.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Uptime Kuma</div><div class="desc">Self-hosted uptime monitoring with status pages and alerts</div></div>
-</div><div class="app">
+</div><div class="app" title="Lightweight Bitwarden-compatible password manager server">
   <div class="ic"><img loading="lazy" src="/icons/vaultwarden.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Vaultwarden</div><div class="desc">Lightweight Bitwarden-compatible password manager server</div></div>
-</div><div class="app">
+</div><div class="app" title="The world&#39;s most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go.">
   <div class="ic"><img loading="lazy" src="/icons/wordpress.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">WordPress<span class="badge">stack</span></div><div class="desc">The world&#39;s most popular website/CMS.</div></div>
 </div></div>
-<h2>Built on Yggdrasil <span class="count">6</span></h2>
-<p class="lede">Applications written by other people that install as a rune — one entry in the catalogue, and the panel builds, runs and backs them up like anything else.</p>
+<h2>Built on Yggdrasil <span class="count">7</span></h2>
+<p class="lede">Applications that install as a rune — one entry in the catalogue, and the panel builds, runs and backs them up like anything else.</p>
 <div class="grid">
-  <a class="app" href="https://github.com/andreasdinesen/bogreolen" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="A personal book library. Scan the ISBN barcode and it fills in title, author, cover and series — and says at once if you already own it. Passkey login, several users, SQLite built in." href="https://github.com/andreasdinesen/bogreolen" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">📚</span></div>
     <div class="meta"><div class="name">Bogreolen <span class="badge">GitHub ↗</span></div><div class="desc">A personal book library. Scan the ISBN barcode and it fills in title, author, cover and series — and says at once if you already own it. Passkey login, several users, SQLite built in.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/doda" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Tasks and notes on GTD lines: one search field that both finds and creates, opening as soon as you type, and Todoist-style recurring syntax. No npm packages, no CDN." href="https://github.com/andreasdinesen/doda" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">✅</span></div>
     <div class="meta"><div class="name">doda <span class="badge">GitHub ↗</span></div><div class="desc">Tasks and notes on GTD lines: one search field that both finds and creates, opening as soon as you type, and Todoist-style recurring syntax. No npm packages, no CDN.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/sagu" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <div class="app" title="Genshin Impact adviser: imports your account from Enka, GOOD or HoYoLAB, optimises your artifacts, and ranks every possible upgrade on the whole account by expected damage gained per resin — so it answers what to spend today's resin on, not what a perfect build would look like.">
+    <div class="ic"><span class="glyph">🔮</span></div>
+    <div class="meta"><div class="name">Mimir</div><div class="desc">Genshin Impact adviser: imports your account, optimises artifacts, and ranks every possible upgrade by damage gained per resin — what to spend today's resin on, not what a perfect build would be.</div></div>
+  </div>
+  <a class="app" title="Notes and wiki, written to replace Notion: notebooks nested to any depth, a hybrid live-markdown editor, full-text search, and publishing a page or a whole notebook as a public wiki with comments." href="https://github.com/andreasdinesen/sagu" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">📓</span></div>
     <div class="meta"><div class="name">Sagu <span class="badge">GitHub ↗</span></div><div class="desc">Notes and wiki, written to replace Notion: notebooks nested to any depth, a hybrid live-markdown editor, full-text search, and publishing a page or a whole notebook as a public wiki with comments.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/tilmeld" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Event sign-ups with three levels — attendee, group admin and master admin — plus CSV export. Flask and SQLite; the database creates itself on first start." href="https://github.com/andreasdinesen/tilmeld" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">🎟️</span></div>
     <div class="meta"><div class="name">Tilmeld <span class="badge">GitHub ↗</span></div><div class="desc">Event sign-ups with three levels — attendee, group admin and master admin — plus CSV export. Flask and SQLite; the database creates itself on first start.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/tovo" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Time tracking on tasks and projects: timers or manual entry, estimates, a customer view, and import from Microsoft Planner. doda's twin — same stack, its own database." href="https://github.com/andreasdinesen/tovo" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">⏱️</span></div>
     <div class="meta"><div class="name">tovo <span class="badge">GitHub ↗</span></div><div class="desc">Time tracking on tasks and projects: timers or manual entry, estimates, a customer view, and import from Microsoft Planner. doda's twin — same stack, its own database.</div></div>
   </a>
-  <a class="app" href="https://github.com/kristianwind/uruz" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web." href="https://github.com/kristianwind/uruz" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">ᚢ</span></div>
     <div class="meta"><div class="name">Uruz <span class="badge">GitHub ↗</span></div><div class="desc">Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web.</div></div>
   </a>

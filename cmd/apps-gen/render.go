@@ -55,10 +55,15 @@ func card(a app) string {
 	if a.Stack {
 		stack = `<span class="badge">stack</span>`
 	}
-	return fmt.Sprintf(`<div class="app">
+	// title carries the FULL description. The visible text is deliberately left
+	// as it was — firstSentence() trims it, and .desc then clamps that to two
+	// lines — so a long entry is cut twice and there was no way to read the rest.
+	// A native title needs no script, no CDN and no layout change; the cost is
+	// that it does not exist on touch, where there is no hover to do it with.
+	return fmt.Sprintf(`<div class="app" title="%s">
   <div class="ic">%s</div>
   <div class="meta"><div class="name">%s%s</div><div class="desc">%s</div></div>
-</div>`, icon, html.EscapeString(a.Name), stack, html.EscapeString(firstSentence(a.Description)))
+</div>`, html.EscapeString(a.Description), icon, html.EscapeString(a.Name), stack, html.EscapeString(firstSentence(a.Description)))
 }
 
 func firstSentence(s string) string {
@@ -140,13 +145,17 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 </nav>
 `
 
-// builtOn lists applications other people wrote that ship as a rune. It belongs
-// on this page rather than the front page: these are apps you can install, which
-// is what a reader is here for — and it does not earn its own nav entry.
+// builtOn lists applications that ship as a rune. It belongs on this page rather
+// than the front page: these are apps you can install, which is what a reader is
+// here for — and it does not earn its own nav entry.
 //
 // Hand-maintained on purpose. Everything above comes from the rune catalogue;
-// these are third-party projects whose repositories the generator has no reason
-// to read.
+// these live in their own repositories, which the generator has no reason to read.
+//
+// 🔴 A card is only a link when the repository is PUBLIC. Checked anonymously,
+// not with a signed-in gh — a private repo answers 200 to you and 404 to every
+// visitor. Mimir is listed without one for exactly that reason (rechecked
+// 2026-08-29: 404). Make the repo public and it becomes an <a> like the others.
 //
 // Kokkeri (Andreas Dinesen — recipe library, meal planner, shopping list) belongs
 // here too and was listed until 2026-08-09, but its repository is still private
@@ -154,30 +163,34 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 // nobody can go is an advert, not a reference, so it comes back the day the
 // repository does — the card is written and commented out below, ready to
 // uncomment, and the count goes to 7.
-const builtOn = `<h2>Built on Yggdrasil <span class="count">6</span></h2>
-<p class="lede">Applications written by other people that install as a rune — one entry in the catalogue, and the panel builds, runs and backs them up like anything else.</p>
+const builtOn = `<h2>Built on Yggdrasil <span class="count">7</span></h2>
+<p class="lede">Applications that install as a rune — one entry in the catalogue, and the panel builds, runs and backs them up like anything else.</p>
 <div class="grid">
-  <a class="app" href="https://github.com/andreasdinesen/bogreolen" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="A personal book library. Scan the ISBN barcode and it fills in title, author, cover and series — and says at once if you already own it. Passkey login, several users, SQLite built in." href="https://github.com/andreasdinesen/bogreolen" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">📚</span></div>
     <div class="meta"><div class="name">Bogreolen <span class="badge">GitHub ↗</span></div><div class="desc">A personal book library. Scan the ISBN barcode and it fills in title, author, cover and series — and says at once if you already own it. Passkey login, several users, SQLite built in.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/doda" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Tasks and notes on GTD lines: one search field that both finds and creates, opening as soon as you type, and Todoist-style recurring syntax. No npm packages, no CDN." href="https://github.com/andreasdinesen/doda" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">✅</span></div>
     <div class="meta"><div class="name">doda <span class="badge">GitHub ↗</span></div><div class="desc">Tasks and notes on GTD lines: one search field that both finds and creates, opening as soon as you type, and Todoist-style recurring syntax. No npm packages, no CDN.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/sagu" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <div class="app" title="Genshin Impact adviser: imports your account from Enka, GOOD or HoYoLAB, optimises your artifacts, and ranks every possible upgrade on the whole account by expected damage gained per resin — so it answers what to spend today's resin on, not what a perfect build would look like.">
+    <div class="ic"><span class="glyph">🔮</span></div>
+    <div class="meta"><div class="name">Mimir</div><div class="desc">Genshin Impact adviser: imports your account, optimises artifacts, and ranks every possible upgrade by damage gained per resin — what to spend today's resin on, not what a perfect build would be.</div></div>
+  </div>
+  <a class="app" title="Notes and wiki, written to replace Notion: notebooks nested to any depth, a hybrid live-markdown editor, full-text search, and publishing a page or a whole notebook as a public wiki with comments." href="https://github.com/andreasdinesen/sagu" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">📓</span></div>
     <div class="meta"><div class="name">Sagu <span class="badge">GitHub ↗</span></div><div class="desc">Notes and wiki, written to replace Notion: notebooks nested to any depth, a hybrid live-markdown editor, full-text search, and publishing a page or a whole notebook as a public wiki with comments.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/tilmeld" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Event sign-ups with three levels — attendee, group admin and master admin — plus CSV export. Flask and SQLite; the database creates itself on first start." href="https://github.com/andreasdinesen/tilmeld" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">🎟️</span></div>
     <div class="meta"><div class="name">Tilmeld <span class="badge">GitHub ↗</span></div><div class="desc">Event sign-ups with three levels — attendee, group admin and master admin — plus CSV export. Flask and SQLite; the database creates itself on first start.</div></div>
   </a>
-  <a class="app" href="https://github.com/andreasdinesen/tovo" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Time tracking on tasks and projects: timers or manual entry, estimates, a customer view, and import from Microsoft Planner. doda's twin — same stack, its own database." href="https://github.com/andreasdinesen/tovo" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">⏱️</span></div>
     <div class="meta"><div class="name">tovo <span class="badge">GitHub ↗</span></div><div class="desc">Time tracking on tasks and projects: timers or manual entry, estimates, a customer view, and import from Microsoft Planner. doda's twin — same stack, its own database.</div></div>
   </a>
-  <a class="app" href="https://github.com/kristianwind/uruz" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+  <a class="app" title="Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web." href="https://github.com/kristianwind/uruz" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">ᚢ</span></div>
     <div class="meta"><div class="name">Uruz <span class="badge">GitHub ↗</span></div><div class="desc">Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web.</div></div>
   </a>
@@ -187,7 +200,7 @@ const builtOn = `<h2>Built on Yggdrasil <span class="count">6</span></h2>
 // Ready for the day andreasdinesen/kokkeri goes public — see the note above.
 // Add it after doda (the grid is alphabetical) and bump the count to 7.
 //
-//	<a class="app" href="https://github.com/andreasdinesen/kokkeri" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+//	<a class="app" title="Recipe library, meal planner and shopping list — a self-hosted replacement for Paprika." href="https://github.com/andreasdinesen/kokkeri" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
 //	  <div class="ic"><span class="glyph">🍳</span></div>
 //	  <div class="meta"><div class="name">Kokkeri <span class="badge">GitHub ↗</span></div><div class="desc">Recipe library, meal planner and shopping list — a self-hosted replacement for Paprika.</div></div>
 //	</a>

@@ -163,7 +163,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 // nobody can go is an advert, not a reference, so it comes back the day the
 // repository does — the card is written and commented out below, ready to
 // uncomment, and the count goes to 7.
-const builtOn = `<h2>Built on Yggdrasil <span class="count">7</span></h2>
+const builtOn = `<h2>Built on Yggdrasil <span class="count">8</span></h2>
 <p class="lede">Applications that install as a rune — one entry in the catalogue, and the panel builds, runs and backs them up like anything else.</p>
 <div class="grid">
   <a class="app" title="A personal book library. Scan the ISBN barcode and it fills in title, author, cover and series — and says at once if you already own it. Passkey login, several users, SQLite built in." href="https://github.com/andreasdinesen/bogreolen" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
@@ -193,6 +193,10 @@ const builtOn = `<h2>Built on Yggdrasil <span class="count">7</span></h2>
   <a class="app" title="Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web." href="https://github.com/kristianwind/uruz" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">ᚢ</span></div>
     <div class="meta"><div class="name">Uruz <span class="badge">GitHub ↗</span></div><div class="desc">Strength-training PWA with offline logging, honest statistics and an AI coach. Built for iPhone and web.</div></div>
+  </a>
+  <a class="app" title="Tasks and projects, shared with the people you share the work with — projects, filters and labels beside what&#39;s due today. One Go binary with SQLite inside it." href="https://github.com/kristianwind/verdande" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+    <div class="ic"><span class="glyph">🧵</span></div>
+    <div class="meta"><div class="name">Verdande <span class="badge">GitHub ↗</span></div><div class="desc">Tasks and projects, shared with the people you share the work with — projects, filters and labels beside what&#39;s due today. One Go binary with SQLite inside it.</div></div>
   </a>
 </div>
 `

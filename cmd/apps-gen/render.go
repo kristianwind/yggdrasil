@@ -154,8 +154,9 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 //
 // 🔴 A card is only a link when the repository is PUBLIC. Checked anonymously,
 // not with a signed-in gh — a private repo answers 200 to you and 404 to every
-// visitor. Mimir is listed without one for exactly that reason (rechecked
-// 2026-08-29: 404). Make the repo public and it becomes an <a> like the others.
+// visitor, so the owner is the one person who cannot see the card is broken.
+// Mimir was listed without a link on 2026-08-29 for that reason and went public
+// the next day; Kokkeri is still private and stays commented out below.
 //
 // Kokkeri (Andreas Dinesen — recipe library, meal planner, shopping list) belongs
 // here too and was listed until 2026-08-09, but its repository is still private
@@ -174,10 +175,10 @@ const builtOn = `<h2>Built on Yggdrasil <span class="count">8</span></h2>
     <div class="ic"><span class="glyph">✅</span></div>
     <div class="meta"><div class="name">doda <span class="badge">GitHub ↗</span></div><div class="desc">Tasks and notes on GTD lines: one search field that both finds and creates, opening as soon as you type, and Todoist-style recurring syntax. No npm packages, no CDN.</div></div>
   </a>
-  <div class="app" title="Genshin Impact adviser: imports your account from Enka, GOOD or HoYoLAB, optimises your artifacts, and ranks every possible upgrade on the whole account by expected damage gained per resin — so it answers what to spend today's resin on, not what a perfect build would look like.">
+  <a class="app" title="Genshin Impact adviser: imports your account from Enka, GOOD or HoYoLAB, optimises your artifacts, and ranks every possible upgrade on the whole account by expected damage gained per resin — so it answers what to spend today's resin on, not what a perfect build would look like." href="https://github.com/kristianwind/mimir" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">🔮</span></div>
-    <div class="meta"><div class="name">Mimir</div><div class="desc">Genshin Impact adviser: imports your account, optimises artifacts, and ranks every possible upgrade by damage gained per resin — what to spend today's resin on, not what a perfect build would be.</div></div>
-  </div>
+    <div class="meta"><div class="name">Mimir <span class="badge">GitHub ↗</span></div><div class="desc">Genshin Impact adviser: imports your account, optimises artifacts, and ranks every possible upgrade by damage gained per resin — what to spend today's resin on, not what a perfect build would be.</div></div>
+  </a>
   <a class="app" title="Notes and wiki, written to replace Notion: notebooks nested to any depth, a hybrid live-markdown editor, full-text search, and publishing a page or a whole notebook as a public wiki with comments." href="https://github.com/andreasdinesen/sagu" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
     <div class="ic"><span class="glyph">📓</span></div>
     <div class="meta"><div class="name">Sagu <span class="badge">GitHub ↗</span></div><div class="desc">Notes and wiki, written to replace Notion: notebooks nested to any depth, a hybrid live-markdown editor, full-text search, and publishing a page or a whole notebook as a public wiki with comments.</div></div>

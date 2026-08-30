@@ -9,7 +9,20 @@ permissions:
   contents: write
 
 jobs:
+  # GitHub only. Gitea has no .gitea/workflows/ to shadow this directory, so it
+  # runs this same file on every tag it receives — and action-gh-release writes to
+  # whichever forge it runs on. Ungated, a tag pushed to both remotes (origin has
+  # two pushurls, so a single `git push origin <tag>` does that) publishes a
+  # second, half-built release on Gitea: measured on kw/mimir, where the binaries
+  # job failed on v0.4.3 and v0.4.4 while nothing on GitHub looked wrong.
+  #
+  # `test` below is deliberately NOT gated — it should keep running on Gitea,
+  # because that is what the auto-merge gate reads.
+  #
+  # Verified on a live tag (mimir v0.4.5): GitHub ran test + image + binaries,
+  # Gitea ran test alone.
   build:
+    if: github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +88,9 @@ jobs:
   # repo don't get a red X on every release.
   announce:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    # Skipped anyway when build is (needs:), but said outright so removing that
+    # dependency later cannot silently restore a duplicate Discord post.
+    if: startsWith(github.ref, 'refs/tags/') && github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

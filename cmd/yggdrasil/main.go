@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -62,15 +63,55 @@ func main() {
 				log.Fatalf("reset-password: %v", err)
 			}
 			return
+		case "help", "-h", "--help":
+			usage(os.Stdout)
+			return
+		default:
+			// A first argument that is neither a subcommand above nor a flag is a
+			// mistake — most likely a mistyped subcommand. Say so and show the list.
+			// Falling through instead would start the panel, and on a host already
+			// running one that is a second instance fighting for the same port.
+			if !strings.HasPrefix(os.Args[1], "-") {
+				fmt.Fprintf(os.Stderr, "yggdrasil: unknown command %q\n\n", os.Args[1])
+				usage(os.Stderr)
+				os.Exit(2)
+			}
 		}
 	}
 
 	cfgPath := flag.String("config", "/etc/yggdrasil/config.yaml", "path to config.yaml")
+	// The subcommands are positional and handled above, before the flag package
+	// ever runs — so its default -h would list only -config and hide half of what
+	// the binary does, break-glass reset-password included. Point flag at the same
+	// help so -h and a bad flag both show the whole picture.
+	flag.Usage = func() { usage(os.Stderr) }
 	flag.Parse()
 
 	if err := run(*cfgPath); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// usage lists the subcommands and flags. It exists because the subcommands are
+// positional args resolved before flag.Parse, so the flag package cannot know
+// about them: its own -h would print only -config and quietly hide version,
+// gen-config, migrate and the break-glass reset-password. This is what help, -h,
+// an unknown command and a bad flag all print.
+func usage(w io.Writer) {
+	fmt.Fprintf(w, `yggdrasil %s — game server management panel
+
+Usage:
+  yggdrasil [-config <path>]                          start the panel (default)
+  yggdrasil version                                   print the version and exit
+  yggdrasil gen-config [<path>]                       write a starter config.yaml
+  yggdrasil migrate export|import <bundle.tar.gz>     move an instance between hosts
+  yggdrasil reset-password <user> [--password <pw>]   break-glass admin reset (run as root on the host)
+  yggdrasil update                                    upgrade note (self-update is not built in)
+  yggdrasil help                                      print this help
+
+Flags:
+  -config string   path to config.yaml (default "/etc/yggdrasil/config.yaml")
+`, version)
 }
 
 func run(cfgPath string) error {

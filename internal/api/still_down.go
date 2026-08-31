@@ -51,6 +51,18 @@ func (s *Server) checkStillDown() {
 	// happened to the server was an unexpected exit, with no operator action
 	// after it. Someone who stops a server has said what they want; someone
 	// whose server exited on its own has not.
+	//
+	// autostart = 0 is the other way of saying it, and it is the one that
+	// survives. "Do not bring this up on boot" is a standing statement of
+	// intent, unlike a click, which only counts until the next crash.
+	//
+	// Without this the alert had no off switch at all. A server that crashed and
+	// is meant to stay down offers only a Start button in the UI — there is no
+	// Stop to click on something already stopped — so the only way to silence it
+	// was to start the very service you wanted off, or to re-save its settings
+	// for the side effect on the audit log. Hermes Saga was paged about daily
+	// for 29 days that way, which is how an alert channel teaches people to
+	// ignore it, including for the alerts that do matter.
 	rows, err := s.db.Query(`
 		SELECT sv.id, sv.name, c.exit_code, datetime(c.ts),
 		       CAST((julianday('now') - julianday(c.ts)) * 24 AS INT)
@@ -59,6 +71,7 @@ func (s *Server) checkStillDown() {
 		          FROM server_crashes GROUP BY server_id) c ON c.server_id = sv.id
 		 WHERE sv.installed = 1
 		   AND sv.status = 'stopped'
+		   AND sv.autostart = 1
 		   AND datetime(c.ts) <= datetime('now', ?)
 		   AND NOT EXISTS (
 		         SELECT 1 FROM audit_log a

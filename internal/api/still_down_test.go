@@ -127,3 +127,31 @@ func TestRaiseIncidentIsAlwaysAnIncident(t *testing.T) {
 		t.Error("a second crash inside the cooldown must not page again")
 	}
 }
+
+// A server the operator has set not to autostart is one they have said should
+// not be running. Paging daily about it is how Hermes Saga produced 29 days of
+// identical notices with no way to stop them: the UI offers only Start on a
+// stopped server, so the documented escape — an operator action newer than the
+// crash — could not be performed without starting the service you wanted off.
+func TestStillDownIgnoresServersWithAutostartOff(t *testing.T) {
+	s := testServer(t)
+
+	on := downServer(t, s, "wanted-up")
+	crashedAgo(t, s, on, 30, 1)
+
+	off := downServer(t, s, "meant-to-be-passive")
+	crashedAgo(t, s, off, 30, 1)
+	if _, err := s.db.Exec("UPDATE servers SET autostart = 0 WHERE id = ?", off); err != nil {
+		t.Fatalf("set autostart: %v", err)
+	}
+
+	s.checkStillDown()
+
+	if got := pagedStillDown(t, s, on); got != 1 {
+		t.Errorf("paged %d times for the autostart-on server, want 1", got)
+	}
+	if got := pagedStillDown(t, s, off); got != 0 {
+		t.Errorf("paged %d times for the autostart-off server, want 0 — "+
+			"autostart=0 says the operator wants it down", got)
+	}
+}

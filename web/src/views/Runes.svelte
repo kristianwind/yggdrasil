@@ -187,6 +187,48 @@
     }
   }
 
+  // Restart every running server built from this rune.
+  //
+  // A rune edit does not reach a running server on its own — Restart recreates the
+  // container, which is how a changed PUID, startup command or image gets picked
+  // up. Before this you had to remember which servers used the rune and click each
+  // one; on the game box that is eight Minecraft servers.
+  //
+  // The list is fetched and named in the confirm on purpose. "Restart 8 servers" is
+  // a different decision from "restart the one you were looking at", and the only
+  // honest way to ask is to say which ones.
+  async function restartServers(r) {
+    let affected;
+    try {
+      const res = await api.get(`/gameskills/${r.id}/servers`);
+      affected = res.servers || [];
+    } catch (e) {
+      toast(e.message, "error");
+      return;
+    }
+    if (!affected.length) {
+      toast("No running servers use this rune", "info");
+      return;
+    }
+    const names = affected.map((x) => x.name).join(", ");
+    const ok = await confirmDialog({
+      title: `Restart ${affected.length} server${affected.length > 1 ? "s" : ""}?`,
+      body:
+        `${names}\n\n` +
+        "Each is recreated so it picks up the current rune, one at a time — players " +
+        "come back one server at a time too. Stopped servers are left alone; they " +
+        "pick the rune up when someone starts them.",
+      confirmText: "Restart them",
+    });
+    if (!ok) return;
+    try {
+      const res = await api.post(`/gameskills/${r.id}/restart-servers`, {});
+      toast(`Restarting ${res.started} server(s) — you'll get a message when it's done`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   async function del(r) {
     const extra = r.builtin
       ? " This is a built-in default rune — it won't be re-added on restart."
@@ -426,6 +468,8 @@
                   title="Create a new game server from this rune — you'll pick a name and settings next.">Create server</button>
               {/if}
               {#if isAdmin}
+                <button class="btn-ghost px-2 py-1 ml-1" onclick={() => restartServers(r)}
+                  title="Recreate every running server built from this rune, one at a time, so they pick up the current version of it. Stopped servers are left alone.">Restart its servers</button>
                 <button class="btn-danger px-2 py-1 ml-1" onclick={() => del(r)}
                   title="Remove this rune from the panel. Existing servers built from it keep running, but you can't create new ones until it's re-added.">Delete</button>
               {/if}

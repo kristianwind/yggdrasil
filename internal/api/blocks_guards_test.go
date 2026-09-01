@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -143,5 +144,33 @@ func TestOnlyOverdueAutomaticBlocksAreDue(t *testing.T) {
 	}
 	if due["45.155.205.101"] {
 		t.Error("a manual block must never expire — the admin chose it deliberately")
+	}
+}
+
+// Cloudflare answers a token that lacks Firewall Services: Edit with a bare
+// "Authentication error (code 10000)", which reads like the token is invalid —
+// so an operator checks the token, finds it works for domains, and is stuck.
+//
+// The panel documented only the tunnel and DNS permissions until 2026-09-01, so
+// a token built to our own instructions has exactly this fault.
+func TestCloudflareAuthErrorNamesTheMissingPermission(t *testing.T) {
+	in := errors.New("cloudflare: Authentication error (code 10000)")
+	out := cfFirewallHint(in)
+
+	if !strings.Contains(out.Error(), "Firewall Services") {
+		t.Errorf("the hint must name the permission to add, got: %v", out)
+	}
+	if !errors.Is(out, in) {
+		t.Error("the original Cloudflare error must stay wrapped and readable")
+	}
+
+	// Anything else is passed through untouched: a wrong hint on an unrelated
+	// failure sends someone to change permissions that were never the problem.
+	other := errors.New("cloudflare: Rule not found (code 10001)")
+	if cfFirewallHint(other) != other {
+		t.Error("an unrelated Cloudflare error must not gain a permissions hint")
+	}
+	if cfFirewallHint(nil) != nil {
+		t.Error("nil must stay nil")
 	}
 }

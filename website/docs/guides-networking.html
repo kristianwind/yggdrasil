@@ -242,7 +242,15 @@ record&rsquo;s mode back and forth.</p>
 <p>Cloudflare&rsquo;s token UI does not offer a permission labelled &ldquo;Cloudflare Tunnel&rdquo;. The permission
 Yggdrasil needs is listed as <strong>Argo Tunnel (Legacy) → Edit</strong>, scoped to the whole <strong>account</strong> — that
 is the tunnel API permission under its old name. Add <strong>Zone → DNS: Edit</strong> for the zone holding your
-base domain and the token is complete.</p>
+base domain and the token is complete — <em>for tunnels and domains</em>.</p>
+<p>🔴 <strong>IP blocking needs a third permission: Zone → Firewall Services: Edit.</strong> Cloudflare&rsquo;s IP Access
+Rules are not covered by the tunnel or DNS permissions, so a token built to the recipe above works
+perfectly for everything on this page and cannot block a single address. There is no warning: the
+token tests fine, domains keep working, and the first symptom is <code>cloudflare: Authentication error (code 10000)</code> at the moment you try to block or unblock an IP.</p>
+<p>That is not hypothetical. A token replaced on one panel on 2026-07-31 left Cloudflare blocking dead
+for five weeks — three of Kvasir&rsquo;s automatic blocks failed against it in early August and were
+recorded as failures nobody read, and it surfaced only when an <em>unblock</em> failed in the UI. If you do
+not want edge blocking, leave the permission off; just know which of the two you have chosen.</p>
 <p>Account-scoped tokens cannot call Cloudflare&rsquo;s <code>/user/tokens/verify</code> endpoint — it returns a
 misleading &ldquo;Invalid API Token&rdquo; for a token that is entirely valid. Yggdrasil&rsquo;s <strong>Test connection</strong>
 therefore never calls it, and reads the tunnel&rsquo;s configuration instead. If Test reports the tunnel

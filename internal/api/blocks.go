@@ -146,6 +146,28 @@ func (s *Server) isOperatorIP(ctx context.Context, ip string) bool {
 	return s.recentOperatorIPs(ctx)[p.String()]
 }
 
+// cfFirewallHint turns Cloudflare's "Authentication error (code 10000)" into
+// something an operator can act on.
+//
+// IP Access Rules need Zone → Firewall Services: Edit, which is NOT among the
+// permissions the tunnel and DNS features need — and until 2026-09-01 it was not
+// among the ones this panel documented either. So a token created by following
+// our own instructions works for domains and silently cannot block anything, and
+// the only symptom is a bare authentication error at the moment you try.
+//
+// It cost a real hour: on this fleet a token replaced on 2026-07-31 broke
+// Cloudflare blocking for five weeks. Three of Kvasir's blocks failed against it
+// on 4-5 August, and nobody connected the two until an unblock failed in the UI.
+func cfFirewallHint(err error) error {
+	if err == nil || !strings.Contains(err.Error(), "code 10000") {
+		return err
+	}
+	return fmt.Errorf("%w — the API token is not authorised for firewall rules. "+
+		"Cloudflare IP blocking needs Zone → Firewall Services: Edit, which the tunnel "+
+		"and DNS permissions do not include; add it to the token in the Cloudflare "+
+		"dashboard (Settings → Domains holds the token)", err)
+}
+
 // allowlistEntries are addresses or CIDRs the admin has declared never-block, on
 // top of the built-in protected ranges. The built-ins only cover what somebody
 // thought of in advance; this is where the things only this install knows about
@@ -278,6 +300,7 @@ func (s *Server) blockIP(ctx context.Context, serverID, host, ip, reason, source
 		if client, cerr := s.cfFirewallClient(ctx); cerr == nil && client != nil {
 			if zone, zerr := client.ZoneForHost(host); zerr == nil && zone != "" {
 				ruleID, berr := client.BlockIP(zone, clean, notes)
+				berr = cfFirewallHint(berr)
 				if berr != nil {
 					return blockedIP{}, fmt.Errorf("cloudflare block failed: %w", berr)
 				}
@@ -354,7 +377,7 @@ func (s *Server) unblockByID(ctx context.Context, id string) error {
 		if client == nil {
 			return fmt.Errorf("cloudflare is no longer configured — cannot remove the edge rule")
 		}
-		if err := client.UnblockIP(scope, cfRuleID); err != nil {
+		if err := cfFirewallHint(client.UnblockIP(scope, cfRuleID)); err != nil {
 			return err
 		}
 	case "nftables":

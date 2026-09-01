@@ -107,6 +107,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.startAnomalyLoop()
 	s.startStillDownLoop()
 	s.startDataAccessLoop()
+	s.startBlockExpiryLoop()
 	return s
 }
 

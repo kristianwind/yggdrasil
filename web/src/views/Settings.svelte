@@ -350,7 +350,7 @@
   }
 
   // IP blocking (attack mitigation)
-  let blockCfg = $state({ enabled: false, mode: "propose", nft_enabled: false, nft_available: false, cf_configured: false });
+  let blockCfg = $state({ enabled: false, mode: "propose", nft_enabled: false, nft_available: false, cf_configured: false, allowlist: "" });
   let blocks = $state([]);
   let newBlock = $state({ ip: "", host: "", reason: "" });
   let blockBusy = $state(false);
@@ -369,6 +369,7 @@
         enabled: blockCfg.enabled,
         mode: blockCfg.mode,
         nft_enabled: blockCfg.nft_enabled,
+        allowlist: blockCfg.allowlist,
       });
       blockCfg = { ...blockCfg, ...res };
       toast("Blocking settings saved", "success");
@@ -2277,6 +2278,23 @@
     {/if}
   </div>
 
+  <!-- The built-in protected ranges only cover what somebody thought of in advance.
+       This is where the addresses only this install knows about go. The one that
+       catches people out is their own monitoring: it polls every site here, from a
+       single address, forever — which is a traffic shape a detector can misread. -->
+  <div>
+    <label class="label" for="block-allowlist">Never block these (one per line)</label>
+    <textarea id="block-allowlist" class="input font-mono text-xs" rows="3"
+              bind:value={blockCfg.allowlist}
+              placeholder="57.129.89.117&#10;203.0.113.0/24"></textarea>
+    <p class="text-xs text-muted mt-1">
+      Addresses or CIDR ranges that must never be blocked, however they look — your uptime monitor,
+      the office, a payment provider's webhook source. Checked before every block, manual ones
+      included. Cloudflare's edge, private ranges and any address an admin signed in from in the
+      last 14 days are already protected without listing them.
+    </p>
+  </div>
+
   <button class="btn-primary" onclick={saveBlocking}>Save blocking settings</button>
 </div>
 
@@ -2308,6 +2326,12 @@
             <div class="text-xs text-muted truncate">
               {b.source}{b.reason ? ` · ${b.reason}` : ""}{b.created_at ? ` · ${b.created_at.slice(0, 16).replace('T', ' ')}` : ""}
             </div>
+            {#if b.expires_at}
+              <!-- Only Kvasir's own blocks carry this. Saying so is half the point:
+                   an automatic block you can see will lift itself is one you don't
+                   have to remember to check. -->
+              <div class="text-xs text-muted">lifts itself {b.expires_at.slice(0, 16).replace('T', ' ')}</div>
+            {/if}
           </div>
           <button class="btn-ghost px-2 py-1 shrink-0" onclick={() => removeBlock(b)}>Unblock</button>
         </div>

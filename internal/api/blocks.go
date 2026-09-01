@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -63,16 +65,38 @@ var neverBlockCIDRs = func() []*net.IPNet {
 	return nets
 }()
 
+// blockRefusal is a guard saying "not this address" — as opposed to an operational
+// failure where the mechanism broke. Keeping them apart is the point: a refusal is
+// evidence the detector was wrong, a failure is evidence the plumbing was, and a
+// record that calls both "proposed" can measure neither.
+//
+// This mattered in the real data. Kvasir proposed blocking 198.41.192.37 twice on
+// 2026-08-01 — that is Cloudflare's own edge, and blocking it would have dropped
+// every proxied visitor to the site. The guard refused it correctly, and the event
+// log recorded it identically to the eight legitimate suggestions, so nobody could
+// see it had happened without checking the ranges by hand a month later.
+type blockRefusal struct{ reason string }
+
+func (e blockRefusal) Error() string { return e.reason }
+
+func refuse(format string, a ...any) error { return blockRefusal{fmt.Sprintf(format, a...)} }
+
+// isRefusal reports whether err came from a guard rather than from a failure.
+func isRefusal(err error) bool {
+	var r blockRefusal
+	return errors.As(err, &r)
+}
+
 // checkBlockable validates an IP and refuses any address we must never block.
 // Returns the normalized IP string on success, or a human-readable reason on refusal.
 func checkBlockable(ip string) (string, error) {
 	parsed := net.ParseIP(strings.TrimSpace(ip))
 	if parsed == nil {
-		return "", fmt.Errorf("%q is not a valid IP address", ip)
+		return "", refuse("%q is not a valid IP address", ip)
 	}
 	for _, n := range neverBlockCIDRs {
 		if n.Contains(parsed) {
-			return "", fmt.Errorf("refusing to block %s — it's in a protected range (%s)", parsed, n.String())
+			return "", refuse("refusing to block %s — it's in a protected range (%s)", parsed, n.String())
 		}
 	}
 	return parsed.String(), nil
@@ -122,6 +146,60 @@ func (s *Server) isOperatorIP(ctx context.Context, ip string) bool {
 	return s.recentOperatorIPs(ctx)[p.String()]
 }
 
+// allowlistEntries are addresses or CIDRs the admin has declared never-block, on
+// top of the built-in protected ranges. The built-ins only cover what somebody
+// thought of in advance; this is where the things only this install knows about
+// go — its own monitoring, an office address, a payment provider's webhook source.
+//
+// Stored as one entry per line (or comma-separated) in the block_allowlist setting.
+// A bare address is matched exactly; a CIDR matches its range.
+func (s *Server) allowlistEntries(ctx context.Context) []string {
+	raw := s.getSetting(ctx, "block_allowlist")
+	out := []string{}
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == '\n' || r == ',' || r == ' ' || r == '\t' || r == '\r'
+	}) {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// allowlisted returns the entry that protects ip, or "" if none does.
+func (s *Server) allowlisted(ctx context.Context, ip net.IP) string {
+	for _, entry := range s.allowlistEntries(ctx) {
+		if strings.Contains(entry, "/") {
+			if _, n, err := net.ParseCIDR(entry); err == nil && n.Contains(ip) {
+				return entry
+			}
+			continue
+		}
+		if p := net.ParseIP(entry); p != nil && p.Equal(ip) {
+			return entry
+		}
+	}
+	return ""
+}
+
+// vetBlock runs every guard that can refuse an address, in one place, so the
+// propose path and the enforce path can never disagree about what is blockable.
+// Returns the normalized address, or a blockRefusal naming which guard objected.
+func (s *Server) vetBlock(ctx context.Context, ip string) (string, error) {
+	clean, err := checkBlockable(ip)
+	if err != nil {
+		return "", err
+	}
+	parsed := net.ParseIP(clean)
+	if entry := s.allowlisted(ctx, parsed); entry != "" {
+		return "", refuse("refusing to block %s — it is on this panel's allowlist (%s)", clean, entry)
+	}
+	if s.isOperatorIP(ctx, clean) {
+		return "", refuse("refusing to block %s — an administrator signed in to this panel from that address recently; blocking it would lock you out of your own site", clean)
+	}
+	return clean, nil
+}
+
 // cfFirewallClient builds a Cloudflare client for edge-firewall calls. Unlike
 // cfClient it needs only the API token (no tunnel/account), since IP Access Rules
 // are zone-scoped. Returns nil when Cloudflare isn't enabled/configured.
@@ -164,19 +242,28 @@ type blockedIP struct {
 	Reason    string `json:"reason,omitempty"`
 	Source    string `json:"source"` // manual | kvasir
 	CreatedAt string `json:"created_at,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
 }
+
+// kvasirBlockTTL is how long one of Kvasir's own blocks lasts before it lifts
+// itself. Manual blocks never expire — a human who typed an address in has said
+// what they want.
+//
+// This is what makes auto mode defensible at all. Every guard in this file only
+// covers a mistake somebody anticipated; an expiry covers the ones nobody did. A
+// scanner that is still scanning gets blocked again within the hour, while a
+// wrong block stops being wrong overnight instead of sitting there until a human
+// happens to look at the list.
+const kvasirBlockTTL = 48 * time.Hour
 
 // blockIP enforces a block for ip, choosing Cloudflare when a zone the token can see
 // owns host, else the host firewall (if enabled). It records the block and returns a
 // short human description of what was done. serverID/host may be empty for a manual
 // host-firewall block. reason/source are stored for the audit trail.
 func (s *Server) blockIP(ctx context.Context, serverID, host, ip, reason, source string) (blockedIP, error) {
-	clean, err := checkBlockable(ip)
+	clean, err := s.vetBlock(ctx, ip)
 	if err != nil {
 		return blockedIP{}, err
-	}
-	if s.isOperatorIP(ctx, clean) {
-		return blockedIP{}, fmt.Errorf("refusing to block %s — an administrator signed in to this panel from that address recently; blocking it would lock you out of your own site", clean)
 	}
 	if s.getSetting(ctx, "block_enabled") != "1" {
 		return blockedIP{}, fmt.Errorf("IP blocking is disabled — enable it in Settings → Security")
@@ -215,17 +302,21 @@ func (s *Server) blockIP(ctx context.Context, serverID, host, ip, reason, source
 // recordBlock upserts the blocked_ips row and audits + notifies. A duplicate
 // (same ip/backend/scope) updates the existing row rather than erroring.
 func (s *Server) recordBlock(ctx context.Context, serverID, ip, backend, scope, cfRuleID, reason, source string) (blockedIP, error) {
+	expires := ""
+	if source == "kvasir" {
+		expires = time.Now().Add(kvasirBlockTTL).UTC().Format("2006-01-02 15:04:05")
+	}
 	b := blockedIP{
 		ID: uuid.New().String(), IP: ip, Backend: backend, Scope: scope,
-		ServerID: serverID, Reason: reason, Source: source,
+		ServerID: serverID, Reason: reason, Source: source, ExpiresAt: expires,
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO blocked_ips (id, ip, backend, scope, cf_rule_id, server_id, reason, source)
-		 VALUES (?,?,?,?,?,?,?,?)
+		`INSERT INTO blocked_ips (id, ip, backend, scope, cf_rule_id, server_id, reason, source, expires_at)
+		 VALUES (?,?,?,?,?,?,?,?,?)
 		 ON CONFLICT(ip, backend, scope) DO UPDATE SET
 		    cf_rule_id=excluded.cf_rule_id, server_id=excluded.server_id,
-		    reason=excluded.reason, source=excluded.source`,
-		b.ID, ip, backend, scope, cfRuleID, serverID, reason, source)
+		    reason=excluded.reason, source=excluded.source, expires_at=excluded.expires_at`,
+		b.ID, ip, backend, scope, cfRuleID, serverID, reason, source, expires)
 	if err != nil {
 		return blockedIP{}, fmt.Errorf("record block: %w", err)
 	}
@@ -282,9 +373,13 @@ func (s *Server) unblockByID(ctx context.Context, id string) error {
 func (s *Server) kvasirApplyBlock(serverID string, dec kvasirDecision, body string) (bool, string) {
 	ctx := context.Background()
 	ip := strings.TrimSpace(dec.Args)
-	if _, err := checkBlockable(ip); err != nil {
+	// Vet before proposing, not just before enforcing: an address a guard would
+	// refuse is a suggestion that was WRONG, and recording it as "proposed" — the
+	// same word used for the eight good ones — is how a proposal to block
+	// Cloudflare's own edge went unnoticed for a month.
+	if _, err := s.vetBlock(ctx, ip); err != nil {
 		s.notifyServer(serverID, body+"\n\n_I can't block that address: "+err.Error()+"._")
-		return false, "proposed"
+		return false, "refused"
 	}
 	proposeNote := body + "\n\n_I'm leaving this block for you to apply from Settings → Security (blocking is in propose mode)._"
 	if s.getSetting(ctx, "block_enabled") != "1" || s.getSetting(ctx, "block_mode") != "auto" {
@@ -297,6 +392,10 @@ func (s *Server) kvasirApplyBlock(serverID string, dec kvasirDecision, body stri
 	}
 	host := s.serverBlockHost(serverID)
 	if _, err := s.blockIP(ctx, serverID, host, ip, "auto-block: "+dec.Reason, "kvasir"); err != nil {
+		if isRefusal(err) {
+			s.notifyServer(serverID, body+"\n\n_I can't block that address: "+err.Error()+"._")
+			return false, "refused"
+		}
 		s.notifyServer(serverID, body+"\n\n⚠️ I tried to block "+ip+" but it failed: "+err.Error())
 		return false, "block failed"
 	}
@@ -308,7 +407,7 @@ func (s *Server) kvasirApplyBlock(serverID string, dec kvasirDecision, body stri
 
 func (s *Server) handleListBlocks(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(),
-		"SELECT id, ip, backend, scope, COALESCE(server_id,''), COALESCE(reason,''), source, created_at FROM blocked_ips ORDER BY created_at DESC")
+		"SELECT id, ip, backend, scope, COALESCE(server_id,''), COALESCE(reason,''), source, created_at, COALESCE(expires_at,'') FROM blocked_ips ORDER BY created_at DESC")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -317,7 +416,7 @@ func (s *Server) handleListBlocks(w http.ResponseWriter, r *http.Request) {
 	list := []blockedIP{}
 	for rows.Next() {
 		var b blockedIP
-		if rows.Scan(&b.ID, &b.IP, &b.Backend, &b.Scope, &b.ServerID, &b.Reason, &b.Source, &b.CreatedAt) == nil {
+		if rows.Scan(&b.ID, &b.IP, &b.Backend, &b.Scope, &b.ServerID, &b.Reason, &b.Source, &b.CreatedAt, &b.ExpiresAt) == nil {
 			list = append(list, b)
 		}
 	}
@@ -382,6 +481,7 @@ func (s *Server) handleGetBlockSettings(w http.ResponseWriter, r *http.Request) 
 		"nft_enabled":   s.getSetting(ctx, "block_nft_enabled") == "1",
 		"nft_available": firewall.Available(),
 		"cf_configured": s.getSetting(ctx, "cf_enabled") == "1" && s.getSetting(ctx, "cf_api_token") != "",
+		"allowlist":     strings.Join(s.allowlistEntries(ctx), "\n"),
 	})
 }
 
@@ -390,6 +490,7 @@ func (s *Server) handleSetBlockSettings(w http.ResponseWriter, r *http.Request) 
 		Enabled    bool   `json:"enabled"`
 		Mode       string `json:"mode"`
 		NftEnabled bool   `json:"nft_enabled"`
+		Allowlist  string `json:"allowlist"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -409,9 +510,95 @@ func (s *Server) handleSetBlockSettings(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+	// Validate the allowlist before saving: an entry with a typo protects nothing,
+	// and it would fail silently at the only moment it mattered.
+	clean := []string{}
+	for _, e := range strings.FieldsFunc(req.Allowlist, func(r rune) bool {
+		return r == '\n' || r == ',' || r == ' ' || r == '\t' || r == '\r'
+	}) {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if strings.Contains(e, "/") {
+			if _, _, err := net.ParseCIDR(e); err != nil {
+				jsonError(w, "allowlist: "+e+" is not a valid CIDR", http.StatusBadRequest)
+				return
+			}
+		} else if net.ParseIP(e) == nil {
+			jsonError(w, "allowlist: "+e+" is not a valid IP address", http.StatusBadRequest)
+			return
+		}
+		clean = append(clean, e)
+	}
+	s.setSetting(ctx, "block_allowlist", strings.Join(clean, "\n"))
 	s.setSetting(ctx, "block_enabled", boolStr(req.Enabled))
 	s.setSetting(ctx, "block_mode", mode)
 	s.setSetting(ctx, "block_nft_enabled", boolStr(req.NftEnabled))
-	s.auditLog(r, "settings.blocking", "blocking", map[string]any{"enabled": req.Enabled, "mode": mode, "nft": req.NftEnabled})
-	jsonOK(w, map[string]any{"enabled": req.Enabled, "mode": mode, "nft_enabled": req.NftEnabled})
+	s.auditLog(r, "settings.blocking", "blocking", map[string]any{"enabled": req.Enabled, "mode": mode, "nft": req.NftEnabled, "allowlist": len(clean)})
+	jsonOK(w, map[string]any{"enabled": req.Enabled, "mode": mode, "nft_enabled": req.NftEnabled, "allowlist": strings.Join(clean, "\n")})
+}
+
+// ---- expiry ----
+
+// blockExpiryScan is how often expired auto-blocks are swept. Well under the TTL,
+// so "48 hours" means roughly that rather than "48 hours plus however long until
+// the next sweep".
+const blockExpiryScan = 10 * time.Minute
+
+// startBlockExpiryLoop lifts Kvasir's blocks when their time is up.
+//
+// Without this the expiry column would be decoration, and decoration is worse
+// than nothing here: it would read like a safety net on the settings page while
+// leaving every wrong block in place forever.
+func (s *Server) startBlockExpiryLoop() {
+	go func() {
+		defer recoverLog("blockExpiryLoop")
+		// A first pass shortly after boot, so blocks that expired while the panel
+		// was down do not wait out another interval.
+		time.Sleep(90 * time.Second)
+		s.expireBlocks()
+		t := time.NewTicker(blockExpiryScan)
+		defer t.Stop()
+		for range t.C {
+			s.expireBlocks()
+		}
+	}()
+}
+
+// dueBlock is a block whose time is up.
+type dueBlock struct{ id, ip string }
+
+// blocksDue selects the automatic blocks that have outlived their TTL. Split out
+// from expireBlocks so the selection — the part with the date arithmetic and the
+// "manual blocks never expire" rule in it — is testable without a live firewall.
+func (s *Server) blocksDue(ctx context.Context, now time.Time) []dueBlock {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ip FROM blocked_ips
+		  WHERE COALESCE(expires_at,'') <> '' AND expires_at <= ?`,
+		now.UTC().Format("2006-01-02 15:04:05"))
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var list []dueBlock
+	for rows.Next() {
+		var d dueBlock
+		if rows.Scan(&d.id, &d.ip) == nil {
+			list = append(list, d)
+		}
+	}
+	return list
+}
+
+func (s *Server) expireBlocks() {
+	defer recoverLog("expireBlocks")
+	ctx := context.Background()
+	for _, d := range s.blocksDue(ctx, time.Now()) {
+		if err := s.unblockByID(ctx, d.id); err != nil {
+			log.Printf("block expiry: could not lift %s: %v", d.ip, err)
+			continue
+		}
+		s.notifyAll(fmt.Sprintf("⌛ Lifted the automatic block on **%s** — it had run its 48 hours. If it comes back, it gets blocked again.", d.ip))
+	}
 }

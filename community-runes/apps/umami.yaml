@@ -1,0 +1,73 @@
+gameskill:
+  id: umami
+  name: "Umami"
+  category: "Apps"
+  description: "Privacy-focused web analytics you host yourself — page views, referrers, countries and events, with no cookies and no consent banner. An app stack: the panel runs Umami together with its own PostgreSQL on a private network. Because the tracking script is served from your own domain, it is not on the blocklists that make Google Analytics undercount technical visitors."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # No data_path: Umami keeps everything in PostgreSQL and writes nothing to disk,
+  # so the server's data directory mounts at the default /data and simply stays
+  # empty. The backup that matters is the sidecar's — see backup: below.
+  docker:
+    image: "ghcr.io/umami-software/umami:postgresql-latest"
+    # keep_entrypoint: the image ships docker-entrypoint.sh with
+    # `sh scripts/start-docker.sh`, which applies the database migrations before
+    # starting Next.js. Replacing that with our own command would start the app
+    # against an unmigrated database.
+    keep_entrypoint: true
+    env:
+      DATABASE_TYPE: "postgresql"
+      DATABASE_URL: "postgresql://umami:{{DB_PASS}}@db:5432/umami"
+      APP_SECRET: "{{APP_SECRET}}"
+      # Umami phones home for a version check by default. Off: this rune exists
+      # for people who would rather their analytics did not have analytics.
+      DISABLE_UPDATES: "1"
+      DISABLE_TELEMETRY: "1"
+
+  variables:
+    - key: DB_PASS
+      name: "Database password (change this)"
+      type: string
+      default: "change-me"
+      secret: true
+      required: true
+    - key: APP_SECRET
+      name: "App secret — signs sessions (change this to a long random string)"
+      type: string
+      default: "change-me-to-a-long-random-string"
+      secret: true
+      required: true
+
+  services:
+    - name: db
+      image: "postgres:17"
+      data_path: /var/lib/postgresql/data
+      env:
+        POSTGRES_USER: "umami"
+        POSTGRES_PASSWORD: "{{DB_PASS}}"
+        POSTGRES_DB: "umami"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Umami needs no files on disk — everything lives in its PostgreSQL."
+      echo "First sign-in is  admin / umami  — change it immediately."
+
+  startup:
+    command: ""
+    # Taken from a real run, not from the docs: the image logs "✓ Ready in 0ms"
+    # after it has applied its migrations and Next.js is listening. An invented
+    # "Ready on" matched nothing and would have left the server stuck at
+    # "starting" forever while it was in fact serving.
+    done_regex: 'Ready in'
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+
+  # The database is the whole product here. .stack/db holds PostgreSQL's data dir,
+  # which is what a restore actually needs.
+  backup:
+    include: ["."]

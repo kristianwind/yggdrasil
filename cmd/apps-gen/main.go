@@ -30,22 +30,22 @@ const (
 // iconSlug maps a rune id to its dashboard-icons name when they differ. Anything
 // not here is tried as-is (its id).
 var iconSlug = map[string]string{
-	"pihole":          "pi-hole",
-	"adguardhome":     "adguard-home",
-	"minecraft-java":  "minecraft",
+	"pihole":            "pi-hole",
+	"adguardhome":       "adguard-home",
+	"minecraft-java":    "minecraft",
 	"minecraft-bedrock": "minecraft",
-	"static-site":     "", // no brand icon — falls back to a glyph
-	"cyberchef":       "cyberchef",
-	"it-tools":        "it-tools",
-	"unifi-network":   "unifi",
-	"qbittorrentvpn":  "qbittorrent",
+	"static-site":       "", // no brand icon — falls back to a glyph
+	"cyberchef":         "cyberchef",
+	"it-tools":          "it-tools",
+	"unifi-network":     "unifi",
+	"qbittorrentvpn":    "qbittorrent",
 }
 
 type app struct {
 	ID, Name, Category, Description string
-	Stack                          bool
-	Icon                           string // vendored path, or "" for the glyph fallback
-	IsApp                          bool
+	Stack                           bool
+	Icon                            string // vendored path, or "" for the glyph fallback
+	IsApp                           bool
 }
 
 func main() {
@@ -91,7 +91,15 @@ func collect() ([]app, error) {
 				return nil
 			}
 			gs, perr := gameskill.Parse(data)
-			if perr != nil || gs.ID == "" || seen[gs.ID] {
+			if perr != nil {
+				// Say so. A rune that does not parse used to vanish from the
+				// catalogue in silence — you write the file, the count goes up by
+				// none, and nothing tells you which one or why. That is a very
+				// quiet way to lose an afternoon, and it cost one.
+				fmt.Fprintf(os.Stderr, "  SKIPPED %s — %v\n", path, perr)
+				return nil
+			}
+			if gs.ID == "" || seen[gs.ID] {
 				return nil
 			}
 			seen[gs.ID] = true

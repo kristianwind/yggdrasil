@@ -1,0 +1,100 @@
+gameskill:
+  id: plausible
+  name: "Plausible Analytics"
+  category: "Apps"
+  description: "Privacy-focused web analytics you host yourself — no cookies, no consent banner, and a single readable dashboard instead of a reporting suite. An app stack: the panel runs Plausible Community Edition with its own PostgreSQL and ClickHouse on a private network. Because the script is served from your own domain it is not on the blocklists that make Google Analytics undercount technical visitors."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # keep_entrypoint, and the command goes THROUGH it. /entrypoint.sh handles "run"
+  # and "db <x>" itself and falls through to `exec "$@"` for anything else — read
+  # from the image, not copied from a compose file — so `sh -c "..."` runs as
+  # written. The three steps are needed because Community Edition does not create
+  # or migrate its databases on its own; both are idempotent, so this is also the
+  # upgrade path.
+  #
+  # No data_path: everything lives in the two databases. The server's data dir
+  # mounts at the default /data and stays empty.
+  docker:
+    image: "ghcr.io/plausible/community-edition:v3.0.1"
+    keep_entrypoint: true
+    env:
+      BASE_URL: "{{BASE_URL}}"
+      SECRET_KEY_BASE: "{{SECRET_KEY_BASE}}"
+      DATABASE_URL: "postgres://plausible:{{DB_PASS}}@db:5432/plausible"
+      CLICKHOUSE_DATABASE_URL: "http://events:8123/plausible_events_db"
+      DISABLE_REGISTRATION: "{{DISABLE_REGISTRATION}}"
+
+  variables:
+    - key: BASE_URL
+      name: "Public URL (exactly how visitors reach it — Plausible builds links from this)"
+      type: string
+      default: "http://localhost:8000"
+      required: true
+    - key: SECRET_KEY_BASE
+      name: "Secret key — signs sessions. Needs 64+ random characters"
+      type: string
+      default: "change-me-to-at-least-sixty-four-random-characters-or-plausible-will-not-start"
+      secret: true
+      required: true
+    - key: DB_PASS
+      name: "Database password (change this)"
+      type: string
+      default: "change-me"
+      secret: true
+      required: true
+    - key: DISABLE_REGISTRATION
+      name: "Close public sign-ups once you have your account"
+      type: string
+      default: "true"
+
+  services:
+    - name: db
+      image: "postgres:17"
+      data_path: /var/lib/postgresql/data
+      env:
+        POSTGRES_USER: "plausible"
+        POSTGRES_PASSWORD: "{{DB_PASS}}"
+        POSTGRES_DB: "plausible"
+    # ClickHouse stores the event data. Named "events" rather than "clickhouse"
+    # because that name goes into CLICKHOUSE_DATABASE_URL above and reads better.
+    #
+    # It logs to /var/log inside the container with the image's defaults, which
+    # this rune cannot change — config would have to be a mounted file, and a rune
+    # mounts only its data path. ClickHouse rotates those itself, so the growth is
+    # bounded rather than unbounded, but it is bounded generously. If the container
+    # layer grows more than you like, recreate it: the data is on the mount.
+    - name: events
+      image: "clickhouse/clickhouse-server:24.12-alpine"
+      data_path: /var/lib/clickhouse
+      env:
+        CLICKHOUSE_SKIP_USER_SETUP: "1"
+
+  install:
+    image: "busybox:latest"
+    script: |
+      mkdir -p /data
+      echo "Plausible keeps everything in PostgreSQL and ClickHouse — nothing on disk here."
+      echo
+      echo "Set BASE_URL to the address people will actually use before starting:"
+      echo "links in emails and the tracking snippet are built from it."
+
+  startup:
+    exec: ["sh", "-c", "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"]
+    # No done_regex on purpose. Measured on a real v3.0.1 start: the log ends with
+    # its data migrations and goes quiet — it never prints that it is listening, so
+    # there is nothing honest to match. The panel treats an absent regex as "the
+    # container is up, call it running", which is right here.
+    #
+    # The tempting alternative is to match the last migration line. Don't: those are
+    # named after whatever migration happens to be last in that release, so it would
+    # work today and silently leave the server stuck at "starting" after an upgrade.
+
+  ports:
+    - { name: web, default: 8000, protocol: tcp }
+
+  # The databases are the product. .stack/db and .stack/events are what a restore
+  # actually needs; the app's own /data is empty by design.
+  backup:
+    include: ["."]

@@ -46,9 +46,15 @@ type osUpdates struct {
 	// number means the counts are stale, not that the box is up to date — worth
 	// showing, because "0 updates" from a month-old cache is a lie by omission.
 	CacheAgeHours *float64 `json:"cache_age_hours,omitempty"`
-	CheckedAt     string   `json:"checked_at"`
-	Source        string   `json:"source,omitempty"` // apt-check | apt-list
-	Note          string   `json:"note,omitempty"`
+	// What is pending that has a consequence beyond "a package moved". These are
+	// the two the operator's players would notice, so the card says them out loud
+	// instead of leaving a number to be interpreted.
+	KernelUpdate bool     `json:"kernel_update"`
+	DockerUpdate bool     `json:"docker_update"`
+	NotablePkgs  []string `json:"notable_pkgs,omitempty"`
+	CheckedAt    string   `json:"checked_at"`
+	Source       string   `json:"source,omitempty"` // apt-check | apt-list
+	Note         string   `json:"note,omitempty"`
 }
 
 const (
@@ -111,6 +117,19 @@ func readOSUpdates(ctx context.Context) osUpdates {
 		return out
 	}
 
+	// Which of the pending updates matter differently from the rest. Deliberately
+	// a string match on the package list rather than anything cleverer: whether
+	// "linux-image-6.1.0-40" is a kernel is a fact, not a judgement, and routing a
+	// fact through a model would make it probabilistic AND only available on the
+	// installs that configured one.
+	//
+	// The reboot flag below answers a different question — it appears only AFTER an
+	// upgrade has been applied. This answers "will applying these cost me
+	// something", which is the one you have before you decide.
+	if pkgs, err := upgradablePackages(ctx); err == nil {
+		out.KernelUpdate, out.DockerUpdate, out.NotablePkgs = classifyNotable(pkgs)
+	}
+
 	// Present on Debian/Ubuntu once something wants a reboot — usually the kernel.
 	// World-readable, so no privileges needed to notice.
 	if _, err := os.Stat(rebootFlag); err == nil {
@@ -157,6 +176,54 @@ func aptCheck(ctx context.Context) (total, security int, err error) {
 		return 0, 0, err
 	}
 	return total, security, nil
+}
+
+// classifyNotable picks out the pending packages whose consequence is not just
+// "a package moved": a kernel needs a reboot to take effect, and Docker restarts
+// every running server the moment apt touches it.
+func classifyNotable(pkgs []string) (kernel, docker bool, notable []string) {
+	for _, name := range pkgs {
+		switch {
+		case strings.HasPrefix(name, "linux-image"), strings.HasPrefix(name, "linux-generic"),
+			strings.HasPrefix(name, "linux-headers"):
+			kernel = true
+		// Exact names, not a prefix. docker-ce is the daemon; docker-ce-cli and
+		// docker-ce-rootless-extras are not, and upgrading them restarts nothing —
+		// a prefix match flagged kw01's pending docker-ce-cli as "every server
+		// bounces", which is the sort of false alarm that teaches people to ignore
+		// the badge. containerd is the runtime, so it does count.
+		case name == "docker-ce", name == "docker.io", name == "containerd.io", name == "containerd":
+			docker = true
+		default:
+			continue
+		}
+		notable = append(notable, name)
+	}
+	return kernel, docker, notable
+}
+
+// upgradablePackages returns the names of the packages apt would upgrade. Same
+// command aptListUpgradable runs; this one keeps the names instead of counting.
+func upgradablePackages(ctx context.Context) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "apt", "list", "--upgradable")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	var out []string
+	sc := bufio.NewScanner(&stdout)
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.Contains(line, "upgradable from:") {
+			continue
+		}
+		// "docker-ce/noble 5:27.3.1-1~ubuntu.24.04~noble amd64 [upgradable from: ...]"
+		if name, _, ok := strings.Cut(line, "/"); ok {
+			out = append(out, strings.TrimSpace(name))
+		}
+	}
+	return out, sc.Err()
 }
 
 // aptListUpgradable is the fallback for hosts without apt-check (Debian). It

@@ -1613,7 +1613,24 @@
       {#if osUpd.reboot_required}
         <span class="badge bg-warn/20 text-warn">reboot needed</span>
       {/if}
+      {#if osUpd.kernel_update}
+        <span class="badge bg-warn/20 text-warn">kernel</span>
+      {/if}
+      {#if osUpd.docker_update}
+        <span class="badge bg-warn/20 text-warn">docker</span>
+      {/if}
     </div>
+
+    <!-- A count alone doesn't say whether applying it costs anything. These two do:
+         one means a reboot before it takes effect, the other means every server
+         bounces the moment apt runs. Both are string matches on the package list,
+         not a judgement — so they work the same on every install. -->
+    {#if osUpd.kernel_update || osUpd.docker_update}
+      <p class="text-xs text-muted mt-2">
+        {#if osUpd.kernel_update}A <b>kernel</b> update is waiting — it only takes effect after a reboot.{/if}
+        {#if osUpd.docker_update}{osUpd.kernel_update ? " " : ""}A <b>Docker</b> update is waiting — applying it restarts Docker, which stops every running server.{/if}
+      </p>
+    {/if}
 
     {#if osUpd.reboot_required}
       <p class="text-xs text-muted mt-2">
@@ -2291,10 +2308,8 @@
               bind:value={blockCfg.allowlist}
               placeholder="57.129.89.117&#10;203.0.113.0/24"></textarea>
     <p class="text-xs text-muted mt-1">
-      Addresses or CIDR ranges that must never be blocked, however they look — your uptime monitor,
-      the office, a payment provider's webhook source. Checked before every block, manual ones
-      included. Cloudflare's edge, private ranges and any address an admin signed in from in the
-      last 14 days are already protected without listing them.
+      Your uptime monitor, the office, a webhook source. Cloudflare's edge, private ranges and
+      addresses an admin recently signed in from are already protected.
     </p>
   </div>
 
@@ -2305,7 +2320,7 @@
   <h3 class="font-semibold">Blocked IPs</h3>
   <div class="flex flex-col sm:flex-row gap-2">
     <input class="input flex-1" bind:value={newBlock.ip} placeholder="IP to block (e.g. 149.36.51.138)" />
-    <input class="input flex-1" bind:value={newBlock.host} placeholder="site host (optional — picks Cloudflare zone)" />
+    <input class="input flex-1" bind:value={newBlock.host} placeholder="site host (optional)" />
   </div>
   <div class="flex gap-2">
     <input class="input flex-1" bind:value={newBlock.reason} placeholder="reason (optional)" />

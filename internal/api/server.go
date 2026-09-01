@@ -30,9 +30,12 @@ type Server struct {
 	docker  *docker.Client
 	router  *chi.Mux
 	webFS   fs.FS
-	docsKB  *docskb.KB    // embedded user docs, retrieval-grounding for the Kvasir chat
-	install *progressHub  // live install/build output, keyed by server id
-	osUpd   osUpdateCache // host OS update status, refreshed on a TTL
+	docsKB  *docskb.KB   // embedded user docs, retrieval-grounding for the Kvasir chat
+	install *progressHub // live install/build output, keyed by server id
+	// One rune-wide restart sweep at a time, so a double-click can't recreate the
+	// same eight containers twice over.
+	runeRestarts *runeRestartState
+	osUpd        osUpdateCache // host OS update status, refreshed on a TTL
 
 	pubCount   *publicCount // cached public install count (unauthenticated endpoint)
 	pubCountAt time.Time
@@ -75,18 +78,19 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	}
 
 	s := &Server{
-		cfg:       cfg,
-		db:        db,
-		docker:    dc,
-		webFS:     subFS,
-		install:   newProgressHub(),
-		cipher:    cipher,
-		wd:        newWatchdogState(),
-		kvasir:    newKvasirState(),
-		docsKB:    docskb.Load(docsFS),
-		anomalies: newAnomalyState(),
-		startWD:   newStartState(),
-		alarms:    newAlarmState(),
+		cfg:          cfg,
+		db:           db,
+		docker:       dc,
+		webFS:        subFS,
+		install:      newProgressHub(),
+		runeRestarts: newRuneRestartState(),
+		cipher:       cipher,
+		wd:           newWatchdogState(),
+		kvasir:       newKvasirState(),
+		docsKB:       docskb.Load(docsFS),
+		anomalies:    newAnomalyState(),
+		startWD:      newStartState(),
+		alarms:       newAlarmState(),
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()
@@ -236,6 +240,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Delete("/api/rune-repos/{id}", s.requireAdmin(s.handleDeleteRuneRepo))
 		r.Get("/api/gameskills/{id}", s.handleGetGameskill)
 		r.Delete("/api/gameskills/{id}", s.requireAdmin(s.handleDeleteGameskill))
+		// A rune change only reaches a running server when its container is recreated.
+		r.Get("/api/gameskills/{id}/servers", s.requireAdmin(s.handleRuneServers))
+		r.Post("/api/gameskills/{id}/restart-servers", s.requireAdmin(s.handleRestartRuneServers))
 
 		// API tokens (for automation)
 		r.Get("/api/tokens", s.handleListTokens)

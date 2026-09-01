@@ -2081,7 +2081,10 @@
   and a proxied <code>CNAME</code> when those servers start/stop. Prereqs: a tunnel created in
   the Cloudflare dashboard with the <code>cloudflared</code> connector running (you can launch it
   from the <b>cloudflared</b> rune), and an API token with <b>Account → Cloudflare Tunnel: Edit</b>
-  and <b>Zone → DNS: Edit</b>. Token encrypted at rest. Uses the same per-server Subdomain field as NPM.
+  and <b>Zone → DNS: Edit</b>. Add <b>Zone → Firewall Services: Edit</b> as well if you want to block
+  IPs at Cloudflare's edge — the tunnel and DNS permissions do not cover it, and a token without it
+  fails only at the moment you try to block something. Token encrypted at rest. Uses the same
+  per-server Subdomain field as NPM.
 </p>
 <div class="card p-4 mb-10 max-w-xl space-y-3">
   <div class="grid sm:grid-cols-2 gap-3">

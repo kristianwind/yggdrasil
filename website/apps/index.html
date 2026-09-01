@@ -3,10 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supported apps &amp; games — Yggdrasil Panel</title>
-<meta name="description" content="68 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta name="description" content="70 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <link rel="canonical" href="https://yggdrasilpanel.com/apps/">
 <meta property="og:title" content="Supported apps &amp; games — Yggdrasil Panel">
-<meta property="og:description" content="68 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta property="og:description" content="70 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://yggdrasilpanel.com/apps/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E">
@@ -66,7 +66,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 </nav>
 <main class="wrap">
   <h1>Supported apps &amp; games</h1>
-  <p class="lede">68 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
+  <p class="lede">70 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
 <h2>Games <span class="count">8</span></h2>
 <div class="grid"><div class="app" title="DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)">
   <div class="ic"><span class="glyph">🎮</span></div>
@@ -101,7 +101,7 @@ After uploading those, press Start. See the Grasscutter wiki for client redirect
   <div class="ic"><img loading="lazy" src="/icons/terraria.png" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Terraria</div><div class="desc">Terraria dedicated server (official build from terraria.</div></div>
 </div></div>
-<h2>Apps <span class="count">60</span></h2>
+<h2>Apps <span class="count">62</span></h2>
 <div class="grid"><div class="app" title="Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole. The admin UI runs on the panel-allocated web port; first launch shows a setup wizard. NOTE: the DNS service lands on the panel-allocated high port, not :53 — to use it as your real network DNS you need a fixed/host port mapping, which the panel&#39;s per-server port model doesn&#39;t provide.">
   <div class="ic"><img loading="lazy" src="/icons/adguardhome.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">AdGuard Home</div><div class="desc">Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole.</div></div>
@@ -243,6 +243,9 @@ Use this instead of &#34;Static site&#34; whenever the site contains .php files.
 </div><div class="app" title="Network-wide ad blocker + local DNS. The admin web UI works out of the box; NOTE the DNS service lands on the panel-allocated high port (not :53), so to use it as your real DNS you&#39;d need a fixed/host-network port mapping (not supported by the panel&#39;s per-server port model).">
   <div class="ic"><img loading="lazy" src="/icons/pihole.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Pi-hole</div><div class="desc">Network-wide ad blocker + local DNS.</div></div>
+</div><div class="app" title="Privacy-focused web analytics you host yourself — no cookies, no consent banner, and a single readable dashboard instead of a reporting suite. An app stack: the panel runs Plausible Community Edition with its own PostgreSQL and ClickHouse on a private network. Because the script is served from your own domain it is not on the blocklists that make Google Analytics undercount technical visitors.">
+  <div class="ic"><img loading="lazy" src="/icons/plausible.svg" alt="" width="40" height="40"></div>
+  <div class="meta"><div class="name">Plausible Analytics<span class="badge">stack</span></div><div class="desc">Privacy-focused web analytics you host yourself — no cookies, no consent banner, and a single readable dashboard instead of a reporting suite.</div></div>
 </div><div class="app" title="Organise and stream your movies, TV, music and photos to any device with the Plex apps. Point it at your media library (added as an admin host mount) and Plex catalogs it with artwork and metadata. Remote streaming works through Plex&#39;s relay, so publishing the single web port is enough for most setups. Sign in and claim the server on first run with a short-lived claim token from plex.tv/claim.">
   <div class="ic"><img loading="lazy" src="/icons/plex.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Plex Media Server</div><div class="desc">Organise and stream your movies, TV, music and photos to any device with the Plex apps.</div></div>
@@ -300,6 +303,9 @@ Bring a Google Gemini API key if you want it to do the tracing for you — it ca
 ">
   <div class="ic"><span class="glyph">📦</span></div>
   <div class="meta"><div class="name">Tracefinity</div><div class="desc">Photograph your tools and get printable Gridfinity bins shaped to them.</div></div>
+</div><div class="app" title="Privacy-focused web analytics you host yourself — page views, referrers, countries and events, with no cookies and no consent banner. An app stack: the panel runs Umami together with its own PostgreSQL on a private network. Because the tracking script is served from your own domain, it is not on the blocklists that make Google Analytics undercount technical visitors.">
+  <div class="ic"><img loading="lazy" src="/icons/umami.svg" alt="" width="40" height="40"></div>
+  <div class="meta"><div class="name">Umami<span class="badge">stack</span></div><div class="desc">Privacy-focused web analytics you host yourself — page views, referrers, countries and events, with no cookies and no consent banner.</div></div>
 </div><div class="app" title="Self-host the UniFi Network controller to adopt and manage Ubiquiti access points, switches and gateways — the same application that runs on a Cloud Key, but in a container. A two-container app stack the panel wires together on a private network: the network application and its MongoDB database. Adopt devices on the same LAN via the inform port (8080); manage them from the web UI on 8443 (https). NOTE: this is the Network application only — UniFi Protect (cameras) requires UniFi OS hardware and has no supported container image.">
   <div class="ic"><img loading="lazy" src="/icons/unifi-network.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">UniFi Network<span class="badge">stack</span></div><div class="desc">Self-host the UniFi Network controller to adopt and manage Ubiquiti access points, switches and gateways — the same application that runs on a Cloud Key, but…</div></div>

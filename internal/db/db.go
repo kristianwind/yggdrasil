@@ -547,6 +547,11 @@ func migrate(db *sql.DB) error {
 	// watchers: block (kept distinct so a reinstall can top up missing rune defaults
 	// without ever touching rules the user made or edited).
 	addColumnIfMissing(db, "log_watchers", "source", "TEXT NOT NULL DEFAULT ''")
+	// When an automatic block lifts itself. Empty means never — that is every
+	// manual block, because a human who typed an address in has said what they
+	// want. Only Kvasir's own blocks get a time on them, so a wrong one heals
+	// overnight instead of sitting there until somebody notices it.
+	addColumnIfMissing(db, "blocked_ips", "expires_at", "TEXT NOT NULL DEFAULT ''")
 	return nil
 }
 

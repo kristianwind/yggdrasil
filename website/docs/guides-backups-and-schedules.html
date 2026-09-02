@@ -48,7 +48,7 @@
 put any of it — plus restarts, updates and in-game warnings — on a cron schedule.</p>
 <h2 id="backup-targets">Backup targets</h2>
 <p>A <strong>target</strong> is a place archives are stored. Admins configure them under
-<strong>Settings → Integrations → Backup targets</strong>; there are three kinds.</p>
+<strong>Settings → Integrations → Backup targets</strong>; there are four kinds.</p>
 <table>
 <thead>
 <tr>
@@ -73,6 +73,11 @@ put any of it — plus restarts, updates and in-game warnings — on a cron sche
 <td>SMB / CIFS (direct)</td>
 <td>An SMB2 share, spoken natively with no host mount. Needs a share name. Port defaults to 445.</td>
 </tr>
+<tr>
+<td><code>pbs</code></td>
+<td>Proxmox Backup Server</td>
+<td>An existing PBS you already run. Deduplicated, incremental snapshots instead of nightly full archives. Port defaults to 8007. <a href="#proxmox-backup-server">Its own section below.</a></td>
+</tr>
 </tbody>
 </table>
 <p>Choose <strong>+ New target</strong>, name it, pick the type, and fill in what it asks for. Local
@@ -88,6 +93,147 @@ The target list decrypts only enough to show you the path and host; passwords ar
 sent back to the browser and never logged.</p>
 <p>Two things to know about the SFTP target: it authenticates with a password (not a key),
 and it does not pin the host key. It suits a homelab NAS on your own network.</p>
+<h2 id="proxmox-backup-server">Proxmox Backup Server</h2>
+<p>The first three targets all store the same thing: one gzipped tar per run, written whole
+every time. That is simple and it is fine — until the server is 40 GB and the schedule is
+nightly.</p>
+<p>A <strong>PBS target</strong> works differently, and the difference is the entire point. Instead of
+building an archive and uploading it, Yggdrasil hands the data directory to
+<code>proxmox-backup-client</code>, which splits it into content-defined chunks and uploads only the
+chunks your datastore does not already have. On a real 57 MB directory, measured:</p>
+<table>
+<thead>
+<tr>
+<th>Run</th>
+<th>Transferred</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>First backup</td>
+<td>57.5 MB</td>
+</tr>
+<tr>
+<td>Again, nothing changed</td>
+<td><strong>0 B</strong></td>
+</tr>
+<tr>
+<td>After editing one small file</td>
+<td>8.2 MB</td>
+</tr>
+</tbody>
+</table>
+<p>Nightly backups of a large, mostly-static game world therefore cost close to nothing
+after the first one, and every night is still a full restore point rather than an
+increment that depends on the ones before it.</p>
+<p>This connects to a PBS you already run. Yggdrasil does not host one.</p>
+<h3 id="what-you-need-on-the-pbs-side">What you need on the PBS side</h3>
+<p>Create an API token — <strong>Configuration → Access Control → API Tokens</strong> — and note the
+secret when it is shown. It is displayed once.</p>
+<p>Then grant permissions, and read this part twice, because it is the thing that goes
+wrong:</p>
+<blockquote>
+<p><strong>Give the role to BOTH the user and the token.</strong> A token&rsquo;s effective permissions are
+the <em>intersection</em> of its own and its user&rsquo;s. Granting <code>DatastorePowerUser</code> to only the
+token leaves it with nothing, and the panel reports
+<code>permission check failed - missing Datastore.Audit|Datastore.Backup</code>, which reads like
+a wrong password.</p>
+</blockquote>
+<blockquote>
+<p><strong>Use <code>DatastorePowerUser</code>, not <code>DatastoreBackup</code>.</strong> <code>DatastoreBackup</code> can write
+snapshots but cannot prune them, so retention silently never runs and the datastore
+grows without limit. If that happens, Yggdrasil warns on the server&rsquo;s notification
+channel — &ldquo;Backup kept, but retention could not run&rdquo; — rather than letting you find out
+when the disk fills.</p>
+</blockquote>
+<p>If your PBS uses its own self-signed certificate (the default), you also need its
+fingerprint. Get it from <strong>Administration → Certificates</strong>, or on the PBS host:</p>
+<pre><code>proxmox-backup-manager cert info | grep -i fingerprint
+</code></pre>
+<h3 id="filling-in-the-target">Filling in the target</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Example</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host</td>
+<td><code>pbs.lan</code></td>
+<td>Hostname or IP. IPv6 works; the panel brackets it for you.</td>
+</tr>
+<tr>
+<td>Port</td>
+<td><em>(blank)</em></td>
+<td>Defaults to 8007.</td>
+</tr>
+<tr>
+<td>Auth ID</td>
+<td><code>ygg@pbs!panel</code></td>
+<td>The <strong>full</strong> token id, including the <code>!name</code> part.</td>
+</tr>
+<tr>
+<td>API token secret</td>
+<td><em>(from PBS)</em></td>
+<td>Encrypted at rest, never sent back to the browser.</td>
+</tr>
+<tr>
+<td>Datastore</td>
+<td><code>backups</code></td>
+<td>The datastore name, not a path.</td>
+</tr>
+<tr>
+<td>Namespace</td>
+<td><em>(blank)</em></td>
+<td>Optional. Empty means the datastore root.</td>
+</tr>
+<tr>
+<td>Certificate fingerprint</td>
+<td><code>aa:bb:…</code></td>
+<td>Required for self-signed certificates.</td>
+</tr>
+</tbody>
+</table>
+<p>Then use <strong>Test</strong>. It lists the datastore&rsquo;s backup groups, which exercises DNS, TLS, the
+fingerprint, the auth id, the token secret and the datastore name in one call — so a
+green result means a backup will reach the same place.</p>
+<h3 id="how-snapshots-are-named">How snapshots are named</h3>
+<p>Each panel server gets its own PBS backup group, <code>host/&lt;server-name&gt;-&lt;short-id&gt;</code>. The
+group is what makes the deduplication work: a snapshot is compared against the previous
+snapshot <em>in the same group</em>.</p>
+<p>One consequence worth knowing: <strong>renaming a server starts a new group.</strong> The old
+snapshots stay where they are and remain restorable from PBS directly, but the next
+backup has nothing to dedupe against and transfers everything once.</p>
+<h3 id="what-is-different-from-the-other-targets">What is different from the other targets</h3>
+<ul>
+<li><strong>Retention runs on the PBS server.</strong> &ldquo;Keep latest N&rdquo; becomes <code>--keep-last</code>, exactly.
+&ldquo;Keep days&rdquo; becomes <code>--keep-daily</code>, which keeps the newest snapshot of each of that
+many days <em>that have one</em> — not a rolling window of calendar days. With one backup a
+day the two are the same thing; with several a day they are not.</li>
+<li><strong>Deleting a snapshot does not free space immediately.</strong> Chunks are shared between
+snapshots, so nothing can be reclaimed until the PBS server runs garbage collection.</li>
+<li><strong>Verify is PBS&rsquo;s job.</strong> The panel&rsquo;s own verify re-reads a tar; for PBS, run a Verify
+job on the datastore, which checks the stored chunk checksums properly.</li>
+<li><strong>Download is not offered.</strong> A snapshot is deduplicated chunks plus an index, not a
+file, so there is nothing to hand a browser. Restore it to the server, or use
+<code>proxmox-backup-client</code> against your PBS directly.</li>
+<li><strong>Restore writes in place</strong> over the running server&rsquo;s data directory, after stopping
+the container — same as the other targets.</li>
+<li><strong>A <code>.pxarexclude-cli</code> file appears</strong> in a restored directory when the rune limits the
+backup to certain paths. It is the client&rsquo;s own record of what was excluded, and it is
+harmless.</li>
+</ul>
+<h3 id="requirements">Requirements</h3>
+<p>The panel host must be <strong>amd64</strong>. Proxmox publishes the backup client for amd64 only, so
+a Raspberry Pi panel cannot use a PBS target; it will say so rather than failing at the
+first backup.</p>
+<p>The client itself runs in a small container the panel pulls once
+(<code>ghcr.io/kristianwind/yggdrasil-pbs-client</code>), so there is nothing to install on the
+host. On a network that cannot reach GHCR, mirror it and set <code>docker.pbs_client_image</code> in
+the panel&rsquo;s config.</p>
 <h2 id="what-a-backup-contains">What a backup contains</h2>
 <p>A backup archives the server&rsquo;s data directory — the volume mounted at <code>/data</code> in the
 container.</p>
@@ -176,12 +322,20 @@ anything from the last 30 days&rdquo;. With both at <code>0</code> there is no p
 deleted.</p>
 <p>Retention deletes the archive from the target and the row from the panel, and it only ever
 considers completed backups for that one server on that one target.</p>
+<p>On a <strong>Proxmox Backup Server</strong> target the same two settings are applied by PBS&rsquo;s own
+<code>prune</code>, which is chunk-aware; the panel then removes the rows for whatever PBS deleted,
+so the list stays equal to what is actually restorable. The mapping and its one wrinkle
+are in <a href="#proxmox-backup-server">Proxmox Backup Server</a>.</p>
 <h2 id="verify">Verify</h2>
 <p><strong>Verify</strong> on a completed backup downloads the archive and streams it through gzip and tar
 to <code>io.Discard</code> — reading every byte, writing nothing anywhere. It is a real integrity
 check, not a size or timestamp comparison: a truncated archive, a flipped bit or a
 half-written upload fails at the gzip CRC or on a short tar entry. On success you get the
 file count and total uncompressed size; on failure you get the error that killed it.</p>
+<p>This applies to the archive targets. A <strong>Proxmox Backup Server</strong> snapshot is verified by
+PBS itself, against the chunk checksums it stored — a stronger check than re-reading a
+tar, and one the panel would only duplicate badly. Run a Verify job on the datastore;
+Yggdrasil&rsquo;s Verify button says so rather than pretending.</p>
 <p>Verify writes nothing to disk and does not touch the server. Nothing stops you running it
 on a live server mid-session.</p>
 <p>The result is stored on the backup, and the list shows a badge next to it:</p>
@@ -449,7 +603,7 @@ to have no say, do not grant <code>server.schedule</code>.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#proxmox-backup-server">Proxmox Backup Server</a><a class="t3" href="#what-you-need-on-the-pbs-side">What you need on the PBS side</a><a class="t3" href="#filling-in-the-target">Filling in the target</a><a class="t3" href="#how-snapshots-are-named">How snapshots are named</a><a class="t3" href="#what-is-different-from-the-other-targets">What is different from the other targets</a><a class="t3" href="#requirements">Requirements</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

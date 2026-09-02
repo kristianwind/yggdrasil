@@ -616,6 +616,9 @@
       port: 0,
       username: "",
       password: "",
+      datastore: "",
+      namespace: "",
+      fingerprint: "",
       share: "",
       keep_n: 0,
       keep_days: 0,
@@ -1412,6 +1415,10 @@
       port: t.port || 0, username: t.username || "", password: "",
       share: t.share || "", keep_n: t.keep_n || 0, keep_days: t.keep_days || 0,
       has_password: !!t.has_password,
+      // Without these an edit would post empty strings over a working PBS target
+      // and break it on save — the same class of bug as the password, but with no
+      // "leave blank to keep" to soften it.
+      datastore: t.datastore || "", namespace: t.namespace || "", fingerprint: t.fingerprint || "",
     };
     showCreate = true;
   }
@@ -3157,29 +3164,69 @@
           <option value="local">Local / NFS / CIFS mount</option>
           <option value="sftp">SFTP</option>
           <option value="smb">SMB / CIFS (direct)</option>
+          <option value="pbs">Proxmox Backup Server</option>
         </select>
       </div>
+
+      {#if form.type === "pbs"}
+        <div class="rounded border border-border bg-panel2 p-3 text-sm text-muted space-y-1">
+          <div>Backs the server's data directory up as a deduplicated snapshot, so
+            each run only transfers what changed. Restores come back through the panel.</div>
+          <div>On your PBS: create an API token, then give <strong>both the user and the
+            token</strong> the <code>DatastorePowerUser</code> role on the datastore.
+            Granting it to only one of them fails — a token's permissions are the
+            intersection of the two. <code>DatastoreBackup</code> is not enough: it
+            cannot prune, so retention would never run.</div>
+          <div>Requires an amd64 panel host — Proxmox does not publish an arm64 client.</div>
+        </div>
+      {/if}
 
       {#if form.type !== "local"}
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label" for="t-host">Host</label>
-            <input id="t-host" class="input" bind:value={form.host} />
+            <input id="t-host" class="input" bind:value={form.host} placeholder={form.type === "pbs" ? "pbs.lan" : ""} />
           </div>
           <div>
             <label class="label" for="t-port">Port (optional)</label>
-            <input id="t-port" class="input" type="number" bind:value={form.port} />
+            <input id="t-port" class="input" type="number" bind:value={form.port} placeholder={form.type === "pbs" ? "8007" : ""} />
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="label" for="t-user">Username</label>
-            <input id="t-user" class="input" bind:value={form.username} />
+            <label class="label" for="t-user">{form.type === "pbs" ? "Auth ID" : "Username"}</label>
+            <input id="t-user" class="input" bind:value={form.username} placeholder={form.type === "pbs" ? "ygg@pbs!panel" : ""} />
+            {#if form.type === "pbs"}
+              <p class="text-xs text-muted mt-1">The full token id, including the <code>!name</code> part.</p>
+            {/if}
           </div>
           <div>
-            <label class="label" for="t-pass">Password</label>
+            <label class="label" for="t-pass">{form.type === "pbs" ? "API token secret" : "Password"}</label>
             <input id="t-pass" class="input" type="password" bind:value={form.password} autocomplete="off" placeholder={editingId && form.has_password ? "leave blank to keep current" : ""} />
           </div>
+        </div>
+      {/if}
+
+      {#if form.type === "pbs"}
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="t-datastore">Datastore</label>
+            <input id="t-datastore" class="input" bind:value={form.datastore} placeholder="backups" />
+          </div>
+          <div>
+            <label class="label" for="t-ns">Namespace (optional)</label>
+            <input id="t-ns" class="input" bind:value={form.namespace} placeholder="leave empty for the datastore root" />
+          </div>
+        </div>
+        <div>
+          <label class="label" for="t-fp">Certificate fingerprint</label>
+          <input id="t-fp" class="input font-mono text-xs" bind:value={form.fingerprint} placeholder="aa:bb:cc:… (sha256)" />
+          <p class="text-xs text-muted mt-1">
+            Needed when PBS uses its own self-signed certificate, which is the default.
+            Find it under <strong>Administration → Certificates</strong>, or with
+            <code>proxmox-backup-manager cert info</code>. Leave empty only if the
+            certificate comes from a real CA.
+          </p>
         </div>
       {/if}
 
@@ -3190,6 +3237,7 @@
         </div>
       {/if}
 
+      {#if form.type !== "pbs"}
       <div>
         <label class="label" for="t-path">{form.type === "local" ? "Directory path" : "Remote path"}</label>
         <div class="flex gap-2">
@@ -3222,6 +3270,7 @@
           </div>
         {/if}
       </div>
+      {/if}
 
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -3233,6 +3282,14 @@
           <input id="t-keepd" class="input" type="number" bind:value={form.keep_days} />
         </div>
       </div>
+      {#if form.type === "pbs"}
+        <p class="text-xs text-muted -mt-1">
+          Retention runs on the PBS server. “Keep latest N” maps to
+          <code>--keep-last</code> exactly; “keep days” maps to
+          <code>--keep-daily</code>, which keeps the newest snapshot of each of
+          that many days that have one — not a rolling window of calendar days.
+        </p>
+      {/if}
 
       <div class="flex gap-2 pt-2">
         <button class="btn-ghost flex-1" onclick={() => { showCreate = false; editingId = null; }}>Cancel</button>

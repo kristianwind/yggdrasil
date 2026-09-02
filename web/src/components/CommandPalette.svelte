@@ -28,6 +28,7 @@
 
   const pages = [
     { label: "Dashboard", path: "/", icon: "📊" },
+    { label: "Statistics", path: "/statistics", icon: "📈", admin: true },
     { label: "Servers", path: "/servers", icon: "🖥️" },
     { label: "Runes", path: "/runes", icon: "ᚱ" },
     { label: "Schedules", path: "/schedules", icon: "⏰" },

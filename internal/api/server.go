@@ -515,6 +515,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		// System info
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
 		r.Get("/api/system/metrics", s.requireAdmin(s.handleSystemMetrics))
+		r.Get("/api/system/stats", s.requireAdmin(s.handleSystemStats))
 		r.Get("/api/host/mounts", s.requireAdmin(s.handleHostMountsList))
 		r.Get("/api/host/browse", s.requireAdmin(s.handleHostBrowse)) // ?path=
 		r.Get("/api/system/os-updates", s.requireAdmin(s.handleOSUpdates))

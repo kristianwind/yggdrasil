@@ -97,9 +97,21 @@ func (s *Server) reclaimableHint() string {
 // Thresholds for the image-bloat warning. Two conditions, because either alone
 // misfires: a share-only rule nags a 20 GB VPS about 2 GB, and a size-only rule
 // stays silent on a large disk that is quietly filling.
+//
+// The clear line has to sit above the residue a THOROUGH cleanup leaves behind,
+// or the warning latches on forever — clearing is the only way it can ever fire
+// again, so a clear line below the achievable floor silently disables the whole
+// monitor after its first use.
+//
+// Measured on production immediately after pruning every dangling image (304 of
+// them, 112 GB): 9.62 GB was still reclaimable — tagged-but-unused images, orphan
+// volumes and build cache, none of which a dangling prune touches. That is 4.79%
+// of the volume, against a clear line of 5%. It cleared by 0.21 of a percentage
+// point. A box with one more unused image would have stayed latched, and nothing
+// would ever have said so.
 const (
 	bloatWarnShare  = 0.10 // of the whole volume
-	bloatClearShare = 0.05 // hysteresis, so it does not flap around the line
+	bloatClearShare = 0.08 // comfortably above the ~5% a full prune leaves behind
 	bloatWarnFloor  = 5 << 30
 )
 

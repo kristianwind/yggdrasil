@@ -126,7 +126,9 @@ h2{margin:2.5rem 0 1rem;font-size:1.15rem;display:flex;align-items:center;gap:.6
 .desc{color:var(--mut);font-size:.82rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .badge{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;color:var(--grn2);background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);border-radius:999px;padding:.02rem .4rem;font-weight:700}
 footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding:2rem 1.25rem;font-size:.85rem}
-</style></head>
+</style>
+<script defer data-domain="yggdrasilpanel.com" src="https://plausible.yggdrasilpanel.com/js/script.js"></script>
+</head>
 <body>
 <nav class="nav">
 <div class="navin">

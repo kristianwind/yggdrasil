@@ -185,7 +185,26 @@ func (s *Server) pbsRun(ctx context.Context, cfg backup.Config, args []string, o
 
 // pbsError turns a failed invocation into something an operator can act on.
 // The client's own message is the useful part; the exit code is not.
+//
+// It also LOGS, and that is not redundant with returning the error. The message
+// travels to the browser inside an HTTP error body, and bodies get lost: a proxy
+// in front of the panel can replace a 5xx with its own page, a toast truncates,
+// and a scheduled backup has no browser at all. When a PBS target misbehaved on
+// production the operator saw "HTTP 502" and nothing else, while the panel knew
+// exactly what was wrong and kept it to itself. The journal is the one place
+// that survives all three.
 func pbsError(what string, out []byte, err error) error {
+	if msg := strings.TrimSpace(string(out)); msg != "" {
+		log.Printf("pbs %s failed: %s", what, msg)
+	} else {
+		log.Printf("pbs %s failed: %v", what, err)
+	}
+	return pbsErrorMessage(what, out, err)
+}
+
+// pbsErrorMessage builds the operator-facing text, without logging. Split out so
+// the logging above cannot accidentally be bypassed by a future caller.
+func pbsErrorMessage(what string, out []byte, err error) error {
 	msg := strings.TrimSpace(string(out))
 	// Keep the tail: progress lines come first, the reason comes last.
 	if len(msg) > 600 {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -278,5 +279,34 @@ func TestPBSStagingPermissionErrorIsActionable(t *testing.T) {
 	}
 	if !strings.Contains(msg, "own") {
 		t.Errorf("error does not point at ownership, which is the actionable part: %v", err)
+	}
+}
+
+// The operator-facing text must keep the client's own words: the exit code says
+// "1", the message says "missing permissions 'Datastore.Backup'". Only the
+// second one tells anybody what to do.
+func TestPBSErrorKeepsTheClientsMessage(t *testing.T) {
+	out := []byte("Starting backup protocol\nError: missing permissions 'Datastore.Backup' on '/datastore/Yggdrasil'")
+	err := pbsErrorMessage("backup", out, errors.New("exited with code 1"))
+	if !strings.Contains(err.Error(), "Datastore.Backup") {
+		t.Errorf("the actionable part was dropped: %v", err)
+	}
+	// Progress lines come first and the reason last, so a long output must be
+	// trimmed from the FRONT.
+	long := append([]byte(strings.Repeat("progress\n", 500)), []byte("Error: the actual reason")...)
+	trimmed := pbsErrorMessage("backup", long, errors.New("x")).Error()
+	if !strings.Contains(trimmed, "the actual reason") {
+		t.Errorf("trimming lost the tail, which is where the reason is: %q", trimmed)
+	}
+	if len(trimmed) > 800 {
+		t.Errorf("message not trimmed at all (%d bytes)", len(trimmed))
+	}
+}
+
+// With no output at all, the wrapped error must still surface.
+func TestPBSErrorFallsBackToTheError(t *testing.T) {
+	err := pbsErrorMessage("connect", nil, errors.New("container create failed"))
+	if !strings.Contains(err.Error(), "container create failed") {
+		t.Errorf("lost the underlying error: %v", err)
 	}
 }

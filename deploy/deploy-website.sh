@@ -69,14 +69,48 @@ ssh -o ConnectTimeout=20 "$HOST" "
 # Verify against the origin, not through Cloudflare: a CDN hit would report the
 # old file as success and this check exists precisely to catch a copy that didn't
 # land.
+#
+# EVERY file, not one of them. This used to checksum apps/index.html alone, which
+# is only the right check when the apps page is what changed. On 2026-09-02 a
+# deploy whose entire purpose was a docs correction printed "Verifying ✓" without
+# ever looking at the file it had come to fix — the one page that mattered was the
+# one page not checked. A deploy verifier that can pass while the change is missing
+# is worse than none, because it is believed.
 echo "==> Verifying"
-LOCAL=$(md5sum website/apps/index.html | cut -d' ' -f1)
-REMOTE=$(ssh -o ConnectTimeout=20 "$HOST" "sudo md5sum '$DIR/apps/index.html'" | cut -d' ' -f1)
-if [ "$LOCAL" != "$REMOTE" ]; then
-  echo "ERROR: apps/index.html differs after deploy ($LOCAL != $REMOTE)" >&2
+# Paths are relative on BOTH sides (cd first) and sorted under LC_ALL=C, because
+# the local and remote shells do not have to agree on collation — the first cut
+# compared a GNU sort here against a differently-configured one there and reported
+# two identical files as a difference purely because they came out in a different
+# order.
+manifest() { LC_ALL=C sort; }
+local_m=$( (cd website && find . -type f \
+  ! -name 'README.md' ! -name '._*' ! -name '.DS_Store' \
+  -exec md5sum {} + ) | manifest )
+remote_m=$(ssh -o ConnectTimeout=20 "$HOST" \
+  "cd '$DIR' && sudo find . -type f -exec md5sum {} +" | manifest)
+
+# Missing or altered: every local line must appear verbatim on the remote.
+bad=$(comm -23 <(printf '%s\n' "$local_m") <(printf '%s\n' "$remote_m"))
+if [ -n "$bad" ]; then
+  echo "ERROR: these files did not land, or landed different:" >&2
+  printf '%s\n' "$bad" | awk '{print "    " $2}' >&2
   exit 1
 fi
-echo "    apps/index.html matches ($LOCAL)"
+echo "    all $(printf '%s\n' "$local_m" | wc -l | tr -d ' ') files match"
+
+# Files the box has that the repo does not. Not fatal — an extra file does not
+# make the site wrong — but say so, loudly. This is how 106 AppleDouble forks came
+# to be served publicly, and how icons/jellyseerr.svg outlived its rune by months.
+orphans=$(comm -13 \
+  <(printf '%s\n' "$local_m"  | awk '{print $2}' | LC_ALL=C sort) \
+  <(printf '%s\n' "$remote_m" | awk '{print $2}' | LC_ALL=C sort))
+if [ -n "$orphans" ]; then
+  echo
+  echo "WARNING: the live site has files the repo does not. They are still served:"
+  printf '%s\n' "$orphans" | sed 's|^\./|    |'
+  echo "  Remove with:  ssh $HOST \"sudo rm -f '$DIR/<path>'\""
+fi
+
 echo
 echo "Deployed. Backup: /var/backups/yggdrasilpanel-site-$STAMP.tgz"
 echo "Note: HTML is served with cf-cache-status: DYNAMIC, so this is live at once."

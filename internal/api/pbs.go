@@ -131,8 +131,21 @@ func (s *Server) pbsRun(ctx context.Context, cfg backup.Config, args []string, o
 	// The panel's own state directory is the safe place: every server's data dir
 	// is bind-mounted out of it many times a day, which is proof the daemon can
 	// see it.
-	dir, err := os.MkdirTemp(s.pbsStagingRoot(), "ygg-pbs-")
+	stagingRoot := s.pbsStagingRoot()
+	dir, err := os.MkdirTemp(stagingRoot, "ygg-pbs-")
 	if err != nil {
+		// The panel creates this directory itself, owned by its own account, so a
+		// failure here almost always means something ELSE created it first — a
+		// root shell, an earlier run under a different user, a restore that
+		// preserved the wrong ownership. The bare "permission denied" names a path
+		// but not the reason, and the reason is the only actionable part.
+		if stagingRoot != "" && os.IsPermission(err) {
+			return nil, fmt.Errorf(
+				"cannot write to %s: the panel needs to own it. Check its ownership — "+
+					"it should belong to the account the panel runs as, and removing the "+
+					"empty directory lets the panel recreate it correctly (%w)",
+				stagingRoot, err)
+		}
 		return nil, fmt.Errorf("staging directory: %w", err)
 	}
 	defer os.RemoveAll(dir) //nolint:errcheck

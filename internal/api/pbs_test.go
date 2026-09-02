@@ -243,3 +243,40 @@ func TestPBSStagingRootFallsBackCleanly(t *testing.T) {
 		t.Errorf("expected empty fallback, got %q", got)
 	}
 }
+
+// A staging root the panel cannot write to must say WHY.
+//
+// The panel creates the directory itself, owned by its own account, so this only
+// happens when something else made it first — which is exactly what happened on
+// production: a root shell created it during debugging, and every backup then
+// failed with a bare "permission denied" naming a path but not the cause.
+func TestPBSStagingPermissionErrorIsActionable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, which can write anywhere")
+	}
+	s := pbsTestServer(t)
+	base := t.TempDir()
+	s.cfg = &config.Config{}
+	s.cfg.Database.Path = filepath.Join(base, "yggdrasil.db")
+
+	// Create the staging root and make it unwritable, the way a root-owned
+	// leftover behaves for the service account.
+	root := filepath.Join(base, "tmp")
+	if err := os.MkdirAll(root, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(root, 0700) })
+
+	_, err := s.pbsRun(context.Background(), backup.Config{Type: backup.PBSType},
+		[]string{"proxmox-backup-client", "version"}, pbsOpts{})
+	if err == nil {
+		t.Fatal("expected a failure")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, root) {
+		t.Errorf("error does not name the directory: %v", err)
+	}
+	if !strings.Contains(msg, "own") {
+		t.Errorf("error does not point at ownership, which is the actionable part: %v", err)
+	}
+}

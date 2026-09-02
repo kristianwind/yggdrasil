@@ -9,6 +9,10 @@ server:
   # LLM credits on whoever is typing). Leave this out unless you mean it — and
   # if you do mean it, run it on a machine that hosts nothing else.
   # demo_mode: true
+  # Shown on the sign-in page when demo_mode is on, so a visitor is not met by a
+  # password box with no password. Free text; the account it names is public by
+  # definition. Leave it out and the page just says it is a demo.
+  # demo_login: "Sign in with admin / demo-yggdrasil"
 
 database:
   path: "/var/lib/yggdrasil/yggdrasil.db"

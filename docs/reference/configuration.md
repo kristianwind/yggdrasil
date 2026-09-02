@@ -43,6 +43,7 @@ is written `chmod 640`, owned `root:yggdrasil`, because it holds `auth.secret_ke
 | `server.host` | `0.0.0.0` | Listen address. Set to `127.0.0.1` if a reverse proxy on the same host is the only thing that should reach the panel. |
 | `server.port` | `8080` | Listen port. Must be 1–65535. |
 | `server.demo_mode` | `false` | Public demonstration: serve every page, refuse every change. See below. |
+| `server.demo_login` | *(none)* | Shown on the sign-in page when `demo_mode` is on — the credentials a visitor should use. Free text. |
 | `database.path` | `/var/lib/yggdrasil/yggdrasil.db` | SQLite file. Created on first boot. |
 | `auth.secret_key` | *(none)* | Signs JWTs and derives the encryption key for secrets at rest. See below. |
 | `auth.session_ttl_hours` | `168` | Login session lifetime (7 days). Also sets the `ygg_token` cookie's max age. |
@@ -58,6 +59,10 @@ Turns the panel into something anyone may look at and nobody may change. Every r
 plain read is refused with `403`, the console streams output but ignores anything typed into it, and
 the AI assistant is closed — it would otherwise spend the operator's own LLM credits on whoever is
 typing. The web UI shows a banner, so a visitor knows before they press something rather than after.
+
+The sign-in page says it is a demo, and shows `server.demo_login` if you set one — without it a
+visitor meets a password box with no password, which is an expensive way to lose the person the demo
+exists for.
 
 Signing in still works; **signing out does not**, because logout revokes every session for the shared
 account and one visitor would eject all the others. The web UI discards its own token regardless, so

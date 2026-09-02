@@ -25,6 +25,11 @@ type ServerConfig struct {
 	// chat is closed. Off unless explicitly set. See internal/api/demo.go for what
 	// this does and does not protect.
 	DemoMode bool `yaml:"demo_mode"`
+	// DemoLogin is shown on the sign-in page when DemoMode is on: the credentials
+	// a visitor should use, in whatever form the operator wants. Free text on
+	// purpose — it is a hint, not a credential store, and the account it names is
+	// public by definition. Empty means the page says it is a demo and nothing more.
+	DemoLogin string `yaml:"demo_login"`
 }
 
 type DatabaseConfig struct {

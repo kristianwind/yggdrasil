@@ -209,23 +209,30 @@ func (s *Server) pbsNewestSnapshot(ctx context.Context, cfg backup.Config, backu
 func (s *Server) pbsSnapshots(ctx context.Context, cfg backup.Config, backupID string) ([]backup.PBSSnapshot, error) {
 	out, err := s.pbsRun(ctx, cfg, backup.PBSSnapshotListArgs(cfg, backupID), pbsOpts{})
 	if err != nil {
-		if pbsGroupMissing(out) {
-			return nil, nil
-		}
 		return nil, pbsError("list snapshots", out, err)
 	}
+	// A server that has never been backed up lists as "[]" with exit 0 — no
+	// special case needed here, unlike prune and forget below. Measured.
 	return backup.ParsePBSSnapshots(out)
 }
 
-// pbsGroupMissing recognises "this server has no snapshots yet". PBS answers a
-// listing for an unknown group with an error, so without this every first
-// backup, and every restore dialog before one, would show a failure.
+// pbsGroupMissing recognises "this server has no snapshots yet".
+//
+// Measured against PBS 4.0 rather than guessed, because the three commands do
+// not agree:
+//
+//	snapshot list <unknown group>  ->  []          and exit 0
+//	prune / snapshot forget        ->  unable to read ".../owner" - No such
+//	                                   file or directory (os error 2), exit 1
+//
+// So listing needs no special case at all, and only the mutating commands do.
+// Matching on the message is unavoidable — the client returns exit 1 for every
+// failure — but it is deliberately ONE narrow string rather than a net of
+// plausible-looking ones, so a real failure is never swallowed as "no snapshots
+// yet". Anything broader risks reporting a permissions or network problem as
+// success, which for a backup is the worst possible direction to be wrong in.
 func pbsGroupMissing(out []byte) bool {
-	l := strings.ToLower(string(out))
-	return strings.Contains(l, "no such file or directory") ||
-		strings.Contains(l, "unable to open backup group") ||
-		strings.Contains(l, "group not found") ||
-		strings.Contains(l, "does not exist")
+	return strings.Contains(strings.ToLower(string(out)), "no such file or directory")
 }
 
 // pbsPrune applies retention on the server, where it can be done chunk-aware.

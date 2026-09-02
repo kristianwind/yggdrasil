@@ -1814,6 +1814,24 @@ shows players; writing it is admin-only.</p>
 </tr>
 <tr>
 <td><code>GET</code></td>
+<td><code>/api/system/metrics</code></td>
+<td>Admin</td>
+<td>Whole-host samples over the last N hours (<code>?hours=</code>, default 24, max 168) — the machine&rsquo;s equivalent of a server&rsquo;s <code>/metrics</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/system/stats</code></td>
+<td>Admin</td>
+<td>Backs the Statistics page: host CPU/memory, a per-server ranking (CPU, memory, and data-directory size), and the disk split into server data, Docker images/volumes/build cache and everything else. A server&rsquo;s <code>disk_mb</code> is <strong><code>-1</code> when it has never been measured</strong>, which is not the same as <code>0</code> — directories are walked hourly. <code>docker</code> is <code>null</code> when the daemon could not be asked, with the reason in <code>docker_error</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/system/prune-images</code></td>
+<td>Admin</td>
+<td>Remove <strong>dangling</strong> Docker images — untagged, unreferenced, impossible to start a server from — and report <code>{deleted, freed_bytes}</code>. The daemon refuses to remove any image a container still uses, running or stopped. The <code>-a</code> variant, which also takes the images of <em>stopped</em> servers, is deliberately unreachable from the API. Audited as <code>system.prune_images</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
 <td><code>/api/system/os-updates</code></td>
 <td>Admin</td>
 <td>Pending host OS updates: <code>{supported, total, security?, reboot_required, reboot_pkgs?, cache_age_hours?, source}</code>. Read-only — the panel reports, it never applies. <code>security</code> is <strong>absent</strong> when the host can&rsquo;t tell, which is not the same as zero. Cached 15 minutes</td>

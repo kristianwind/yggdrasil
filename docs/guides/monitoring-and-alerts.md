@@ -317,6 +317,49 @@ Separately from the per-server disk alarms, Yggdrasil watches free space on the 
 once free space recovers to **15% or more**, so a filesystem hovering at the line doesn't produce a
 stream of alerts.
 
+The alert also says what is *using* the space, when it can. "7% free" is true and not very useful:
+the obvious next move is to go looking at your servers, and on a panel box that is usually the wrong
+place — see below.
+
+### Docker leftovers, and why the disk fills
+
+Restarting a server doesn't call `docker restart`; it removes the container, **re-pulls the image**
+and creates a new one. That is what makes Restart a deploy. It also means the image being replaced
+stays on disk, untagged, and nothing ever removes it.
+
+On a long-lived panel this dominates everything else. Measured on one production box: every server's
+data directory together came to about **5 GB**, while Docker was holding **157 GB of images**, 103 GB
+of it reclaimable, with 304 of 354 images untagged and unreferenced. Ranking servers by disk usage
+answers the question you asked and points at the wrong thing.
+
+So there is a second watcher, independent of free space. It checks every **6 hours** and warns when
+reclaimable leftovers pass **both 5 GB and 10% of the volume** — two conditions, because a
+share-only rule nags a small VPS about 2 GB and a size-only rule stays quiet on a large disk that is
+slowly filling. It clears below **8%**.
+
+That clear threshold is above zero on purpose. A box that has just been cleaned as thoroughly as
+possible still holds several gigabytes of reclaimable tagged-but-unused images, orphan volumes and
+build cache — none of which a dangling-image prune touches. Clearing is the only way the warning can
+fire a second time, so a threshold set below that floor would latch it on permanently.
+
+### The Statistics page
+
+**Statistics** (admin only) is where this is visible. It shows the machine's CPU, memory and disk
+over time, ranks your servers against each other on each, and — separately, because it is a different
+question — splits the disk itself into server data, Docker images, volumes, build cache and
+everything else. The three host graphs on the Dashboard link into it.
+
+Per-server disk comes from walking each data directory, which is done **hourly**. A server whose
+directory has never been walked reads as *"not measured yet"* rather than as zero, because zero is a
+real answer and the absence of a measurement is not.
+
+When there is space to reclaim, the page says so and offers to take it. **Reclaim space** removes
+only **dangling** images: untagged, unreferenced, impossible to start a server from, and the daemon
+refuses to remove any image a container still uses — running *or* stopped. The destructive variant
+(`docker image prune -a`, which also removes the images of stopped servers and forces a re-pull
+before they can start again) is deliberately not reachable from the panel. The action is admin-only
+and audited as `system.prune_images`.
+
 ## Updates
 
 `GET /api/version` reports the running build, the latest GitHub release tag, whether an update is

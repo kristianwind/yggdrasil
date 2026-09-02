@@ -356,6 +356,39 @@ without <code>/proc</code>, and the dashboard omits the card</li>
 <strong>5 minutes</strong>. When free space drops <strong>below 10%</strong> it sends one notification and stops. It re-arms
 once free space recovers to <strong>15% or more</strong>, so a filesystem hovering at the line doesn&rsquo;t produce a
 stream of alerts.</p>
+<p>The alert also says what is <em>using</em> the space, when it can. &ldquo;7% free&rdquo; is true and not very useful:
+the obvious next move is to go looking at your servers, and on a panel box that is usually the wrong
+place — see below.</p>
+<h3 id="docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</h3>
+<p>Restarting a server doesn&rsquo;t call <code>docker restart</code>; it removes the container, <strong>re-pulls the image</strong>
+and creates a new one. That is what makes Restart a deploy. It also means the image being replaced
+stays on disk, untagged, and nothing ever removes it.</p>
+<p>On a long-lived panel this dominates everything else. Measured on one production box: every server&rsquo;s
+data directory together came to about <strong>5 GB</strong>, while Docker was holding <strong>157 GB of images</strong>, 103 GB
+of it reclaimable, with 304 of 354 images untagged and unreferenced. Ranking servers by disk usage
+answers the question you asked and points at the wrong thing.</p>
+<p>So there is a second watcher, independent of free space. It checks every <strong>6 hours</strong> and warns when
+reclaimable leftovers pass <strong>both 5 GB and 10% of the volume</strong> — two conditions, because a
+share-only rule nags a small VPS about 2 GB and a size-only rule stays quiet on a large disk that is
+slowly filling. It clears below <strong>8%</strong>.</p>
+<p>That clear threshold is above zero on purpose. A box that has just been cleaned as thoroughly as
+possible still holds several gigabytes of reclaimable tagged-but-unused images, orphan volumes and
+build cache — none of which a dangling-image prune touches. Clearing is the only way the warning can
+fire a second time, so a threshold set below that floor would latch it on permanently.</p>
+<h3 id="the-statistics-page">The Statistics page</h3>
+<p><strong>Statistics</strong> (admin only) is where this is visible. It shows the machine&rsquo;s CPU, memory and disk
+over time, ranks your servers against each other on each, and — separately, because it is a different
+question — splits the disk itself into server data, Docker images, volumes, build cache and
+everything else. The three host graphs on the Dashboard link into it.</p>
+<p>Per-server disk comes from walking each data directory, which is done <strong>hourly</strong>. A server whose
+directory has never been walked reads as <em>&ldquo;not measured yet&rdquo;</em> rather than as zero, because zero is a
+real answer and the absence of a measurement is not.</p>
+<p>When there is space to reclaim, the page says so and offers to take it. <strong>Reclaim space</strong> removes
+only <strong>dangling</strong> images: untagged, unreferenced, impossible to start a server from, and the daemon
+refuses to remove any image a container still uses — running <em>or</em> stopped. The destructive variant
+(<code>docker image prune -a</code>, which also removes the images of stopped servers and forces a re-pull
+before they can start again) is deliberately not reachable from the panel. The action is admin-only
+and audited as <code>system.prune_images</code>.</p>
 <h2 id="updates">Updates</h2>
 <p><code>GET /api/version</code> reports the running build, the latest GitHub release tag, whether an update is
 available, and whether the panel can update itself. The GitHub release lookup is cached for <strong>6 hours</strong>
@@ -436,7 +469,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t3" href="#docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</a><a class="t3" href="#the-statistics-page">The Statistics page</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

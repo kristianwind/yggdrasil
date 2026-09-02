@@ -297,6 +297,10 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		// Friendly per-panel display name (blank unless set). Lets an operator
 		// running several panels tell them apart in the sidebar/tab.
 		"panel_name": s.getSetting(r.Context(), "panel_name"),
+		// The UI shows a banner when this is set. Public deliberately: a visitor
+		// should be able to tell it is a demo before they try something and get a
+		// refusal they cannot explain.
+		"demo": s.demoMode(),
 		// The panel can update itself only for a released (vX.Y.Z) build with the
 		// decoupled updater installed; otherwise the UI points at manual steps.
 		"can_self_update": updAvail && strings.HasPrefix(v, "v") && s.selfUpdateAvailable(),

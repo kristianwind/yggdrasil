@@ -43,6 +43,13 @@ type chatFrame struct {
 // handleAIChatWS upgrades to a WebSocket and answers chat turns until the
 // client goes away. Session-authenticated (the route group); AI must be on.
 func (s *Server) handleAIChatWS(w http.ResponseWriter, r *http.Request) {
+	// The other write path a method-based guard misses. This one does not change
+	// the panel — it spends the operator's own LLM credits, on whoever is typing.
+	// A public demo must not hand strangers a metered API key.
+	if s.demoMode() {
+		jsonError(w, "The assistant is disabled on the public demo.", http.StatusForbidden)
+		return
+	}
 	cfg := s.loadAIConfig(r.Context())
 	if !cfg.Enabled || cfg.APIKey == "" {
 		jsonError(w, "configure an AI provider in Settings → Kvasir first", http.StatusBadRequest)

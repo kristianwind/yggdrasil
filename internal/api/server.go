@@ -172,6 +172,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		AllowCredentials: false,
 	}))
 	r.Use(s.secureHeaders)
+	// Demo mode, if on, refuses every state-changing request. Mounted here so it
+	// covers every route rather than each group remembering to opt in.
+	r.Use(s.demoGuard)
 
 	// Public routes
 	r.Post("/api/auth/login", s.handleLogin)

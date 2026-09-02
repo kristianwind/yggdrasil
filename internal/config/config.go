@@ -20,6 +20,11 @@ type Config struct {
 type ServerConfig struct {
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
+	// DemoMode turns this panel into a public demonstration: every request that
+	// would change anything is refused, the console becomes read-only and the AI
+	// chat is closed. Off unless explicitly set. See internal/api/demo.go for what
+	// this does and does not protect.
+	DemoMode bool `yaml:"demo_mode"`
 }
 
 type DatabaseConfig struct {

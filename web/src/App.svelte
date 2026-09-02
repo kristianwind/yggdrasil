@@ -165,6 +165,15 @@
 <Toasts />
 <ConfirmDialog />
 
+<!-- Say it before they try something. A refusal with no explanation reads as a
+     broken panel; a banner turns the same 403 into "yes, that is the point". -->
+{#if build?.demo}
+  <div class="bg-warn/15 text-warn text-center text-xs px-3 py-1.5 border-b border-warn/30">
+    <strong>Public demo.</strong> Everything here is real and live — and nothing can be changed.
+    Buttons that would alter something will politely refuse.
+  </div>
+{/if}
+
 {#if !ready}
   <div class="h-screen grid place-items-center text-muted">Loading…</div>
 {:else if !$user}

@@ -77,7 +77,19 @@
       return { ids: [], at: 0 };
     }
   }
+  // Both nudges below ask the operator to go and configure something. On a public
+  // demo the reader is not the operator and cannot act on either — "set up a
+  // backup" and "turn on the beacon" are dead ends there, sitting above the thing
+  // they came to look at. Hidden rather than dismissible, because a first
+  // impression only happens once and a visitor should not have to tidy up before
+  // seeing the product.
+  let isDemo = $state(false);
+  onMount(async () => {
+    try { isDemo = !!(await api.get("/version")).demo; } catch { /* not fatal */ }
+  });
+
   let showBackupWarning = $derived.by(() => {
+    if (isDemo) return false;
     const stale = backupCoverage?.stale ?? [];
     if (!stale.length) return false;
     const acked = new Set(backupDismiss.ids);
@@ -241,7 +253,7 @@
   let beaconDismissed = $state(localStorage.getItem("ygg_beacon_teaser_dismissed") === "1");
   let enablingBeacon = $state(false);
   let showBeaconTeaser = $derived(
-    $user.role === "admin" && beacon && !beacon.enabled && !beaconDismissed,
+    !isDemo && $user.role === "admin" && beacon && !beacon.enabled && !beaconDismissed,
   );
   async function enableBeacon() {
     enablingBeacon = true;

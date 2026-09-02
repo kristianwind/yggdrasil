@@ -163,3 +163,33 @@ func TestPBSTargetConfigRoundTrip(t *testing.T) {
 		t.Errorf("config did not survive: %+v", cfg)
 	}
 }
+
+// The exact strings PBS 4.0 produces, recorded from a live server. The point of
+// pinning them is that the check must be NARROW: a broad match would report a
+// permissions or network failure as "no snapshots yet", which for a backup is
+// the worst direction to be wrong in.
+func TestPBSGroupMissingMatchesOnlyTheRealMessage(t *testing.T) {
+	missing := []string{
+		`Error: unable to read "/datastore/host/does-not-exist/owner" - No such file or directory (os error 2)`,
+	}
+	for _, m := range missing {
+		if !pbsGroupMissing([]byte(m)) {
+			t.Errorf("should be recognised as an empty group: %q", m)
+		}
+	}
+	// Everything below is a REAL failure and must never be swallowed.
+	realFailures := []string{
+		"Error: permission check failed - missing Datastore.Modify|Datastore.Prune on /datastore/store1",
+		"Error: permission check failed",
+		"Error: client error (Connect)\n\nCaused by:\n    error connecting to https://10.0.0.1:8007/ - tcp connect error",
+		`Error: fingerprint "aa:bb" does not match server certificate`,
+		"Error: authentication failed - invalid credentials",
+		"Error: parameter verification failed - 'store': value must be at least 3 characters long",
+		"",
+	}
+	for _, m := range realFailures {
+		if pbsGroupMissing([]byte(m)) {
+			t.Errorf("a real failure was mistaken for an empty group: %q", m)
+		}
+	}
+}

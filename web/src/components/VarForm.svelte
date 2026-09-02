@@ -19,6 +19,18 @@
   const isSecret = (v) =>
     (v.type === "string" || !v.type) &&
     (v.secret === true || /pass(word)?|secret|token/i.test(`${v.key} ${v.name || ""}`));
+
+  // What the 🎲 should produce for a rune secret.
+  //
+  // It has to satisfy the rune, or the one button that exists to help hands you a
+  // value the app rejects at boot. Plausible wants SECRET_KEY_BASE >= 32 bytes and
+  // measures it itself; the old fixed 20 failed that check every time. So read the
+  // minimum back out of the variable's own `pattern` when it states one, and never
+  // go below 32 — a rune secret is pasted, not typed, so length costs nothing.
+  const genLength = (v) => {
+    const m = /\{(\d+),/.exec(v.pattern || "");
+    return Math.max(32, m ? Number(m[1]) : 0);
+  };
 </script>
 
 <div class="space-y-3">
@@ -55,7 +67,10 @@
           </p>
         {/if}
       {:else if isSecret(v)}
-        <PasswordField id={`var-${v.key}`} bind:value={values[v.key]} />
+        <!-- symbols={false}: rune secrets end up inside connection strings, where
+             "@" and ":" are separators. See PasswordField. -->
+        <PasswordField id={`var-${v.key}`} bind:value={values[v.key]}
+          length={genLength(v)} symbols={false} />
       {:else}
         <input id={`var-${v.key}`} class="input" bind:value={values[v.key]} />
       {/if}

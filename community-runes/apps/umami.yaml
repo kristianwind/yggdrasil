@@ -26,19 +26,25 @@ gameskill:
       DISABLE_UPDATES: "1"
       DISABLE_TELEMETRY: "1"
 
+  # No defaults, for the reason spelled out in plausible.yaml: `required` is only a
+  # red asterisk, so a field arriving pre-filled with "change-me" reads as done and
+  # gets clicked past — and a shared, published signing secret is worth rather more
+  # to an attacker than a blank field is worth to a hurried admin.
   variables:
     - key: DB_PASS
-      name: "Database password (change this)"
+      name: "Database password"
       type: string
-      default: "change-me"
       secret: true
       required: true
+      pattern: '^[A-Za-z0-9._~-]+$'
+      hint: "Letters, digits and . _ ~ - only. This is interpolated into postgresql://umami:PASSWORD@db/… where @ : / # and % are separators, and URL parsers disagree about what to do with them."
     - key: APP_SECRET
-      name: "App secret — signs sessions (change this to a long random string)"
+      name: "App secret — signs sessions. At least 32 characters"
       type: string
-      default: "change-me-to-a-long-random-string"
       secret: true
       required: true
+      pattern: '^.{32,}$'
+      hint: "At least 32 characters. Anyone holding this can forge a session cookie for your dashboard, so it must be unique to this install — never a value that shipped with the rune."
 
   services:
     - name: db

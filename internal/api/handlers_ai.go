@@ -402,6 +402,17 @@ func (s *Server) gatherHealthSnapshot(ctx context.Context) string {
 	if totalDisk > 0 {
 		fmt.Fprintf(&b, "Disk: %d%% free (%s of %s).\n", free*100/totalDisk, humanBytes(int64(free)), humanBytes(int64(totalDisk)))
 	}
+	// Without this, a model asked why the disk is full has only the server list to
+	// reason from, and will confidently blame a server. On a panel box the space is
+	// usually in superseded images that Restart left untagged — so give it the
+	// split, and the fact that it is reclaimable, rather than letting it guess.
+	if du, err := s.dockerDiskUsage(ctx); err == nil && du != nil {
+		fmt.Fprintf(&b, "Docker storage: %s of images (%d images, %d unused), %s volumes, %s build cache. "+
+			"Reclaimable without touching any server: %s.\n",
+			humanBytes(du.ImagesBytes), du.ImagesCount, du.ImagesUnusedCount,
+			humanBytes(du.VolumesBytes), humanBytes(du.BuildCacheBytes),
+			humanBytes(du.ImagesReclaimable+du.VolumesReclaimable+du.BuildCacheReclaimable))
+	}
 	if memTotal, memUsed := hostMem(); memTotal > 0 {
 		fmt.Fprintf(&b, "Memory: %s used of %s (%d%%).\n", humanBytes(int64(memUsed)), humanBytes(int64(memTotal)), memUsed*100/memTotal)
 	}

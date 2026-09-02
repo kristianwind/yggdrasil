@@ -592,6 +592,28 @@ func summarizeDiskUsage(du types.DiskUsage) *DiskSummary {
 	return out
 }
 
+// PruneDanglingImages removes untagged images nothing refers to and reports what
+// that freed.
+//
+// DANGLING ONLY, and that is the whole safety argument. `docker image prune -a`
+// also removes images whose containers merely happen to be stopped, which turns a
+// cleanup into a forced re-pull the next time somebody presses Start — and if the
+// tag has since moved or vanished upstream, that server does not come back. A
+// dangling image, by contrast, is untagged and unreferenced: nothing can start
+// from it, and the daemon refuses to remove one any container still uses, running
+// or stopped. So the destructive version is not exposed here at all rather than
+// being exposed behind a flag somebody could pass.
+//
+// Safe to run while a pull is in flight: an image being pulled is not dangling —
+// it acquires its tag on completion, and its intermediate layers are not images.
+func (c *Client) PruneDanglingImages(ctx context.Context) (deleted int, freed int64, err error) {
+	rep, err := c.dc.ImagesPrune(ctx, filters.NewArgs(filters.Arg("dangling", "true")))
+	if err != nil {
+		return 0, 0, err
+	}
+	return len(rep.ImagesDeleted), int64(rep.SpaceReclaimed), nil
+}
+
 type Stats struct {
 	CPUPercent float64 `json:"cpu_percent"`
 	MemUsageMB float64 `json:"mem_usage_mb"`

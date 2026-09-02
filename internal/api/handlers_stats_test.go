@@ -126,3 +126,31 @@ func TestSystemStatsEmptyFleet(t *testing.T) {
 		t.Errorf("DockerError = %q, want empty — no daemon wired up is not an error to report", got.Disk.DockerError)
 	}
 }
+
+// Without a Docker client there is nothing to prune, and the caller needs to be
+// told that rather than handed a cheerful "freed 0 B" — the two look identical in
+// a toast and mean completely different things.
+func TestPruneImagesWithoutDockerSaysSo(t *testing.T) {
+	s := testServer(t)
+	s.cfg = &config.Config{}
+	s.cfg.Database.Path = t.TempDir() + "/x.db"
+
+	rec := httptest.NewRecorder()
+	s.handlePruneImages(rec, httptest.NewRequest(http.MethodPost, "/api/system/prune-images", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503; body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The hint is appended to a disk-space warning, so it has to stay silent when it
+// has nothing to add. A warning trailing off into "0 B is reclaimable" is worse
+// than one that just stops.
+func TestReclaimableHintIsSilentWithoutDocker(t *testing.T) {
+	s := testServer(t)
+	s.cfg = &config.Config{}
+	s.cfg.Database.Path = t.TempDir() + "/x.db"
+
+	if got := s.reclaimableHint(); got != "" {
+		t.Errorf("reclaimableHint() = %q, want empty", got)
+	}
+}

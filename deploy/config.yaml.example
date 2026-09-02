@@ -4,6 +4,11 @@
 server:
   host: "0.0.0.0"      # bind address
   port: 8080           # web UI / API port
+  # Public demonstration: serve every page, refuse every change. The console
+  # becomes read-only and the AI assistant is closed (it would spend your own
+  # LLM credits on whoever is typing). Leave this out unless you mean it — and
+  # if you do mean it, run it on a machine that hosts nothing else.
+  # demo_mode: true
 
 database:
   path: "/var/lib/yggdrasil/yggdrasil.db"

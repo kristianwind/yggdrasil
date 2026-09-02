@@ -92,6 +92,11 @@ is written <code>chmod 640</code>, owned <code>root:yggdrasil</code>, because it
 <td>Listen port. Must be 1–65535.</td>
 </tr>
 <tr>
+<td><code>server.demo_mode</code></td>
+<td><code>false</code></td>
+<td>Public demonstration: serve every page, refuse every change. See below.</td>
+</tr>
+<tr>
 <td><code>database.path</code></td>
 <td><code>/var/lib/yggdrasil/yggdrasil.db</code></td>
 <td>SQLite file. Created on first boot.</td>
@@ -133,6 +138,20 @@ is written <code>chmod 640</code>, owned <code>root:yggdrasil</code>, because it
 </tr>
 </tbody>
 </table>
+<h2 id="serverdemo_mode"><code>server.demo_mode</code></h2>
+<p>Turns the panel into something anyone may look at and nobody may change. Every request that is not a
+plain read is refused with <code>403</code>, the console streams output but ignores anything typed into it, and
+the AI assistant is closed — it would otherwise spend the operator&rsquo;s own LLM credits on whoever is
+typing. The web UI shows a banner, so a visitor knows before they press something rather than after.</p>
+<p>Signing in still works; <strong>signing out does not</strong>, because logout revokes every session for the shared
+account and one visitor would eject all the others. The web UI discards its own token regardless, so
+the button behaves correctly for the person who pressed it.</p>
+<p>🔴 <strong>Run a demo on a machine that hosts nothing else, and restore it from a snapshot on a schedule.</strong>
+This panel&rsquo;s job is driving Docker — it holds a socket to the host&rsquo;s container runtime — and demo
+mode is a policy layer over that capability. If one route ever slips past the guard, what a stranger
+reaches is not a demo record but the ability to start a container on that host. Isolation and a
+scheduled rebuild are what bound that, in blast radius and in time. The flag is not a substitute for
+either.</p>
 <h2 id="authsecret_key"><code>auth.secret_key</code></h2>
 <p>This one key protects everything. It signs session tokens and derives the AES-GCM key that encrypts
 stored secrets — UniFi and Nginx Proxy Manager credentials, Cloudflare and BattleMetrics tokens, the
@@ -255,7 +274,7 @@ what the panel&rsquo;s own <a href="guides-backups-and-schedules.html">backup sy
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#full-file">Full file</a><a class="t2" href="#keys">Keys</a><a class="t2" href="#authsecret_key">auth.secret_key</a><a class="t2" href="#adminusername--adminpassword">admin.username / admin.password</a><a class="t2" href="#ports">ports</a><a class="t2" href="#environment-variables">Environment variables</a><a class="t2" href="#paths">Paths</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#full-file">Full file</a><a class="t2" href="#keys">Keys</a><a class="t2" href="#serverdemo_mode">server.demo_mode</a><a class="t2" href="#authsecret_key">auth.secret_key</a><a class="t2" href="#adminusername--adminpassword">admin.username / admin.password</a><a class="t2" href="#ports">ports</a><a class="t2" href="#environment-variables">Environment variables</a><a class="t2" href="#paths">Paths</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

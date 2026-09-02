@@ -1162,6 +1162,15 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 		if command == "" {
 			continue
 		}
+		// A demo streams the console but never types into it. This is one of the
+		// two write paths a method-based demo guard cannot see — the socket was
+		// opened with GET and writes to the container's stdin afterwards — so it
+		// has to be refused where the write actually happens.
+		if s.demoMode() {
+			_ = conn.WriteMessage(websocket.TextMessage,
+				[]byte("[demo] The console is read-only here. Everything above is live output from a real container."))
+			continue
+		}
 		for _, line := range s.consoleSend(ctx, id, command, hijack.Conn) {
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(line)); err != nil {
 				return

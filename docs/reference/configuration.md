@@ -42,6 +42,7 @@ is written `chmod 640`, owned `root:yggdrasil`, because it holds `auth.secret_ke
 | --- | --- | --- |
 | `server.host` | `0.0.0.0` | Listen address. Set to `127.0.0.1` if a reverse proxy on the same host is the only thing that should reach the panel. |
 | `server.port` | `8080` | Listen port. Must be 1–65535. |
+| `server.demo_mode` | `false` | Public demonstration: serve every page, refuse every change. See below. |
 | `database.path` | `/var/lib/yggdrasil/yggdrasil.db` | SQLite file. Created on first boot. |
 | `auth.secret_key` | *(none)* | Signs JWTs and derives the encryption key for secrets at rest. See below. |
 | `auth.session_ttl_hours` | `168` | Login session lifetime (7 days). Also sets the `ygg_token` cookie's max age. |
@@ -50,6 +51,24 @@ is written `chmod 640`, owned `root:yggdrasil`, because it holds `auth.secret_ke
 | `ports.range_max` | `30000` | High end. Must be greater than `range_min`. |
 | `admin.username` | *(none)* | Bootstrap admin. See below. |
 | `admin.password` | *(none)* | Bootstrap admin password. See below. |
+
+## `server.demo_mode`
+
+Turns the panel into something anyone may look at and nobody may change. Every request that is not a
+plain read is refused with `403`, the console streams output but ignores anything typed into it, and
+the AI assistant is closed — it would otherwise spend the operator's own LLM credits on whoever is
+typing. The web UI shows a banner, so a visitor knows before they press something rather than after.
+
+Signing in still works; **signing out does not**, because logout revokes every session for the shared
+account and one visitor would eject all the others. The web UI discards its own token regardless, so
+the button behaves correctly for the person who pressed it.
+
+🔴 **Run a demo on a machine that hosts nothing else, and restore it from a snapshot on a schedule.**
+This panel's job is driving Docker — it holds a socket to the host's container runtime — and demo
+mode is a policy layer over that capability. If one route ever slips past the guard, what a stranger
+reaches is not a demo record but the ability to start a container on that host. Isolation and a
+scheduled rebuild are what bound that, in blast radius and in time. The flag is not a substitute for
+either.
 
 ## `auth.secret_key`
 

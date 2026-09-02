@@ -97,6 +97,11 @@ is written <code>chmod 640</code>, owned <code>root:yggdrasil</code>, because it
 <td>Public demonstration: serve every page, refuse every change. See below.</td>
 </tr>
 <tr>
+<td><code>server.demo_login</code></td>
+<td><em>(none)</em></td>
+<td>Shown on the sign-in page when <code>demo_mode</code> is on — the credentials a visitor should use. Free text.</td>
+</tr>
+<tr>
 <td><code>database.path</code></td>
 <td><code>/var/lib/yggdrasil/yggdrasil.db</code></td>
 <td>SQLite file. Created on first boot.</td>
@@ -143,6 +148,9 @@ is written <code>chmod 640</code>, owned <code>root:yggdrasil</code>, because it
 plain read is refused with <code>403</code>, the console streams output but ignores anything typed into it, and
 the AI assistant is closed — it would otherwise spend the operator&rsquo;s own LLM credits on whoever is
 typing. The web UI shows a banner, so a visitor knows before they press something rather than after.</p>
+<p>The sign-in page says it is a demo, and shows <code>server.demo_login</code> if you set one — without it a
+visitor meets a password box with no password, which is an expensive way to lose the person the demo
+exists for.</p>
 <p>Signing in still works; <strong>signing out does not</strong>, because logout revokes every session for the shared
 account and one visitor would eject all the others. The web UI discards its own token regardless, so
 the button behaves correctly for the person who pressed it.</p>

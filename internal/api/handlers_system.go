@@ -301,6 +301,12 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		// should be able to tell it is a demo before they try something and get a
 		// refusal they cannot explain.
 		"demo": s.demoMode(),
+		"demo_login": func() string {
+			if s.demoMode() && s.cfg != nil {
+				return s.cfg.Server.DemoLogin
+			}
+			return ""
+		}(),
 		// The panel can update itself only for a released (vX.Y.Z) build with the
 		// decoupled updater installed; otherwise the UI points at manual steps.
 		"can_self_update": updAvail && strings.HasPrefix(v, "v") && s.selfUpdateAvailable(),

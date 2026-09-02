@@ -1,4 +1,18 @@
 <script>
+  // The login page is the only thing a visitor to the public demo sees first, and
+  // it has no way to know the credentials. Without this they meet a password box
+  // with no password and leave — which is an expensive way to lose the person the
+  // demo exists for. /api/version is public and already unauthenticated.
+  import { onMount as onMountDemo } from "svelte";
+  let isDemo = $state(false);
+  let demoLogin = $state("");
+  onMountDemo(async () => {
+    try {
+      const v = await (await fetch("/api/version")).json();
+      isDemo = !!v?.demo;
+      demoLogin = v?.demo_login || "";
+    } catch { /* not fatal — the form still works */ }
+  });
   import { login } from "../lib/auth.js";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
@@ -106,6 +120,17 @@
         <h1 class="text-xl font-semibold mt-1">Yggdrasil Panel</h1>
         <p class="text-muted text-sm">Sign in to manage your game &amp; app servers</p>
       </div>
+      {#if isDemo}
+        <div class="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm">
+          <p class="font-semibold text-warn">This is a public demo.</p>
+          <p class="text-muted text-xs mt-1">
+            Everything you see is real and live — and nothing can be changed, so click freely.
+          </p>
+          {#if demoLogin}
+            <p class="text-xs mt-2 font-mono text-text">{demoLogin}</p>
+          {/if}
+        </div>
+      {/if}
       <div>
         <label class="label" for="u">Username</label>
         <input id="u" class="input" bind:value={username} autocomplete="username" />

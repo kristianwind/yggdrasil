@@ -60,3 +60,25 @@ jobs:
             exit 1
           fi
           echo "website/docs/ matches docs/."
+
+      # The same guarantee for the apps catalogue, which had none. website/apps/
+      # is generated from the runes, so adding a rune must add its card in the
+      # same commit — and until now nothing checked that. The failure is quiet by
+      # construction: main gets a rune, the catalogue does not, and the site keeps
+      # serving a page that is correct-looking and wrong. It has already happened
+      # once (two runes missing for days, found by hand on 2026-08-28).
+      #
+      # apps-gen vendors icons from a CDN, so this step must not need the network
+      # for a tree that is already complete: an icon already in website/icons/ is
+      # never re-fetched, whatever its extension. If this step fails on a PR that
+      # adds a rune, the fix is to run apps-gen locally and commit the icon it
+      # downloads along with the page.
+      - name: Apps catalogue is up to date with the runes
+        run: |
+          go run ./cmd/apps-gen
+          if ! git diff --quiet -- website/apps website/icons; then
+            echo "::error::website/apps/ is stale. Run 'go run ./cmd/apps-gen' and commit the result."
+            git diff --stat -- website/apps website/icons
+            exit 1
+          fi
+          echo "website/apps/ matches the runes."

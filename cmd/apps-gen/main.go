@@ -41,6 +41,11 @@ var iconSlug = map[string]string{
 	"qbittorrentvpn":    "qbittorrent",
 }
 
+// iconExts are the formats we vendor, best first. The same list decides what
+// counts as "already vendored" and what we try to download, so the two can never
+// drift apart.
+var iconExts = []string{"svg", "png", "webp"}
+
 type app struct {
 	ID, Name, Category, Description string
 	Stack                           bool
@@ -130,11 +135,18 @@ func vendorIcon(id string) string {
 	if slug == "" {
 		return ""
 	}
-	dst := filepath.Join(iconsDir, id+".svg")
-	if _, err := os.Stat(dst); err == nil {
-		return "/icons/" + id + ".svg" // already vendored
+	// An icon may already be vendored as .png or .webp — dashboard-icons has no
+	// SVG for everything. Looking only for "<id>.svg" meant homepage and terraria
+	// were re-fetched from the CDN on EVERY run, which is invisible until the
+	// generator runs somewhere the CDN is unreachable: those two silently lose
+	// their icon and the page changes. A generator whose output depends on a CDN
+	// being up cannot be checked in CI, so check every extension we write.
+	for _, ext := range iconExts {
+		if _, err := os.Stat(filepath.Join(iconsDir, id+"."+ext)); err == nil {
+			return "/icons/" + id + "." + ext // already vendored
+		}
 	}
-	for _, ext := range []string{"svg", "png", "webp"} {
+	for _, ext := range iconExts {
 		url := fmt.Sprintf("%s/%s/%s.%s", iconBase, ext, slug, ext)
 		if body, ok := fetch(url); ok {
 			name := id + "." + ext

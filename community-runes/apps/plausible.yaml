@@ -26,24 +26,38 @@ gameskill:
       CLICKHOUSE_DATABASE_URL: "http://events:8123/plausible_events_db"
       DISABLE_REGISTRATION: "{{DISABLE_REGISTRATION}}"
 
+  # None of the first three has a default, and that is deliberate. The panel draws
+  # `required` as a red asterisk and nothing else, so a pre-filled field reads as a
+  # field somebody already dealt with, and gets clicked past. BASE_URL's old
+  # default of "http://localhost:8000" did exactly that, and the result was the
+  # worst kind of failure: the install came up, the dashboard loaded, and only the
+  # live-updating socket broke — with a Phoenix error naming config files the admin
+  # does not have and cannot open.
+  #
+  # Blank is louder and kinder. Plausible refuses to boot without BASE_URL or
+  # SECRET_KEY_BASE and names the missing one on the first lines of the log the
+  # panel already shows. Read from the image's runtime.exs, not the wiki.
   variables:
     - key: BASE_URL
-      name: "Public URL (exactly how visitors reach it — Plausible builds links from this)"
+      name: "Public URL — exactly how visitors reach it, e.g. https://analytics.example.com"
       type: string
-      default: "http://localhost:8000"
       required: true
+      pattern: '^https?://[^/?#]+/?$'
+      hint: "Scheme and host only; a port is fine. Plausible refuses to start without http:// or https://, and it compares this host against the browser's origin — get it wrong and the dashboard loads but never updates."
     - key: SECRET_KEY_BASE
-      name: "Secret key — signs sessions. Needs 64+ random characters"
+      name: "Secret key — signs sessions. At least 32 characters"
       type: string
-      default: "change-me-to-at-least-sixty-four-random-characters-or-plausible-will-not-start"
       secret: true
       required: true
+      pattern: '^.{32,}$'
+      hint: "At least 32 characters. Plausible measures this itself and refuses to boot below it — which the panel's generate button used to fall foul of, so it now reads the 32 back out of this pattern."
     - key: DB_PASS
-      name: "Database password (change this)"
+      name: "Database password"
       type: string
-      default: "change-me"
       secret: true
       required: true
+      pattern: '^[A-Za-z0-9._~-]+$'
+      hint: "Letters, digits and . _ ~ - only. This is interpolated into postgres://plausible:PASSWORD@db/… where @ : / # and % are separators, and URL parsers disagree about what to do with them."
     - key: DISABLE_REGISTRATION
       name: "Close public sign-ups once you have your account"
       type: string

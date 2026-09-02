@@ -14,6 +14,13 @@
     placeholder = "",
     autocomplete = "off",
     length = 20,
+    // `symbols: false` generates from unreserved URL characters only. A rune
+    // secret is usually pasted into a connection string — Plausible and Umami
+    // both interpolate the database password into "postgres://user:PASS@db/…" —
+    // and "@", ":", "/", "#" and "%" are separators there. Parsers disagree about
+    // what to do with them, so the safe move is not to emit them at all. Nothing
+    // is lost: length is free for a value nobody types.
+    symbols = true,
   } = $props();
 
   let show = $state(false);
@@ -24,7 +31,8 @@
     const lower = "abcdefghijkmnpqrstuvwxyz";
     const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const digit = "23456789";
-    const sym = "!@#$%^&*-_=+";
+    // "-" and "_" are unreserved in a URI, so they stay in the safe set.
+    const sym = symbols ? "!@#$%^&*-_=+" : "-_";
     const all = lower + upper + digit + sym;
     const rand = (n) => crypto.getRandomValues(new Uint32Array(1))[0] % n;
     const pick = (s) => s[rand(s.length)];

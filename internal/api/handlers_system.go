@@ -132,9 +132,19 @@ func (s *Server) startImageBloatMonitor() {
 			}
 			r := du.ImagesReclaimable + du.VolumesReclaimable + du.BuildCacheReclaimable
 			share := float64(r) / float64(total)
+			// Log every check, not just the edges. This warning fires at most once
+			// and then stays quiet until the space is actually reclaimed, and
+			// notifyChannels only logs on FAILURE — so a silent journal was
+			// consistent with both "sent fine" and "never ran", with no way to tell
+			// them apart. That ambiguity showed up the first time it mattered, on
+			// the release that introduced it. Four lines a day buys the difference
+			// between a working feature and an unfalsifiable one.
+			log.Printf("image bloat check: %s reclaimable (%.1f%% of volume, %d unused images), already warning=%v",
+				humanBytes(r), share*100, du.ImagesUnusedCount, alerted)
 			switch {
 			case !alerted && r >= bloatWarnFloor && share >= bloatWarnShare:
 				alerted = true
+				log.Printf("image bloat: warning fired (%s reclaimable)", humanBytes(r))
 				s.notifyAll(fmt.Sprintf(
 					"🧹 Docker is holding %s of reclaimable leftovers (%.0f%% of the disk, %d unused images). "+
 						"These build up because restarting a server re-pulls its image and the old one stays behind. "+
@@ -145,6 +155,7 @@ func (s *Server) startImageBloatMonitor() {
 					humanBytes(r), share*100, du.ImagesUnusedCount), "")
 			case alerted && share < bloatClearShare:
 				alerted = false
+				log.Printf("image bloat: cleared (%s reclaimable, %.1f%% of volume)", humanBytes(r), share*100)
 			}
 		}
 		// Let the panel finish starting before asking the daemon to walk its storage.

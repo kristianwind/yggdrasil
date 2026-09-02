@@ -2693,12 +2693,25 @@
         </div>
         {#if server.ports?.web}
           <div>
-            <label class="label" for="e-sub">Subdomain (optional)</label>
-            <input id="e-sub" class="input" placeholder="e.g. notes" bind:value={edit.subdomain} />
+            <label class="label" for="e-sub">Public hostname (optional)</label>
+            <input id="e-sub" class="input" placeholder="notes — or notes.example.com"
+              bind:value={edit.subdomain} />
             <p class="text-xs text-muted mt-1">
-              Routes <code>{edit.subdomain || "sub"}.&lt;your base domain&gt;</code> to this app via
-              Nginx Proxy Manager or Cloudflare Tunnel (configure under Settings → Network). The route is
-              created on start and removed on stop. You can also enter a full custom domain. Leave blank to disable.
+              <!-- The preview has to follow the same rule the server does: a value
+                   containing a dot is used verbatim as the whole hostname, in its
+                   own Cloudflare zone. Appending the base domain to it — which this
+                   line used to do unconditionally — previewed
+                   "notes.example.com.<base>", a hostname nothing would ever create.
+                   See joinSubdomain: dot means "already complete". -->
+              Routes <code>{edit.subdomain?.includes(".") ? edit.subdomain : (edit.subdomain || "sub") + ".<your base domain>"}</code>
+              to this app via Nginx Proxy Manager or Cloudflare Tunnel (configure under
+              Settings → Network).
+            </p>
+            <p class="text-xs text-muted mt-1">
+              A bare name becomes a subdomain of your base domain. <strong>Include a dot and it is
+              used as-is</strong>, so one tunnel can serve several different domains — the DNS record
+              is created in whichever of your Cloudflare zones matches. The route is created on start
+              and removed on stop. Leave blank to disable.
             </p>
           </div>
         {/if}

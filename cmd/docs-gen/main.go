@@ -610,6 +610,12 @@ func shell(b built) string {
 <meta property="og:url" content="` + siteURL + `/docs/` + b.page.slug() + `.html" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
 <link rel="stylesheet" href="docs.css" />
+<!-- Plausible, self-hosted on this project's own panel. No cookies, so no consent
+     banner; the script is first-party, so ad-blockers and Pi-hole do not remove it.
+     This measures THIS WEBSITE only — the panel software people install ships no
+     analytics whatever, and the operator-supplied field in Settings is theirs, not
+     ours. Every page must carry this tag; a test enforces it. -->
+<script defer data-domain="yggdrasilpanel.com" src="https://plausible.yggdrasilpanel.com/js/script.js"></script>
 </head>
 <body>
 ` + topNav() + `
@@ -711,6 +717,12 @@ func indexPage() string {
 <link rel="canonical" href="` + siteURL + `/docs/" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
 <link rel="stylesheet" href="docs.css" />
+<!-- Plausible, self-hosted on this project's own panel. No cookies, so no consent
+     banner; the script is first-party, so ad-blockers and Pi-hole do not remove it.
+     This measures THIS WEBSITE only — the panel software people install ships no
+     analytics whatever, and the operator-supplied field in Settings is theirs, not
+     ours. Every page must carry this tag; a test enforces it. -->
+<script defer data-domain="yggdrasilpanel.com" src="https://plausible.yggdrasilpanel.com/js/script.js"></script>
 </head>
 <body>
 ` + topNav() + `

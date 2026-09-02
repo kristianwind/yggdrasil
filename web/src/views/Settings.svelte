@@ -819,6 +819,34 @@
   // Confirmation prompts before a stop or a restart. Panel-wide and on by
   // default; the value also rides on /auth/me, so after saving the user store is
   // reloaded and the buttons change behaviour without a page refresh.
+  // Operator-supplied analytics. Empty by default and empty on every install that
+  // never touches it — the panel itself measures nothing.
+  let analytics = $state({ snippet: "", origins: [] });
+  let savingAnalytics = $state(false);
+  async function loadAnalytics() {
+    try {
+      analytics = await api.get("/settings/analytics");
+    } catch {
+      /* non-fatal */
+    }
+  }
+  async function saveAnalytics() {
+    savingAnalytics = true;
+    try {
+      analytics = await api.put("/settings/analytics", { snippet: analytics.snippet || "" });
+      toast(
+        analytics.snippet
+          ? `Saved. Allowed: ${analytics.origins.join(", ") || "nothing external"}`
+          : "Analytics removed",
+        "success",
+      );
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingAnalytics = false;
+    }
+  }
+
   let confirmActions = $state({ enabled: true });
   let savingConfirmActions = $state(false);
   async function loadConfirmActions() {
@@ -1345,6 +1373,7 @@
     loadDiscord();
     loadBot();
     loadConfirmActions();
+    loadAnalytics();
     loadMCP();
     loadBackupVerify();
     loadBackupPolicy();
@@ -1789,6 +1818,42 @@
   <button class="btn-primary" onclick={saveBeacon} disabled={savingBeacon}>
     {savingBeacon ? "Saving…" : "Save"}
   </button>
+</div>
+
+<!-- Analytics: the operator's own, never ours. Placed under Beacon because the two
+     answer the same question — what leaves this install — from opposite directions. -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Analytics</h2>
+<p class="text-muted mb-3 text-sm">
+  Yggdrasil measures nothing about you and never will. This is the other side of that: your panel,
+  your choice. Paste a vendor's tag and it goes into every page's <code>&lt;head&gt;</code>. Leave it
+  empty — the default — and nothing is added and nothing is sent.
+</p>
+<div class="card p-4 mb-10 max-w-3xl">
+  <label class="label" for="an-snippet">Tag to insert in &lt;head&gt;</label>
+  <textarea id="an-snippet" class="input font-mono text-xs" rows="3"
+    placeholder={'<script defer data-domain="panel.example.com" src="https://plausible.example.com/js/script.js"></' + 'script>'}
+    bind:value={analytics.snippet}></textarea>
+  <p class="text-xs text-muted mt-2">
+    The panel's Content-Security-Policy is strict, so a third-party script would normally be blocked
+    before it loaded. Saving here allows <strong>exactly the origins your tag references</strong> —
+    nothing wider. Inline <code>&lt;script&gt;</code> code is refused, because permitting it would
+    mean weakening that policy on every page forever; use a tag that loads an external file, which
+    Plausible, Umami, Fathom and GoatCounter all do.
+  </p>
+  {#if analytics.origins?.length}
+    <p class="text-xs text-muted mt-2">
+      Currently allowed: <code>{analytics.origins.join(", ")}</code>
+    </p>
+  {/if}
+  <p class="text-xs text-muted mt-2">
+    Whatever you paste runs in the browser of everyone who signs in to this panel, including
+    delegates. Point it somewhere you trust.
+  </p>
+  <div class="mt-3">
+    <button class="btn-primary" onclick={saveAnalytics} disabled={savingAnalytics}>
+      {savingAnalytics ? "Saving…" : "Save"}
+    </button>
+  </div>
 </div>
 
 <!-- Host migration: move this panel's configuration to another Yggdrasil host -->

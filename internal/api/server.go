@@ -171,7 +171,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		AllowCredentials: false,
 	}))
-	r.Use(secureHeaders)
+	r.Use(s.secureHeaders)
 
 	// Public routes
 	r.Post("/api/auth/login", s.handleLogin)
@@ -517,6 +517,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
 		r.Get("/api/system/metrics", s.requireAdmin(s.handleSystemMetrics))
 		r.Get("/api/system/stats", s.requireAdmin(s.handleSystemStats))
+		r.Get("/api/settings/analytics", s.requireAdmin(s.handleGetAnalytics))
+		r.Put("/api/settings/analytics", s.requireAdmin(s.handleSetAnalytics))
 		r.Post("/api/system/prune-images", s.requireAdmin(s.handlePruneImages))
 		r.Get("/api/host/mounts", s.requireAdmin(s.handleHostMountsList))
 		r.Get("/api/host/browse", s.requireAdmin(s.handleHostBrowse)) // ?path=
@@ -552,6 +554,12 @@ func (s *Server) spaHandler() http.HandlerFunc {
 		}
 		if f, err := s.webFS.Open(p); err == nil {
 			f.Close()
+			// index.html is composed rather than served straight from the embedded
+			// FS: the operator's analytics snippet, if any, goes into its <head>.
+			if p == "index.html" {
+				s.serveIndex(w, r)
+				return
+			}
 			// Go's FileServer doesn't know .webmanifest; set it for PWA install.
 			if strings.HasSuffix(p, ".webmanifest") {
 				w.Header().Set("Content-Type", "application/manifest+json")
@@ -560,12 +568,33 @@ func (s *Server) spaHandler() http.HandlerFunc {
 			return
 		}
 		// Fallback: serve index.html for SPA routes.
-		r.URL.Path = "/"
-		fileServer.ServeHTTP(w, r)
+		s.serveIndex(w, r)
 	}
 }
 
-func secureHeaders(next http.Handler) http.Handler {
+// serveIndex writes the app shell with the operator's <head> snippet folded in.
+//
+// Deliberately no-cache. The document is a few kilobytes and is now a function of
+// a setting an admin can change: cached, a snippet change would take effect
+// whenever the browser next felt like asking, which reads as "the field did not
+// work". The hashed asset bundles it references are still cached normally, so
+// this costs one small request per navigation, not a reload of the app.
+func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
+	b, err := fs.ReadFile(s.webFS, "index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	snippet, _ := s.analyticsCached(r.Context())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write([]byte(injectAnalytics(string(b), snippet)))
+}
+
+// secureHeaders is a method rather than a bare function so the policy can include
+// the origins the operator's own analytics snippet needs. Without that the
+// snippet loads nowhere and the setting is a decoration.
+func (s *Server) secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -574,10 +603,7 @@ func secureHeaders(next http.Handler) http.Handler {
 		// The SPA loads only its own bundled assets (no inline scripts, no eval), so a
 		// strict CSP fits. 'unsafe-inline' is kept for styles only (runtime style
 		// injection); frame-ancestors 'none' is the modern clickjacking control.
-		h.Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
-				"img-src 'self' data:; font-src 'self'; connect-src 'self'; "+
-				"frame-ancestors 'none'; base-uri 'self'; object-src 'none'")
+		h.Set("Content-Security-Policy", s.contentSecurityPolicy(r.Context()))
 		// Only assert HSTS when actually served over HTTPS (via the TLS-terminating
 		// proxy). Sending it on plain-HTTP LAN access (http://<lan-ip>:8080) would make
 		// the browser force HTTPS there and lock the user out.

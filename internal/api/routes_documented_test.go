@@ -12,10 +12,11 @@ import (
 // code can read, and it drifts the way all such documents drift: silently, one
 // endpoint at a time, and nobody notices until somebody trusts it.
 //
-// Measured on 2026-09-02: 53 of 262 registered routes had no entry at all. That
-// is too many to fix in one honest pass — writing 50 descriptions from a quick
-// skim is how documentation acquires confident, wrong sentences — so the debt is
-// frozen here instead and the ratchet stops it growing.
+// Measured on 2026-09-02: 53 of 262 registered routes had no entry at all. They
+// were frozen in a list here so the gap could not grow, and then written up —
+// each one read from its handler rather than guessed at, because a plausible
+// wrong sentence in a reference is worse than a missing one. The list is empty
+// now, and the test is what keeps it that way.
 //
 // Two rules, and the second matters as much as the first:
 //
@@ -24,51 +25,9 @@ import (
 //   - a route IN the list that has since been documented must be REMOVED from
 //     it, so the list can only ever shrink and cannot quietly become fiction.
 //
-// Deleting an entry is the whole point. Every one you remove is one endpoint
-// somebody can now look up.
-var knownUndocumentedRoutes = []string{
-	"/api/advisories",
-	"/api/advisories/{id}/ack",
-	"/api/ai/chat/ws",
-	"/api/auth/forgot",
-	"/api/auth/reset",
-	"/api/backup-policy",
-	"/api/backups/{id}/download",
-	"/api/crashes/summary",
-	"/api/diagnostics",
-	"/api/fleet/activity",
-	"/api/fleet/metrics",
-	"/api/fleet/players",
-	"/api/fleet/summary",
-	"/api/gameskills/import-compose",
-	"/api/gameskills/{id}/restart-servers",
-	"/api/gameskills/{id}/servers",
-	"/api/host/browse",
-	"/api/host/mounts",
-	"/api/mods/icon",
-	"/api/realms/reorder",
-	"/api/realms/{id}/collapsed",
-	"/api/servers/{id}/activity",
-	"/api/servers/{id}/app-update",
-	"/api/servers/{id}/crashes",
-	"/api/servers/{id}/dayz/mods/order",
-	"/api/servers/{id}/dayz/mods/search",
-	"/api/servers/{id}/dayz/mods/suggest",
-	"/api/servers/{id}/jar-update",
-	"/api/servers/{id}/kvasir-events",
-	"/api/servers/{id}/mods",
-	"/api/servers/{id}/mods/install",
-	"/api/servers/{id}/mods/search",
-	"/api/servers/{id}/mods/update",
-	"/api/servers/{id}/players/ban",
-	"/api/servers/{id}/ports",
-	"/api/settings/beacon/notice",
-	"/api/settings/confirm-actions",
-	"/api/settings/discord-bot",
-	"/api/settings/email",
-	"/api/settings/email/test",
-	"/api/settings/steam-web-api-key",
-}
+// If you add to this list, put the reason next to it. An empty list is the
+// normal state, not an aspiration.
+var knownUndocumentedRoutes = []string{}
 
 func TestEveryRouteIsDocumented(t *testing.T) {
 	src, err := os.ReadFile("server.go")

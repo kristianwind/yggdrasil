@@ -251,6 +251,8 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 | `GET` | `/status.js` | none | The status page's script, served same-origin for the CSP |
 | `POST` | `/api/beacon` | none | Receive an install ping; 404 unless this instance is the collector |
 | `GET` | `/api/beacon/count` | none | Installs seen in the last 30 days; 404 unless the collector opted into publishing. `count` is `null` below the threshold — "not saying", not zero |
+| `POST` | `/api/auth/forgot` | Public | Start a password reset. Deliberately opaque: the same generic `200` whatever the input, and the mail is sent on a background goroutine, so neither the body nor the response time reveals whether an account or an SMTP config exists |
+| `POST` | `/api/auth/reset` | Public | Complete a reset with the emailed token. The token is single-use and short-lived; success revokes every existing session for that account |
 
 ### Session and account
 
@@ -318,6 +320,9 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `POST` | `/api/rune-repos` | Admin | Save a repository: `{name, repo, path, ref, token?}` |
 | `PUT` | `/api/rune-repos/{id}` | Admin | Edit one: `{name?, path?, ref?, token?}`. An omitted or masked `token` keeps what's stored, an empty string clears it |
 | `DELETE` | `/api/rune-repos/{id}` | Admin | Forget a repository (and its token) |
+| `POST` | `/api/gameskills/import-compose` | Admin | Translate an uploaded `docker-compose` file into a rune and store it. Returns `{id, name, warnings}` — `warnings` lists bind mounts to re-add as host mounts and anything the translation dropped. Create the server from the returned id the normal way |
+| `GET` | `/api/gameskills/{id}/servers` | Admin | Which installed servers a rune restart would affect, so the UI can name them first — "restart 8 servers" is a different decision from "restart this one" |
+| `POST` | `/api/gameskills/{id}/restart-servers` | Admin | Restart every running server using this rune, sequentially in the background. Failures are collected rather than aborting the sweep |
 
 **Moving a large server between panels — pull, don't push.** An export *streams*, so downloading a
 multi-gigabyte server works through a tunnel. An upload is a request *body*, and Cloudflare caps those
@@ -367,6 +372,27 @@ that fails without a token is usually a permissions problem rather than a wrong 
 | `GET` | `/api/servers/{id}/admin-log` | `server.view` | Parsed admin-log events, when the rune supports one |
 | `GET` | `/api/servers/{id}/delegates` | Admin | Every user holding a server-scoped grant on this server |
 | `PUT` | `/api/servers/{id}/delegates` | Admin | Replace the full set of server-scoped grants on this server |
+| `PUT` | `/api/servers/{id}/ports` | Admin | Change host ports after creation: `{"ports": {"<name>": <port>}}`. Only the listed ports change, each must already exist and each new port must be free. A running server is recreated so it rebinds (and its proxy target is refreshed); a stopped one records the change for next start |
+| `GET` | `/api/servers/{id}/activity` | `server.view` | The panel's own recorded history for one server: named player sessions and notable security/health events, over the last N hours (default 7 days, max 30). Both lists are empty for runes that record neither, which the UI uses to hide the tab |
+| `GET` | `/api/servers/{id}/crashes` | `server.view` | Recent unexpected exits, newest first, over the last N hours (default 7 days, max 30) |
+| `DELETE` | `/api/servers/{id}/crashes` | `server.control` | Clear the stability history — a dismiss once the warnings have been read |
+| `GET` | `/api/crashes/summary` | Any signed-in user | `{server_id: count}` of unexpected exits in the last N hours (default 24, max 30 days) across every server. Counts genuine faults only — a graceful stop (exit 0/143/130) is not a crash. Backs the flapping badges |
+| `GET` | `/api/servers/{id}/app-update` | Any signed-in user | Whether this server's rune declares an app update, and the button text to use, so the UI shows it only where it exists |
+| `POST` | `/api/servers/{id}/app-update` | `server.control` | Run the rune's update script in the background; progress streams to the install-log WebSocket. Serialised against install and import. Audited |
+| `GET` | `/api/servers/{id}/jar-update` | `server.view` | Whether a newer Paper/Purpur build exists for a Minecraft-Java server's installed version |
+
+### Fleet
+
+Cross-server aggregates for the Dashboard. These are **not** RBAC-filtered per server: they either
+return whole-fleet numbers or, in the case of `/fleet/activity`, merge the audit log with every
+server's history — which is why that one is admin-gated and the others return only aggregates.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/fleet/summary` | Any signed-in user | How many servers are up, total players online, and the CPU/RAM the containers are using. Figures come from each running server's most recent sample within the last 15 minutes, so stopped servers drop out |
+| `GET` | `/api/fleet/players` | Any signed-in user | Who is online right now across running servers — queried live and in parallel, with player names where the protocol exposes them (A2S/DayZ) and a count otherwise (Minecraft/Bedrock) |
+| `GET` | `/api/fleet/metrics` | Any signed-in user | A compact recent CPU series per server (last ~3h, capped) for the inline sparklines on the server list — one round-trip instead of one request per row |
+| `GET` | `/api/fleet/activity` | Admin | One merged timeline of everything the panel recorded about itself across every server. Deliberately includes detections the alert policy handled quietly: without them, a detector that silently stopped working and a genuinely quiet fleet look identical |
 
 ### Host migration
 
@@ -401,6 +427,7 @@ Player actions run over RCON, so they gate on `server.console` rather than `serv
 | `POST` | `/api/violations` | Admin | Create a violation auto-action rule |
 | `PUT` | `/api/violations/{id}` | Admin | Edit a violation auto-action rule |
 | `DELETE` | `/api/violations/{id}` | Admin | Delete a violation auto-action rule |
+| `POST` | `/api/servers/{id}/players/ban` | `server.console` | Ban a DayZ player by adding their id to `ban.txt`. DayZ reads it on connect, so it stops them rejoining but cannot remove someone already in-game — DayZ-Linux has no RCon |
 
 ### Files
 
@@ -420,6 +447,21 @@ that directory, including through symlinks.
 | `GET` | `/api/servers/{id}/files/download` | `server.files` | Download a single file |
 
 The editor keeps 10 versions per file and only snapshots UTF-8 files up to 256 KB.
+
+### Mods and plugins
+
+Minecraft mods and plugins, resolved against Modrinth. Reading gates on `server.view`; anything that
+writes a jar gates on `server.files`, because that is what it is doing. Mods take effect on the next
+restart, which is a recreate — the API says so rather than letting a caller assume it took.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/servers/{id}/mods` | `server.view` | The jars in the mod/plugin folder, identified against Modrinth by sha512, each flagged if a newer build exists for this server's loader and version. Hand-installed jars are listed as unmanaged |
+| `GET` | `/api/servers/{id}/mods/search` | `server.view` | Search Modrinth for mods compatible with this server's loader and version |
+| `POST` | `/api/servers/{id}/mods/install` | `server.files` | Install a Modrinth project and its required dependencies |
+| `POST` | `/api/servers/{id}/mods/update` | `server.files` | Update one installed jar (`?file=<name>.jar`) to the newest compatible build, with dependencies, removing the old file if the name changed |
+| `DELETE` | `/api/servers/{id}/mods` | `server.files` | Delete a jar by filename (`?file=<name>.jar`). A query param and not a path segment on purpose: mod filenames contain `+` and `.`, which a path segment mangles — removing by path 404s on the very files the panel wrote |
+| `GET` | `/api/mods/icon` | Any signed-in user | Proxy a Modrinth icon through the panel, so icons render under the strict CSP (`img-src 'self'`) and the viewer's IP never reaches Modrinth. The upstream URL is pinned to the Modrinth CDN |
 
 ### Backups
 
@@ -443,6 +485,9 @@ backup's server first, then checks.
 | `GET` | `/api/settings/backup-verify` | Admin | The automatic backup-verification settings |
 | `PUT` | `/api/settings/backup-verify` | Admin | Update the automatic backup-verification settings |
 | `GET` | `/api/system/backup-coverage` | Admin | Installed servers with no recent successful backup (default window 7 days) |
+| `GET` | `/api/backup-policy` | Admin | The panel-wide nightly backup policy, derived from the managed global schedule (absent = disabled) |
+| `PUT` | `/api/backup-policy` | Admin | Create, update or remove that managed schedule — all servers, nightly, to one target |
+| `GET` | `/api/backups/{id}/download` | `server.backup` | Stream a backup archive from its target to the caller, so a copy can be kept off-panel. Same permission as restore |
 
 ### Schedules and templates
 
@@ -484,6 +529,8 @@ grant boundaries.
 | `GET` | `/api/users/{id}/permissions` | Admin | A user's grants |
 | `PUT` | `/api/users/{id}/permissions` | Admin | Replace a user's grants |
 | `GET` | `/api/permissions/catalog` | Admin | The assignable permissions and scope types, for building an editor |
+| `POST` | `/api/realms/reorder` | Admin | Set each realm's sort order to its position in the given id list — the manual order the Servers page and pickers follow |
+| `PUT` | `/api/realms/{id}/collapsed` | Any signed-in user | Persist a realm group's folded state. Stored server-side deliberately, so it carries across devices |
 
 ### Kvasir
 
@@ -501,6 +548,8 @@ admin-only; the advisory endpoints gate on the permission that matches what they
 | `POST` | `/api/servers/{id}/config-advice` | `server.control` | An advisory review of the server's configuration |
 | `POST` | `/api/ai/plan` | Session | Turn a natural-language request into a previewable plan; executes nothing |
 | `POST` | `/api/ai/plan/execute` | Session | Run confirmed actions, re-checking each against RBAC |
+| `GET` | `/api/servers/{id}/kvasir-events` | `server.view` | A server's recent proactive-AI reactions — what Kvasir saw, explained, and proposed or applied — over the last N hours (default 7 days, max 30). The in-panel surface, so proposals are not only visible in Discord |
+| `DELETE` | `/api/servers/{id}/kvasir-events` | `server.control` | Dismiss that history once it has been read |
 
 `/api/ai/plan` and `/api/ai/plan/execute` need no explicit permission because they scope themselves:
 both build the candidate set from the servers the caller holds `server.control` on, and the execute
@@ -550,6 +599,9 @@ Norn is the DayZ loot-economy tool. Reading the economy needs `server.view`; cha
 | `POST` | `/api/servers/{id}/dayz/register-types` | `server.control` | Register detected types files in `cfgeconomycore.xml` |
 | `POST` | `/api/servers/{id}/dayz/import-mod-types` | `server.control` | Copy a mod's `types.xml` into the mission and register it |
 | `POST` | `/api/servers/{id}/dayz/reset` | `server.control` | Clear saved Norn settings so reinstalls return to vanilla |
+| `PUT` | `/api/servers/{id}/dayz/mods/order` | `server.control` | Rewrite the mod load order. The body must be a permutation of the current ids — reordering is a separate action from add/remove so a stale client cannot silently wipe the list. Takes effect on the next restart |
+| `GET` | `/api/servers/{id}/dayz/mods/search` | `server.view` | Search the DayZ Steam Workshop (`?q=`). Needs a Steam Web API key; returns `needs_key=true` when none is configured, since paste-by-id still works without one |
+| `POST` | `/api/servers/{id}/dayz/mods/suggest` | `server.view` | Ask Kvasir to review the mod list for likely-missing dependencies (CF, Dabs Framework) and a sane load order. Advisory only — it never edits the list. Needs the AI configured |
 
 ### Networking and domains
 
@@ -589,6 +641,8 @@ shows players; writing it is admin-only.
 | `POST` | `/api/steam/send-code` | Admin | Attempt a login without a Guard code, prompting Steam to email one |
 | `POST` | `/api/steam/authorize` | Admin | Complete authorization with the Guard code |
 | `DELETE` | `/api/steam/account` | Admin | Remove the stored Steam credentials |
+| `GET` | `/api/settings/steam-web-api-key` | Admin | Whether a Steam Web API key is stored — never the value |
+| `PUT` | `/api/settings/steam-web-api-key` | Admin | Store (encrypted) or clear it. An empty value clears |
 
 ### Status page, beacon, and Discord
 
@@ -603,6 +657,9 @@ shows players; writing it is admin-only.
 | `GET` | `/api/settings/discord-status` | Admin | The Discord status board configuration |
 | `PUT` | `/api/settings/discord-status` | Admin | Update the Discord status board configuration |
 | `POST` | `/api/settings/discord-status/post` | Admin | Force an immediate status board refresh |
+| `POST` | `/api/settings/beacon/notice` | Admin | Record that the first-run beacon notice was shown and acted on. `keep=false` switches the beacon off in the same step, so declining is one click rather than a hunt through Settings |
+| `GET` | `/api/settings/discord-bot` | Admin | The control-bot config: whether a token is set, and the control-channel id. Never returns the token |
+| `PUT` | `/api/settings/discord-bot` | Admin | Update the token (encrypted; only overwritten when a non-null value is sent, so the channel can be saved without re-entering it) and the channel, then reconnect the bot |
 
 The public status board caches for 15 seconds and is served with `Cache-Control: public, max-age=15`.
 
@@ -637,13 +694,23 @@ The public status board caches for 15 seconds and is served with `Cache-Control:
 | `GET` | `/api/system/auto-update` | Admin | The opt-in scheduled updater's settings |
 | `POST` | `/api/system/auto-update` | Admin | Update the scheduled updater's settings |
 | `PUT` | `/api/settings/panel-name` | Admin | Set this panel's display name (shown in the sidebar and browser tab so several panels are distinguishable). Read back on the public `GET /api/version` as `panel_name` |
+| `GET` | `/api/advisories` | Admin | Published security advisories that apply to this build and have not been dismissed. Pulled from a static file in the project repo — the request carries nothing about the install, and it works with the beacon switched off, which is precisely the install that still needs to hear |
+| `POST` | `/api/advisories/{id}/ack` | Admin | Dismiss one advisory for the whole install — the point is that somebody dealt with it, not that everyone read it. Audited as `advisory.ack` |
+| `GET` | `/api/diagnostics` | Admin | An allowlisted bug-report bundle: install-wide counts and versions, never server names, paths, IPs, hostnames, variable values or the beacon's instance id. The Docker version lookup is time-bounded, since a wedged daemon is exactly the host most likely to be filing the report |
+| `GET` | `/api/host/mounts` | Admin | The host's real mounted drives. Returns an empty list rather than an error on a non-Linux or unreadable host |
+| `GET` | `/api/host/browse` | Admin | List a host directory (`?path=`), read-only and jailed to the paths a bind mount may use. Symlinks are resolved first, so a link cannot smuggle a denied location past the check |
+| `GET` | `/api/settings/confirm-actions` | Admin | Whether the UI asks before a stop or a restart. Unset reads as **on**, so existing installs get the prompt without visiting Settings |
+| `PUT` | `/api/settings/confirm-actions` | Admin | Turn that confirmation off or on. A UI preference only — what a user is allowed to stop is decided by RBAC, not by this |
+| `GET` | `/api/settings/email` | Admin | The SMTP config. Reports only whether a password is stored, never the value |
+| `PUT` | `/api/settings/email` | Admin | Update the SMTP config. The password follows the pointer idiom used elsewhere: `null` keeps the stored one, `""` clears it. Encrypted at rest |
+| `POST` | `/api/settings/email/test` | Admin | Send a one-off message to prove the settings work. Defaults to the From address when no recipient is given |
 
 Anything not matching `/api/` falls through to the embedded SPA, which serves `index.html` for
 unknown paths so client-side routes deep-link correctly. Unknown `/api/` paths return `404`.
 
 ## WebSocket endpoints
 
-Three endpoints upgrade to WebSocket. All three authenticate exactly like the rest of the API — the
+Four endpoints upgrade to WebSocket. All four authenticate exactly like the rest of the API — the
 `ygg_token` cookie is enough from a browser, and `?token=` carries a JWT or an `ygg_` API token from
 anything that cannot set headers. The upgrader accepts a handshake with no `Origin` (automation) or
 one whose hostname matches the request host, and refuses everything else.
@@ -653,6 +720,7 @@ one whose hostname matches the request host, and refuses everything else.
 | `/api/servers/{id}/install/log` | `server.view` | Install and build output — buffered history, then live |
 | `/api/servers/{id}/logs` | `server.view` | Container logs, live |
 | `/api/servers/{id}/console` | `server.console` | Container output, and input sent over RCON or the container's stdin |
+| `/api/ai/chat/ws` | Any signed-in user | The Dashboard's Kvasir chat. Answers turns until the client goes away; proposals it makes are confirmed over the separate plan/execute endpoints, never applied from the stream |
 
 `/console` is the one that writes, which is why it gates on `server.console` while `/logs` needs only
 `server.view`. Each message you send it is one command: it goes over RCON when the server's rune

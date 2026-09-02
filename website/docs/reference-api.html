@@ -328,6 +328,18 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 <td>none</td>
 <td>Installs seen in the last 30 days; 404 unless the collector opted into publishing. <code>count</code> is <code>null</code> below the threshold — &ldquo;not saying&rdquo;, not zero</td>
 </tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/forgot</code></td>
+<td>Public</td>
+<td>Start a password reset. Deliberately opaque: the same generic <code>200</code> whatever the input, and the mail is sent on a background goroutine, so neither the body nor the response time reveals whether an account or an SMTP config exists</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/auth/reset</code></td>
+<td>Public</td>
+<td>Complete a reset with the emailed token. The token is single-use and short-lived; success revokes every existing session for that account</td>
+</tr>
 </tbody>
 </table>
 <h3 id="session-and-account">Session and account</h3>
@@ -600,6 +612,24 @@ create-server form needs it; everything that changes the catalogue is admin-only
 <td>Admin</td>
 <td>Forget a repository (and its token)</td>
 </tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/gameskills/import-compose</code></td>
+<td>Admin</td>
+<td>Translate an uploaded <code>docker-compose</code> file into a rune and store it. Returns <code>{id, name, warnings}</code> — <code>warnings</code> lists bind mounts to re-add as host mounts and anything the translation dropped. Create the server from the returned id the normal way</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/gameskills/{id}/servers</code></td>
+<td>Admin</td>
+<td>Which installed servers a rune restart would affect, so the UI can name them first — &ldquo;restart 8 servers&rdquo; is a different decision from &ldquo;restart this one&rdquo;</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/gameskills/{id}/restart-servers</code></td>
+<td>Admin</td>
+<td>Restart every running server using this rune, sequentially in the background. Failures are collected rather than aborting the sweep</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Moving a large server between panels — pull, don&rsquo;t push.</strong> An export <em>streams</em>, so downloading a
@@ -795,6 +825,94 @@ that fails without a token is usually a permissions problem rather than a wrong 
 <td>Admin</td>
 <td>Replace the full set of server-scoped grants on this server</td>
 </tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/servers/{id}/ports</code></td>
+<td>Admin</td>
+<td>Change host ports after creation: <code>{&quot;ports&quot;: {&quot;&lt;name&gt;&quot;: &lt;port&gt;}}</code>. Only the listed ports change, each must already exist and each new port must be free. A running server is recreated so it rebinds (and its proxy target is refreshed); a stopped one records the change for next start</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/activity</code></td>
+<td><code>server.view</code></td>
+<td>The panel&rsquo;s own recorded history for one server: named player sessions and notable security/health events, over the last N hours (default 7 days, max 30). Both lists are empty for runes that record neither, which the UI uses to hide the tab</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/crashes</code></td>
+<td><code>server.view</code></td>
+<td>Recent unexpected exits, newest first, over the last N hours (default 7 days, max 30)</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/servers/{id}/crashes</code></td>
+<td><code>server.control</code></td>
+<td>Clear the stability history — a dismiss once the warnings have been read</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/crashes/summary</code></td>
+<td>Any signed-in user</td>
+<td><code>{server_id: count}</code> of unexpected exits in the last N hours (default 24, max 30 days) across every server. Counts genuine faults only — a graceful stop (exit 0/143/130) is not a crash. Backs the flapping badges</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/app-update</code></td>
+<td>Any signed-in user</td>
+<td>Whether this server&rsquo;s rune declares an app update, and the button text to use, so the UI shows it only where it exists</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/app-update</code></td>
+<td><code>server.control</code></td>
+<td>Run the rune&rsquo;s update script in the background; progress streams to the install-log WebSocket. Serialised against install and import. Audited</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/jar-update</code></td>
+<td><code>server.view</code></td>
+<td>Whether a newer Paper/Purpur build exists for a Minecraft-Java server&rsquo;s installed version</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fleet">Fleet</h3>
+<p>Cross-server aggregates for the Dashboard. These are <strong>not</strong> RBAC-filtered per server: they either
+return whole-fleet numbers or, in the case of <code>/fleet/activity</code>, merge the audit log with every
+server&rsquo;s history — which is why that one is admin-gated and the others return only aggregates.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/fleet/summary</code></td>
+<td>Any signed-in user</td>
+<td>How many servers are up, total players online, and the CPU/RAM the containers are using. Figures come from each running server&rsquo;s most recent sample within the last 15 minutes, so stopped servers drop out</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/fleet/players</code></td>
+<td>Any signed-in user</td>
+<td>Who is online right now across running servers — queried live and in parallel, with player names where the protocol exposes them (A2S/DayZ) and a count otherwise (Minecraft/Bedrock)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/fleet/metrics</code></td>
+<td>Any signed-in user</td>
+<td>A compact recent CPU series per server (last ~3h, capped) for the inline sparklines on the server list — one round-trip instead of one request per row</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/fleet/activity</code></td>
+<td>Admin</td>
+<td>One merged timeline of everything the panel recorded about itself across every server. Deliberately includes detections the alert policy handled quietly: without them, a detector that silently stopped working and a genuinely quiet fleet look identical</td>
+</tr>
 </tbody>
 </table>
 <h3 id="host-migration">Host migration</h3>
@@ -933,6 +1051,12 @@ is admin-only and the files should be treated like passwords.</p>
 <td>Admin</td>
 <td>Delete a violation auto-action rule</td>
 </tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/players/ban</code></td>
+<td><code>server.console</code></td>
+<td>Ban a DayZ player by adding their id to <code>ban.txt</code>. DayZ reads it on connect, so it stops them rejoining but cannot remove someone already in-game — DayZ-Linux has no RCon</td>
+</tr>
 </tbody>
 </table>
 <h3 id="files">Files</h3>
@@ -1005,6 +1129,58 @@ that directory, including through symlinks.</p>
 </tbody>
 </table>
 <p>The editor keeps 10 versions per file and only snapshots UTF-8 files up to 256 KB.</p>
+<h3 id="mods-and-plugins">Mods and plugins</h3>
+<p>Minecraft mods and plugins, resolved against Modrinth. Reading gates on <code>server.view</code>; anything that
+writes a jar gates on <code>server.files</code>, because that is what it is doing. Mods take effect on the next
+restart, which is a recreate — the API says so rather than letting a caller assume it took.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/mods</code></td>
+<td><code>server.view</code></td>
+<td>The jars in the mod/plugin folder, identified against Modrinth by sha512, each flagged if a newer build exists for this server&rsquo;s loader and version. Hand-installed jars are listed as unmanaged</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/mods/search</code></td>
+<td><code>server.view</code></td>
+<td>Search Modrinth for mods compatible with this server&rsquo;s loader and version</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/mods/install</code></td>
+<td><code>server.files</code></td>
+<td>Install a Modrinth project and its required dependencies</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/mods/update</code></td>
+<td><code>server.files</code></td>
+<td>Update one installed jar (<code>?file=&lt;name&gt;.jar</code>) to the newest compatible build, with dependencies, removing the old file if the name changed</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/servers/{id}/mods</code></td>
+<td><code>server.files</code></td>
+<td>Delete a jar by filename (<code>?file=&lt;name&gt;.jar</code>). A query param and not a path segment on purpose: mod filenames contain <code>+</code> and <code>.</code>, which a path segment mangles — removing by path 404s on the very files the panel wrote</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/mods/icon</code></td>
+<td>Any signed-in user</td>
+<td>Proxy a Modrinth icon through the panel, so icons render under the strict CSP (<code>img-src 'self'</code>) and the viewer&rsquo;s IP never reaches Modrinth. The upstream URL is pinned to the Modrinth CDN</td>
+</tr>
+</tbody>
+</table>
 <h3 id="backups">Backups</h3>
 <p>Backup <em>targets</em> are global configuration and admin-only. Individual backups gate on
 <code>server.backup</code> for the server they belong to — for <code>/api/backups/{id}/…</code> the panel resolves the
@@ -1102,6 +1278,24 @@ backup&rsquo;s server first, then checks.</p>
 <td><code>/api/system/backup-coverage</code></td>
 <td>Admin</td>
 <td>Installed servers with no recent successful backup (default window 7 days)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/backup-policy</code></td>
+<td>Admin</td>
+<td>The panel-wide nightly backup policy, derived from the managed global schedule (absent = disabled)</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/backup-policy</code></td>
+<td>Admin</td>
+<td>Create, update or remove that managed schedule — all servers, nightly, to one target</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/backups/{id}/download</code></td>
+<td><code>server.backup</code></td>
+<td>Stream a backup archive from its target to the caller, so a copy can be kept off-panel. Same permission as restore</td>
 </tr>
 </tbody>
 </table>
@@ -1262,6 +1456,18 @@ grant boundaries.</p>
 <td>Admin</td>
 <td>The assignable permissions and scope types, for building an editor</td>
 </tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/realms/reorder</code></td>
+<td>Admin</td>
+<td>Set each realm&rsquo;s sort order to its position in the given id list — the manual order the Servers page and pickers follow</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/realms/{id}/collapsed</code></td>
+<td>Any signed-in user</td>
+<td>Persist a realm group&rsquo;s folded state. Stored server-side deliberately, so it carries across devices</td>
+</tr>
 </tbody>
 </table>
 <h3 id="kvasir">Kvasir</h3>
@@ -1330,6 +1536,18 @@ admin-only; the advisory endpoints gate on the permission that matches what they
 <td><code>/api/ai/plan/execute</code></td>
 <td>Session</td>
 <td>Run confirmed actions, re-checking each against RBAC</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/kvasir-events</code></td>
+<td><code>server.view</code></td>
+<td>A server&rsquo;s recent proactive-AI reactions — what Kvasir saw, explained, and proposed or applied — over the last N hours (default 7 days, max 30). The in-panel surface, so proposals are not only visible in Discord</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/servers/{id}/kvasir-events</code></td>
+<td><code>server.control</code></td>
+<td>Dismiss that history once it has been read</td>
 </tr>
 </tbody>
 </table>
@@ -1489,6 +1707,24 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 <td><code>/api/servers/{id}/dayz/reset</code></td>
 <td><code>server.control</code></td>
 <td>Clear saved Norn settings so reinstalls return to vanilla</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/servers/{id}/dayz/mods/order</code></td>
+<td><code>server.control</code></td>
+<td>Rewrite the mod load order. The body must be a permutation of the current ids — reordering is a separate action from add/remove so a stale client cannot silently wipe the list. Takes effect on the next restart</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/dayz/mods/search</code></td>
+<td><code>server.view</code></td>
+<td>Search the DayZ Steam Workshop (<code>?q=</code>). Needs a Steam Web API key; returns <code>needs_key=true</code> when none is configured, since paste-by-id still works without one</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/dayz/mods/suggest</code></td>
+<td><code>server.view</code></td>
+<td>Ask Kvasir to review the mod list for likely-missing dependencies (CF, Dabs Framework) and a sane load order. Advisory only — it never edits the list. Needs the AI configured</td>
 </tr>
 </tbody>
 </table>
@@ -1663,6 +1899,18 @@ shows players; writing it is admin-only.</p>
 <td>Admin</td>
 <td>Remove the stored Steam credentials</td>
 </tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/steam-web-api-key</code></td>
+<td>Admin</td>
+<td>Whether a Steam Web API key is stored — never the value</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/steam-web-api-key</code></td>
+<td>Admin</td>
+<td>Store (encrypted) or clear it. An empty value clears</td>
+</tr>
 </tbody>
 </table>
 <h3 id="status-page-beacon-and-discord">Status page, beacon, and Discord</h3>
@@ -1729,6 +1977,24 @@ shows players; writing it is admin-only.</p>
 <td><code>/api/settings/discord-status/post</code></td>
 <td>Admin</td>
 <td>Force an immediate status board refresh</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/beacon/notice</code></td>
+<td>Admin</td>
+<td>Record that the first-run beacon notice was shown and acted on. <code>keep=false</code> switches the beacon off in the same step, so declining is one click rather than a hunt through Settings</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/discord-bot</code></td>
+<td>Admin</td>
+<td>The control-bot config: whether a token is set, and the control-channel id. Never returns the token</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/discord-bot</code></td>
+<td>Admin</td>
+<td>Update the token (encrypted; only overwritten when a non-null value is sent, so the channel can be saved without re-entering it) and the channel, then reconnect the bot</td>
 </tr>
 </tbody>
 </table>
@@ -1872,12 +2138,72 @@ shows players; writing it is admin-only.</p>
 <td>Admin</td>
 <td>Set this panel&rsquo;s display name (shown in the sidebar and browser tab so several panels are distinguishable). Read back on the public <code>GET /api/version</code> as <code>panel_name</code></td>
 </tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/advisories</code></td>
+<td>Admin</td>
+<td>Published security advisories that apply to this build and have not been dismissed. Pulled from a static file in the project repo — the request carries nothing about the install, and it works with the beacon switched off, which is precisely the install that still needs to hear</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/advisories/{id}/ack</code></td>
+<td>Admin</td>
+<td>Dismiss one advisory for the whole install — the point is that somebody dealt with it, not that everyone read it. Audited as <code>advisory.ack</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/diagnostics</code></td>
+<td>Admin</td>
+<td>An allowlisted bug-report bundle: install-wide counts and versions, never server names, paths, IPs, hostnames, variable values or the beacon&rsquo;s instance id. The Docker version lookup is time-bounded, since a wedged daemon is exactly the host most likely to be filing the report</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/host/mounts</code></td>
+<td>Admin</td>
+<td>The host&rsquo;s real mounted drives. Returns an empty list rather than an error on a non-Linux or unreadable host</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/host/browse</code></td>
+<td>Admin</td>
+<td>List a host directory (<code>?path=</code>), read-only and jailed to the paths a bind mount may use. Symlinks are resolved first, so a link cannot smuggle a denied location past the check</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/confirm-actions</code></td>
+<td>Admin</td>
+<td>Whether the UI asks before a stop or a restart. Unset reads as <strong>on</strong>, so existing installs get the prompt without visiting Settings</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/confirm-actions</code></td>
+<td>Admin</td>
+<td>Turn that confirmation off or on. A UI preference only — what a user is allowed to stop is decided by RBAC, not by this</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/settings/email</code></td>
+<td>Admin</td>
+<td>The SMTP config. Reports only whether a password is stored, never the value</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/settings/email</code></td>
+<td>Admin</td>
+<td>Update the SMTP config. The password follows the pointer idiom used elsewhere: <code>null</code> keeps the stored one, <code>&quot;&quot;</code> clears it. Encrypted at rest</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/email/test</code></td>
+<td>Admin</td>
+<td>Send a one-off message to prove the settings work. Defaults to the From address when no recipient is given</td>
+</tr>
 </tbody>
 </table>
 <p>Anything not matching <code>/api/</code> falls through to the embedded SPA, which serves <code>index.html</code> for
 unknown paths so client-side routes deep-link correctly. Unknown <code>/api/</code> paths return <code>404</code>.</p>
 <h2 id="websocket-endpoints">WebSocket endpoints</h2>
-<p>Three endpoints upgrade to WebSocket. All three authenticate exactly like the rest of the API — the
+<p>Four endpoints upgrade to WebSocket. All four authenticate exactly like the rest of the API — the
 <code>ygg_token</code> cookie is enough from a browser, and <code>?token=</code> carries a JWT or an <code>ygg_</code> API token from
 anything that cannot set headers. The upgrader accepts a handshake with no <code>Origin</code> (automation) or
 one whose hostname matches the request host, and refuses everything else.</p>
@@ -1905,6 +2231,11 @@ one whose hostname matches the request host, and refuses everything else.</p>
 <td><code>server.console</code></td>
 <td>Container output, and input sent over RCON or the container&rsquo;s stdin</td>
 </tr>
+<tr>
+<td><code>/api/ai/chat/ws</code></td>
+<td>Any signed-in user</td>
+<td>The Dashboard&rsquo;s Kvasir chat. Answers turns until the client goes away; proposals it makes are confirmed over the separate plan/execute endpoints, never applied from the stream</td>
+</tr>
 </tbody>
 </table>
 <p><code>/console</code> is the one that writes, which is why it gates on <code>server.console</code> while <code>/logs</code> needs only
@@ -1921,7 +2252,7 @@ progress; the install itself runs in the background and does not block the POST.
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#claude-connector-mcp">Claude connector (MCP)</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#host-migration">Host migration</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#watchers">Watchers</a><a class="t3" href="#ip-blocking">IP blocking</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#authentication">Authentication</a><a class="t3" href="#session-cookie">Session cookie</a><a class="t3" href="#api-tokens">API tokens</a><a class="t3" href="#websocket-handshakes">WebSocket handshakes</a><a class="t3" href="#cross-origin-requests-and-csrf">Cross-origin requests and CSRF</a><a class="t3" href="#login-rate-limits">Login rate limits</a><a class="t2" href="#permissions">Permissions</a><a class="t2" href="#gotchas">Gotchas</a><a class="t3" href="#api-tokens-carry-no-scope-of-their-own">API tokens carry no scope of their own</a><a class="t3" href="#logout-does-not-revoke-api-tokens">Logout does not revoke API tokens</a><a class="t3" href="#a-delegate-can-create-a-schedule-they-cannot-then-touch">A delegate can create a schedule they cannot then touch</a><a class="t2" href="#conventions">Conventions</a><a class="t2" href="#worked-example">Worked example</a><a class="t2" href="#route-reference">Route reference</a><a class="t3" href="#public">Public</a><a class="t3" href="#session-and-account">Session and account</a><a class="t3" href="#claude-connector-mcp">Claude connector (MCP)</a><a class="t3" href="#runes">Runes</a><a class="t3" href="#servers">Servers</a><a class="t3" href="#fleet">Fleet</a><a class="t3" href="#host-migration">Host migration</a><a class="t3" href="#players-and-moderation">Players and moderation</a><a class="t3" href="#files">Files</a><a class="t3" href="#mods-and-plugins">Mods and plugins</a><a class="t3" href="#backups">Backups</a><a class="t3" href="#schedules-and-templates">Schedules and templates</a><a class="t3" href="#users-realms-and-permissions">Users, realms, and permissions</a><a class="t3" href="#kvasir">Kvasir</a><a class="t3" href="#watchers">Watchers</a><a class="t3" href="#ip-blocking">IP blocking</a><a class="t3" href="#norn">Norn</a><a class="t3" href="#networking-and-domains">Networking and domains</a><a class="t3" href="#steam">Steam</a><a class="t3" href="#status-page-beacon-and-discord">Status page, beacon, and Discord</a><a class="t3" href="#notifications">Notifications</a><a class="t3" href="#audit">Audit</a><a class="t3" href="#system">System</a><a class="t2" href="#websocket-endpoints">WebSocket endpoints</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

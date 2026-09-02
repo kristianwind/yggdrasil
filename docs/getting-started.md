@@ -61,11 +61,12 @@ apps and passkeys. See [Users and permissions](guides/users-and-permissions.md).
 
 ## The layout
 
-Nine things in the sidebar, four of them admin-only:
+Ten things in the sidebar, five of them admin-only:
 
 | Page | What it's for |
 | --- | --- |
 | **Dashboard** | Fleet overview, host CPU/RAM/disk, recent servers |
+| **Statistics** | Where the machine's CPU, memory and disk actually go |
 | **Servers** | Everything you run, and where you create more |
 | **Runes** | The catalog of things you *can* run |
 | **Schedules** | Cron jobs — backups, restarts, messages |

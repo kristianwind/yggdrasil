@@ -41,6 +41,12 @@ func diskUsage(path string) (free, total uint64) {
 
 // startDiskMonitor periodically checks free disk on the data filesystem and
 // sends one notification when it crosses below 10%, re-arming once it recovers.
+//
+// The alert now says what is using the space, not just that it is gone. "7% free"
+// is true and useless: the natural next move is to go looking at servers, and on a
+// panel box that is the wrong place. Measured on .164: 5 GB of server data against
+// 103.8 GB of reclaimable Docker images. Naming the cause in the alert is the
+// difference between a warning and an afternoon.
 func (s *Server) startDiskMonitor() {
 	go func() {
 		path := filepath.Dir(s.cfg.Database.Path)
@@ -55,14 +61,97 @@ func (s *Server) startDiskMonitor() {
 			pct := float64(free) / float64(total) * 100
 			if pct < 10 && !alerted {
 				alerted = true
+				hint := s.reclaimableHint()
 				s.notifyAll("⚠️ Low disk space: " + strconv.FormatFloat(pct, 'f', 1, 64) +
-					"% free on the Yggdrasil data volume.")
-					go s.kvasirReact("", "host", fmt.Sprintf("low disk: %.1f%% free on the data volume", pct), "")
+					"% free on the Yggdrasil data volume." + hint)
+				go s.kvasirReact("", "host", fmt.Sprintf("low disk: %.1f%% free on the data volume%s", pct, hint), "")
 			} else if pct >= 15 {
 				alerted = false
 			}
 		}
 		check()
+		for range t.C {
+			check()
+		}
+	}()
+}
+
+// reclaimableHint describes what could be freed, as a sentence to append to a
+// disk warning. Empty when there is nothing worth mentioning, when Docker cannot
+// be reached, or when the panel has no Docker client at all — a warning that
+// trails off into "0 B is reclaimable" is worse than one that simply stops.
+func (s *Server) reclaimableHint() string {
+	du, err := s.dockerDiskUsage(context.Background())
+	if err != nil || du == nil {
+		return ""
+	}
+	total := du.ImagesReclaimable + du.VolumesReclaimable + du.BuildCacheReclaimable
+	if total < 1<<30 { // under a gigabyte is not the reason the disk is full
+		return ""
+	}
+	return fmt.Sprintf(" %s of it is reclaimable Docker leftovers (%d unused images) —"+
+		" Statistics → Reclaim space, or `sudo docker image prune -f` on the host.",
+		humanBytes(total), du.ImagesUnusedCount)
+}
+
+// Thresholds for the image-bloat warning. Two conditions, because either alone
+// misfires: a share-only rule nags a 20 GB VPS about 2 GB, and a size-only rule
+// stays silent on a large disk that is quietly filling.
+const (
+	bloatWarnShare  = 0.10 // of the whole volume
+	bloatClearShare = 0.05 // hysteresis, so it does not flap around the line
+	bloatWarnFloor  = 5 << 30
+)
+
+// startImageBloatMonitor warns while there is still room to act.
+//
+// The low-disk monitor above only speaks at 10% free, by which point a pull can
+// already fail — and on a panel box the space was not lost gradually to real use,
+// it was lost to superseded images that Restart left behind. That is worth saying
+// at 90% free just as much as at 9%, because it is trivially fixable and nothing
+// else will ever mention it.
+//
+// Hourly, not five-minutely: answering this means asking the daemon to walk its
+// own storage, which is far too expensive to poll.
+func (s *Server) startImageBloatMonitor() {
+	go func() {
+		defer recoverLog("imageBloatMonitor")
+		if s.docker == nil {
+			return
+		}
+		alerted := false
+		check := func() {
+			defer recoverLog("imageBloatCheck")
+			_, total := diskUsage(filepath.Dir(s.cfg.Database.Path))
+			if total == 0 {
+				return
+			}
+			du, err := s.dockerDiskUsage(context.Background())
+			if err != nil || du == nil {
+				return
+			}
+			r := du.ImagesReclaimable + du.VolumesReclaimable + du.BuildCacheReclaimable
+			share := float64(r) / float64(total)
+			switch {
+			case !alerted && r >= bloatWarnFloor && share >= bloatWarnShare:
+				alerted = true
+				s.notifyAll(fmt.Sprintf(
+					"🧹 Docker is holding %s of reclaimable leftovers (%.0f%% of the disk, %d unused images). "+
+						"These build up because restarting a server re-pulls its image and the old one stays behind. "+
+						"Statistics → Reclaim space, or `sudo docker image prune -f` on the host.",
+					humanBytes(r), share*100, du.ImagesUnusedCount))
+				go s.kvasirReact("", "host", fmt.Sprintf(
+					"reclaimable docker images: %s (%.0f%% of the volume, %d unused images)",
+					humanBytes(r), share*100, du.ImagesUnusedCount), "")
+			case alerted && share < bloatClearShare:
+				alerted = false
+			}
+		}
+		// Let the panel finish starting before asking the daemon to walk its storage.
+		time.Sleep(10 * time.Minute)
+		check()
+		t := time.NewTicker(6 * time.Hour)
+		defer t.Stop()
 		for range t.C {
 			check()
 		}

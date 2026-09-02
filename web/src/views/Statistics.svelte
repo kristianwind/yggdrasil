@@ -16,6 +16,8 @@
   import { api } from "../lib/api.js";
   import { livePoll } from "../lib/livePoll.js";
   import { navigate } from "../lib/router.js";
+  import { confirmDialog } from "../lib/dialog.js";
+  import { toast } from "../lib/toast.js";
   import Sparkline from "../components/Sparkline.svelte";
 
   let stats = $state(null);
@@ -118,6 +120,33 @@
     // would be a claim rather than an admission.
     if (s.disk_mb < 0) return { v: 0, text: "not measured yet", unknown: true };
     return { v: s.disk_mb, text: fmtBytes(s.disk_mb * 1024 * 1024) };
+  }
+
+  let pruning = $state(false);
+  async function reclaim() {
+    // Spell out what will and will not be touched. "Free up space" is the kind of
+    // button people press without reading, and the reassuring half — that no
+    // server can be affected — is the half worth putting in front of them.
+    const ok = await confirmDialog({
+      title: "Reclaim disk space",
+      body:
+        `This removes Docker images nothing refers to — untagged leftovers from ` +
+        `re-pulls — and should free about ${fmtBytes(reclaimable)}.\n\n` +
+        `No server is affected. Images in use by a container, running or stopped, ` +
+        `cannot be removed and are not touched.`,
+      confirmText: "Reclaim space",
+    });
+    if (!ok) return;
+    pruning = true;
+    try {
+      const r = await api.post("/system/prune-images");
+      toast(`Freed ${fmtBytes(r.freed_bytes)} from ${r.deleted} images.`, "success");
+      await load();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      pruning = false;
+    }
   }
 
   const diskPct = $derived(stats ? pct(stats.disk.used_bytes, stats.disk.total_bytes) : 0);
@@ -231,12 +260,18 @@
         </div>
         <p class="text-xs text-muted mt-2">
           These pile up because restarting a server re-pulls its image and leaves the old one behind
-          untagged. To clear them, on the host:
-          <code class="px-1 py-0.5 rounded bg-panel2 text-text">sudo docker image prune -f</code>
-          — that removes only images nothing points at. Adding <code class="px-1 py-0.5 rounded bg-panel2 text-text">-a</code>
-          also removes images whose servers are merely stopped, which forces a re-pull before they
-          can start again.
+          untagged. Reclaiming removes only images nothing points at — no server is affected, and an
+          image any container still uses cannot be removed even if it wanted to be.
         </p>
+        <div class="flex items-center gap-3 mt-3 flex-wrap">
+          <button class="btn {pruning ? 'is-busy' : ''}" onclick={reclaim} disabled={pruning}>
+            {pruning ? "Reclaiming…" : "Reclaim space"}
+          </button>
+          <span class="text-xs text-muted">
+            or on the host:
+            <code class="px-1 py-0.5 rounded bg-panel2 text-text">sudo docker image prune -f</code>
+          </span>
+        </div>
       </div>
     {/if}
 

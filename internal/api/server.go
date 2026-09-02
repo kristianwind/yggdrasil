@@ -97,6 +97,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.viol = newViolationWatcher(s)
 	s.viol.Start()
 	s.startDiskMonitor()
+	s.startImageBloatMonitor()
 	s.startStatusReconciler()
 	go s.startAutostartServers()
 	go s.autoUpdateLoop()
@@ -516,6 +517,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/system/info", s.requireAdmin(s.handleSystemInfo))
 		r.Get("/api/system/metrics", s.requireAdmin(s.handleSystemMetrics))
 		r.Get("/api/system/stats", s.requireAdmin(s.handleSystemStats))
+		r.Post("/api/system/prune-images", s.requireAdmin(s.handlePruneImages))
 		r.Get("/api/host/mounts", s.requireAdmin(s.handleHostMountsList))
 		r.Get("/api/host/browse", s.requireAdmin(s.handleHostBrowse)) // ?path=
 		r.Get("/api/system/os-updates", s.requireAdmin(s.handleOSUpdates))

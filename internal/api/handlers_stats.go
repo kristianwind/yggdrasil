@@ -112,6 +112,56 @@ func (s *Server) dockerDiskUsage(ctx context.Context) (*docker.DiskSummary, erro
 	return v, nil
 }
 
+// pruneMu serialises prunes. Two admins pressing the button at once would each
+// wait on the daemon's own lock and the second would report freeing nothing,
+// which reads like a failure rather than like "somebody beat you to it".
+var pruneMu sync.Mutex
+
+// handlePruneImages frees the space the Statistics page reports as reclaimable.
+//
+// The page deliberately had no button at first: a prune is destructive, and the
+// panel had no business triggering one. Kristian asked for the panel to help
+// rather than only report, and the argument does not survive contact with what
+// this particular prune does — it removes only DANGLING images, which are
+// untagged, unreferenced, and impossible to start a server from, and the daemon
+// refuses to remove any image a container still uses. The dangerous variant
+// (`prune -a`, which also takes the images of stopped servers) is not reachable
+// from here at all.
+//
+// Still admin-only, still audited, and still an explicit press — nothing prunes
+// on a timer. Reclaiming space is cheap to do and expensive to undo, so a human
+// decides when.
+func (s *Server) handlePruneImages(w http.ResponseWriter, r *http.Request) {
+	if s.docker == nil {
+		jsonError(w, "docker is not available", http.StatusServiceUnavailable)
+		return
+	}
+	pruneMu.Lock()
+	defer pruneMu.Unlock()
+
+	// Deliberately not r.Context(): a prune of a hundred images outlives the
+	// browser's patience, and abandoning it halfway leaves the daemon mid-delete
+	// with nobody reading the result.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	deleted, freed, err := s.docker.PruneDanglingImages(ctx)
+	if err != nil {
+		jsonError(w, "prune failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// The cached df is now wrong by exactly what was just freed, and the page will
+	// re-poll within seconds — expiring it here is the difference between the
+	// number dropping and the number appearing not to have worked.
+	duMu.Lock()
+	duVal, duAt = nil, time.Time{}
+	duMu.Unlock()
+
+	s.auditLog(r, "system.prune_images", "", map[string]any{"deleted": deleted, "freed_bytes": freed})
+	jsonOK(w, map[string]any{"deleted": deleted, "freed_bytes": freed})
+}
+
 // handleSystemStats backs the Statistics page. Admin-only: it names every server
 // on the box and how much of the machine each one is using, which is more than a
 // delegate is entitled to see about servers that are not theirs.

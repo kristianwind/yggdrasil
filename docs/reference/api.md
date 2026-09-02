@@ -627,6 +627,9 @@ The public status board caches for 15 seconds and is served with `Cache-Control:
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/system/info` | Admin | Docker health, object counts, and host CPU/memory/disk figures |
+| `GET` | `/api/system/metrics` | Admin | Whole-host samples over the last N hours (`?hours=`, default 24, max 168) — the machine's equivalent of a server's `/metrics` |
+| `GET` | `/api/system/stats` | Admin | Backs the Statistics page: host CPU/memory, a per-server ranking (CPU, memory, and data-directory size), and the disk split into server data, Docker images/volumes/build cache and everything else. A server's `disk_mb` is **`-1` when it has never been measured**, which is not the same as `0` — directories are walked hourly. `docker` is `null` when the daemon could not be asked, with the reason in `docker_error` |
+| `POST` | `/api/system/prune-images` | Admin | Remove **dangling** Docker images — untagged, unreferenced, impossible to start a server from — and report `{deleted, freed_bytes}`. The daemon refuses to remove any image a container still uses, running or stopped. The `-a` variant, which also takes the images of *stopped* servers, is deliberately unreachable from the API. Audited as `system.prune_images` |
 | `GET` | `/api/system/os-updates` | Admin | Pending host OS updates: `{supported, total, security?, reboot_required, reboot_pkgs?, cache_age_hours?, source}`. Read-only — the panel reports, it never applies. `security` is **absent** when the host can't tell, which is not the same as zero. Cached 15 minutes |
 | `POST` | `/api/system/update` | Admin | Update the panel to the latest official release |
 | `POST` | `/api/system/check-update` | Admin | Force a fresh release check, bypassing the 6-hour cache |

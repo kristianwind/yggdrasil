@@ -48,6 +48,42 @@ func (s *Server) pbsImage() string {
 	return defaultPBSImage
 }
 
+// pbsStagingRoot is where the short-lived credential file is written.
+//
+// It has to be a path the DOCKER DAEMON can resolve, which rules out /tmp: the
+// panel's unit sets PrivateTmp=yes, so the panel and the daemon do not share
+// one. Derived from the database path exactly the way server data directories
+// are (handlers_servers.go), so it is the same root the daemon already binds
+// from every day.
+//
+// Returning "" falls back to os.MkdirTemp's default, which is correct for tests
+// and for anything not running under that unit.
+func (s *Server) pbsStagingRoot() string {
+	if s.cfg == nil || s.cfg.Database.Path == "" {
+		return ""
+	}
+	root := filepath.Join(filepath.Dir(s.cfg.Database.Path), "tmp")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return ""
+	}
+	// Sweep anything a crashed run left behind. The normal path removes its own
+	// directory, but a panel killed mid-backup would otherwise leave a file
+	// containing a live PBS token sitting here forever. 0700 on the parent keeps
+	// it away from other accounts either way; this keeps it from accumulating.
+	if entries, err := os.ReadDir(root); err == nil {
+		cutoff := time.Now().Add(-24 * time.Hour)
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Name(), "ygg-pbs-") {
+				continue
+			}
+			if fi, err := e.Info(); err == nil && fi.ModTime().Before(cutoff) {
+				_ = os.RemoveAll(filepath.Join(root, e.Name()))
+			}
+		}
+	}
+	return root
+}
+
 // pbsSupported reports whether this machine can run the client at all.
 //
 // Proxmox publishes the backup client for amd64 only — there is no arm64 build
@@ -83,7 +119,19 @@ func (s *Server) pbsRun(ctx context.Context, cfg backup.Config, args []string, o
 	// The secret goes in a file, not in the environment: an -e would sit in
 	// `docker inspect` output for as long as Docker keeps the container's JSON,
 	// which outlives the backup. 0700 dir, 0600 file, both removed on the way out.
-	dir, err := os.MkdirTemp("", "ygg-pbs-")
+	//
+	// NOT under /tmp, and that is the whole reason this helper exists. The panel
+	// runs as a systemd service with PrivateTmp=yes, so its /tmp is a private
+	// mount namespace. A path created there is real to the panel and does not
+	// exist for the Docker daemon, which lives in the host namespace — the daemon
+	// answers with `invalid mount config for type "bind": bind source path does
+	// not exist`, naming a path the operator can see the panel just created. Hit
+	// in production on the first real PBS backup.
+	//
+	// The panel's own state directory is the safe place: every server's data dir
+	// is bind-mounted out of it many times a day, which is proof the daemon can
+	// see it.
+	dir, err := os.MkdirTemp(s.pbsStagingRoot(), "ygg-pbs-")
 	if err != nil {
 		return nil, fmt.Errorf("staging directory: %w", err)
 	}

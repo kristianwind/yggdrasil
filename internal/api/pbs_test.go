@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kristianwind/yggdrasil/internal/auth"
 	"github.com/kristianwind/yggdrasil/internal/backup"
+	"github.com/kristianwind/yggdrasil/internal/config"
 	"github.com/kristianwind/yggdrasil/internal/crypto"
 )
 
@@ -191,5 +194,52 @@ func TestPBSGroupMissingMatchesOnlyTheRealMessage(t *testing.T) {
 		if pbsGroupMissing([]byte(m)) {
 			t.Errorf("a real failure was mistaken for an empty group: %q", m)
 		}
+	}
+}
+
+// The credential file must NOT go under /tmp.
+//
+// The panel's systemd unit sets PrivateTmp=yes, so the panel's /tmp is a private
+// mount namespace that the Docker daemon cannot see. Staging there produced, on
+// the first real backup in production:
+//
+//	invalid mount config for type "bind": bind source path does not exist:
+//	/tmp/ygg-pbs-235232696
+//
+// — a path the panel had genuinely just created. The daemon is simply looking in
+// a different namespace. Any future change that reaches for os.MkdirTemp("")
+// reintroduces it, and it cannot be caught locally, because a test binary has no
+// PrivateTmp.
+func TestPBSStagingIsNotUnderTmp(t *testing.T) {
+	s := pbsTestServer(t)
+	base := t.TempDir()
+	s.cfg = &config.Config{}
+	s.cfg.Database.Path = filepath.Join(base, "yggdrasil.db")
+
+	root := s.pbsStagingRoot()
+	if root == "" {
+		t.Fatal("no staging root, so it would fall back to /tmp")
+	}
+	if !strings.HasPrefix(root, base) {
+		t.Errorf("staging root %q is outside the panel's state directory %q — the "+
+			"daemon is only known to be able to see the latter", root, base)
+	}
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		t.Errorf("staging root not usable: %v", err)
+	}
+	// Same root the server data directories come from, which is the thing that
+	// proves the daemon can bind-mount out of it.
+	if filepath.Dir(root) != filepath.Dir(s.cfg.Database.Path) {
+		t.Errorf("staging root %q does not share the data root %q",
+			root, filepath.Dir(s.cfg.Database.Path))
+	}
+}
+
+// With no config (tests, odd deployments) it must degrade to the default rather
+// than returning a path that does not exist.
+func TestPBSStagingRootFallsBackCleanly(t *testing.T) {
+	s := &Server{}
+	if got := s.pbsStagingRoot(); got != "" {
+		t.Errorf("expected empty fallback, got %q", got)
 	}
 }

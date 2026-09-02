@@ -86,42 +86,45 @@ func (s *Server) serverWebPort(ctx context.Context, serverID string) int {
 	return firstTCP
 }
 
-// npmAddServer creates (or refreshes) an NPM proxy host routing the server's
-// subdomain to <internal_host>:<web port> (best-effort).
+// npmAddServer creates (or refreshes) an NPM proxy host for every hostname the
+// server claims (best-effort; one failing route does not stop the others).
 func (s *Server) npmAddServer(serverID, serverName string) {
 	defer recoverLog("npmAddServer")
 	ctx := context.Background()
 
-	var sub string
-	s.db.QueryRowContext(ctx, "SELECT COALESCE(subdomain,'') FROM servers WHERE id=?", serverID).Scan(&sub)
-	if normalizeSubdomain(sub) == "" {
+	routes := s.serverRoutes(ctx, serverID)
+	if len(routes) == 0 {
 		return
-	}
-	domain := s.npmFullDomain(ctx, sub)
-	if domain == "" {
-		return
-	}
-	port := s.serverWebPort(ctx, serverID)
-	if port == 0 {
-		return // UDP-only / no web port → nothing to proxy
 	}
 	c, err := s.npmClient(ctx)
 	if err != nil || c == nil {
 		return
 	}
-
 	internalHost := firstNonEmpty(s.getSetting(ctx, "npm_internal_host"), localLANIP())
 	if internalHost == "" {
 		return
 	}
+	for _, rt := range routes {
+		s.npmApplyRoute(ctx, c, serverID, rt, internalHost)
+	}
+}
+
+// npmApplyRoute does one hostname.
+func (s *Server) npmApplyRoute(ctx context.Context, c *npm.Client, serverID string, rt serverRoute, internalHost string) {
+	domain := s.npmFullDomain(ctx, rt.Hostname)
+	if domain == "" {
+		return
+	}
+	port := s.serverRoutePort(ctx, serverID, rt.PortName)
+	if port == 0 {
+		return // UDP-only / no such port → nothing to proxy
+	}
 
 	// Reconcile: drop any existing host for this domain so we don't collide on the
 	// domain_names uniqueness (NPM rejects overlaps), then any host we previously
-	// recorded for this server (covers a subdomain change to a different domain).
+	// recorded for THIS route (covers a hostname change to a different domain).
 	npmDeleteByDomain(c, domain)
-	var oldID int
-	s.db.QueryRowContext(ctx, "SELECT COALESCE(npm_host_id,0) FROM servers WHERE id=?", serverID).Scan(&oldID)
-	if oldID != 0 {
+	if oldID := s.routeProvisionedNPM(ctx, serverID, rt); oldID != 0 {
 		_ = c.DeleteProxyHost(oldID)
 	}
 
@@ -139,11 +142,29 @@ func (s *Server) npmAddServer(serverID, serverName string) {
 		}
 	}
 	// Recover the id from the host list if the create response didn't carry one, so
-	// the stored npm_host_id is always precise for later deletes.
+	// the stored id is always precise for later deletes.
 	if id == 0 {
 		id = npmHostIDForDomain(c, domain)
 	}
-	s.db.ExecContext(ctx, "UPDATE servers SET npm_host_id=? WHERE id=?", id, serverID)
+	s.setRouteProvisionedNPM(ctx, serverID, rt, id)
+}
+
+func (s *Server) routeProvisionedNPM(ctx context.Context, serverID string, rt serverRoute) int {
+	var id int
+	if rt.Primary {
+		s.db.QueryRowContext(ctx, "SELECT COALESCE(npm_host_id,0) FROM servers WHERE id=?", serverID).Scan(&id)
+	} else {
+		s.db.QueryRowContext(ctx, "SELECT COALESCE(npm_host_id,0) FROM server_routes WHERE id=?", rt.ID).Scan(&id)
+	}
+	return id
+}
+
+func (s *Server) setRouteProvisionedNPM(ctx context.Context, serverID string, rt serverRoute, id int) {
+	if rt.Primary {
+		s.db.ExecContext(ctx, "UPDATE servers SET npm_host_id=? WHERE id=?", id, serverID)
+		return
+	}
+	s.db.ExecContext(ctx, "UPDATE server_routes SET npm_host_id=? WHERE id=?", id, rt.ID)
 }
 
 // npmDeleteByDomain removes every proxy host whose domain_names contain domain.
@@ -173,22 +194,43 @@ func npmHostIDForDomain(c *npm.Client, domain string) int {
 	return 0
 }
 
-// npmRemoveServer deletes the server's NPM proxy host (best-effort) and clears
-// the stored id.
+// npmRemoveServer deletes every NPM proxy host this server owns (best-effort)
+// and clears the stored ids. Like the Cloudflare side, this reads what was
+// PROVISIONED rather than what is configured — they differ the moment somebody
+// edits a hostname, and the provisioned one is what actually needs removing.
 func (s *Server) npmRemoveServer(serverID string) {
 	defer recoverLog("npmRemoveServer")
 	ctx := context.Background()
-	var hostID int
-	s.db.QueryRowContext(ctx, "SELECT COALESCE(npm_host_id,0) FROM servers WHERE id=?", serverID).Scan(&hostID)
-	if hostID == 0 {
+
+	ids := []int{}
+	var primary int
+	s.db.QueryRowContext(ctx, "SELECT COALESCE(npm_host_id,0) FROM servers WHERE id=?", serverID).Scan(&primary)
+	if primary != 0 {
+		ids = append(ids, primary)
+	}
+	if rows, err := s.db.QueryContext(ctx,
+		"SELECT COALESCE(npm_host_id,0) FROM server_routes WHERE server_id=? AND COALESCE(npm_host_id,0)<>0",
+		serverID); err == nil {
+		for rows.Next() {
+			var id int
+			if rows.Scan(&id) == nil && id != 0 {
+				ids = append(ids, id)
+			}
+		}
+		rows.Close()
+	}
+	if len(ids) == 0 {
 		return
 	}
 	c, err := s.npmClient(ctx)
 	if err != nil || c == nil {
 		return
 	}
-	_ = c.DeleteProxyHost(hostID)
+	for _, id := range ids {
+		_ = c.DeleteProxyHost(id)
+	}
 	s.db.ExecContext(ctx, "UPDATE servers SET npm_host_id=0 WHERE id=?", serverID)
+	s.db.ExecContext(ctx, "UPDATE server_routes SET npm_host_id=0 WHERE server_id=?", serverID)
 }
 
 // --- Settings endpoints ---

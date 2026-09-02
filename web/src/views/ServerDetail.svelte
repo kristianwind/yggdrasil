@@ -4,6 +4,53 @@
   import { livePoll } from "../lib/livePoll.js";
   import { formatTime, relativeTime } from "../lib/time.js";
   import { toast } from "../lib/toast.js";
+
+  // Extra public hostnames. Loaded alongside the server; the primary one stays in
+  // the edit form above because that is where it has always lived.
+  let extraRoutes = $state([]);
+  let routablePorts = $state([]);
+  let newRoute = $state({ hostname: "", port_name: "" });
+  let savingRoute = $state(false);
+  async function loadRoutes() {
+    try {
+      const r = await api.get(`/servers/${id}/routes`);
+      extraRoutes = (r.routes || []).filter((x) => !x.primary);
+      routablePorts = r.ports || [];
+    } catch {
+      /* non-fatal: the section simply stays empty */
+    }
+  }
+  async function addRoute() {
+    savingRoute = true;
+    try {
+      await api.post(`/servers/${id}/routes`, {
+        hostname: newRoute.hostname.trim(),
+        port_name: newRoute.port_name || "",
+      });
+      newRoute = { hostname: "", port_name: "" };
+      await loadRoutes();
+      toast("Hostname added — it is provisioned now if the server is running", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingRoute = false;
+    }
+  }
+  async function removeRoute(rt) {
+    if (!(await confirmDialog({
+      title: "Remove hostname",
+      body: `Stop serving ${rt.hostname}? The proxy rule and DNS record are deleted.`,
+      danger: true,
+      confirmText: "Remove",
+    }))) return;
+    try {
+      await api.del(`/servers/${id}/routes/${rt.id}`);
+      await loadRoutes();
+      toast("Hostname removed", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
   import { confirmDialog, promptDialog } from "../lib/dialog.js";
   import { navigate } from "../lib/router.js";
   import { user } from "../lib/auth.js";
@@ -1568,6 +1615,7 @@
     loadKvasirEvents();
     loadImportInfo();
     loadAppUpdate();
+    loadRoutes();
     await loadServer();
     // Pre-load installed mods (if this rune supports them) so the "N updates" badge
     // on the Mods tab is visible without having to open the tab first.
@@ -2712,6 +2760,47 @@
               used as-is</strong>, so one tunnel can serve several different domains — the DNS record
               is created in whichever of your Cloudflare zones matches. The route is created on start
               and removed on stop. Leave blank to disable.
+            </p>
+          </div>
+        {/if}
+        {#if $user?.role === "admin" && routablePorts.length > 0}
+          <!-- Extra hostnames. The field above holds one, pointed at the rune's web
+               port; an app with a separate admin UI, or a server that should answer
+               on two domains, needs this. Each row names its own port. -->
+          <div>
+            <span class="label">Additional hostnames (admin)</span>
+            {#if extraRoutes.length === 0}
+              <p class="text-xs text-muted">None. The hostname above is the only one this server answers on.</p>
+            {:else}
+              <div class="space-y-1 mb-2">
+                {#each extraRoutes as rt (rt.id)}
+                  <div class="flex items-center gap-2 text-sm">
+                    <code class="flex-1 truncate">{rt.hostname}</code>
+                    <span class="text-xs text-muted">
+                      → {rt.port_name || "web"}
+                    </span>
+                    <button class="btn-ghost text-xs" onclick={() => removeRoute(rt)}>Remove</button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <div class="flex flex-wrap items-center gap-2 mt-1">
+              <input class="input flex-1 min-w-48" placeholder="admin.example.com"
+                bind:value={newRoute.hostname} />
+              <select class="input w-40" bind:value={newRoute.port_name}>
+                <option value="">automatic (web)</option>
+                {#each routablePorts as p}
+                  <option value={p.name}>{p.name} · {p.port}</option>
+                {/each}
+              </select>
+              <button class="btn" onclick={addRoute} disabled={savingRoute || !newRoute.hostname}>
+                {savingRoute ? "Adding…" : "Add"}
+              </button>
+            </div>
+            <p class="text-xs text-muted mt-1">
+              Same rule as above: a bare name gets your base domain appended, a name with a dot is
+              used as-is. Only TCP ports the rune declares can be routed — a game's UDP port would
+              produce a rule that can never answer.
             </p>
           </div>
         {/if}

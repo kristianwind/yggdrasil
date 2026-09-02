@@ -832,6 +832,24 @@ that fails without a token is usually a permissions problem rather than a wrong 
 <td>Replace the full set of server-scoped grants on this server</td>
 </tr>
 <tr>
+<td><code>GET</code></td>
+<td><code>/api/servers/{id}/routes</code></td>
+<td><code>server.view</code></td>
+<td>Every public hostname this server answers on, primary first, plus the TCP ports a hostname may be pointed at. The primary lives on the server row; the rest are separate records</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/routes</code></td>
+<td>Admin</td>
+<td>Add an extra hostname, optionally naming which declared TCP port it targets (empty = the automatic choice: the port called <code>web</code>, else the first TCP one). Rejected if the hostname is already claimed on this panel, or if it is a bare label and no base domain is configured. Provisioned immediately when the server is running, otherwise on next start</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/servers/{id}/routes/{routeID}</code></td>
+<td>Admin</td>
+<td>Remove an extra hostname. The live proxy rule and DNS record are deleted <strong>before</strong> the record is forgotten — the other order loses the only note of what was provisioned</td>
+</tr>
+<tr>
 <td><code>PUT</code></td>
 <td><code>/api/servers/{id}/ports</code></td>
 <td>Admin</td>

@@ -68,24 +68,17 @@ func (s *Server) cfFullDomain(ctx context.Context, sub string) string {
 	return joinSubdomain(sub, s.getSetting(ctx, "cf_base_domain"))
 }
 
-// cfAddServer creates/refreshes a tunnel ingress rule + proxied CNAME routing the
-// server's subdomain to <internal_host>:<web port> (best-effort).
+// cfAddServer provisions every hostname the server claims: a tunnel ingress rule
+// plus a proxied CNAME for each. Best-effort throughout — a route that cannot be
+// applied is skipped rather than aborting the others, because one bad hostname
+// should not cost a server its working ones.
 func (s *Server) cfAddServer(serverID, serverName string) {
 	defer recoverLog("cfAddServer")
 	ctx := context.Background()
 
-	var sub string
-	s.db.QueryRowContext(ctx, "SELECT COALESCE(subdomain,'') FROM servers WHERE id=?", serverID).Scan(&sub)
-	if normalizeSubdomain(sub) == "" {
+	routes := s.serverRoutes(ctx, serverID)
+	if len(routes) == 0 {
 		return
-	}
-	domain := s.cfFullDomain(ctx, sub)
-	if domain == "" {
-		return
-	}
-	port := s.serverWebPort(ctx, serverID)
-	if port == 0 {
-		return // UDP-only / no web port → nothing to proxy
 	}
 	c, err := s.cfClient(ctx)
 	if err != nil || c == nil {
@@ -95,12 +88,28 @@ func (s *Server) cfAddServer(serverID, serverName string) {
 	if internalHost == "" {
 		return
 	}
+	for _, rt := range routes {
+		s.cfApplyRoute(ctx, c, serverID, rt, internalHost)
+	}
+}
 
-	// If the subdomain changed, the old hostname is still recorded — tear it down
-	// first so we don't leave an orphan ingress rule / DNS record behind.
-	var old string
-	s.db.QueryRowContext(ctx, "SELECT COALESCE(cf_hostname,'') FROM servers WHERE id=?", serverID).Scan(&old)
-	if old != "" && !strings.EqualFold(old, domain) {
+// cfApplyRoute does one hostname.
+func (s *Server) cfApplyRoute(ctx context.Context, c *cloudflare.Client, serverID string, rt serverRoute, internalHost string) {
+	domain := s.cfFullDomain(ctx, rt.Hostname)
+	if domain == "" {
+		return
+	}
+	port := s.serverRoutePort(ctx, serverID, rt.PortName)
+	if port == 0 {
+		return // UDP-only, no such port, or nothing to proxy
+	}
+
+	// If this route's hostname changed, the old one is still recorded — tear it
+	// down first so we do not leave an orphan ingress rule / DNS record behind.
+	if old := s.routeProvisionedCF(ctx, serverID, rt); old != "" && !strings.EqualFold(old, domain) {
+		if zid, zerr := c.ZoneForHost(old); zerr == nil && zid != "" {
+			c.SetZoneID(zid)
+		}
 		_ = c.RemoveHostname(old)
 		_ = c.RemoveDNS(old)
 	}
@@ -120,29 +129,102 @@ func (s *Server) cfAddServer(serverID, serverName string) {
 	if err := c.EnsureDNS(domain); errors.Is(err, cloudflare.ErrForeignTunnel) {
 		log.Printf("cfAddServer: %q already CNAMEs to a different Cloudflare tunnel — DNS left untouched to avoid hijacking it (ingress on this tunnel was still added)", domain)
 	}
-	s.db.ExecContext(ctx, "UPDATE servers SET cf_hostname=? WHERE id=?", domain, serverID)
+	s.setRouteProvisionedCF(ctx, serverID, rt, domain)
 }
 
-// cfRemoveServer deletes the server's tunnel ingress rule + CNAME (best-effort)
-// and clears the recorded hostname.
+// routeProvisionedCF / setRouteProvisionedCF read and write the hostname actually
+// provisioned for a route. The primary keeps living on the servers row, where it
+// always has, so no existing install's state has to move.
+func (s *Server) routeProvisionedCF(ctx context.Context, serverID string, rt serverRoute) string {
+	var host string
+	if rt.Primary {
+		s.db.QueryRowContext(ctx, "SELECT COALESCE(cf_hostname,'') FROM servers WHERE id=?", serverID).Scan(&host)
+	} else {
+		s.db.QueryRowContext(ctx, "SELECT COALESCE(cf_hostname,'') FROM server_routes WHERE id=?", rt.ID).Scan(&host)
+	}
+	return host
+}
+
+func (s *Server) setRouteProvisionedCF(ctx context.Context, serverID string, rt serverRoute, host string) {
+	if rt.Primary {
+		s.db.ExecContext(ctx, "UPDATE servers SET cf_hostname=? WHERE id=?", host, serverID)
+		return
+	}
+	s.db.ExecContext(ctx, "UPDATE server_routes SET cf_hostname=? WHERE id=?", host, rt.ID)
+}
+
+// cfProvisionedHosts lists every hostname currently provisioned for a server,
+// primary and extra. Teardown reads THIS rather than the configured hostnames:
+// what has to be removed is what was created, which is not the same thing the
+// moment somebody edits a hostname.
+func (s *Server) cfProvisionedHosts(ctx context.Context, serverID string) []string {
+	var out []string
+	var primary string
+	s.db.QueryRowContext(ctx, "SELECT COALESCE(cf_hostname,'') FROM servers WHERE id=?", serverID).Scan(&primary)
+	if primary != "" {
+		out = append(out, primary)
+	}
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT COALESCE(cf_hostname,'') FROM server_routes WHERE server_id=? AND COALESCE(cf_hostname,'')<>''", serverID)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var h string
+		if rows.Scan(&h) == nil && h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// cfRemoveServer deletes every tunnel ingress rule + CNAME this server owns
+// (best-effort) and clears the recorded hostnames.
 func (s *Server) cfRemoveServer(serverID string) {
 	defer recoverLog("cfRemoveServer")
 	ctx := context.Background()
-	var host string
-	s.db.QueryRowContext(ctx, "SELECT COALESCE(cf_hostname,'') FROM servers WHERE id=?", serverID).Scan(&host)
-	if host == "" {
+	hosts := s.cfProvisionedHosts(ctx, serverID)
+	if len(hosts) == 0 {
 		return
 	}
 	c, err := s.cfClient(ctx)
 	if err != nil || c == nil {
 		return
 	}
-	if zid, zerr := c.ZoneForHost(host); zerr == nil && zid != "" {
-		c.SetZoneID(zid) // remove the CNAME from the hostname's own zone
+	for _, host := range hosts {
+		if zid, zerr := c.ZoneForHost(host); zerr == nil && zid != "" {
+			c.SetZoneID(zid) // remove the CNAME from the hostname's own zone
+		}
+		_ = c.RemoveHostname(host)
+		_ = c.RemoveDNS(host)
 	}
-	_ = c.RemoveHostname(host)
-	_ = c.RemoveDNS(host)
 	s.db.ExecContext(ctx, "UPDATE servers SET cf_hostname='' WHERE id=?", serverID)
+	s.db.ExecContext(ctx, "UPDATE server_routes SET cf_hostname='' WHERE server_id=?", serverID)
+}
+
+// dropRouteHost tears down one extra route, used when it is deleted.
+func (s *Server) dropRouteHost(ctx context.Context, routeID string) {
+	defer recoverLog("dropRouteHost")
+	var host string
+	var npmID int
+	s.db.QueryRowContext(ctx,
+		"SELECT COALESCE(cf_hostname,''), COALESCE(npm_host_id,0) FROM server_routes WHERE id=?",
+		routeID).Scan(&host, &npmID)
+	if host != "" {
+		if c, err := s.cfClient(ctx); err == nil && c != nil {
+			if zid, zerr := c.ZoneForHost(host); zerr == nil && zid != "" {
+				c.SetZoneID(zid)
+			}
+			_ = c.RemoveHostname(host)
+			_ = c.RemoveDNS(host)
+		}
+	}
+	if npmID != 0 {
+		if c, err := s.npmClient(ctx); err == nil && c != nil {
+			_ = c.DeleteProxyHost(npmID)
+		}
+	}
 }
 
 // --- Settings endpoints ---

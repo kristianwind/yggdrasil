@@ -134,11 +134,18 @@ func (s *Server) startDiskAlarmLoop() {
 	}()
 }
 
-// checkDiskAlarms measures the data dir of every server with a disk threshold set
-// and fires/clears its alarm.
+// checkDiskAlarms measures every server's data dir, records the size, and
+// fires/clears the alarm for those that set a threshold.
+//
+// It used to walk only the servers with a threshold, which was the cheap and
+// obvious thing and left the panel unable to answer the one question a full disk
+// actually raises: which server is using it. Walking all of them costs one extra
+// tree walk per server per hour and gives the Statistics page a real ranking. The
+// alarm still only applies where a threshold is set — measuring and alerting are
+// separate concerns and only the second one was ever opt-in.
 func (s *Server) checkDiskAlarms() {
 	defer recoverLog("checkDiskAlarms")
-	rows, err := s.db.Query("SELECT id, data_dir, disk_alarm_mb FROM servers WHERE COALESCE(disk_alarm_mb,0) > 0 AND data_dir <> ''")
+	rows, err := s.db.Query("SELECT id, data_dir, COALESCE(disk_alarm_mb,0) FROM servers WHERE data_dir <> ''")
 	if err != nil {
 		return
 	}
@@ -156,7 +163,14 @@ func (s *Server) checkDiskAlarms() {
 	rows.Close()
 
 	for _, x := range list {
-		s.evalDiskAlarm(x.id, dirSizeMB(x.dir), x.thMB)
+		size := dirSizeMB(x.dir)
+		s.db.Exec(
+			"INSERT INTO server_disk (server_id, size_mb, ts) VALUES (?,?,datetime('now')) "+
+				"ON CONFLICT(server_id) DO UPDATE SET size_mb=excluded.size_mb, ts=excluded.ts",
+			x.id, size)
+		if x.thMB > 0 {
+			s.evalDiskAlarm(x.id, size, x.thMB)
+		}
 	}
 }
 

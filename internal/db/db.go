@@ -169,6 +169,17 @@ CREATE TABLE IF NOT EXISTS host_metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_host_metrics_ts ON host_metrics(ts);
 
+-- Latest measured size of each server's data directory. One row per server, not a
+-- time series: measuring means walking the tree, so it is sampled hourly by the
+-- disk-alarm loop (which already walks) rather than by the 5-minute sampler. The
+-- Statistics page ranks servers by this; ts is kept so the page can say how old
+-- the number is instead of implying it is live.
+CREATE TABLE IF NOT EXISTS server_disk (
+	server_id TEXT PRIMARY KEY,
+	size_mb   INTEGER NOT NULL DEFAULT 0,
+	ts        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Stability log: an unexpected container exit (crash or external stop) the panel
 -- caught while it still thought the server was running. Feeds the crash-history UI
 -- and the "flapping" badge so a silently-dying server is visible, not a mystery.

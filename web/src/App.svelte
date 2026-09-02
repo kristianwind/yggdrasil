@@ -21,6 +21,7 @@
   import Schedules from "./views/Schedules.svelte";
   import Bans from "./views/Bans.svelte";
   import Domains from "./views/Domains.svelte";
+  import Statistics from "./views/Statistics.svelte";
 
   let ready = $state(false);
   let build = $state(null); // { version, repo }
@@ -149,6 +150,7 @@
 
   const nav = [
     { path: "/", label: "Dashboard", icon: "📊" },
+    { path: "/statistics", label: "Statistics", icon: "📈", admin: true },
     { path: "/servers", label: "Servers", icon: "🖥️" },
     { path: "/runes", label: "Runes", icon: "ᚱ" },
     { path: "/schedules", label: "Schedules", icon: "⏰" },
@@ -390,6 +392,8 @@
           <Users />
         {:else if $route.parts[0] === "audit"}
           <Audit />
+        {:else if $route.parts[0] === "statistics"}
+          <Statistics />
         {:else if $route.parts[0] === "settings"}
           <Settings />
         {:else}

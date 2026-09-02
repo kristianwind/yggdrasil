@@ -656,11 +656,28 @@
     </div>
     {#if showHostHistory}
       {#if hostMetrics.length >= 2}
+        <!-- Each graph is a link into Statistics, which is where the same three
+             numbers get broken down per server and per filesystem. The graph can
+             only say the box is at 93%; the question it provokes is "because of
+             what?", and that answer lives one click away. -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-          <Sparkline values={hostCpuSeries} label="CPU" unit="%" color="rgb(var(--c-accent2))" format={(v) => v.toFixed(0)} />
-          <Sparkline values={hostRamSeries} label="RAM" unit="%" color="rgb(var(--c-accent))" format={(v) => v.toFixed(0)} />
-          <Sparkline values={hostDiskSeries} label="Disk" unit="%" color="rgb(var(--c-warn))" format={(v) => v.toFixed(0)} />
+          <button class="text-left rounded-lg hover:opacity-90 transition" onclick={() => navigate("/statistics")}
+            title="Break this down per server">
+            <Sparkline values={hostCpuSeries} label="CPU" unit="%" color="rgb(var(--c-accent2))" format={(v) => v.toFixed(0)} />
+          </button>
+          <button class="text-left rounded-lg hover:opacity-90 transition" onclick={() => navigate("/statistics")}
+            title="Break this down per server">
+            <Sparkline values={hostRamSeries} label="RAM" unit="%" color="rgb(var(--c-accent))" format={(v) => v.toFixed(0)} />
+          </button>
+          <button class="text-left rounded-lg hover:opacity-90 transition" onclick={() => navigate("/statistics")}
+            title="See where the disk went">
+            <Sparkline values={hostDiskSeries} label="Disk" unit="%" color="rgb(var(--c-warn))" format={(v) => v.toFixed(0)} />
+          </button>
         </div>
+        <p class="text-xs text-muted mt-2">
+          <button class="underline hover:text-text" onclick={() => navigate("/statistics")}>Open Statistics</button>
+          to see which servers account for these, and what is using the disk.
+        </p>
       {:else}
         <p class="text-muted text-sm mt-3">Not enough samples yet — the host is sampled every ~5 minutes. Check back shortly.</p>
       {/if}

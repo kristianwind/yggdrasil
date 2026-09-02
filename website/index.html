@@ -201,9 +201,16 @@
       <div class="card"><div class="ic">🖥️</div><h3>Real-time console &amp; stats</h3>
         <p>Live WebSocket console with command input, log streaming, per-server CPU/RAM limits and monitoring,
           and a clear installing → running → stopped lifecycle.</p></div>
+      <div class="card"><div class="ic">📈</div><h3>Where the disk actually went</h3>
+        <p>A Statistics page for the whole machine: CPU, memory and disk over time, your servers ranked
+          against each other on each — and the disk split into <b>server data versus Docker's own
+          storage</b>. On a panel that has been running a while those are wildly different numbers, and
+          the reclaimable ones come with a button.</p></div>
       <div class="card"><div class="ic">🌐</div><h3>Networking that just works</h3>
-        <p>Automatic port-forwarding (UPnP / UniFi), per-server subdomains via Nginx Proxy Manager or
-          Cloudflare Tunnel, an “online from outside” check, and connect addresses per server.</p></div>
+        <p>Automatic port-forwarding (UPnP / UniFi), public hostnames via Nginx Proxy Manager or
+          Cloudflare Tunnel — <b>several per server if you want, each pointed at the port you choose</b>,
+          across as many domains as your account owns — an “online from outside” check, and connect
+          addresses per server.</p></div>
       <div class="card"><div class="ic">💾</div><h3>Backups &amp; scheduler</h3>
         <p>Backups to local / SFTP / SMB with retention &amp; restore. Cron schedules for restarts, updates,
           backups, console commands and in-game warnings — with a run log.</p></div>
@@ -219,7 +226,10 @@
       <div class="card"><div class="ic">🔐</div><h3>Access &amp; security</h3>
         <p>Scoped multi-admin permissions, optional 2FA and passkeys, self-service password reset by email,
           API tokens, a full audit log. Log-pattern watchers flag brute-force and attack bursts and keep a
-          security-event history. Secrets encrypted at rest (AES-256-GCM); argon2id passwords.</p></div>
+          security-event history. Secrets encrypted at rest (AES-256-GCM); argon2id passwords.
+          The panel measures nothing about you — and if you want to measure your <i>own</i> install,
+          there is a field for your own analytics tag, with the security policy widened by exactly the
+          origins it needs.</p></div>
       <div class="card"><div class="ic">📥</div><h3>Migrate &amp; import</h3>
         <p>Bring what you already run. Import a WordPress site (All-in-One <code>.wpress</code>, or files
           + a database dump), a Pterodactyl egg, or a Docker Compose file turned into a rune. And move a
@@ -249,6 +259,7 @@
     <p class="sub">Installable PWA, light and dark themes, mobile-friendly — works as an app on iOS/Android.</p>
     <div class="shots">
       <figure><img src="screenshots/servers.png" alt="Servers" loading="lazy" /><figcaption>Servers — grid/table, reachability badges</figcaption></figure>
+      <figure><img src="screenshots/statistics.png" alt="Statistics" loading="lazy" /><figcaption>Statistics — where the machine's CPU, memory and disk actually go</figcaption></figure>
       <figure><img src="screenshots/server-admin.png" alt="A server's page" loading="lazy" /><figcaption>A server — safe restart, watchdog, wipe, and every rune setting as a form</figcaption></figure>
       <figure><img src="screenshots/runes.png" alt="Runes" loading="lazy" /><figcaption>Runes — one-click games &amp; apps</figcaption></figure>
       <figure><img src="screenshots/runes-github.png" alt="Browse runes on GitHub" loading="lazy" /><figcaption>Browse GitHub — install community runes in one click</figcaption></figure>

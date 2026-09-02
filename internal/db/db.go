@@ -169,6 +169,27 @@ CREATE TABLE IF NOT EXISTS host_metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_host_metrics_ts ON host_metrics(ts);
 
+-- Extra public hostnames for a server, beyond the single one on servers.subdomain.
+--
+-- The subdomain column stays the primary route and is untouched, so nothing about
+-- an existing install moves. This table is what makes "this server answers on two
+-- domains" and "route this hostname at the admin port, not the web one" possible
+-- at all: one column cannot hold either.
+--
+-- port_name names a port the RUNE declares (empty = the same automatic choice the
+-- primary makes: the port called "web", else the first TCP one). cf_hostname and
+-- npm_host_id record what was actually provisioned for this route, so teardown is
+-- precise and survives someone editing the hostname.
+CREATE TABLE IF NOT EXISTS server_routes (
+	id          TEXT PRIMARY KEY,
+	server_id   TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+	hostname    TEXT NOT NULL,
+	port_name   TEXT NOT NULL DEFAULT '',
+	cf_hostname TEXT NOT NULL DEFAULT '',
+	npm_host_id INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_server_routes_srv ON server_routes(server_id);
+
 -- Latest measured size of each server's data directory. One row per server, not a
 -- time series: measuring means walking the tree, so it is sampled hourly by the
 -- disk-alarm loop (which already walks) rather than by the 5-minute sampler. The
@@ -515,6 +536,7 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")           // NPM subdomain label/full domain for HTTP apps (empty = off)
 	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")       // NPM proxy-host id we created (0 = none)
 	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")         // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)
+	addColumnIfMissing(db, "servers", "subdomain_port", "TEXT NOT NULL DEFAULT ''")      // which rune port the primary hostname targets (empty = "web", else first TCP)
 	addColumnIfMissing(db, "servers", "host_mounts", "TEXT NOT NULL DEFAULT ''")         // admin-set host bind mounts (JSON array); read-only by default
 	addColumnIfMissing(db, "servers", "autostart", "INTEGER NOT NULL DEFAULT 1")         // start this server when the panel/host boots (default on)
 	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")       // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)

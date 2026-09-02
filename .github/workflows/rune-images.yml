@@ -4,12 +4,20 @@ name: Rune images
 # to GHCR rather than to the Gitea mirror (Gitea's container packages need auth
 # even when the repo is public, and the panel has no registry credentials).
 on:
+  # Tags only, plus the manual button — deliberately NOT `push: branches: [main]`.
+  #
+  # Auto-merge merges with GITHUB_TOKEN, and GitHub does not start new workflow
+  # runs from pushes made with that token; it is the loop guard. Since every PR
+  # in this repo is auto-merged, a main-branch trigger has effectively never
+  # fired, and nothing was red to say so — the images just quietly stayed at
+  # whatever version somebody last built by hand.
+  #
+  # A tag is pushed by a person with a personal token, so it does trigger. That
+  # also puts image publishing at the moment it matters: a release. A path filter
+  # is not used, because path filtering against a tag push is not something to
+  # rely on, and two small image builds per release cost nothing.
   push:
-    branches: [main]
-    paths:
-      - "docker/**"
-      - "deploy/pbs-client/**"
-      - ".github/workflows/rune-images.yml"
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

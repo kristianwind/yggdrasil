@@ -25,14 +25,22 @@ type Target interface {
 }
 
 // Config is the decrypted configuration for opening a target.
+//
+// It is stored as encrypted JSON, so adding a field is backward compatible: a
+// target written before the field existed decodes with it empty.
 type Config struct {
-	Type     string `json:"type"` // local | sftp | smb
+	Type     string `json:"type"` // local | sftp | smb | pbs
 	Path     string `json:"path"` // base directory / remote path / share subpath
 	Host     string `json:"host,omitempty"`
 	Port     int    `json:"port,omitempty"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
-	Share    string `json:"share,omitempty"` // SMB share name
+	Username string `json:"username,omitempty"` // for pbs: the auth-id, e.g. ygg@pbs!panel
+	Password string `json:"password,omitempty"` // for pbs: the API token secret
+	Share    string `json:"share,omitempty"`    // SMB share name
+
+	// Proxmox Backup Server only.
+	Datastore   string `json:"datastore,omitempty"`
+	Namespace   string `json:"namespace,omitempty"`   // optional; empty = the datastore root
+	Fingerprint string `json:"fingerprint,omitempty"` // server cert sha256, for self-signed installs
 }
 
 // Open connects/opens a target from its config.
@@ -45,6 +53,13 @@ func Open(cfg Config) (Target, error) {
 		return openSFTP(cfg)
 	case "smb":
 		return openSMB(cfg)
+	case PBSType:
+		// Not a Target and cannot be made into one: PBS stores deduplicated
+		// chunks of a directory, not a named blob. It runs through its own
+		// pipeline (see pbs.go). Reaching here means a caller took the archive
+		// path for a PBS target, which would upload a tar.gz that dedupes
+		// against nothing — so fail loudly instead of "working".
+		return nil, fmt.Errorf("proxmox backup server is not a stream target; use the PBS pipeline")
 	default:
 		return nil, fmt.Errorf("unsupported backup target type %q", cfg.Type)
 	}

@@ -33,6 +33,11 @@ type targetView struct {
 	Share    string `json:"share,omitempty"`
 	KeepN    int    `json:"keep_n"`
 	KeepDays int    `json:"keep_days"`
+	// Proxmox Backup Server. None of these are secret — the token SECRET is the
+	// secret, and it stays behind HasPassword like every other password here.
+	Datastore   string `json:"datastore,omitempty"`
+	Namespace   string `json:"namespace,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
 	// HasPassword lets the editor show "leave blank to keep" instead of a bare
 	// empty field. The password itself is never sent to the browser.
 	HasPassword bool `json:"has_password"`
@@ -60,6 +65,7 @@ func (s *Server) handleListBackupTargets(w http.ResponseWriter, r *http.Request)
 			ID: id, Name: name, Type: typ, Path: cfg.Path, Host: cfg.Host,
 			Port: cfg.Port, Username: cfg.Username, Share: cfg.Share,
 			KeepN: keepN, KeepDays: keepDays, HasPassword: cfg.Password != "",
+			Datastore: cfg.Datastore, Namespace: cfg.Namespace, Fingerprint: cfg.Fingerprint,
 		})
 	}
 	jsonOK(w, list)
@@ -189,6 +195,14 @@ func (s *Server) handleTestBackupTarget(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
+	if cfg.Type == backup.PBSType {
+		if err := s.pbsTest(r.Context(), *cfg); err != nil {
+			jsonError(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		jsonOK(w, map[string]string{"status": "ok"})
+		return
+	}
 	tgt, err := backup.Open(*cfg)
 	if err != nil {
 		jsonError(w, "connect failed: "+err.Error(), http.StatusBadGateway)
@@ -283,7 +297,15 @@ func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	if targetID != "" && path != "" {
 		if cfg, err := s.loadTargetConfig(r.Context(), targetID); err == nil {
-			if tgt, err := backup.Open(*cfg); err == nil {
+			if cfg.Type == backup.PBSType {
+				// Forgetting a snapshot does not free space until the PBS server
+				// runs garbage collection — chunks are shared between snapshots,
+				// so nothing else could be safe. Do not report bytes reclaimed.
+				if err := s.pbsForget(r.Context(), *cfg, path); err != nil {
+					jsonError(w, err.Error(), http.StatusBadGateway)
+					return
+				}
+			} else if tgt, err := backup.Open(*cfg); err == nil {
 				tgt.Delete(r.Context(), path)
 				tgt.Close()
 			}
@@ -313,18 +335,30 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "target unavailable", http.StatusBadGateway)
 		return
 	}
+
+	// Stop the container first so files aren't overwritten under a running game.
+	// This has to happen before either restore path, not inside one of them.
+	if containerID != "" {
+		s.docker.Stop(r.Context(), containerID, 30)
+		s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", serverID)
+	}
+
+	if cfg.Type == backup.PBSType {
+		if err := s.pbsRestore(r.Context(), *cfg, path, dataDir); err != nil {
+			jsonError(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		s.auditLog(r, "backup.restore", "server:"+serverID, map[string]string{"backup": id})
+		jsonOK(w, map[string]string{"status": "restored"})
+		return
+	}
+
 	tgt, err := backup.Open(*cfg)
 	if err != nil {
 		jsonError(w, "connect: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer tgt.Close()
-
-	// Stop the container first so files aren't overwritten under a running game.
-	if containerID != "" {
-		s.docker.Stop(r.Context(), containerID, 30)
-		s.db.ExecContext(r.Context(), "UPDATE servers SET status='stopped' WHERE id=?", serverID)
-	}
 
 	rc, err := tgt.Get(r.Context(), path)
 	if err != nil {
@@ -357,6 +391,15 @@ func (s *Server) handleDownloadBackup(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.loadTargetConfig(r.Context(), targetID)
 	if err != nil {
 		jsonError(w, "target unavailable", http.StatusBadGateway)
+		return
+	}
+	// A PBS snapshot is not a file. It is a set of deduplicated chunks that only
+	// mean anything with the datastore's index, so there is nothing to stream to
+	// a browser. Say that, rather than failing with a storage error.
+	if cfg.Type == backup.PBSType {
+		jsonError(w, "A Proxmox snapshot is stored as deduplicated chunks, not as a file, "+
+			"so it cannot be downloaded from here. Restore it to the server, or use "+
+			"proxmox-backup-client against your PBS directly.", http.StatusBadRequest)
 		return
 	}
 	tgt, err := backup.Open(*cfg)
@@ -404,6 +447,13 @@ func (s *Server) verifyBackupByID(ctx context.Context, id string) (verifyResult,
 	cfg, err := s.loadTargetConfig(ctx, targetID)
 	if err != nil {
 		return verifyResult{}, fmt.Errorf("target unavailable")
+	}
+	// PBS verifies its own chunks, server-side, against the checksums it stored —
+	// which is strictly better than re-reading a tar over the network. Claiming to
+	// verify it here would either duplicate that badly or lie.
+	if cfg.Type == backup.PBSType {
+		return verifyResult{}, fmt.Errorf(
+			"Proxmox Backup Server verifies snapshots itself; run a Verify job on the PBS datastore")
 	}
 	tgt, err := backup.Open(*cfg)
 	if err != nil {
@@ -487,6 +537,27 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	if err != nil {
 		return fail("target config: " + err.Error())
 	}
+
+	// Proxmox Backup Server is a different pipeline, not a different Target: it
+	// takes the data DIRECTORY and uploads only the chunks that changed, so there
+	// is no tar.gz to stream and no object name to store it under. Handing it the
+	// archive would dedupe against nothing — see internal/backup/pbs.go.
+	if cfg.Type == backup.PBSType {
+		snapshot, size, perr := s.runPBSBackup(ctx, *cfg, serverID, dataDir, include)
+		if perr != nil {
+			return fail(perr.Error())
+		}
+		s.db.Exec("UPDATE backups SET status='done', path=?, size_bytes=?, completed_at=? WHERE id=?",
+			snapshot, size, time.Now().UTC().Format(time.RFC3339), backupID)
+		msg := "✅ Backup complete for " + s.serverName(serverID)
+		if size > 0 {
+			msg += " (" + humanBytes(size) + ")"
+		}
+		s.notifyServer(serverID, msg)
+		s.applyPBSRetention(ctx, serverID, targetID, *cfg)
+		return nil
+	}
+
 	tgt, err := backup.Open(*cfg)
 	if err != nil {
 		return fail("connect: " + err.Error())

@@ -43,6 +43,10 @@ type AuthConfig struct {
 
 type DockerConfig struct {
 	Socket string `yaml:"socket"`
+	// PBSClientImage holds the proxmox-backup-client used by PBS backup targets.
+	// Overridable so an operator on an air-gapped or firewalled network can point
+	// it at their own mirror; empty means the default in internal/api/pbs.go.
+	PBSClientImage string `yaml:"pbs_client_image"`
 }
 
 type PortConfig struct {

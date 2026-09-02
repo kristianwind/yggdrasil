@@ -1,0 +1,152 @@
+[
+ {
+  "backup-id": "test-server-a1b2c3d4",
+  "backup-time": 1788373596,
+  "backup-type": "host",
+  "files": [
+   {
+    "crypt-mode": "none",
+    "filename": "data.pxar.didx",
+    "size": 60301056
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "catalog.pcat1.didx",
+    "size": 155
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "index.json.blob",
+    "size": 384
+   }
+  ],
+  "owner": "ygg@pbs!panel",
+  "protected": false,
+  "size": 60301595
+ },
+ {
+  "backup-id": "test-server-a1b2c3d4",
+  "backup-time": 1788373576,
+  "backup-type": "host",
+  "files": [
+   {
+    "crypt-mode": "none",
+    "filename": "data.pxar.didx",
+    "size": 300928
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "catalog.pcat1.didx",
+    "size": 137
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "index.json.blob",
+    "size": 380
+   }
+  ],
+  "owner": "ygg@pbs!panel",
+  "protected": false,
+  "size": 301445
+ },
+ {
+  "backup-id": "test-server-a1b2c3d4",
+  "backup-time": 1788373600,
+  "backup-type": "host",
+  "files": [
+   {
+    "crypt-mode": "none",
+    "filename": "data.pxar.didx",
+    "size": 60301056
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "catalog.pcat1.didx",
+    "size": 155
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "index.json.blob",
+    "size": 378
+   }
+  ],
+  "owner": "ygg@pbs!panel",
+  "protected": false,
+  "size": 60301589
+ },
+ {
+  "backup-id": "test-server-a1b2c3d4",
+  "backup-time": 1788373603,
+  "backup-type": "host",
+  "files": [
+   {
+    "crypt-mode": "none",
+    "filename": "data.pxar.didx",
+    "size": 60301061
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "catalog.pcat1.didx",
+    "size": 155
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "index.json.blob",
+    "size": 387
+   }
+  ],
+  "owner": "ygg@pbs!panel",
+  "protected": false,
+  "size": 60301603
+ },
+ {
+  "backup-id": "test-server-a1b2c3d4",
+  "backup-time": 1788373561,
+  "backup-type": "host",
+  "files": [
+   {
+    "crypt-mode": "none",
+    "filename": "data.pxar.didx",
+    "size": 300928
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "catalog.pcat1.didx",
+    "size": 137
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "index.json.blob",
+    "size": 381
+   }
+  ],
+  "owner": "ygg@pbs!panel",
+  "protected": false,
+  "size": 301446
+ },
+ {
+  "backup-id": "test-server-a1b2c3d4",
+  "backup-time": 1788373579,
+  "backup-type": "host",
+  "files": [
+   {
+    "crypt-mode": "none",
+    "filename": "data.pxar.didx",
+    "size": 300936
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "catalog.pcat1.didx",
+    "size": 137
+   },
+   {
+    "crypt-mode": "none",
+    "filename": "index.json.blob",
+    "size": 384
+   }
+  ],
+  "owner": "ygg@pbs!panel",
+  "protected": false,
+  "size": 301457
+ }
+]

@@ -6,13 +6,14 @@ put any of it — plus restarts, updates and in-game warnings — on a cron sche
 ## Backup targets
 
 A **target** is a place archives are stored. Admins configure them under
-**Settings → Integrations → Backup targets**; there are three kinds.
+**Settings → Integrations → Backup targets**; there are four kinds.
 
 | Type | UI label | What it is |
 | --- | --- | --- |
 | `local` | Local / NFS / CIFS mount | A directory on the host. Also the right choice for an NFS or CIFS share you have already mounted — point the path at the mountpoint. |
 | `sftp` | SFTP | An SFTP server, reached over SSH with a username and password. Port defaults to 22. |
 | `smb` | SMB / CIFS (direct) | An SMB2 share, spoken natively with no host mount. Needs a share name. Port defaults to 445. |
+| `pbs` | Proxmox Backup Server | An existing PBS you already run. Deduplicated, incremental snapshots instead of nightly full archives. Port defaults to 8007. [Its own section below.](#proxmox-backup-server) |
 
 Choose **+ New target**, name it, pick the type, and fill in what it asks for. Local
 wants a directory path (`/mnt/backups`); Yggdrasil creates it if it does not exist. SFTP
@@ -30,6 +31,112 @@ sent back to the browser and never logged.
 
 Two things to know about the SFTP target: it authenticates with a password (not a key),
 and it does not pin the host key. It suits a homelab NAS on your own network.
+
+## Proxmox Backup Server
+
+The first three targets all store the same thing: one gzipped tar per run, written whole
+every time. That is simple and it is fine — until the server is 40 GB and the schedule is
+nightly.
+
+A **PBS target** works differently, and the difference is the entire point. Instead of
+building an archive and uploading it, Yggdrasil hands the data directory to
+`proxmox-backup-client`, which splits it into content-defined chunks and uploads only the
+chunks your datastore does not already have. On a real 57 MB directory, measured:
+
+| Run | Transferred |
+| --- | --- |
+| First backup | 57.5 MB |
+| Again, nothing changed | **0 B** |
+| After editing one small file | 8.2 MB |
+
+Nightly backups of a large, mostly-static game world therefore cost close to nothing
+after the first one, and every night is still a full restore point rather than an
+increment that depends on the ones before it.
+
+This connects to a PBS you already run. Yggdrasil does not host one.
+
+### What you need on the PBS side
+
+Create an API token — **Configuration → Access Control → API Tokens** — and note the
+secret when it is shown. It is displayed once.
+
+Then grant permissions, and read this part twice, because it is the thing that goes
+wrong:
+
+> **Give the role to BOTH the user and the token.** A token's effective permissions are
+> the *intersection* of its own and its user's. Granting `DatastorePowerUser` to only the
+> token leaves it with nothing, and the panel reports
+> `permission check failed - missing Datastore.Audit|Datastore.Backup`, which reads like
+> a wrong password.
+
+> **Use `DatastorePowerUser`, not `DatastoreBackup`.** `DatastoreBackup` can write
+> snapshots but cannot prune them, so retention silently never runs and the datastore
+> grows without limit. If that happens, Yggdrasil warns on the server's notification
+> channel — "Backup kept, but retention could not run" — rather than letting you find out
+> when the disk fills.
+
+If your PBS uses its own self-signed certificate (the default), you also need its
+fingerprint. Get it from **Administration → Certificates**, or on the PBS host:
+
+```
+proxmox-backup-manager cert info | grep -i fingerprint
+```
+
+### Filling in the target
+
+| Field | Example | Notes |
+| --- | --- | --- |
+| Host | `pbs.lan` | Hostname or IP. IPv6 works; the panel brackets it for you. |
+| Port | *(blank)* | Defaults to 8007. |
+| Auth ID | `ygg@pbs!panel` | The **full** token id, including the `!name` part. |
+| API token secret | *(from PBS)* | Encrypted at rest, never sent back to the browser. |
+| Datastore | `backups` | The datastore name, not a path. |
+| Namespace | *(blank)* | Optional. Empty means the datastore root. |
+| Certificate fingerprint | `aa:bb:…` | Required for self-signed certificates. |
+
+Then use **Test**. It lists the datastore's backup groups, which exercises DNS, TLS, the
+fingerprint, the auth id, the token secret and the datastore name in one call — so a
+green result means a backup will reach the same place.
+
+### How snapshots are named
+
+Each panel server gets its own PBS backup group, `host/<server-name>-<short-id>`. The
+group is what makes the deduplication work: a snapshot is compared against the previous
+snapshot *in the same group*.
+
+One consequence worth knowing: **renaming a server starts a new group.** The old
+snapshots stay where they are and remain restorable from PBS directly, but the next
+backup has nothing to dedupe against and transfers everything once.
+
+### What is different from the other targets
+
+- **Retention runs on the PBS server.** "Keep latest N" becomes `--keep-last`, exactly.
+  "Keep days" becomes `--keep-daily`, which keeps the newest snapshot of each of that
+  many days *that have one* — not a rolling window of calendar days. With one backup a
+  day the two are the same thing; with several a day they are not.
+- **Deleting a snapshot does not free space immediately.** Chunks are shared between
+  snapshots, so nothing can be reclaimed until the PBS server runs garbage collection.
+- **Verify is PBS's job.** The panel's own verify re-reads a tar; for PBS, run a Verify
+  job on the datastore, which checks the stored chunk checksums properly.
+- **Download is not offered.** A snapshot is deduplicated chunks plus an index, not a
+  file, so there is nothing to hand a browser. Restore it to the server, or use
+  `proxmox-backup-client` against your PBS directly.
+- **Restore writes in place** over the running server's data directory, after stopping
+  the container — same as the other targets.
+- **A `.pxarexclude-cli` file appears** in a restored directory when the rune limits the
+  backup to certain paths. It is the client's own record of what was excluded, and it is
+  harmless.
+
+### Requirements
+
+The panel host must be **amd64**. Proxmox publishes the backup client for amd64 only, so
+a Raspberry Pi panel cannot use a PBS target; it will say so rather than failing at the
+first backup.
+
+The client itself runs in a small container the panel pulls once
+(`ghcr.io/kristianwind/yggdrasil-pbs-client`), so there is nothing to install on the
+host. On a network that cannot reach GHCR, mirror it and set `docker.pbs_client_image` in
+the panel's config.
 
 ## What a backup contains
 
@@ -150,6 +257,11 @@ deleted.
 Retention deletes the archive from the target and the row from the panel, and it only ever
 considers completed backups for that one server on that one target.
 
+On a **Proxmox Backup Server** target the same two settings are applied by PBS's own
+`prune`, which is chunk-aware; the panel then removes the rows for whatever PBS deleted,
+so the list stays equal to what is actually restorable. The mapping and its one wrinkle
+are in [Proxmox Backup Server](#proxmox-backup-server).
+
 ## Verify
 
 **Verify** on a completed backup downloads the archive and streams it through gzip and tar
@@ -157,6 +269,11 @@ to `io.Discard` — reading every byte, writing nothing anywhere. It is a real i
 check, not a size or timestamp comparison: a truncated archive, a flipped bit or a
 half-written upload fails at the gzip CRC or on a short tar entry. On success you get the
 file count and total uncompressed size; on failure you get the error that killed it.
+
+This applies to the archive targets. A **Proxmox Backup Server** snapshot is verified by
+PBS itself, against the chunk checksums it stored — a stronger check than re-reading a
+tar, and one the panel would only duplicate badly. Run a Verify job on the datastore;
+Yggdrasil's Verify button says so rather than pretending.
 
 Verify writes nothing to disk and does not touch the server. Nothing stops you running it
 on a live server mid-session.

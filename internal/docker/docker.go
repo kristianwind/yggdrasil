@@ -742,6 +742,22 @@ type EphemeralOptions struct {
 	User         string            // optional "uid:gid"; e.g. "0:0" to force root for chown
 	Network      string            // optional network to join (e.g. a stack net, to reach a db sidecar by name)
 	NetworkAlias string            // DNS alias on that network
+
+	// Argv, when non-empty, replaces the default "/bin/sh -c <Script>" with a
+	// direct exec of these arguments. Two reasons to want that: an image with no
+	// shell at all (the PBS client image is one static binary on busybox), and
+	// arguments that must never be parsed — a Proxmox API token id contains "!",
+	// and assembling a command STRING out of one is how a quoting bug ends up in
+	// the middle of somebody's backup. Passing argv means nothing is parsed.
+	Argv []string
+
+	// ReadOnlyMounts are bound read-only. A backup has no business writing to
+	// the directory it is reading, and telling the kernel so is stronger than
+	// intending it.
+	ReadOnlyMounts map[string]string
+
+	// DataDirReadOnly applies the same to DataDir.
+	DataDirReadOnly bool
 }
 
 // RunEphemeral runs a one-shot container (e.g. a gameskill install script),
@@ -758,20 +774,30 @@ func (c *Client) RunEphemeralOpts(ctx context.Context, opts EphemeralOptions, ou
 	}
 	var mounts []mount.Mount
 	if opts.DataDir != "" {
-		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: opts.DataDir, Target: "/data"})
+		mounts = append(mounts, mount.Mount{
+			Type: mount.TypeBind, Source: opts.DataDir, Target: "/data", ReadOnly: opts.DataDirReadOnly,
+		})
 	}
 	for host, target := range opts.ExtraMounts {
 		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: host, Target: target})
 	}
+	for host, target := range opts.ReadOnlyMounts {
+		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: host, Target: target, ReadOnly: true})
+	}
+
+	// Default: force the shell entrypoint so the script runs regardless of the
+	// image's own ENTRYPOINT (e.g. steamcmd images that exec steamcmd directly).
+	entrypoint, cmd := []string{"/bin/sh", "-c"}, []string{opts.Script}
+	if len(opts.Argv) > 0 {
+		entrypoint, cmd = opts.Argv, nil
+	}
 
 	resp, err := c.dc.ContainerCreate(ctx, &container.Config{
-		Image: opts.Image,
-		Env:   opts.Env,
-		User:  opts.User, // empty = image default; "0:0" forces root (for chown)
-		// Force the shell entrypoint so the script runs regardless of the image's
-		// own ENTRYPOINT (e.g. steamcmd images that exec steamcmd directly).
-		Entrypoint: []string{"/bin/sh", "-c"},
-		Cmd:        []string{opts.Script},
+		Image:      opts.Image,
+		Env:        opts.Env,
+		User:       opts.User, // empty = image default; "0:0" forces root (for chown)
+		Entrypoint: entrypoint,
+		Cmd:        cmd,
 		WorkingDir: "/data",
 	}, &container.HostConfig{
 		Mounts:    mounts,
@@ -805,7 +831,11 @@ func (c *Client) RunEphemeralOpts(ctx context.Context, opts EphemeralOptions, ou
 		}
 	case status := <-statusCh:
 		if status.StatusCode != 0 {
-			return fmt.Errorf("install script exited with code %d", status.StatusCode)
+			what := "install script"
+			if len(opts.Argv) > 0 {
+				what = filepath.Base(opts.Argv[0])
+			}
+			return fmt.Errorf("%s exited with code %d", what, status.StatusCode)
 		}
 	}
 	return nil

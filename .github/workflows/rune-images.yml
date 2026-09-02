@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "docker/**"
+      - "deploy/pbs-client/**"
       - ".github/workflows/rune-images.yml"
   workflow_dispatch:
 
@@ -40,3 +41,35 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/claude-code-rc:latest
+
+  # The proxmox-backup-client used by PBS backup targets. Not a rune, but the
+  # same constraint applies and for the same reason: the panel pulls it with no
+  # registry credentials, so it has to be anonymously pullable.
+  pbs-client:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 only, and this one is not a choice: Proxmox publishes no arm64
+      # build of the backup client, which is why the panel refuses PBS targets
+      # on other architectures rather than shipping an image that cannot exec.
+      - uses: docker/build-push-action@v6
+        with:
+          context: deploy/pbs-client
+          platforms: linux/amd64
+          push: true
+          # Both tags, and the version one is what the panel actually pulls
+          # (internal/api/pbs.go). :latest exists for people poking at it by hand
+          # — a backup tool should not float, so nothing in the product uses it.
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/yggdrasil-pbs-client:4.0.19
+            ghcr.io/${{ github.repository_owner }}/yggdrasil-pbs-client:latest

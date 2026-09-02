@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "Open-source home automation hub. The dashboard runs on the panel-allocated web port; first launch walks you through onboarding. NOTE: it runs bridged, not host-network, so the cloud/API integrations work but local auto-discovery (mDNS) and directly-attached USB radios (Zigbee/Z-Wave dongles) are not available through the panel's per-server model — use network-based integrations, or run those on a host-network deployment."
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # Home Assistant runs via the image's own init (keep the entrypoint, run as root).
@@ -29,9 +29,24 @@ gameskill:
 
   startup:
     command: ""
-    # HA takes a while on first boot (it installs Python deps); this line marks a
-    # fully-started instance.
-    done_regex: 'Home Assistant initialized in'
+    # No done_regex, and that is measured rather than assumed.
+    #
+    # This used to match 'Home Assistant initialized in'. On the current image that
+    # line is never printed — not to stdout, not to /config/home-assistant.log.
+    # Home Assistant logs only WARNING and above to the console by default, and the
+    # readiness line is INFO. Checked on 2026-09-02 against
+    # ghcr.io/home-assistant/home-assistant:stable: the container served the full
+    # dashboard on :8123 for eight minutes while the phrase appeared nowhere in
+    # thirteen lines of log.
+    #
+    # So the server sat at "starting" forever while working perfectly — the failure
+    # is invisible until somebody wonders why the badge never turns green.
+    #
+    # Absent regex means "the container is up, call it running", which is the
+    # honest answer for an app that does not announce itself. Do not replace this
+    # with a WARNING line that happens to appear: those are incidental, not a
+    # readiness signal, and picking one would work today and break on the release
+    # that stops warning about it.
 
   ports:
     - { name: web, default: 8123, protocol: tcp }

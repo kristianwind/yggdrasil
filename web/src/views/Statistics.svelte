@@ -77,6 +77,16 @@
 
   // The disk split, as segments of one bar. Order is fixed rather than sorted by
   // size so the bar does not reshuffle itself under the reader between polls.
+  //
+  // Colour carries the grouping, because the grouping is the point of the chart:
+  // one green for what is yours, one hue in three weights for the three things
+  // Docker holds, and neutral grey for the remainder. The first cut used
+  // --c-accent for volumes and --c-accent2 for server data, which is worse than
+  // it sounds: in the LIGHT theme those two variables are the same green
+  // (45 164 78), so the legend showed two identical swatches for the two
+  // categories the page most wants you to tell apart — and the greens visually
+  // filed Docker's volumes alongside server data, which is exactly the wrong
+  // reading. Never assume accent and accent2 differ; in one theme they do not.
   const segments = $derived.by(() => {
     const d = stats?.disk;
     if (!d) return [];
@@ -85,13 +95,16 @@
       { key: "servers", label: "Server data", bytes: d.server_data_bytes, color: "rgb(var(--c-accent2))" },
     ];
     if (k) {
+      // Amber, not red: images filling the disk is the normal state of a panel
+      // box, not a fault. It should draw the eye without reading as an alarm —
+      // the alarm, if there is one, is the reclaimable box underneath.
       out.push(
         { key: "images", label: "Docker images", bytes: k.images_bytes, color: "rgb(var(--c-warn))" },
-        { key: "volumes", label: "Docker volumes", bytes: k.volumes_bytes, color: "rgb(var(--c-accent))" },
-        { key: "build", label: "Build cache", bytes: k.build_cache_bytes, color: "rgb(var(--c-accent) / 0.55)" },
+        { key: "volumes", label: "Docker volumes", bytes: k.volumes_bytes, color: "rgb(var(--c-warn) / 0.62)" },
+        { key: "build", label: "Build cache", bytes: k.build_cache_bytes, color: "rgb(var(--c-warn) / 0.34)" },
       );
     }
-    out.push({ key: "other", label: "Everything else", bytes: d.other_bytes, color: "rgb(var(--c-muted))" });
+    out.push({ key: "other", label: "Everything else", bytes: d.other_bytes, color: "rgb(var(--c-muted) / 0.75)" });
     return out.filter((s) => s.bytes > 0);
   });
 
@@ -226,8 +239,12 @@
 
     <div class="flex h-3 rounded overflow-hidden mt-3 bg-panel2">
       {#each segments as seg}
+        <!-- The separator is an inset shadow rather than a flex gap: gaps would push
+             the widths past 100% and clip the last segment, quietly distorting the
+             one thing the bar is for. -->
         <div
-          style="width:{pct(seg.bytes, stats.disk.used_bytes)}%; background:{seg.color}"
+          style="width:{pct(seg.bytes, stats.disk.used_bytes)}%; background:{seg.color};
+                 box-shadow: inset -1px 0 0 rgb(var(--c-panel))"
           title="{seg.label}: {fmtBytes(seg.bytes)}"></div>
       {/each}
     </div>

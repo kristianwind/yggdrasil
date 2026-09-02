@@ -86,7 +86,7 @@ proxmox-backup-manager cert info | grep -i fingerprint
 
 | Field | Example | Notes |
 | --- | --- | --- |
-| Host | `pbs.lan` | Hostname or IP. IPv6 works; the panel brackets it for you. |
+| Host | `pbs.lan` | Hostname or IP, and it must resolve **from the panel's host**. IPv6 works; the panel brackets it for you. |
 | Port | *(blank)* | Defaults to 8007. |
 | Auth ID | `ygg@pbs!panel` | The **full** token id, including the `!name` part. |
 | API token secret | *(from PBS)* | Encrypted at rest, never sent back to the browser. |
@@ -96,7 +96,14 @@ proxmox-backup-manager cert info | grep -i fingerprint
 
 Then use **Test**. It lists the datastore's backup groups, which exercises DNS, TLS, the
 fingerprint, the auth id, the token secret and the datastore name in one call — so a
-green result means a backup will reach the same place.
+green result means a backup will reach the same place. Use it before attaching a schedule;
+it fails in seconds where a backup fails after the container has started.
+
+One name to be careful with: on a **Tailscale** network, a `*.ts.net` MagicDNS name only
+resolves if MagicDNS is actually enabled on the panel's host. If it is not, the backup
+fails with `dns error: no record found` — which reads like the PBS server is down. The
+Tailscale IP (`100.x.y.z`) always works, and the panel reaches it from inside the backup
+container the same way it reaches any other address.
 
 ### How snapshots are named
 

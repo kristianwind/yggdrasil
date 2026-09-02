@@ -163,7 +163,7 @@ fingerprint. Get it from <strong>Administration → Certificates</strong>, or on
 <tr>
 <td>Host</td>
 <td><code>pbs.lan</code></td>
-<td>Hostname or IP. IPv6 works; the panel brackets it for you.</td>
+<td>Hostname or IP, and it must resolve <strong>from the panel&rsquo;s host</strong>. IPv6 works; the panel brackets it for you.</td>
 </tr>
 <tr>
 <td>Port</td>
@@ -199,7 +199,13 @@ fingerprint. Get it from <strong>Administration → Certificates</strong>, or on
 </table>
 <p>Then use <strong>Test</strong>. It lists the datastore&rsquo;s backup groups, which exercises DNS, TLS, the
 fingerprint, the auth id, the token secret and the datastore name in one call — so a
-green result means a backup will reach the same place.</p>
+green result means a backup will reach the same place. Use it before attaching a schedule;
+it fails in seconds where a backup fails after the container has started.</p>
+<p>One name to be careful with: on a <strong>Tailscale</strong> network, a <code>*.ts.net</code> MagicDNS name only
+resolves if MagicDNS is actually enabled on the panel&rsquo;s host. If it is not, the backup
+fails with <code>dns error: no record found</code> — which reads like the PBS server is down. The
+Tailscale IP (<code>100.x.y.z</code>) always works, and the panel reaches it from inside the backup
+container the same way it reaches any other address.</p>
 <h3 id="how-snapshots-are-named">How snapshots are named</h3>
 <p>Each panel server gets its own PBS backup group, <code>host/&lt;server-name&gt;-&lt;short-id&gt;</code>. The
 group is what makes the deduplication work: a snapshot is compared against the previous

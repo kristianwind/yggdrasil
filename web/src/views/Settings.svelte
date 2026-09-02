@@ -3185,7 +3185,14 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label" for="t-host">Host</label>
-            <input id="t-host" class="input" bind:value={form.host} placeholder={form.type === "pbs" ? "pbs.lan" : ""} />
+            <input id="t-host" class="input" bind:value={form.host} placeholder={form.type === "pbs" ? "pbs.lan or 100.x.y.z" : ""} />
+            {#if form.type === "pbs"}
+              <p class="text-xs text-muted mt-1">
+                Must resolve from this panel's host. On a Tailscale network without
+                MagicDNS a <code>*.ts.net</code> name will not resolve — use the
+                Tailscale IP instead.
+              </p>
+            {/if}
           </div>
           <div>
             <label class="label" for="t-port">Port (optional)</label>

@@ -66,6 +66,115 @@
     { id: "integrations", label: "Integrations" },
   ];
   let tab = $state(localStorage.getItem("ygg_settings_tab") || "system");
+
+  // --- Search ---------------------------------------------------------------
+  //
+  // Six tabs and roughly forty sections: the hard part of Settings is not
+  // reading a page, it is knowing WHICH page. So the index is built from the
+  // rendered DOM rather than declared in a list here — the same reasoning
+  // SectionNav uses, and for the same reason: a hand-kept list of settings would
+  // be wrong within a week, and wrong in the worst way, because a missing entry
+  // looks exactly like a setting that does not exist.
+  //
+  // This is why every tab is rendered and the inactive ones hidden with CSS
+  // (`data-tab` + `class:hidden`) instead of being switched with {#if}. Nothing
+  // else can see into a tab the user has not opened.
+  let query = $state("");
+  let settingsRoot = $state(null);
+  let hits = $state([]);
+  let hitIndex = $state(0);
+
+  const tabLabel = (id) => settingsTabs.find((t) => t.id === id)?.label ?? id;
+
+  // A section, plus the field labels under it, so "fingerprint" finds the PBS
+  // target editor and not just headings that happen to contain the word.
+  function buildSearchIndex() {
+    if (!settingsRoot) return [];
+    const out = [];
+    for (const pane of settingsRoot.querySelectorAll("[data-tab]")) {
+      const tabId = pane.dataset.tab;
+      let current = null;
+      // Walk headings and labels in document order so each label is attributed
+      // to the heading above it.
+      for (const el of pane.querySelectorAll("h2, label, h3")) {
+        const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+        if (!text) continue;
+        if (el.tagName === "H2") {
+          current = { tab: tabId, id: el.id, title: text, terms: [text.toLowerCase()] };
+          out.push(current);
+        } else if (current && text.length < 60) {
+          current.terms.push(text.toLowerCase());
+        }
+      }
+    }
+    return out;
+  }
+
+  function runSearch(q) {
+    const needle = q.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const index = buildSearchIndex();
+    const scored = [];
+    for (const entry of index) {
+      if (!entry.id) continue;
+      // Rank a title match above a field match — "Backups" should land on the
+      // Backups section, not on some other section that mentions the word.
+      const inTitle = entry.title.toLowerCase().includes(needle);
+      const field = entry.terms.slice(1).find((t) => t.includes(needle));
+      if (!inTitle && !field) continue;
+      scored.push({
+        tab: entry.tab,
+        id: entry.id,
+        title: entry.title,
+        // Show WHY it matched when the title alone does not explain it.
+        detail: inTitle ? "" : field,
+        rank: inTitle ? 0 : 1,
+      });
+    }
+    scored.sort((a, b) => a.rank - b.rank);
+    return scored.slice(0, 12);
+  }
+
+  $effect(() => {
+    hits = runSearch(query);
+    hitIndex = 0;
+  });
+
+  function goToHit(hit) {
+    if (!hit) return;
+    selectTab(hit.tab);
+    query = "";
+    // The target tab has to be visible before it can be scrolled to; hidden
+    // elements have no layout, so scrollIntoView on one is a no-op.
+    setTimeout(() => {
+      const el = document.getElementById(hit.id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      // A brief highlight, because jumping to a heading in a page of headings
+      // leaves people hunting for what just moved.
+      el.classList.add("ygg-search-hit");
+      setTimeout(() => el.classList.remove("ygg-search-hit"), 1600);
+    }, 0);
+  }
+
+  function searchKeydown(e) {
+    if (!hits.length) {
+      if (e.key === "Escape") query = "";
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      hitIndex = (hitIndex + 1) % hits.length;
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      hitIndex = (hitIndex - 1 + hits.length) % hits.length;
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      goToHit(hits[hitIndex]);
+    } else if (e.key === "Escape") {
+      query = "";
+    }
+  }
   function selectTab(id) {
     tab = id;
     try {
@@ -1479,7 +1588,56 @@
   }
 </script>
 
-<h1 class="text-2xl font-semibold mb-4">Settings</h1>
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  <h1 class="text-2xl font-semibold">Settings</h1>
+  <!-- Search across every tab, not just this one: the hard part here is knowing
+       which tab a setting lives in. -->
+  <div class="relative ml-auto w-full sm:w-80">
+    <input
+      class="input w-full"
+      type="search"
+      placeholder="Search settings…"
+      aria-label="Search settings"
+      bind:value={query}
+      onkeydown={searchKeydown}
+    />
+    {#if query.trim().length >= 2}
+      <div class="absolute z-40 mt-1 w-full card p-1 max-h-80 overflow-auto shadow-lg">
+        {#if hits.length === 0}
+          <!-- "No SECTION matches", not "no setting". Sections are indexed
+               completely; fields are only indexed where they are rendered, so
+               anything inside a dialog (a backup target's fields, a rune's
+               variables) is invisible here. Claiming no setting matches would be
+               the worst kind of wrong: it reads as "that does not exist". -->
+          <div class="px-3 py-2 text-sm text-muted">
+            No section matches “{query.trim()}”. Fields inside dialogs aren’t searched —
+            try the section they live in.
+          </div>
+        {:else}
+          {#each hits as h, i}
+            <button
+              class="w-full text-left px-3 py-2 rounded text-sm {i === hitIndex
+                ? 'bg-panel2 text-text'
+                : 'hover:bg-panel2 text-text'}"
+              onclick={() => goToHit(h)}
+              onmouseenter={() => (hitIndex = i)}
+            >
+              <div class="flex items-baseline gap-2">
+                <span class="truncate">{h.title}</span>
+                <span class="ml-auto shrink-0 text-[11px] uppercase tracking-wide text-muted">
+                  {tabLabel(h.tab)}
+                </span>
+              </div>
+              {#if h.detail}
+                <div class="text-xs text-muted truncate">{h.detail}</div>
+              {/if}
+            </button>
+          {/each}
+        {/if}
+      </div>
+    {/if}
+  </div>
+</div>
 
 <div class="flex flex-wrap gap-1 border-b border-border mb-6">
   {#each settingsTabs as t}
@@ -1498,10 +1656,10 @@
      sections. These pages run to thousands of lines rendered, so finding one
      setting meant scrolling and hoping. SectionNav reads the headings from the DOM,
      so it stays correct as sections are added. -->
-<div class="flex gap-6 items-start">
+<div class="flex gap-6 items-start" bind:this={settingsRoot}>
   <div class="flex-1 min-w-0" bind:this={settingsContent}>
 
-{#if tab === "system"}
+<div data-tab="system" class:hidden={tab !== "system"}>
 <!-- Panel name -->
 <h2 class="text-xl font-semibold mb-2">Panel name</h2>
 <p class="text-muted mb-3 text-sm">
@@ -1988,9 +2146,9 @@
     <path d="M7.5 5.6c0-.9.8-1.1.8-2M11 5.6c0-.9.8-1.1.8-2M14.5 5.6c0-.9.8-1.1.8-2"/>
   </svg>
   Buy me a coffee ↗</a>
-{/if}
+</div>
 
-{#if tab === "network"}
+<div data-tab="network" class:hidden={tab !== "network"}>
 <!-- Network -->
 <h2 class="text-xl font-semibold mb-2">Network</h2>
 <p class="text-muted mb-4 text-sm">The public hostname players use to connect. It's shown as the connect address on each server's page.</p>
@@ -2113,9 +2271,9 @@
   </div>
 </div>
 
-{/if}
+</div>
 
-{#if tab === "domains"}
+<div data-tab="domains" class:hidden={tab !== "domains"}>
 <!-- NPM subdomain routing -->
 <h2 class="text-xl font-semibold mb-2">Nginx Proxy Manager (subdomains)</h2>
 <p class="text-muted mb-4 text-sm">
@@ -2213,9 +2371,9 @@
   </div>
 </div>
 
-{/if}
+</div>
 
-{#if tab === "security"}
+<div data-tab="security" class:hidden={tab !== "security"}>
 <!-- Two-factor auth -->
 <h2 class="text-xl font-semibold mb-2">Two-factor authentication</h2>
 <p class="text-muted mb-4 text-sm">Protect your account with a TOTP authenticator app.</p>
@@ -2432,13 +2590,13 @@
   {/if}
 </div>
 
-{/if}
+</div>
 
-{#if tab === "realms"}
+<div data-tab="realms" class:hidden={tab !== "realms"}>
 <RealmManager />
-{/if}
+</div>
 
-{#if tab === "integrations"}
+<div data-tab="integrations" class:hidden={tab !== "integrations"}>
 <!-- Discord status board -->
 <h2 class="text-xl font-semibold mb-2">Discord status board</h2>
 <p class="text-muted mb-4 text-sm">
@@ -3305,9 +3463,22 @@
     </div>
   </div>
 {/if}
-{/if}
+</div>
 
   </div>
 
   <SectionNav container={settingsContent} rescan={tab} />
 </div>
+
+<style>
+  /* Jumping to a heading in a page full of headings leaves people hunting for
+     what moved. This fades out on its own so it never becomes permanent noise. */
+  :global(.ygg-search-hit) {
+    animation: ygg-search-flash 1.6s ease-out;
+    border-radius: 0.25rem;
+  }
+  @keyframes ygg-search-flash {
+    0%, 30% { background: rgb(var(--accent-rgb, 99 102 241) / 0.18); }
+    100% { background: transparent; }
+  }
+</style>

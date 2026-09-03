@@ -30,7 +30,26 @@
       items = [];
       return;
     }
-    const found = [...container.querySelectorAll("h2")];
+    // Give EVERY heading an id, including the ones in hidden tabs. The rail below
+    // only lists the visible ones, but Settings' search jumps to headings in
+    // other tabs and needs them addressable before that tab is ever shown.
+    for (const el of container.querySelectorAll("h2")) {
+      const label = (el.textContent || "").trim();
+      if (!label || el.id) continue;
+      let id = slug(label);
+      let n = 2;
+      while (document.getElementById(id)) id = `${slug(label)}-${n++}`;
+      el.id = id;
+      el.style.scrollMarginTop = "1.5rem";
+    }
+    // Only headings that are actually on screen. Settings renders all six tabs at
+    // once and hides the inactive ones (so the search box can index every tab
+    // without a hand-kept list), which would otherwise put all six tabs' sections
+    // in this rail. offsetParent is null for anything inside a display:none
+    // subtree, which is exactly the test needed and costs one property read.
+    const found = [...container.querySelectorAll("h2")].filter(
+      (el) => el.offsetParent !== null,
+    );
     const seen = new Set();
     const list = [];
     for (const el of found) {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -59,15 +60,32 @@ func TestFleetActivityMergesSourcesInTimeOrder(t *testing.T) {
 	s := testServer(t)
 	id := seedServer(t, s, "garageristeriet.dk")
 
+	// Three events an hour apart on ONE UTC day, anchored to yesterday.
+	//
+	// They used to be literals on 2026-08-06, which passed for a month and then
+	// failed every run from 2026-09-05 onwards — 720 hours after the date someone
+	// typed — with "got 0 items, want 3", naming neither the window nor the year.
+	// A fixture with a date in it is a test with an expiry date on it.
+	//
+	// Same day matters and is not incidental: the bug being pinned is a raw string
+	// comparison, where a space sorts before a T, so a crash sinks below an audit
+	// row from the same day whatever the clock said. Two different days would sort
+	// correctly by accident and the test would pass through the bug. Yesterday is
+	// always in the past, always one day, and always inside the 720h window.
+	day := time.Now().UTC().AddDate(0, 0, -1).Truncate(24 * time.Hour)
+	crashTS := day.Add(10 * time.Hour).Format(time.DateTime) // "YYYY-MM-DD HH:MM:SS"
+	auditTS := day.Add(11 * time.Hour).Format(time.RFC3339)  // "…T…Z", as audit_log stores it
+	alertTS := day.Add(12 * time.Hour).Format(time.DateTime)
+
 	// Deliberately inserted out of order, and in the two different timestamp
 	// formats the real tables use.
-	s.db.Exec(`INSERT INTO server_crashes (server_id, ts, exit_code) VALUES (?, '2026-08-06 10:00:00', 137)`, id)
+	s.db.Exec(`INSERT INTO server_crashes (server_id, ts, exit_code) VALUES (?, ?, 137)`, id, crashTS)
 	s.db.Exec(`INSERT INTO audit_log (id, ts, action, username, resource) VALUES (?,?,?,?,?)`,
-		uuid.New().String(), "2026-08-06T11:00:00Z", "server.stop", "admin", "server:"+id)
+		uuid.New().String(), auditTS, "server.stop", "admin", "server:"+id)
 	s.db.Exec(`INSERT INTO alerts (id, server_id, key, class, title, reason, sources, hits, paged, created_at)
 	           VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		uuid.New().String(), id, "watcher:w1", "incident", "wp-login flood",
-		"one source, traffic getting through", "203.0.113.9", 400, 1, "2026-08-06 12:00:00")
+		"one source, traffic getting through", "203.0.113.9", 400, 1, alertTS)
 
 	got := fleetActivity(t, s, "?hours=720")
 	if len(got.Items) != 3 {

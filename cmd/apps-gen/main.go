@@ -39,6 +39,7 @@ var iconSlug = map[string]string{
 	"it-tools":          "it-tools",
 	"unifi-network":     "unifi",
 	"qbittorrentvpn":    "qbittorrent",
+	"opencloud":         "open-cloud",
 }
 
 // iconExts are the formats we vendor, best first. The same list decides what

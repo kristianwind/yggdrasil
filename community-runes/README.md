@@ -41,6 +41,7 @@ forward it / reverse-proxy it as you like.
 | `jellyfin.yaml` | jellyfin/jellyfin | 8096 | media server (add a `/media` mount via Files/edit) |
 | `wordpress.yaml` | wordpress | 80 | **app stack** — website/CMS; the panel bundles its MariaDB database, no separate DB rune needed |
 | `nextcloud.yaml` | lscr.io/linuxserver/nextcloud | 443 | files/cloud over HTTPS (self-signed); SQLite by default. Set PUID/PGID to the data-dir owner (default 999:982) |
+| `opencloud.yaml` | opencloudeu/opencloud | 9200 | files/sync-and-share, one container, no database. Admin password is set at INSTALL only (blank = generated into the install log); reset later with `docker exec -it ygg-<id> opencloud idm resetpassword -u admin`. Needs an **https** address — serves its own self-signed cert unless you set `PROXY_TLS=false` behind a domain |
 | `phpmyadmin.yaml` | phpmyadmin | 80 | web UI for MySQL/MariaDB — point it at a MariaDB rune (PMA_ARBITRARY=1 = type any host at login) |
 | `adminer.yaml` | adminer | 8080 | lightweight single-file DB manager (MySQL/Postgres/SQLite); enter the DB host at login |
 | `portainer.yaml` | portainer/portainer-ce | 9443 | Docker UI over HTTPS. Managing the LOCAL Docker needs `/var/run/docker.sock` mounted (not auto-mounted) — use remote endpoints/agents or add the socket manually |

@@ -1,0 +1,132 @@
+gameskill:
+  id: euro-office
+  name: "Euro Office"
+  category: "Apps"
+  description: "Document server for OpenCloud — edit Word, Excel and PowerPoint files in the browser (ONLYOFFICE-based, spoken over WOPI). Runs as its own server with its own subdomain; point an OpenCloud server at it."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # This is a companion to the opencloud rune, not a standalone app: on its own it
+  # renders nothing you can reach. OpenCloud holds the files and mints the WOPI
+  # token; this serves the editor the browser loads.
+  #
+  # 🔴 It has to be its OWN server, because the browser loads the editor straight
+  # from here — so it needs its own public address, and in this panel a hostname
+  # binds to a port the RUNE declares (handlers_routes.go: serverRoutePort walks
+  # gs.Ports). A sidecar's ports are keyed "<service>.<port>" and that loop never
+  # matches them, so an app-stack sidecar can never be given a domain. Two servers,
+  # two subdomains — and one office server can serve several OpenCloud servers.
+  #
+  # The image is a full ONLYOFFICE-style stack in one container: nginx, the
+  # document service, and its own PostgreSQL, RabbitMQ and Redis, started by
+  # supervisord as root. So it keeps its own entrypoint and is pinned to root
+  # rather than the panel's uid — the nextcloud/gitea pattern. With
+  # keep_entrypoint the /etc/passwd shim is skipped, which is fine here: uid 0
+  # exists in every image.
+  docker:
+    image: "ghcr.io/euro-office/documentserver:{{EO_IMAGE_TAG}}"
+    # Only this one directory is persisted, and that is deliberate. It holds the
+    # WOPI keypair and the secure-link secret, which must survive a restart.
+    #
+    # The other three paths the upstream docs list are NOT mounted, because a bind
+    # mount shadows what the image ships there. /etc/euro-office/documentserver
+    # holds ten config files, and mounting an empty directory over it kills the
+    # container on first start with
+    #   jq: error: Could not open file /etc/euro-office/documentserver/local.json
+    # — measured. /var/lib/euro-office/documentserver (App_Data) and the log
+    # directory ship content too. Their contents are rebuilt from the environment
+    # on every start, so leaving them inside the container costs nothing.
+    data_path: /var/www/euro-office/Data
+    keep_entrypoint: true
+    user: "0:0"
+
+  variables:
+    # There is no released version tag to pin to: the repository publishes
+    # `latest`, `nightly` and `latest-dev` plus per-commit build tags, and no
+    # semver. So a restart re-pulls whatever `latest` is that day. That is worth
+    # knowing rather than hiding — pin a build tag here if a release ever breaks
+    # editing, and see https://github.com/Euro-Office/DocumentServer/releases.
+    - key: EO_IMAGE_TAG
+      name: "Image tag (no stable release tags exist upstream — `latest` moves)"
+      type: string
+      default: "latest"
+
+    # Signs requests between the editor in the browser and the document service.
+    # HS256, so anything shorter than 32 characters is refused — the pattern catches
+    # that in the form rather than letting it become a blank editor pane.
+    #
+    # Blank is a legitimate answer and not a trap: measured, the entrypoint then
+    # generates a 32-character secret of its own and the server comes up serving
+    # /hosting/discovery normally. It is regenerated whenever the container is
+    # recreated, which costs nothing in an OpenCloud pairing — WOPI authenticates
+    # with the access token OpenCloud mints, and nothing here shares this secret
+    # with it. Set one if you also talk to the document server directly.
+    - key: JWT_SECRET
+      name: "Signing secret (optional — blank means the server generates its own each time)"
+      type: string
+      secret: true
+      default: ""
+      pattern: '^.{32,}$'
+      hint: "must be at least 32 characters — the document server signs with HS256 and rejects anything shorter"
+
+    - key: JWT_ENABLED
+      name: "Require signed requests"
+      type: bool
+      default: true
+
+    # The whole point of this server in an OpenCloud pairing. Off would leave a
+    # document server that only speaks ONLYOFFICE's own protocol, which nothing
+    # here talks.
+    - key: WOPI_ENABLED
+      name: "Speak WOPI (leave on — this is how OpenCloud talks to it)"
+      type: bool
+      default: true
+
+    # The document server fetches the file back from OpenCloud over the address
+    # OpenCloud gave it. Both defaults exist for the panel's own no-domain shape,
+    # where that address is http://<host>:<port> with a private IP and a
+    # self-signed certificate: without these the fetch is refused and the editor
+    # opens on an empty document with no error anywhere obvious.
+    #
+    # Give both servers real subdomains with real certificates and you can turn
+    # them off.
+    - key: ALLOW_PRIVATE_IP_ADDRESS
+      name: "Allow fetching from private/LAN addresses"
+      type: bool
+      default: true
+    - key: USE_UNAUTHORIZED_STORAGE
+      name: "Accept a self-signed certificate from OpenCloud"
+      type: bool
+      default: true
+
+  # No install step: the image builds its own database and configuration on first
+  # start, and there is nothing to stage in the data directory. (The WOPI keypair
+  # is generated by the entrypoint.)
+
+  startup:
+    # keep_entrypoint — the image's own /entrypoint.sh brings up supervisord and
+    # everything under it. It has no CMD, so nothing is passed to it.
+    command: ""
+    # ⚠️ This is a hint, not the readiness signal, and the difference matters here.
+    # The panel flips a server with a `web` port to running as soon as that port
+    # ACCEPTS (reconcile.go dials it), and nginx accepts long before the document
+    # service behind it does: measured, /hosting/discovery answered 502 for about
+    # a minute after the port opened, on a cold start that also had to generate
+    # the font list. So expect "running" a minute before documents will open, and
+    # check /hosting/discovery rather than the badge when something looks wrong.
+    # Measured on a cold start and a restart: this line appears on both.
+    done_regex: 'Generating AllFonts\.js'
+    # Six services shut down in sequence behind supervisord; the default 30s is
+    # not obviously enough for a database mid-write.
+    stop_timeout: 60
+
+  ports:
+    - { name: web, default: 80, protocol: tcp }
+
+  # The container runs as root, so what it writes here is root-owned inside a
+  # panel-owned directory. That is the inverse of the usual PUID trap and it is
+  # harmless — nobody edits an editor's key store from the Files tab — but it is
+  # why a file here may refuse to delete from the panel.
+  backup:
+    include: ["."]

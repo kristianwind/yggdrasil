@@ -379,6 +379,68 @@ permission error at you.</li>
 to pull one back, then <strong>Save</strong> to restore it. It keeps the last <strong>10 versions per
 file</strong>; binaries and anything over 256 KB are skipped.</p>
 <p>That&rsquo;s the undo for &ldquo;I edited server.properties and now it won&rsquo;t boot&rdquo;.</p>
+<h2 id="host-folders-and-network-shares-nfscifs">Host folders and network shares (NFS/CIFS)</h2>
+<p>A server can see a folder from the panel host as well as its own data directory:
+<strong>Settings → Host mounts (admin)</strong>, a host path on the left and a container path on the
+right, with a 📁 button that browses the host&rsquo;s real drives so the path can be picked
+rather than typed. The classic use is a media library — <code>/mnt/mediaserver → /media</code> for
+Jellyfin.</p>
+<p>Three things decide whether it works:</p>
+<ul>
+<li><strong>Read-only unless you tick Write.</strong> That is the safe default, and it is the right one
+for a media library. An app that has to write there — a downloader, a backup target,
+a file server — needs the tick.</li>
+<li><strong>The source must be an existing directory on the host, and outside the denylist</strong>:
+not <code>/</code>, <code>/etc</code>, <code>/usr</code>, <code>/root</code>, <code>/boot</code>, <code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/run</code>,
+<code>/var/lib/docker</code>, and not <code>/var/lib/yggdrasil</code> — that last one is where every server&rsquo;s
+files live, so binding it into one container would hand it all the others. Symlinks are
+resolved and the real target is checked too.</li>
+<li><strong>The target must not shadow the system or the data mount</strong> — <code>/data</code> and the
+image&rsquo;s own <code>/etc</code>, <code>/usr</code>, <code>/bin</code> and friends are refused.</li>
+</ul>
+<p>Mounts apply on the next <strong>start</strong>, not immediately.</p>
+<h3 id="mounting-the-share-on-the-host-first">Mounting the share on the host first</h3>
+<p>Yggdrasil does not mount network shares itself, and deliberately: mounting is a root
+operation on the box, it has to survive a reboot, and it is the same job whether one
+server uses the share or six. So the panel&rsquo;s answer for NFS and CIFS is the same as for
+<a href="guides-backups-and-schedules.html">backups</a> — mount it on the host, then point at the
+mountpoint.</p>
+<p>On the box, as root:</p>
+<pre><code class="language-sh">mkdir -p /mnt/nas
+# /etc/fstab
+echo 'nas.lan:/export/files  /mnt/nas  nfs  vers=4.2,_netdev,noatime  0 0' &gt;&gt; /etc/fstab
+systemctl daemon-reload &amp;&amp; mount /mnt/nas
+</code></pre>
+<p><code>_netdev</code> matters — without it a boot can hang or the mount can be attempted before the
+network is up, and the container then starts against an empty directory that looks
+exactly like a share with nothing in it.</p>
+<p>Then add <code>/mnt/nas</code> as a host mount on whichever servers need it.</p>
+<p><strong>Ownership is yours to line up.</strong> Containers run as the panel&rsquo;s own account (uid 999 on
+a standard install — <code>id yggdrasil</code> tells you), so an export with <code>root_squash</code> and files
+owned by some other uid gives a container that can list the share and not write to it.
+Either export with the right uid mapping, or set the share&rsquo;s ownership to the panel&rsquo;s
+account.</p>
+<h3 id="a-whole-servers-storage-on-a-share">A whole server&rsquo;s storage on a share</h3>
+<p>There is a second shape, for &ldquo;this server&rsquo;s files should live on the NAS&rdquo;: mount the
+share <strong>at the server&rsquo;s data directory</strong> —
+<code>/var/lib/yggdrasil/servers/&lt;server-uuid&gt;/</code> — on the host. Nothing in the panel needs
+configuring, because the panel bind-mounts that path into the container whatever
+filesystem is underneath it. Stop the server first, move the existing contents onto the
+share, then mount.</p>
+<p>🔴 <strong>Check that the share supports extended attributes before doing this for an app that
+needs them.</strong> <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/../community-runes/apps/opencloud.yaml">OpenCloud</a> is the example that
+matters here: it keeps every file&rsquo;s id, parent, size, checksums and modification time in
+<code>user.oc.*</code> xattrs on the file itself, so on a filesystem that silently drops them the
+files survive and the metadata does not. NFSv3 has no xattr support at all; NFSv4.2 does,
+but both server and client have to have it enabled.</p>
+<p>One command on the host settles it:</p>
+<pre><code class="language-sh">touch /mnt/nas/.xattr-probe
+setfattr -n user.test -v 1 /mnt/nas/.xattr-probe &amp;&amp; getfattr -d -m user /mnt/nas/.xattr-probe
+rm /mnt/nas/.xattr-probe
+</code></pre>
+<p>If that prints <code>user.test=&quot;1&quot;</code>, the share is fine. If it fails with <em>Operation not
+supported</em>, keep that server&rsquo;s data on local disk and use the share for something that
+stores plain files.</p>
 <h2 id="organizing-the-servers-page">Organizing the Servers page</h2>
 <p><strong>Notes</strong> live at the top of each server page — free text shared with the whole admin
 team, for what the server is for, event schedules, gotchas. Up to 8000 characters, and
@@ -420,7 +482,7 @@ installing. You only ever see selection controls for servers you actually hold
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#confirmations">Confirmations</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody’s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t3" href="#copying-and-downloading-a-log">Copying and downloading a log</a><a class="t2" href="#files">Files</a><a class="t3" href="#some-settings-are-written-again-on-every-start">Some settings are written again on every start</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#creating-a-server">Creating a server</a><a class="t3" href="#port-allocation">Port allocation</a><a class="t2" href="#the-lifecycle">The lifecycle</a><a class="t2" href="#installing-updating-reinstalling">Installing, updating, reinstalling</a><a class="t2" href="#start-stop-restart">Start, stop, restart</a><a class="t3" href="#graceful-stop">Graceful stop</a><a class="t3" href="#confirmations">Confirmations</a><a class="t3" href="#safe-restart">Safe restart</a><a class="t3" href="#auto-restart">Auto-restart</a><a class="t3" href="#restarting-when-nobodys-on">Restarting when nobody’s on</a><a class="t2" href="#keeping-servers-alive">Keeping servers alive</a><a class="t3" href="#watchdog-auto-heal">Watchdog (auto-heal)</a><a class="t3" href="#start-failure-detection">Start-failure detection</a><a class="t3" href="#autostart">Autostart</a><a class="t2" href="#clone">Clone</a><a class="t2" href="#wipe">Wipe</a><a class="t2" href="#resource-limits">Resource limits</a><a class="t2" href="#console-logs-and-rcon">Console, logs, and RCON</a><a class="t3" href="#copying-and-downloading-a-log">Copying and downloading a log</a><a class="t2" href="#files">Files</a><a class="t3" href="#some-settings-are-written-again-on-every-start">Some settings are written again on every start</a><a class="t3" href="#config-version-history">Config version history</a><a class="t2" href="#host-folders-and-network-shares-nfscifs">Host folders and network shares (NFS/CIFS)</a><a class="t3" href="#mounting-the-share-on-the-host-first">Mounting the share on the host first</a><a class="t3" href="#a-whole-servers-storage-on-a-share">A whole server’s storage on a share</a><a class="t2" href="#organizing-the-servers-page">Organizing the Servers page</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

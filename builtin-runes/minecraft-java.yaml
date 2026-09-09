@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
   author: "yggdrasil-core"
-  version: 10
+  version: 11
   icon: "minecraft"
 
   docker:
@@ -85,11 +85,18 @@ gameskill:
       VER="{{MC_VERSION}}"
       BUILD=""
       MANIFEST=https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
+      # Forge's build promotions. NOT on maven.minecraftforge.net — that host
+      # 404s for this file; files.minecraftforge.net serves it.
+      FORGE_PROMOS=https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json
 
       latest_vanilla() { curl -fsSL "$MANIFEST" | jq -r '.latest.release'; }
       need() { [ -n "$1" ] && [ "$1" != "null" ] || { echo "$2"; exit 1; }; }
 
       echo "Installing $TYPE (requested version: $VER)"
+      # Switching a server from Forge to anything else must not leave the launch
+      # marker behind, or startup would keep launching Forge from a stale args
+      # file. Only the forge branch below writes it back.
+      rm -f .ygg_forge_args
       case "$TYPE" in
         vanilla)
           [ "$VER" = "latest" ] && VER="$(latest_vanilla)"
@@ -136,16 +143,37 @@ gameskill:
           BUILD="$LOADER"
           ;;
         forge)
-          echo "Forge requires running its installer; install the Forge universal jar"
-          echo "and adjust the startup command. Not yet automated."
-          exit 1
+          [ "$VER" = "latest" ] && VER="$(latest_vanilla)"
+          need "$VER" "could not resolve Minecraft version for Forge"
+          # Forge numbers its own builds per Minecraft version. Take the one it
+          # recommends; fall back to its newest for a version too fresh to have a
+          # recommendation yet.
+          FV=$(curl -fsSL "$FORGE_PROMOS" | jq -r --arg v "$VER" '.promos[$v+"-recommended"] // .promos[$v+"-latest"] // empty')
+          need "$FV" "Forge has no build for Minecraft $VER"
+          FULL="$VER-$FV"
+          echo "Forge $FULL - running the installer (this patches Minecraft and takes a minute)"
+          curl -fsSL -o forge-installer.jar \
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/$FULL/forge-$FULL-installer.jar"
+          # --installServer is the only supported way in: it downloads the vanilla
+          # server, patches it, and writes the library tree the launch args point at.
+          java -jar forge-installer.jar --installServer
+          rm -f forge-installer.jar forge-installer.jar.log
+          # 1.17+ Forge has NO runnable server.jar. It ships an @argfile instead,
+          # and that file is what startup launches. Record where it landed.
+          FARGS="libraries/net/minecraftforge/forge/$FULL/unix_args.txt"
+          [ -f "$FARGS" ] || { echo "Forge installed but produced no $FARGS - this rune supports Forge for Minecraft 1.17 and newer"; exit 1; }
+          printf '%s\n' "$FARGS" > .ygg_forge_args
+          BUILD="$FV"
           ;;
         *)
           echo "unknown SERVER_TYPE: $TYPE"; exit 1 ;;
       esac
 
-      # Make sure we actually got a jar.
-      [ -s server.jar ] || { echo "download produced no server.jar"; exit 1; }
+      # Make sure the install actually produced something runnable. Forge is the
+      # exception with no server.jar at all - its marker is checked above.
+      if [ ! -s .ygg_forge_args ]; then
+        [ -s server.jar ] || { echo "download produced no server.jar"; exit 1; }
+      fi
 
       # Record what we installed so the panel can tell when a newer build exists
       # (the jar-update check reads this: "<type> <version> <build>").
@@ -183,8 +211,27 @@ gameskill:
       [ -f whitelist.json ] || echo "[]" > whitelist.json
       [ -f ops.json ] || echo "[]" > ops.json
 
-      echo "Installed $TYPE $VER -> server.jar"
-      ls -la server.jar
+      # Paper and Purpur split the Nether and the End into world_nether/ and
+      # world_the_end/ the first time they start; vanilla, Fabric and Forge read
+      # them from inside world/ as DIM-1 and DIM1. So changing a server between
+      # those two families leaves the other dimensions looking freshly generated,
+      # while the old ones sit intact under the layout nobody is reading. Say so
+      # here rather than let it be discovered by walking through a portal.
+      case "$TYPE" in
+        paper|purpur) ;;
+        *)
+          if [ -d world_nether ] || [ -d world_the_end ]; then
+            echo "NOTE: world_nether/ and world_the_end/ are the Paper layout. $TYPE reads the Nether and End from world/DIM-1 and world/DIM1, so they will look newly generated until those folders are moved (world_nether/DIM-1 -> world/DIM-1, world_the_end/DIM1 -> world/DIM1)."
+          fi ;;
+      esac
+
+      if [ -s .ygg_forge_args ]; then
+        echo "Installed $TYPE $VER build $BUILD -> $(cat .ygg_forge_args)"
+        echo "Put Forge mods in mods/ - the Mods tab manages that folder for this server type."
+      else
+        echo "Installed $TYPE $VER -> server.jar"
+        ls -la server.jar
+      fi
 
   startup:
     # Re-stamp eula.txt + the mutable server.properties toggles (difficulty,
@@ -205,6 +252,13 @@ gameskill:
       setprop hardcore {{HARDCORE}}
       setprop white-list {{ENABLE_WHITELIST}}
       setprop enforce-whitelist {{ENABLE_WHITELIST}}
+      # Forge (1.17+) has no runnable jar: it is launched from the @argfile the
+      # installer wrote, whose path the install step recorded. Everything else is
+      # a plain -jar server.jar. user_jvm_args.txt is deliberately skipped - it
+      # ships fully commented out and -Xmx is set here.
+      if [ -s .ygg_forge_args ]; then
+        exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED "@$(cat .ygg_forge_args)" nogui
+      fi
       exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui
     done_regex: 'Done \(.*\)! For help'
     # Flush chunks to disk before shutting down, then stop cleanly (the "stop"

@@ -396,6 +396,86 @@ file**; binaries and anything over 256 KB are skipped.
 
 That's the undo for "I edited server.properties and now it won't boot".
 
+## Host folders and network shares (NFS/CIFS)
+
+A server can see a folder from the panel host as well as its own data directory:
+**Settings → Host mounts (admin)**, a host path on the left and a container path on the
+right, with a 📁 button that browses the host's real drives so the path can be picked
+rather than typed. The classic use is a media library — `/mnt/mediaserver → /media` for
+Jellyfin.
+
+Three things decide whether it works:
+
+- **Read-only unless you tick Write.** That is the safe default, and it is the right one
+  for a media library. An app that has to write there — a downloader, a backup target,
+  a file server — needs the tick.
+- **The source must be an existing directory on the host, and outside the denylist**:
+  not `/`, `/etc`, `/usr`, `/root`, `/boot`, `/proc`, `/sys`, `/dev`, `/run`,
+  `/var/lib/docker`, and not `/var/lib/yggdrasil` — that last one is where every server's
+  files live, so binding it into one container would hand it all the others. Symlinks are
+  resolved and the real target is checked too.
+- **The target must not shadow the system or the data mount** — `/data` and the
+  image's own `/etc`, `/usr`, `/bin` and friends are refused.
+
+Mounts apply on the next **start**, not immediately.
+
+### Mounting the share on the host first
+
+Yggdrasil does not mount network shares itself, and deliberately: mounting is a root
+operation on the box, it has to survive a reboot, and it is the same job whether one
+server uses the share or six. So the panel's answer for NFS and CIFS is the same as for
+[backups](backups-and-schedules.md) — mount it on the host, then point at the
+mountpoint.
+
+On the box, as root:
+
+```sh
+mkdir -p /mnt/nas
+# /etc/fstab
+echo 'nas.lan:/export/files  /mnt/nas  nfs  vers=4.2,_netdev,noatime  0 0' >> /etc/fstab
+systemctl daemon-reload && mount /mnt/nas
+```
+
+`_netdev` matters — without it a boot can hang or the mount can be attempted before the
+network is up, and the container then starts against an empty directory that looks
+exactly like a share with nothing in it.
+
+Then add `/mnt/nas` as a host mount on whichever servers need it.
+
+**Ownership is yours to line up.** Containers run as the panel's own account (uid 999 on
+a standard install — `id yggdrasil` tells you), so an export with `root_squash` and files
+owned by some other uid gives a container that can list the share and not write to it.
+Either export with the right uid mapping, or set the share's ownership to the panel's
+account.
+
+### A whole server's storage on a share
+
+There is a second shape, for "this server's files should live on the NAS": mount the
+share **at the server's data directory** —
+`/var/lib/yggdrasil/servers/<server-uuid>/` — on the host. Nothing in the panel needs
+configuring, because the panel bind-mounts that path into the container whatever
+filesystem is underneath it. Stop the server first, move the existing contents onto the
+share, then mount.
+
+🔴 **Check that the share supports extended attributes before doing this for an app that
+needs them.** [OpenCloud](../../community-runes/apps/opencloud.yaml) is the example that
+matters here: it keeps every file's id, parent, size, checksums and modification time in
+`user.oc.*` xattrs on the file itself, so on a filesystem that silently drops them the
+files survive and the metadata does not. NFSv3 has no xattr support at all; NFSv4.2 does,
+but both server and client have to have it enabled.
+
+One command on the host settles it:
+
+```sh
+touch /mnt/nas/.xattr-probe
+setfattr -n user.test -v 1 /mnt/nas/.xattr-probe && getfattr -d -m user /mnt/nas/.xattr-probe
+rm /mnt/nas/.xattr-probe
+```
+
+If that prints `user.test="1"`, the share is fine. If it fails with *Operation not
+supported*, keep that server's data on local disk and use the share for something that
+stores plain files.
+
 ## Organizing the Servers page
 
 **Notes** live at the top of each server page — free text shared with the whole admin

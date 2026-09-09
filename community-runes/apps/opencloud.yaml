@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "Self-hosted file sync and share — files, sharing, WebDAV and the desktop/mobile clients, in one container with no database. Serves HTTPS with a self-signed certificate, or plain HTTP behind a domain."
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # One container, no sidecars: OpenCloud is a single Go binary that supervises its
@@ -22,6 +22,16 @@ gameskill:
   # declares USER 1000, the panel overrides that with its own uid, and every file
   # OpenCloud writes is therefore the panel's — which is what the Files tab,
   # backups and restores need. The PUID trap does not apply.
+  #
+  # 🔴 The data directory needs EXTENDED ATTRIBUTES. The posix storage driver keeps
+  # each file's id, parent, size, checksums and mtime in user.oc.* xattrs on the
+  # file itself — measured on an upload:
+  #   user.oc.blobid, user.oc.blobsize, user.oc.cs.md5, user.oc.cs.sha1,
+  #   user.oc.id, user.oc.mtime, user.oc.name, user.oc.parentid, user.oc.type
+  # So a filesystem that quietly drops them keeps the bytes and loses the file.
+  # Local disk is fine; before putting this server's data directory on an NFS or
+  # CIFS share, check the share supports them — NFSv3 cannot, NFSv4.2 can if both
+  # ends have it on. docs/guides/servers.md has the one-line test.
   docker:
     image: "opencloudeu/opencloud:{{OC_IMAGE_TAG}}"
     data_path: /var/lib/opencloud
@@ -90,6 +100,23 @@ gameskill:
       options: [auto, "on", "off"]
       default: auto
 
+    # Browser-based document editing. Empty = off, and OpenCloud is a file store
+    # with no editors.
+    #
+    # Fill this in with the public address of a server running the `euro-office`
+    # rune — its own server with its own subdomain, because the browser loads the
+    # editor straight from it. Everything else the pairing needs is derived below
+    # rather than asked for: eight COLLABORATION_* variables that must agree with
+    # each other and with this server's own address are eight chances to typo one
+    # and get a document that opens blank.
+    #
+    # The WOPI endpoint OpenCloud serves for the office server lives on THIS
+    # server's address (/wopi/...), so no third hostname is involved.
+    - key: OFFICE_URL
+      name: "Office server address for editing documents (a euro-office server, e.g. https://office.example.com — blank = no editors)"
+      type: string
+      default: ""
+
     # The image's own default is near-silent — a healthy server logs nothing at all,
     # which makes the Console tab look broken and leaves nothing to read when it
     # isn't. "info" costs about 270 lines at startup and 2 lines/minute idle
@@ -145,6 +172,37 @@ gameskill:
         echo "Serving plain HTTP; whatever answers for $OC_URL is expected to hold the certificate"
       fi
       export OC_URL PROXY_TLS
+      # Document editing, when an office server has been named. The collaboration
+      # (WOPI) service runs INSIDE this process — it is not a second container and
+      # needs no domain of its own — so turning it on is one entry in
+      # OC_ADD_RUN_SERVICES plus the addresses it has to hand the browser.
+      #
+      # WOPI_SRC has to be set after the OC_URL coercion above, because it is this
+      # server's own address: the office server calls back to it to read and write
+      # the file.
+      #
+      # The two INSECURE flags follow $PROXY_TLS rather than being asked for,
+      # because it is the same question. Serving our own certificate means no
+      # domain, which means every address in this pairing is an IP with a
+      # self-signed certificate and verification cannot succeed; behind a domain
+      # both ends have real certificates and it should. PROXY_TLS_MODE=on is
+      # therefore also the escape hatch for a proxy whose certificate is
+      # self-signed.
+      if [ -n "$OFFICE_URL" ]; then
+        OFFICE_URL="${OFFICE_URL%/}"
+        export OC_ADD_RUN_SERVICES="${OC_ADD_RUN_SERVICES:+$OC_ADD_RUN_SERVICES,}collaboration"
+        export COLLABORATION_WOPI_SRC="$OC_URL"
+        export COLLABORATION_APP_NAME="Euro-Office"
+        export COLLABORATION_APP_PRODUCT="OnlyOffice"
+        export COLLABORATION_APP_ADDR="$OFFICE_URL"
+        export COLLABORATION_APP_ICON="$OFFICE_URL/web-apps/apps/documenteditor/main/resources/img/favicon.ico"
+        export COLLABORATION_APP_DESCRIPTION="Edit documents with Euro Office"
+        export COLLABORATION_APP_INSECURE="$PROXY_TLS"
+        export COLLABORATION_CS3API_DATAGATEWAY_INSECURE="$PROXY_TLS"
+        # ONLYOFFICE-family servers do not implement WOPI proof keys.
+        export COLLABORATION_APP_PROOF_DISABLE="true"
+        echo "Document editing on: files open in Euro Office at $OFFICE_URL"
+      fi
       exec opencloud server
     # A readiness pattern is present so the panel WAITS: with no done_regex at all,
     # a container that stays up for three seconds is called running, and OpenCloud

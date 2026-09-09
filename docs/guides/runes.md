@@ -105,7 +105,7 @@ and the panel's GitHub browser descends into all of them automatically.
 `dayz`, `factorio`, `genshin-impact`, `luanti`, `rust`, `terraria`.
 
 `apps/`:
-`adminer`, `cyberchef`, `excalidraw`, `freshrss`, `gitea`, `grafana`, `headplane`,
+`adminer`, `cyberchef`, `euro-office`, `excalidraw`, `freshrss`, `gitea`, `grafana`, `headplane`,
 `headscale`, `hermes-agent`, `homepage`, `it-tools`, `jellyfin`, `linkding`, `mealie`,
 `memos`, `n8n`, `nextcloud`, `nginx-proxy-manager`, `opencloud`, `phpmyadmin`, `pihole`,
 `portainer`, `static-site`, `stirling-pdf`, `wordpress`.

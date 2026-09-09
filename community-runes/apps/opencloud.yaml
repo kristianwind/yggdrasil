@@ -70,15 +70,23 @@ gameskill:
       type: string
       default: "{{PUBLIC_URL}}"
 
-    # On: OpenCloud terminates TLS itself with a self-signed certificate, so a
-    # browser warns once on https://host:port. Off: it speaks plain HTTP and
-    # something in front holds the certificate — set this when you give the server
-    # a subdomain (Settings → Domains), since that is Nginx Proxy Manager or a
-    # Cloudflare tunnel terminating TLS for it.
-    - key: PROXY_TLS
-      name: "Serve HTTPS directly (turn off when a domain/proxy terminates TLS)"
-      type: bool
-      default: true
+    # Who holds the certificate. This has to follow whether the server has a
+    # domain, and getting it wrong is invisible from here: BOTH of the panel's
+    # proxies speak plain http to the origin — Nginx Proxy Manager sets
+    # forward_scheme "http" (internal/npm/npm.go) and a Cloudflare tunnel's
+    # ingress is "http://host:port" (handlers_cloudflare.go) — so a server that
+    # keeps terminating TLS itself answers their http request with a TLS
+    # handshake, and the visitor gets a proxy error from a container that is
+    # running perfectly.
+    #
+    # "auto" therefore reads the panel's own answer: PUBLIC_URL is https exactly
+    # when a domain is attached, and http://host:port when the server is reached
+    # directly. on/off remain for a proxy that is not the panel's.
+    - key: PROXY_TLS_MODE
+      name: "TLS: auto (off behind a domain, on when reached directly), or force on/off"
+      type: select
+      options: [auto, "on", "off"]
+      default: auto
 
     # The image's own default is near-silent — a healthy server logs nothing at all,
     # which makes the Console tab look broken and leaves nothing to read when it
@@ -110,6 +118,16 @@ gameskill:
 
   startup:
     command: |
+      case "$PROXY_TLS_MODE" in
+        on)  PROXY_TLS=true ;;
+        off) PROXY_TLS=false ;;
+        *)
+          case "$PUBLIC_URL" in
+            https://*) PROXY_TLS=false ;;
+            *)         PROXY_TLS=true ;;
+          esac
+          ;;
+      esac
       case "$OC_URL" in
         "")
           echo "WARNING: the panel could not work out this server's address (no domain, no public hostname), so OpenCloud will fall back to its built-in default and every link it generates will be wrong. Set the public address in Settings."
@@ -119,7 +137,12 @@ gameskill:
           echo "OpenCloud's identity provider only accepts an https address, so this server's address is being used as $OC_URL"
           ;;
       esac
-      export OC_URL
+      if [ "$PROXY_TLS" = "true" ]; then
+        echo "Serving HTTPS directly with a self-signed certificate — your browser will warn once at $OC_URL"
+      else
+        echo "Serving plain HTTP; whatever answers for $OC_URL is expected to hold the certificate"
+      fi
+      export OC_URL PROXY_TLS
       exec opencloud server
     # A readiness pattern is present so the panel WAITS: with no done_regex at all,
     # a container that stays up for three seconds is called running, and OpenCloud

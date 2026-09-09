@@ -15,7 +15,8 @@ gameskill:
   # SUBCOMMAND — "/bin/sh" is not an opencloud command, it would print usage and
   # exit into a restart loop. That is the fatal shape in YGGDRASIL.md §4, so the
   # entrypoint is cleared and the command is an explicit `exec opencloud server`.
-  # Measured with that exec: a panel Stop takes 0.5s and the container exits 0.
+  # Measured with that exec: a panel Stop takes under a second and exits 0;
+  # without it, sh would be PID 1 and every stop would end in SIGKILL.
   #
   # No PUID/PGID variables here, deliberately: this image chowns nothing. It
   # declares USER 1000, the panel overrides that with its own uid, and every file
@@ -63,8 +64,9 @@ gameskill:
     # address: "invalid iss value, URL must start with https://", and the whole
     # server dies with it. {{PUBLIC_URL}} is https once a domain is attached, but
     # http://host:port when there isn't one — which is why the startup command
-    # upgrades the scheme rather than leaving the server in a crash loop. The app
-    # serves TLS itself by default, so https://host:port is the correct address.
+    # upgrades the scheme rather than leaving the server in a crash loop. With no
+    # domain the app terminates TLS itself (see PROXY_TLS_MODE below), so
+    # https://host:port is the correct address and not a wish.
     - key: OC_URL
       name: "Public address (defaults to this server's address; must be https)"
       type: string

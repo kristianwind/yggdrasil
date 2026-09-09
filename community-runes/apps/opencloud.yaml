@@ -1,0 +1,162 @@
+gameskill:
+  id: opencloud
+  name: "OpenCloud"
+  category: "Apps"
+  description: "Self-hosted file sync and share — files, sharing, WebDAV and the desktop/mobile clients, in one container with no database. Serves HTTPS with a self-signed certificate, or plain HTTP behind a domain."
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # One container, no sidecars: OpenCloud is a single Go binary that supervises its
+  # own services and keeps everything on disk. There is no database to bring.
+  #
+  # The image's ENTRYPOINT is the binary itself (/usr/bin/opencloud) with CMD
+  # ["server"], so keep_entrypoint would hand our startup command to it as a
+  # SUBCOMMAND — "/bin/sh" is not an opencloud command, it would print usage and
+  # exit into a restart loop. That is the fatal shape in YGGDRASIL.md §4, so the
+  # entrypoint is cleared and the command is an explicit `exec opencloud server`.
+  # Measured with that exec: a panel Stop takes under a second and exits 0;
+  # without it, sh would be PID 1 and every stop would end in SIGKILL.
+  #
+  # No PUID/PGID variables here, deliberately: this image chowns nothing. It
+  # declares USER 1000, the panel overrides that with its own uid, and every file
+  # OpenCloud writes is therefore the panel's — which is what the Files tab,
+  # backups and restores need. The PUID trap does not apply.
+  docker:
+    image: "opencloudeu/opencloud:{{OC_IMAGE_TAG}}"
+    data_path: /var/lib/opencloud
+    env:
+      # Config and data both under the ONE directory the panel gives a server, so a
+      # backup captures the secrets as well as the files and there is no second
+      # volume to forget. This is load-bearing, not tidiness: the image's own
+      # /etc/opencloud belongs to uid 1000 with mode 0710, so the panel's uid cannot
+      # write it — measured without this variable, the container exits 1 with "The
+      # jwt_secret has not been set properly in your config".
+      OC_CONFIG_DIR: /var/lib/opencloud/config
+      # The panel exports HOME=/data, which does not exist in this image. Point it at
+      # the volume so anything cached under $HOME lands somewhere writable.
+      HOME: /var/lib/opencloud
+
+  variables:
+    # Pinned to the stable 7.x line, not :latest and not the -rolling repo. This
+    # holds someone's files; a major version should arrive when they choose it,
+    # since a restart re-pulls the tag. Set "7.2.4" to freeze, or a higher major
+    # after reading the release notes.
+    - key: OC_IMAGE_TAG
+      name: "Image tag (7 = newest stable 7.x)"
+      type: string
+      default: "7"
+
+    # Read ONLY by `opencloud init`, i.e. at install. Editing it later rewrites the
+    # form field and nothing else — same shape as a database sidecar's password
+    # (YGGDRASIL.md §5): an env var that looks like configuration but is really
+    # first-run initialisation. Leave it empty and the install log prints a
+    # generated password; to change it afterwards use the CLI on the box:
+    #   sudo docker exec -it ygg-<id> opencloud idm resetpassword -u admin
+    # (interactive — it prompts for the new password and needs a real terminal).
+    - key: IDM_ADMIN_PASSWORD
+      name: "Admin password (set at install only — see the install log if left empty)"
+      type: string
+      secret: true
+      default: ""
+
+    # OpenCloud's built-in identity provider refuses to start on a plain-http
+    # address: "invalid iss value, URL must start with https://", and the whole
+    # server dies with it. {{PUBLIC_URL}} is https once a domain is attached, but
+    # http://host:port when there isn't one — which is why the startup command
+    # upgrades the scheme rather than leaving the server in a crash loop. With no
+    # domain the app terminates TLS itself (see PROXY_TLS_MODE below), so
+    # https://host:port is the correct address and not a wish.
+    - key: OC_URL
+      name: "Public address (defaults to this server's address; must be https)"
+      type: string
+      default: "{{PUBLIC_URL}}"
+
+    # Who holds the certificate. This has to follow whether the server has a
+    # domain, and getting it wrong is invisible from here: BOTH of the panel's
+    # proxies speak plain http to the origin — Nginx Proxy Manager sets
+    # forward_scheme "http" (internal/npm/npm.go) and a Cloudflare tunnel's
+    # ingress is "http://host:port" (handlers_cloudflare.go) — so a server that
+    # keeps terminating TLS itself answers their http request with a TLS
+    # handshake, and the visitor gets a proxy error from a container that is
+    # running perfectly.
+    #
+    # "auto" therefore reads the panel's own answer: PUBLIC_URL is https exactly
+    # when a domain is attached, and http://host:port when the server is reached
+    # directly. on/off remain for a proxy that is not the panel's.
+    - key: PROXY_TLS_MODE
+      name: "TLS: auto (off behind a domain, on when reached directly), or force on/off"
+      type: select
+      options: [auto, "on", "off"]
+      default: auto
+
+    # The image's own default is near-silent — a healthy server logs nothing at all,
+    # which makes the Console tab look broken and leaves nothing to read when it
+    # isn't. "info" costs about 270 lines at startup and 2 lines/minute idle
+    # (measured), and logs every HTTP request, so turn it down on a busy server.
+    - key: OC_LOG_LEVEL
+      name: "Log level"
+      type: select
+      options: [error, warn, info, debug]
+      default: "info"
+
+  # `opencloud init` writes the config with the service secrets and the admin
+  # password. It runs here rather than at startup so its output — including a
+  # generated password — lands in the install log, where it is still there
+  # tomorrow.
+  #
+  # The install container mounts the data directory at /data regardless of
+  # data_path, and it does NOT get docker.env (YGGDRASIL.md §5), so the config path
+  # is passed as a flag instead of via OC_CONFIG_DIR. Same host directory either
+  # way. The script runs as root and the panel chowns /data afterwards.
+  install:
+    script: |
+      mkdir -p /data/config
+      if [ -f /data/config/opencloud.yaml ]; then
+        echo "OpenCloud is already initialised — keeping the existing config."
+        exit 0
+      fi
+      opencloud init --config-path /data/config --insecure yes
+
+  startup:
+    command: |
+      case "$PROXY_TLS_MODE" in
+        on)  PROXY_TLS=true ;;
+        off) PROXY_TLS=false ;;
+        *)
+          case "$PUBLIC_URL" in
+            https://*) PROXY_TLS=false ;;
+            *)         PROXY_TLS=true ;;
+          esac
+          ;;
+      esac
+      case "$OC_URL" in
+        "")
+          echo "WARNING: the panel could not work out this server's address (no domain, no public hostname), so OpenCloud will fall back to its built-in default and every link it generates will be wrong. Set the public address in Settings."
+          ;;
+        http://*)
+          OC_URL="https://${OC_URL#http://}"
+          echo "OpenCloud's identity provider only accepts an https address, so this server's address is being used as $OC_URL"
+          ;;
+      esac
+      if [ "$PROXY_TLS" = "true" ]; then
+        echo "Serving HTTPS directly with a self-signed certificate — your browser will warn once at $OC_URL"
+      else
+        echo "Serving plain HTTP; whatever answers for $OC_URL is expected to hold the certificate"
+      fi
+      export OC_URL PROXY_TLS
+      exec opencloud server
+    # A readiness pattern is present so the panel WAITS: with no done_regex at all,
+    # a container that stays up for three seconds is called running, and OpenCloud
+    # needs about twenty before it answers. With one, the panel polls the `web` port
+    # and flips to running when it actually serves. The line itself is early (it is
+    # the embedded NATS coming up) — the port is what settles it, and it is the only
+    # readiness line that appears in both the self-signed and the behind-a-proxy
+    # mode.
+    done_regex: 'Server is ready'
+
+  ports:
+    - { name: web, default: 9200, protocol: tcp }
+
+  backup:
+    include: ["."]

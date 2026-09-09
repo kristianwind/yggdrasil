@@ -107,8 +107,8 @@ and the panel's GitHub browser descends into all of them automatically.
 `apps/`:
 `adminer`, `cyberchef`, `excalidraw`, `freshrss`, `gitea`, `grafana`, `headplane`,
 `headscale`, `hermes-agent`, `homepage`, `it-tools`, `jellyfin`, `linkding`, `mealie`,
-`memos`, `n8n`, `nextcloud`, `nginx-proxy-manager`, `phpmyadmin`, `pihole`, `portainer`,
-`static-site`, `stirling-pdf`, `wordpress`.
+`memos`, `n8n`, `nextcloud`, `nginx-proxy-manager`, `opencloud`, `phpmyadmin`, `pihole`,
+`portainer`, `static-site`, `stirling-pdf`, `wordpress`.
 
 These are community-maintained and provided as-is. The app runes run their images much
 like a plain `docker run`, so you may need to tune ports or variables for your setup, and

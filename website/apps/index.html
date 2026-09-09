@@ -3,10 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supported apps &amp; games — Yggdrasil Panel</title>
-<meta name="description" content="70 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta name="description" content="71 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <link rel="canonical" href="https://yggdrasilpanel.com/apps/">
 <meta property="og:title" content="Supported apps &amp; games — Yggdrasil Panel">
-<meta property="og:description" content="70 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta property="og:description" content="71 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://yggdrasilpanel.com/apps/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E">
@@ -68,7 +68,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 </nav>
 <main class="wrap">
   <h1>Supported apps &amp; games</h1>
-  <p class="lede">70 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
+  <p class="lede">71 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
 <h2>Games <span class="count">8</span></h2>
 <div class="grid"><div class="app" title="DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)">
   <div class="ic"><span class="glyph">🎮</span></div>
@@ -103,7 +103,7 @@ After uploading those, press Start. See the Grasscutter wiki for client redirect
   <div class="ic"><img loading="lazy" src="/icons/terraria.png" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Terraria</div><div class="desc">Terraria dedicated server (official build from terraria.</div></div>
 </div></div>
-<h2>Apps <span class="count">62</span></h2>
+<h2>Apps <span class="count">63</span></h2>
 <div class="grid"><div class="app" title="Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole. The admin UI runs on the panel-allocated web port; first launch shows a setup wizard. NOTE: the DNS service lands on the panel-allocated high port, not :53 — to use it as your real network DNS you need a fixed/host port mapping, which the panel&#39;s per-server port model doesn&#39;t provide.">
   <div class="ic"><img loading="lazy" src="/icons/adguardhome.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">AdGuard Home</div><div class="desc">Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole.</div></div>
@@ -231,6 +231,9 @@ Supersedes Orbital Sync, which was archived in 2026 and never released Pi-hole v
 </div><div class="app" title="Send push notifications to your phone, desktop or any device from a simple HTTP PUT/POST — self-hosted, no accounts required. Subscribe from the ntfy mobile/desktop apps or the web UI, and fire a notification from any script (curl), cron job or app. Set the public base URL below so notification links and attachments resolve; it sits behind the panel&#39;s reverse proxy on the web port.">
   <div class="ic"><img loading="lazy" src="/icons/ntfy.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">ntfy</div><div class="desc">Send push notifications to your phone, desktop or any device from a simple HTTP PUT/POST — self-hosted, no accounts required.</div></div>
+</div><div class="app" title="Self-hosted file sync and share — files, sharing, WebDAV and the desktop/mobile clients, in one container with no database. Serves HTTPS with a self-signed certificate, or plain HTTP behind a domain.">
+  <div class="ic"><img loading="lazy" src="/icons/opencloud.svg" alt="" width="40" height="40"></div>
+  <div class="meta"><div class="name">OpenCloud</div><div class="desc">Self-hosted file sync and share — files, sharing, WebDAV and the desktop/mobile clients, in one container with no database.</div></div>
 </div><div class="app" title="Scan, index and archive your documents with full-text search and OCR. An app stack: the panel runs Paperless plus its required Redis broker together on a private network. Uses SQLite by default (fine for personal use). First launch creates the admin user from the variables below; drop files into the consume volume (Files tab → consume) to import them.">
   <div class="ic"><img loading="lazy" src="/icons/paperless-ngx.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Paperless-ngx<span class="badge">stack</span></div><div class="desc">Scan, index and archive your documents with full-text search and OCR.</div></div>

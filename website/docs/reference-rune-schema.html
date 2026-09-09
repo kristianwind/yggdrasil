@@ -214,6 +214,18 @@ that knows the answer, so it supplies it.</p>
 <p>An operator can use it too: typing <code>{{PUBLIC_URL}}</code> as a variable&rsquo;s value in the server&rsquo;s settings
 expands the same way, so an address doesn&rsquo;t have to be retyped when it changes. Only this built-in is
 expanded inside operator-entered values, and only once — it&rsquo;s a convenience, not a template language.</p>
+<p><strong>A variable&rsquo;s <code>default</code> expands the same way</strong>, which is how a rune ships a self-URL that works
+without anyone filling anything in:</p>
+<pre><code class="language-yaml">  - key: OC_URL
+    name: &quot;Public address&quot;
+    type: string
+    default: &quot;{{PUBLIC_URL}}&quot;
+</code></pre>
+<p>The server&rsquo;s own value still wins wherever it has one, so this only fills the blank. That makes it
+the right shape for an app that cannot start without knowing its own address — the OpenCloud rune
+uses it, because its identity provider exits on a URL it considers wrong — and the wrong shape for
+an app that stores its address and would be <em>rewritten</em> by it on every start, which is why the
+WordPress rune leaves <code>SITE_URL</code> empty and only mentions the placeholder in the field&rsquo;s label.</p>
 <p>The same set is exported as real environment variables inside both the install and the runtime
 container. The runtime container additionally gets <code>PORT_&lt;name&gt;</code> (the same port, keyed by the
 declared name as written) and <code>HOME=/data</code>.</p>

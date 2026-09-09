@@ -80,3 +80,85 @@ func TestPublicURLFallsBackToHostAndPort(t *testing.T) {
 		t.Errorf("got %q, want the bare host when nothing is allocated", got)
 	}
 }
+
+// A variable whose DEFAULT is "{{PUBLIC_URL}}" must reach the container
+// expanded, not as the literal braces.
+//
+// The docs only promise this for a value an operator types into the form, and
+// the substitution loop reads that way. It works for defaults too, but only
+// because of an ordering that is easy to lose: loadRuntime seeds
+// gameskill.DefaultEnv BEFORE the loop runs, so a default is already in the map
+// by the time anything looks for the placeholder. Move the seeding after the
+// loop — or expand only the keys present in env_json, which is the obvious
+// reading of "values the admin typed" — and every rune relying on it starts
+// handing its app the four characters "{{PU" instead of an address, with nothing
+// failing until the app itself does.
+//
+// The OpenCloud rune depends on this: its identity provider refuses to start on
+// anything but an https URL, so its OC_URL default is the panel's own answer.
+func TestPublicURLExpandsInAVariableDefault(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	yaml := "gameskill:\n" +
+		"  id: testurl\n  name: TestURL\n  docker: { image: x }\n" +
+		"  startup: { command: run }\n" +
+		"  variables:\n" +
+		"    - { key: SITE_URL, name: Address, type: string, default: \"{{PUBLIC_URL}}\" }\n" +
+		"    - { key: CALLBACK, name: Callback, type: string, default: \"{{PUBLIC_URL}}/oauth\" }\n" +
+		"  ports:\n    - { name: web, default: 80, protocol: tcp }\n"
+	if _, err := s.db.Exec("INSERT INTO gameskills (id,name,category,version,yaml_blob,builtin) VALUES ('testurl','TestURL','t',1,?,1)", yaml); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(
+		"INSERT INTO servers (id,name,gameskill_id,status,env_json,ports_json,data_dir) VALUES (?,?,?,?,?,?,?)",
+		"srv-url", "app", "testurl", "stopped", "{}", `{"web":25010}`, "/tmp/z"); err != nil {
+		t.Fatal(err)
+	}
+	s.setSetting(ctx, "public_hostname", "panel.example.dk")
+
+	rt, err := s.loadRuntime(ctx, "srv-url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rt.env["SITE_URL"]; got != "http://panel.example.dk:25010" {
+		t.Errorf("SITE_URL = %q, want the expanded address — a default is not expanded", got)
+	}
+	// Substitution, not assignment: the placeholder can sit inside a longer value.
+	if got := rt.env["CALLBACK"]; got != "http://panel.example.dk:25010/oauth" {
+		t.Errorf("CALLBACK = %q, want the placeholder replaced in place", got)
+	}
+	if got := rt.env["PUBLIC_URL"]; got != "http://panel.example.dk:25010" {
+		t.Errorf("PUBLIC_URL = %q, want it exported in its own right", got)
+	}
+}
+
+// The documented case: a value the operator typed. Untested until now, and it
+// shares its one loop with the defaults above.
+func TestPublicURLExpandsInAnOperatorTypedValue(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	yaml := "gameskill:\n" +
+		"  id: testurl2\n  name: TestURL2\n  docker: { image: x }\n" +
+		"  startup: { command: run }\n" +
+		"  variables:\n    - { key: SITE_URL, name: Address, type: string, default: \"\" }\n" +
+		"  ports:\n    - { name: web, default: 80, protocol: tcp }\n"
+	if _, err := s.db.Exec("INSERT INTO gameskills (id,name,category,version,yaml_blob,builtin) VALUES ('testurl2','TestURL2','t',1,?,1)", yaml); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(
+		"INSERT INTO servers (id,name,gameskill_id,status,env_json,ports_json,data_dir,cf_hostname) VALUES (?,?,?,?,?,?,?,?)",
+		"srv-url2", "site", "testurl2", "stopped", `{"SITE_URL":"{{PUBLIC_URL}}"}`, `{"web":25011}`, "/tmp/z2",
+		"shop.example.dk"); err != nil {
+		t.Fatal(err)
+	}
+
+	rt, err := s.loadRuntime(ctx, "srv-url2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A domain wins over host:port, and it is https — which is the difference a
+	// rune like OpenCloud reads to decide who terminates TLS.
+	if got := rt.env["SITE_URL"]; got != "https://shop.example.dk" {
+		t.Errorf("SITE_URL = %q, want the server's own domain", got)
+	}
+}

@@ -59,7 +59,7 @@ func TestServerTransferTailRoundTrip(t *testing.T) {
 	man.Subdomain = "myapp"
 
 	dst.db.Exec("INSERT INTO servers (id, name, gameskill_id, status, env_json, ports_json, data_dir) VALUES ('d1','Dst','mc','stopped','{}','{}','/tmp/y')")
-	restored, dropped := dst.restoreServerTail(ctx, "d1", &man)
+	restored, dropped, _ := dst.restoreServerTail(ctx, "d1", &man)
 	if dropped != "" {
 		t.Fatalf("subdomain should be free on the target, got dropped=%q", dropped)
 	}
@@ -84,7 +84,7 @@ func TestServerTransferTailRoundTrip(t *testing.T) {
 
 	// A second import with the same subdomain must drop it, not steal it.
 	dst.db.Exec("INSERT INTO servers (id, name, gameskill_id, status, env_json, ports_json, data_dir) VALUES ('d2','Dst2','mc','stopped','{}','{}','/tmp/z')")
-	_, dropped = dst.restoreServerTail(ctx, "d2", &man)
+	_, dropped, _ = dst.restoreServerTail(ctx, "d2", &man)
 	if dropped != "myapp" {
 		t.Fatalf("subdomain clash not reported: %q", dropped)
 	}

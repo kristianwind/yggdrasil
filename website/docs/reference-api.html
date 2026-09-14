@@ -742,6 +742,18 @@ that fails without a token is usually a permissions problem rather than a wrong 
 <td>Restart after warning players on a countdown</td>
 </tr>
 <tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/release-domains</code></td>
+<td>admin</td>
+<td>Give up every hostname this panel provisioned for the server — its tunnel ingress rules and the CNAMEs it created. The server keeps running and keeps its data; start it again and it re-provisions. The source half of a handover</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/servers/{id}/takeover-domains</code></td>
+<td>admin</td>
+<td>Take the server&rsquo;s hostnames over from another panel. Body: <code>{url, token, source_server_id}</code>. Asks that panel to release first and only claims once it has — if it cannot be reached, nothing changes here. Refused (409) while this server is stopped, because the site would go down rather than move</td>
+</tr>
+<tr>
 <td><code>GET</code></td>
 <td><code>/api/servers/{id}/auto-restart</code></td>
 <td><code>server.control</code></td>

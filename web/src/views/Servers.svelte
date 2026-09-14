@@ -68,18 +68,74 @@
       });
       if (r.ports_changed?.length) {
         toast(
-          `Imported “${r.name}”, but ${r.ports_changed.length} port(s) were already in use and moved: ${r.ports_changed.join(", ")}. Update your forwarding for these.`,
+          `Imported “${r.name}”, but ${r.ports_changed.length} port(s) were already in use and moved: ${r.ports_changed.join(", ")}. The tunnel rule is rebuilt from this panel's own port, so there is nothing to repoint unless you forward ports by hand.`,
           "warn",
           10000,
         );
       } else {
         toast(`Imported “${r.name}” — ports preserved. Set it up under Settings, then Start.`, "success");
       }
+      if (r.hostnames_dropped?.length) {
+        toast(
+          `${r.hostnames_dropped.join(", ")} — already used by another server here, so ${r.hostnames_dropped.length > 1 ? "they were" : "it was"} not copied.`,
+          "warn",
+          10000,
+        );
+      }
+      // The copy holds the hostnames but does not serve them: the source still
+      // does, and its DNS still points there. Offer the handover as its own step,
+      // so the operator can check the copy first and hand over when ready.
+      handover = { targetID: r.id, name: r.name, sourceID: rs.id };
       await load();
     } catch (e) {
       toast(e.message, "error");
     } finally {
       pullingID = "";
+    }
+  }
+
+  // --- Hostname handover -----------------------------------------------------
+  // Claiming a hostname the source still holds cannot work and half-succeeds if
+  // tried: EnsureDNS refuses a CNAME pointing at another tunnel, so the ingress
+  // rule lands here while DNS stays there, and the only trace is a line in the
+  // panel log. The source therefore releases first, and the API refuses to claim
+  // if that release did not happen.
+  let handover = $state(null); // { targetID, name, sourceID }
+  let handoverBusy = $state(false);
+
+  async function takeOverDomains() {
+    const h = handover;
+    if (
+      !(await confirmDialog({
+        title: `Move ${h.name}'s domains to this panel`,
+        body:
+          "The source panel gives up its tunnel rules and DNS records for this server, then this panel creates its own. " +
+          "The site is unreachable for the few seconds in between, and the copy here starts serving it. " +
+          "The source keeps running — stop it yourself once you are happy.",
+        confirmText: "Hand over",
+      }))
+    )
+      return;
+    handoverBusy = true;
+    try {
+      const r = await api.post(`/servers/${h.targetID}/takeover-domains`, {
+        url: pull.url.trim(),
+        token: pull.token.trim(),
+        source_server_id: h.sourceID,
+      });
+      toast(
+        r.claimed?.length
+          ? `${r.claimed.join(", ")} now served from this panel.`
+          : `Released on the source. Start the server here to publish its hostnames.`,
+        "success",
+        8000,
+      );
+      handover = null;
+      await load();
+    } catch (e) {
+      toast(e.message, "error", 12000);
+    } finally {
+      handoverBusy = false;
     }
   }
 
@@ -650,6 +706,25 @@
       {:else}
         <p class="text-sm text-muted">That panel has no servers.</p>
       {/if}
+    {/if}
+
+    {#if handover}
+      <div class="card p-3 mt-4 border border-accent2/40">
+        <div class="font-medium text-sm mb-1">Move {handover.name}&rsquo;s domains here?</div>
+        <p class="text-xs text-muted mb-3">
+          The copy holds the same hostnames, but the source panel is still serving them &mdash; its
+          tunnel rules and DNS records point at it. This asks the source to give them up and then
+          claims them here, in that order. Check the copy first; the source keeps running either way.
+        </p>
+        <div class="flex gap-2">
+          <button class="btn-primary" onclick={takeOverDomains} disabled={handoverBusy}>
+            {handoverBusy ? "Handing over…" : "Hand over the domains"}
+          </button>
+          <button class="btn-ghost" onclick={() => (handover = null)} disabled={handoverBusy}>
+            Not now
+          </button>
+        </div>
+      </div>
     {/if}
   </div>
 {/if}

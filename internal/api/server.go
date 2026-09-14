@@ -280,6 +280,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/start", s.handleStartServer)
 		r.Post("/api/servers/{id}/stop", s.handleStopServer)
 		r.Post("/api/servers/{id}/restart", s.handleRestartServer)
+		// Hostname handover between panels: the source releases, the target claims.
+		r.Post("/api/servers/{id}/release-domains", s.requireAdmin(s.handleReleaseDomains))
+		r.Post("/api/servers/{id}/takeover-domains", s.requireAdmin(s.handleTakeoverDomains))
 		r.Post("/api/servers/{id}/safe-restart", s.handleSafeRestart)
 		r.Get("/api/servers/{id}/auto-restart", s.handleGetAutoRestart)
 		r.Put("/api/servers/{id}/auto-restart", s.handleSetAutoRestart)

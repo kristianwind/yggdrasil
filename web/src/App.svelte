@@ -42,7 +42,6 @@
     await loadUser();
     if (!location.hash) navigate("/");
     ready = true;
-    loadBeaconNotice();
     api.get("/version").then((v) => {
       build = v;
       // Reflect a custom panel name in the browser tab too, so several panels
@@ -104,6 +103,16 @@
   // six-hour server-side cache makes a repeat free anyway.
   $effect(() => {
     if (ready && $user) loadAdvisories();
+  });
+  // Same shape, and for the same reason. This used to be called straight from
+  // onMount, which awaits loadUser() first — so it worked on a reload where a
+  // session already existed, and silently did nothing on the path that matters
+  // most: opening the login page and signing in. There $user is still null when
+  // onMount runs, the loader returns early, and nothing calls it again. The
+  // beacon's whole default-on posture rests on this notice being seen, so the one
+  // moment it must not be skipped is a first sign-in.
+  $effect(() => {
+    if (ready && $user) loadBeaconNotice();
   });
 
   // Surface rune updates in the nav so an admin sees them without opening Runes.

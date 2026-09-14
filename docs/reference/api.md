@@ -357,6 +357,8 @@ that fails without a token is usually a permissions problem rather than a wrong 
 | `POST` | `/api/servers/{id}/stop` | `server.control` | Stop the container |
 | `POST` | `/api/servers/{id}/restart` | `server.control` | Restart the container |
 | `POST` | `/api/servers/{id}/safe-restart` | `server.control` | Restart after warning players on a countdown |
+| `POST` | `/api/servers/{id}/release-domains` | admin | Give up every hostname this panel provisioned for the server — its tunnel ingress rules and the CNAMEs it created. The server keeps running and keeps its data; start it again and it re-provisions. The source half of a handover |
+| `POST` | `/api/servers/{id}/takeover-domains` | admin | Take the server's hostnames over from another panel. Body: `{url, token, source_server_id}`. Asks that panel to release first and only claims once it has — if it cannot be reached, nothing changes here. Refused (409) while this server is stopped, because the site would go down rather than move |
 | `GET` | `/api/servers/{id}/auto-restart` | `server.control` | The auto-restart toggle's current state: `{enabled, every_hours, anchor_hour, warn, backup_first, target_id}` |
 | `PUT` | `/api/servers/{id}/auto-restart` | `server.control` | Create, update, or remove the managed auto-restart schedule. `every_hours` 1–24, `anchor_hour` 0–23 is the hour the cycle starts from; `backup_first` requires `target_id` |
 | `PUT` | `/api/servers/{id}/watchdog` | `server.control` | Toggle auto-heal for the server |

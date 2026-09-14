@@ -17,7 +17,7 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
-const transferVersion = 2 // v2 adds schedules, watchers, notification routing and subdomain
+const transferVersion = 3 // v3 adds the extra hostnames; v2 added schedules, watchers, notification routing and subdomain
 
 // transferManifest is a single server's portable setup: enough to recreate it on
 // another panel, plus the rune so the target doesn't need it pre-installed. Env
@@ -44,6 +44,20 @@ type transferManifest struct {
 	Schedules []transferSchedule `json:"schedules,omitempty"`
 	Watchers  []transferWatcher  `json:"watchers,omitempty"`
 	Channels  []transferChannel  `json:"channels,omitempty"` // server-scoped notification channels; config DECRYPTED like env secrets
+	// v3: the extra hostnames. Subdomain above is ONE field — the primary — so a
+	// move used to carry `shop` and leave `example.com` and `www.example.com`
+	// behind, which is most of the routing on a web server. The target then looked
+	// migrated and served nothing on the names anyone actually types.
+	Routes []transferRoute `json:"routes,omitempty"`
+}
+
+// transferRoute is one extra hostname. The provisioned state is deliberately NOT
+// carried: what the source has in its tunnel says nothing about what the target
+// has in its own, and copying it would make a fresh server claim to own routes it
+// has never created.
+type transferRoute struct {
+	Hostname string `json:"hostname"`
+	PortName string `json:"port_name,omitempty"`
 }
 
 type transferSchedule struct {
@@ -366,7 +380,7 @@ func (s *Server) finalizeServerImport(ctx context.Context, man *transferManifest
 		s.db.ExecContext(ctx, "INSERT INTO port_allocations (port, server_id, protocol, name) VALUES (?,?,?,?)",
 			hostPort, newID, proto, portName)
 	}
-	restored, subdomainDropped := s.restoreServerTail(ctx, newID, man)
+	restored, subdomainDropped, routesDropped := s.restoreServerTail(ctx, newID, man)
 	resp := map[string]any{"id": newID, "name": finalName, "status": "stopped"}
 	if len(moved) > 0 {
 		resp["ports_changed"] = moved // "game 25081→25000" — these need forwarding repointed
@@ -376,6 +390,9 @@ func (s *Server) finalizeServerImport(ctx context.Context, man *transferManifest
 	}
 	if subdomainDropped != "" {
 		resp["subdomain_dropped"] = subdomainDropped // already taken here — repoint by hand
+	}
+	if len(routesDropped) > 0 {
+		resp["hostnames_dropped"] = routesDropped // another server here already claims these
 	}
 	return resp, nil
 }
@@ -522,12 +539,23 @@ func (s *Server) collectServerTail(ctx context.Context, serverID string, man *tr
 		}
 		rows.Close()
 	}
+	rows, err = s.db.QueryContext(ctx,
+		"SELECT hostname, COALESCE(port_name,'') FROM server_routes WHERE server_id=? ORDER BY hostname", serverID)
+	if err == nil {
+		for rows.Next() {
+			var t transferRoute
+			if rows.Scan(&t.Hostname, &t.PortName) == nil && t.Hostname != "" {
+				man.Routes = append(man.Routes, t)
+			}
+		}
+		rows.Close()
+	}
 }
 
 // restoreServerTail recreates the v2 tail on the imported server, re-encrypting
 // channel configs with this panel's key. The subdomain is kept only when free
 // here; a clash reports it back rather than silently stealing the route.
-func (s *Server) restoreServerTail(ctx context.Context, serverID string, man *transferManifest) ([]string, string) {
+func (s *Server) restoreServerTail(ctx context.Context, serverID string, man *transferManifest) (restoredOut []string, subdomainDroppedOut string, routesDroppedOut []string) {
 	var restored []string
 	for _, t := range man.Schedules {
 		s.db.ExecContext(ctx,
@@ -568,5 +596,41 @@ func (s *Server) restoreServerTail(ctx context.Context, serverID string, man *tr
 			subdomainDropped = man.Subdomain
 		}
 	}
-	return restored, subdomainDropped
+	// The extra hostnames, same rule as the subdomain: kept only when free here.
+	// Two servers claiming one hostname is not a state the panel can resolve on
+	// its own — whichever started last would win the tunnel rule — so a clash is
+	// reported rather than silently taken.
+	//
+	// The route is recorded, NOT provisioned. Provisioning happens on start like
+	// any other route, and until then the source keeps serving the name. That is
+	// the safe half of a handover: the copy is ready, and nothing has moved yet.
+	var routesDropped []string
+	added := 0
+	for _, rt := range man.Routes {
+		if rt.Hostname == "" || strings.EqualFold(rt.Hostname, man.Subdomain) {
+			continue // the primary is stored on the server row, not here
+		}
+		var taken int
+		s.db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM server_routes WHERE hostname=? AND server_id<>?", rt.Hostname, serverID).Scan(&taken)
+		if taken == 0 {
+			var onServer int
+			s.db.QueryRowContext(ctx,
+				"SELECT COUNT(*) FROM servers WHERE subdomain=? AND id<>?", rt.Hostname, serverID).Scan(&onServer)
+			taken = onServer
+		}
+		if taken > 0 {
+			routesDropped = append(routesDropped, rt.Hostname)
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx,
+			"INSERT INTO server_routes (id, server_id, hostname, port_name) VALUES (?,?,?,?)",
+			uuid.New().String(), serverID, rt.Hostname, rt.PortName); err == nil {
+			added++
+		}
+	}
+	if added > 0 {
+		restored = append(restored, fmt.Sprintf("%d hostnames", added))
+	}
+	return restored, subdomainDropped, routesDropped
 }

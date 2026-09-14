@@ -268,6 +268,16 @@ func (s *Server) importServerBundle(ctx context.Context, body io.Reader, skipExi
 		os.RemoveAll(dataDir)
 		return map[string]any{"name": man.Name, "skipped": true, "reason": "a server with this name already exists"}, nil
 	}
+	// The data directory is otherwise only ever created as a side effect of
+	// unpacking an entry under data/ — so a server whose data dir is EMPTY on the
+	// source arrives with no directory at all. The import still reports success and
+	// still writes the row, and the failure surfaces later as a Docker error that
+	// names neither the import nor the empty directory:
+	//   create container: invalid mount config for type "bind":
+	//   bind source path does not exist: /var/lib/yggdrasil/servers/<uuid>
+	// Measured on a redirect-only site migrated between two panels. MkdirAll first,
+	// so an empty data dir survives the move like any other.
+	os.MkdirAll(dataDir, 0o777) //nolint:errcheck // the chmod below reports the same failure
 	// Match what a freshly-installed server gets: install widens the data dir's top
 	// level so the container's own user can create things directly in it. An import
 	// that skipped this left every container user locked out of the server root —

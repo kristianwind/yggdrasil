@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/config"
 	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/db"
+	"github.com/kristianwind/yggdrasil/internal/docker"
 )
 
 // transferTestServer is a testServer with its own encryption key, so a
@@ -178,5 +181,57 @@ func TestPanelExportUsersNoDeadlock(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("export deadlocked on the single-connection pool")
+	}
+}
+
+// A server whose data directory is EMPTY on the source must still arrive with a
+// directory. The bundle carries no entries under data/ in that case, and the data
+// dir used to be created only as a side effect of unpacking one — so the import
+// reported success, wrote the row, and left data_dir pointing at nothing on disk.
+// The failure surfaced much later, on start, as
+//   bind source path does not exist: /var/lib/yggdrasil/servers/<uuid>
+// which names neither the import nor the empty directory. Measured on a real
+// redirect-only site moved between two panels.
+func TestImportCreatesDataDirWhenBundleCarriesNoData(t *testing.T) {
+	ctx := context.Background()
+	src := transferTestServer(t, "source-key-0123456789abcdef-xyz")
+	dst := transferTestServer(t, "target-key-fedcba9876543210-abc")
+
+	dataDir := seedMigrationServer(t, src, "srv-empty", "verdandetodo redirect")
+	// Undo the helper's sample file: an empty data dir is the whole case here.
+	os.RemoveAll(dataDir)
+	if err := os.MkdirAll(dataDir, 0o777); err != nil {
+		t.Fatalf("make empty source data dir: %v", err)
+	}
+	if ents, err := os.ReadDir(dataDir); err != nil || len(ents) != 0 {
+		t.Fatalf("source data dir must be empty, got %d entries (err %v)", len(ents), err)
+	}
+
+	// A full import reaches port allocation, which asks Docker for the ports in
+	// use. docker.New only constructs a client — it does not dial — so this needs
+	// no daemon: the call fails, the error is ignored at the call site, and the
+	// "taken" set is simply empty. That is the same path CI runs.
+	dc, err := docker.New("")
+	if err != nil {
+		t.Fatalf("docker client: %v", err)
+	}
+	dst.docker = dc
+
+	var buf bytes.Buffer
+	if err := src.writeServerBundle(ctx, &buf, "srv-empty"); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	res, err := dst.importServerBundle(ctx, &buf, false)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	var newDir string
+	if err := dst.db.QueryRow("SELECT data_dir FROM servers WHERE id=?", res["id"]).Scan(&newDir); err != nil {
+		t.Fatalf("read imported data_dir: %v", err)
+	}
+	if fi, err := os.Stat(newDir); err != nil || !fi.IsDir() {
+		t.Fatalf("imported data dir %q is missing (err %v) — Docker refuses to bind-mount it, "+
+			"and the import reported success anyway", newDir, err)
 	}
 }

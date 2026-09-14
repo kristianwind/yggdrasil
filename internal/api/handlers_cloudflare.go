@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -227,6 +229,136 @@ func (s *Server) dropRouteHost(ctx context.Context, routeID string) {
 	}
 }
 
+// connectorTunnelID reports the tunnel the cloudflared connector running on THIS
+// host is actually serving, and the name of the server running it.
+//
+// This exists because the panel's cf_tunnel_id is a field somebody types, and a
+// wrong one is invisible from inside the panel: every API call succeeds, every
+// hostname reports "provisioned", and the traffic goes to another machine. It
+// happened here — one panel was configured with a second panel's tunnel id, so
+// it wrote ingress rules into a tunnel it did not own and pointed them at an
+// address that tunnel's connector cannot reach. Two panels then shared one
+// tunnel config with no locking between them.
+//
+// The connector's token is a base64 JSON blob with the tunnel id in "t", which
+// is the only local statement of which tunnel this host serves. Returns "" when
+// no cloudflared server is managed here — that is not a fault, it just means the
+// panel has nothing to compare against.
+func (s *Server) connectorTunnelID(ctx context.Context) (tunnelID, serverName, rawToken string) {
+	// Exact rune id, not a LIKE: a pattern such as '%cloud%' also matches the
+	// opencloud rune, whose servers have no connector token at all — measured on
+	// a live panel, where it would have produced a warning about a file server.
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT name, COALESCE(env_json,'{}') FROM servers WHERE gameskill_id='cloudflared'")
+	if err != nil {
+		return "", "", ""
+	}
+	defer rows.Close()
+	var fallbackName, fallbackToken string
+	for rows.Next() {
+		var name, envJSON string
+		if rows.Scan(&name, &envJSON) != nil {
+			continue
+		}
+		var env map[string]string
+		if json.Unmarshal([]byte(envJSON), &env) != nil {
+			continue
+		}
+		tok := strings.TrimSpace(env["TUNNEL_TOKEN"])
+		if id := tunnelIDFromToken(tok); id != "" {
+			return id, name, tok
+		}
+		if tok != "" && fallbackToken == "" {
+			fallbackName, fallbackToken = name, tok
+		}
+	}
+	return "", fallbackName, fallbackToken
+}
+
+// tunnelIDFromToken pulls the tunnel id out of a cloudflared connector token.
+// The token is base64 (usually unpadded) over {"a":account,"t":tunnel,"s":secret}.
+// Only "t" is read; the secret is never logged or returned.
+func tunnelIDFromToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	raw, err := base64.StdEncoding.WithPadding(base64.NoPadding).DecodeString(strings.TrimRight(token, "="))
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		T string `json:"t"`
+	}
+	if json.Unmarshal(raw, &claims) != nil {
+		return ""
+	}
+	return strings.TrimSpace(claims.T)
+}
+
+// looksLikeUUID reports whether v has the shape of a tunnel id. Used only to tell
+// one operator mistake from another, never to validate anything.
+func looksLikeUUID(v string) bool {
+	if len(v) != 36 {
+		return false
+	}
+	for i, r := range v {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// cfTunnelWarning returns a human-readable warning about this host's connector,
+// or "" when there is nothing to say. Two mistakes, both of which otherwise cost
+// an afternoon because everything keeps reporting success:
+//
+//  1. The configured tunnel is not the one the local connector serves. Every API
+//     call still succeeds and every hostname still reports "provisioned" — the
+//     rules just land in somebody else's tunnel.
+//  2. The connector's token field holds a tunnel id instead of a connector token.
+//     Both are on the same page in the Cloudflare dashboard, they are easy to mix
+//     up, and the result is a connector that simply never comes up.
+//
+// Silence is reserved for "nothing to compare": no tunnel configured, no
+// cloudflared server managed here, or a token this code cannot read. Not knowing
+// and disagreeing are different answers, and only one of them should send
+// somebody to change a setting.
+func (s *Server) cfTunnelWarning(ctx context.Context) string {
+	configured := strings.TrimSpace(s.getSetting(ctx, "cf_tunnel_id"))
+	if configured == "" {
+		return ""
+	}
+	local, serverName, rawToken := s.connectorTunnelID(ctx)
+	if local == "" {
+		if looksLikeUUID(rawToken) {
+			return fmt.Sprintf(
+				"The connector server %q has a tunnel id in its Tunnel connector token field, not a connector token. "+
+					"Both are on the same page in Cloudflare (Zero Trust → Networks → Tunnels), but only the token — a long "+
+					"base64 string — lets cloudflared connect. As it stands this connector cannot come up, so nothing this "+
+					"panel provisions is reachable.", serverName)
+		}
+		return ""
+	}
+	if strings.EqualFold(local, configured) {
+		return ""
+	}
+	return fmt.Sprintf(
+		"This panel is configured for tunnel %s, but the connector running here (%q) serves tunnel %s. "+
+			"Hostnames provisioned from this panel are written into a tunnel this host does not run, so they route to "+
+			"whichever machine does — and two panels sharing one tunnel overwrite each other's rules. "+
+			"Set the tunnel id to %s, or point the connector at %s.",
+		configured, serverName, local, local, configured)
+}
+
 // --- Settings endpoints ---
 
 func (s *Server) handleGetCloudflareSettings(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +370,9 @@ func (s *Server) handleGetCloudflareSettings(w http.ResponseWriter, r *http.Requ
 		"internal_host": s.getSetting(r.Context(), "cf_internal_host"),
 		"enabled":       s.getSetting(r.Context(), "cf_enabled") == "1",
 		"configured":    s.getSetting(r.Context(), "cf_api_token") != "",
+		// Empty unless the tunnel id here disagrees with the connector on this
+		// host. The settings form is the one place an operator can act on it.
+		"tunnel_warning": s.cfTunnelWarning(r.Context()),
 	})
 }
 

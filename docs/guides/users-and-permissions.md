@@ -167,8 +167,10 @@ interface. Whoever has `server.console` can run whatever that game's console all
 ## Two-factor authentication (TOTP)
 
 Under **Settings → Security → Two-factor authentication**, choose **Enable 2FA**.
-Yggdrasil generates a secret, stores it encrypted and pending, and shows you the secret
-plus an `otpauth://` URI for your authenticator app. Enter a current code and
+Yggdrasil generates a secret, stores it encrypted and pending, and shows you a **QR code**
+to point your authenticator app at. If the camera is not an option — a phone with no
+camera access to the screen, a password manager that takes the secret as text — open
+**Can't scan it?** and type the secret in by hand instead. Enter a current code and
 **Confirm & enable** — 2FA is only switched on once a code verifies against the pending
 secret. Disabling it also requires a current code; a session that has been hijacked
 cannot strip the second factor without the authenticator.

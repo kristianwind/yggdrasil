@@ -2387,12 +2387,17 @@
       <button class="btn-danger" onclick={disable2fa}>Disable</button>
     </div>
   {:else if twofaSetup}
-    <p class="text-sm mb-2">
-      Add this secret to your authenticator app (or scan the otpauth URI), then enter a code to
-      confirm:
-    </p>
-    <code class="block break-all text-xs bg-black/40 p-2 rounded mb-1">{twofaSetup.secret}</code>
-    <code class="block break-all text-[10px] text-muted bg-black/30 p-2 rounded mb-3">{twofaSetup.uri}</code>
+    <p class="text-sm mb-3">Scan this with your authenticator app, then enter a code to confirm:</p>
+    {#if twofaSetup.qr}
+      <!-- On white, always: a QR on a dark card is a QR that does not scan. The
+           padding is the quiet zone the format requires. -->
+      <img src={twofaSetup.qr} alt="QR code for setting up two-factor authentication"
+        class="bg-white p-3 rounded mb-3 w-44 h-44" />
+    {/if}
+    <details class="mb-3">
+      <summary class="text-xs text-muted cursor-pointer">Can&rsquo;t scan it? Type this in instead</summary>
+      <code class="block break-all text-xs bg-black/40 p-2 rounded mt-2">{twofaSetup.secret}</code>
+    </details>
     <div class="flex gap-2">
       <input class="input font-mono tracking-widest" bind:value={twofaCode} placeholder="123456" inputmode="numeric" />
       <button class="btn-primary" onclick={enable2fa}>Confirm & enable</button>

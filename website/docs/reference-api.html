@@ -381,7 +381,7 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 <td><code>POST</code></td>
 <td><code>/api/auth/2fa/setup</code></td>
 <td>Session</td>
-<td>Generate a pending secret and return its <code>otpauth://</code> URI</td>
+<td>Generate a pending secret and return it as a QR code (<code>qr</code>, a PNG data URI), an <code>otpauth://</code> URI and the raw secret</td>
 </tr>
 <tr>
 <td><code>POST</code></td>

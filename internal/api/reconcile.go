@@ -375,6 +375,7 @@ func (s *Server) reconcileStatuses() {
 			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
 			s.clearWatchdog(x.id)
 			s.clearResourceAlarms(x.id)
+			s.clearHealth(x.id)
 			s.stoppedCleanup(x.id)
 		}
 	}

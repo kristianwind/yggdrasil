@@ -86,6 +86,11 @@ type serverRow struct {
 	// raw HTML and empties dangerous URLs — see notes_render.go. Never build this
 	// anywhere else.
 	NotesHTML string `json:"notes_html,omitempty"` // single GET
+	// HealthPath is the HTTP path the panel asks for to tell a live app from a
+	// merely-bound port; empty = off. Health is the current verdict: "", "ok" or
+	// "down". See health_check.go for why the readiness dial cannot answer this.
+	HealthPath string `json:"health_path"`      // single GET
+	Health     string `json:"health,omitempty"` // "", "ok", "down"
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0), COALESCE(tags,''), COALESCE((SELECT version FROM gameskills g WHERE g.id = servers.gameskill_id),0), COALESCE(rune_version_applied,0)"
@@ -213,9 +218,10 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	var envJSON string
 	var notesMD int
 	s.db.QueryRowContext(r.Context(),
-		"SELECT env_json, COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0), COALESCE(notes,''), COALESCE(notes_markdown,0) FROM servers WHERE id=?", id).
-		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB, &srv.Notes, &notesMD)
+		"SELECT env_json, COALESCE(cpu_limit,0), COALESCE(mem_limit_mb,0), COALESCE(notes,''), COALESCE(notes_markdown,0), COALESCE(health_path,'') FROM servers WHERE id=?", id).
+		Scan(&envJSON, &srv.CPUPercent, &srv.MemoryMB, &srv.Notes, &notesMD, &srv.HealthPath)
 	srv.NotesMarkdown = notesMD == 1
+	srv.Health = s.serverHealth(id, srv.HealthPath)
 	// Rendered here, not in the browser: the frontend carries no markdown library
 	// (and no runtime dependencies at all), and the escaping is the security
 	// boundary — it belongs where it can be tested. See notes_render.go.
@@ -449,6 +455,7 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		DiskAlarmMB   *int         `json:"disk_alarm_mb"`
 		Notes         *string      `json:"notes"`
 		NotesMarkdown *bool        `json:"notes_markdown"`
+		HealthPath    *string      `json:"health_path"`
 		Tags          *[]string    `json:"tags"`
 		Subdomain     *string      `json:"subdomain"`
 		HostMounts    *[]hostMount `json:"host_mounts"` // admin-only; nil = leave unchanged
@@ -553,6 +560,19 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.NotesMarkdown != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET notes_markdown=? WHERE id=?", boolInt(*req.NotesMarkdown), id)
+	}
+	if req.HealthPath != nil {
+		hp := strings.TrimSpace(*req.HealthPath)
+		if hp != "" && !strings.HasPrefix(hp, "/") {
+			hp = "/" + hp
+		}
+		if len(hp) > 200 {
+			hp = hp[:200]
+		}
+		s.db.ExecContext(r.Context(), "UPDATE servers SET health_path=? WHERE id=?", hp, id)
+		// Forget the old verdict: the next tick asks the new path from scratch,
+		// rather than reporting a recovery that is really a different question.
+		s.clearHealth(id)
 	}
 	if req.Notes != nil {
 		notes := *req.Notes
@@ -964,6 +984,7 @@ func (s *Server) handleStopServer(w http.ResponseWriter, r *http.Request) {
 	// A deliberate stop cancels any pending start-retry chain / streak + alarm state.
 	s.clearStartWatch(id)
 	s.clearResourceAlarms(id)
+	s.clearHealth(id)
 	go s.upnpRemoveServer(id)
 	go s.unifiRemoveServer(id)
 	go s.npmRemoveServer(id)

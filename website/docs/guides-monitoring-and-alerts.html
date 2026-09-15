@@ -138,6 +138,26 @@ in-place backups and logs don&rsquo;t shrink because you pressed Stop. So stoppi
 its disk alarm and does not produce an all-clear — you get the all-clear when the directory actually
 falls back under the threshold, which means deleting something.</p>
 <p>Alarms go out through your configured notification channels — see <a href="guides-notifications.html">Notifications</a>.</p>
+<h2 id="health-check-is-the-app-alive-or-just-the-port">Health check (is the app alive, or just the port?)</h2>
+<p>The <strong>running</strong> badge means the container is up and its web port accepts a connection. That is the
+right signal while a server is starting, and the wrong one for deciding it is still working:
+Docker&rsquo;s userland proxy keeps a published port bound for as long as the container exists, whether or
+not anything inside is listening. A container that is up with a dead app answers a TCP connect
+exactly like a healthy one.</p>
+<p>Set <strong>Health check path</strong> in a server&rsquo;s settings (it appears for servers with a <code>web</code> port) and the
+panel asks that path on the server&rsquo;s own port once a minute. Three failures in a row send one
+notification; the next answer sends an all-clear. A <code>🩺 not answering</code> badge sits next to the status
+badge while it is failing, because <em>running</em> and <em>not answering</em> are both true at the same time —
+that is the situation, and hiding half of it is what made this hard to spot.</p>
+<p>Blank means off, and off is the default. Most servers have no HTTP endpoint worth asking, and a
+check that guessed would page you about game servers that were never going to answer.</p>
+<p><strong>Any reply counts as alive</strong> — 401, 403 and 500 included. The question is whether something is
+serving, not whether it is happy: an app returning 500 is a different problem from an app that is not
+there, and treating them alike turns this into a noisy uptime checker for every login-gated page you
+run. Redirects are not followed, so a 301 to your canonical hostname is an answer, not a detour.</p>
+<p>The case it was built for: a VPN-gated torrent client whose provider&rsquo;s endpoint went down. The
+container&rsquo;s killswitch kept the client from starting, so the panel showed <strong>running</strong> with a bound
+port and nothing behind it for an hour, while an external HTTP monitor caught it in seconds.</p>
 <h2 id="watchdog">Watchdog</h2>
 <p>The <strong>watchdog</strong> is per-server auto-heal, off by default, and available only on runes that declare a
 query protocol (there&rsquo;s nothing to health-check otherwise, so the UI gates the toggle).</p>
@@ -475,7 +495,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t3" href="#docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</a><a class="t3" href="#the-statistics-page">The Statistics page</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#health-check-is-the-app-alive-or-just-the-port">Health check (is the app alive, or just the port?)</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t3" href="#docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</a><a class="t3" href="#the-statistics-page">The Statistics page</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

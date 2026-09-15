@@ -1067,6 +1067,7 @@
       cpu_alarm_pct: server.cpu_alarm_pct || 0,
       mem_alarm_mb: server.mem_alarm_mb || 0,
       disk_alarm_mb: server.disk_alarm_mb || 0,
+      health_path: server.health_path || "",
       tags: (server.tags || []).join(", "),
       subdomain: server.subdomain || "",
       realm_id: server.realm_id || "",
@@ -1133,6 +1134,7 @@
         cpu_alarm_pct: Number(edit.cpu_alarm_pct) || 0,
         mem_alarm_mb: Number(edit.mem_alarm_mb) || 0,
         disk_alarm_mb: Number(edit.disk_alarm_mb) || 0,
+        health_path: edit.health_path || "",
         tags: (edit.tags || "").split(","),
         subdomain: edit.subdomain || "",
       };
@@ -1654,6 +1656,15 @@
     <span class="badge {server.status === 'running' ? 'bg-accent2/20 text-accent' : server.status === 'starting' ? 'bg-warn/20 text-warn' : 'bg-border text-muted'}"
       >{server.status}</span
     >
+    <!-- The health verdict sits next to the status on purpose: "running" and
+         "not answering" are both true at once in the case this exists for, and
+         seeing them side by side is the whole point. -->
+    {#if server.health === "down"}
+      <span class="badge bg-danger/20 text-danger"
+        title="The container is up and its port is bound, but the health path has not answered for three checks in a row. Docker keeps a published port bound whether or not anything is listening behind it.">
+        🩺 not answering
+      </span>
+    {/if}
     {#if reach}
       <span
         class="badge {reach.reachable ? 'bg-accent2/20 text-accent' : 'bg-warn/20 text-warn'}"
@@ -2739,6 +2750,19 @@
             directory grows past the disk threshold (checked hourly) — plus an all-clear when it recovers. 0 = off.
           </p>
         </div>
+        {#if server.ports?.web}
+          <div>
+            <label class="label" for="e-health">Health check path (optional)</label>
+            <input id="e-health" class="input" placeholder="/ — blank = off" bind:value={edit.health_path} />
+            <p class="text-xs text-muted mt-1">
+              Every minute the panel asks this path on the server&rsquo;s web port and notifies you after three
+              failures in a row, plus an all-clear when it answers again. Any reply counts as alive &mdash; 401,
+              403 and 500 included &mdash; because the question is whether something is serving, not whether it is
+              happy. This is worth setting: the <b>running</b> badge only means the container is up and its port is
+              bound, and Docker keeps a published port bound whether or not anything is listening behind it.
+            </p>
+          </div>
+        {/if}
         {#if server.ports?.web}
           <div>
             <label class="label" for="e-sub">Public hostname (optional)</label>

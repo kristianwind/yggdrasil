@@ -94,6 +94,32 @@ falls back under the threshold, which means deleting something.
 
 Alarms go out through your configured notification channels — see [Notifications](notifications.md).
 
+## Health check (is the app alive, or just the port?)
+
+The **running** badge means the container is up and its web port accepts a connection. That is the
+right signal while a server is starting, and the wrong one for deciding it is still working:
+Docker's userland proxy keeps a published port bound for as long as the container exists, whether or
+not anything inside is listening. A container that is up with a dead app answers a TCP connect
+exactly like a healthy one.
+
+Set **Health check path** in a server's settings (it appears for servers with a `web` port) and the
+panel asks that path on the server's own port once a minute. Three failures in a row send one
+notification; the next answer sends an all-clear. A `🩺 not answering` badge sits next to the status
+badge while it is failing, because *running* and *not answering* are both true at the same time —
+that is the situation, and hiding half of it is what made this hard to spot.
+
+Blank means off, and off is the default. Most servers have no HTTP endpoint worth asking, and a
+check that guessed would page you about game servers that were never going to answer.
+
+**Any reply counts as alive** — 401, 403 and 500 included. The question is whether something is
+serving, not whether it is happy: an app returning 500 is a different problem from an app that is not
+there, and treating them alike turns this into a noisy uptime checker for every login-gated page you
+run. Redirects are not followed, so a 301 to your canonical hostname is an answer, not a detour.
+
+The case it was built for: a VPN-gated torrent client whose provider's endpoint went down. The
+container's killswitch kept the client from starting, so the panel showed **running** with a bound
+port and nothing behind it for an hour, while an external HTTP monitor caught it in seconds.
+
 ## Watchdog
 
 The **watchdog** is per-server auto-heal, off by default, and available only on runes that declare a

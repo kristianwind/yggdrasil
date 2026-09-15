@@ -94,6 +94,31 @@ falls back under the threshold, which means deleting something.
 
 Alarms go out through your configured notification channels — see [Notifications](notifications.md).
 
+## What a scheduled update does when things go wrong
+
+A schedule over every server runs them one at a time, and three things now stop it from turning one
+bad night into a fleet outage.
+
+**A server that does not come back fails the update.** The install writing its files and the server
+actually running again are different events; a failed restart used to be a line in the install log
+and nothing else, so the run reported success for a server it had left stopped.
+
+**Three consecutive failures stop the batch.** The remaining servers are recorded as skipped and the
+notification says how many were left untouched. Consecutive, not total: a run over thirty servers may
+have a few fail for unrelated reasons, but three in a row is the environment — a registry outage, a
+full disk, a bad image — not the servers. A *skip* (stopped, or players online) is not a failure and
+does not count.
+
+**With a health path set, the update waits for the server to answer** before calling it done, for up
+to 90 seconds. That closes the gap this whole section exists for: the container coming back is not
+the app coming back, and without this an update reports success over a server whose port is bound and
+whose app is dead. Servers with no health path are not waited on — there is nothing to ask.
+
+One thing this does not do: decide whether an update was *needed*. Every run still pulls and
+recreates, whether or not anything changed upstream. Skipping unchanged servers needs a rune to say
+whether its update is the image or content it downloads — a SteamCMD game updates the latter, so
+skipping on an unchanged image digest would silently skip real game updates.
+
 ## Health check (is the app alive, or just the port?)
 
 The **running** badge means the container is up and its web port accepts a connection. That is the

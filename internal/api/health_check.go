@@ -185,3 +185,43 @@ func (s *Server) clearHealth(serverID string) {
 	delete(s.health.strikes, serverID)
 	delete(s.health.down, serverID)
 }
+
+// updateHealthGrace is how long an update waits for a freshly recreated server
+// to start answering. Generous on purpose: a WordPress or a game server can take
+// most of a minute to come up, and a false "did not come back" on a server that
+// was merely slow is worse than a slow run.
+const updateHealthGrace = 90 * time.Second
+
+// waitForHealthAfterUpdate blocks until a just-updated server answers its health
+// path, and reports whether it did. True — with no message — when the server has
+// no health path, which is the common case and not a failure.
+//
+// This is the difference between "the container came back" and "the server came
+// back", and an update that cannot tell them apart reports success for servers
+// it has left dead.
+func (s *Server) waitForHealthAfterUpdate(serverID string) (string, bool) {
+	var path string
+	s.db.QueryRow("SELECT COALESCE(health_path,'') FROM servers WHERE id=?", serverID).Scan(&path) //nolint:errcheck
+	if path == "" {
+		return "", true
+	}
+	port := s.firstWebHostPort(serverID)
+	if port == 0 {
+		return "", true
+	}
+	deadline := time.Now().Add(updateHealthGrace)
+	for {
+		if s.probeHealth(port, path) {
+			// Clear any strikes the periodic check accumulated during the restart,
+			// so it does not page about an outage that is already over.
+			s.clearHealth(serverID)
+			return "", true
+		}
+		if time.Now().After(deadline) {
+			return fmt.Sprintf(
+				"updated, but it has not answered %s in %s — the container is running and its port is bound, "+
+					"so nothing else will tell you", path, updateHealthGrace), false
+		}
+		time.Sleep(3 * time.Second)
+	}
+}

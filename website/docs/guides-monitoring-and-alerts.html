@@ -138,6 +138,25 @@ in-place backups and logs don&rsquo;t shrink because you pressed Stop. So stoppi
 its disk alarm and does not produce an all-clear — you get the all-clear when the directory actually
 falls back under the threshold, which means deleting something.</p>
 <p>Alarms go out through your configured notification channels — see <a href="guides-notifications.html">Notifications</a>.</p>
+<h2 id="what-a-scheduled-update-does-when-things-go-wrong">What a scheduled update does when things go wrong</h2>
+<p>A schedule over every server runs them one at a time, and three things now stop it from turning one
+bad night into a fleet outage.</p>
+<p><strong>A server that does not come back fails the update.</strong> The install writing its files and the server
+actually running again are different events; a failed restart used to be a line in the install log
+and nothing else, so the run reported success for a server it had left stopped.</p>
+<p><strong>Three consecutive failures stop the batch.</strong> The remaining servers are recorded as skipped and the
+notification says how many were left untouched. Consecutive, not total: a run over thirty servers may
+have a few fail for unrelated reasons, but three in a row is the environment — a registry outage, a
+full disk, a bad image — not the servers. A <em>skip</em> (stopped, or players online) is not a failure and
+does not count.</p>
+<p><strong>With a health path set, the update waits for the server to answer</strong> before calling it done, for up
+to 90 seconds. That closes the gap this whole section exists for: the container coming back is not
+the app coming back, and without this an update reports success over a server whose port is bound and
+whose app is dead. Servers with no health path are not waited on — there is nothing to ask.</p>
+<p>One thing this does not do: decide whether an update was <em>needed</em>. Every run still pulls and
+recreates, whether or not anything changed upstream. Skipping unchanged servers needs a rune to say
+whether its update is the image or content it downloads — a SteamCMD game updates the latter, so
+skipping on an unchanged image digest would silently skip real game updates.</p>
 <h2 id="health-check-is-the-app-alive-or-just-the-port">Health check (is the app alive, or just the port?)</h2>
 <p>The <strong>running</strong> badge means the container is up and its web port accepts a connection. That is the
 right signal while a server is starting, and the wrong one for deciding it is still working:
@@ -495,7 +514,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#health-check-is-the-app-alive-or-just-the-port">Health check (is the app alive, or just the port?)</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t3" href="#docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</a><a class="t3" href="#the-statistics-page">The Statistics page</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#what-a-scheduled-update-does-when-things-go-wrong">What a scheduled update does when things go wrong</a><a class="t2" href="#health-check-is-the-app-alive-or-just-the-port">Health check (is the app alive, or just the port?)</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t3" href="#docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</a><a class="t3" href="#the-statistics-page">The Statistics page</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

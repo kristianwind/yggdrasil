@@ -522,6 +522,16 @@ func migrate(db *sql.DB) error {
 	// container keeps the startup script, env and mounts it was created with until
 	// the server is restarted. 0 = created before this was tracked.
 	addColumnIfMissing(db, "servers", "rune_version_applied", "INTEGER NOT NULL DEFAULT 0")
+	// An HTTP path the panel requests to decide whether the APP is alive, as
+	// opposed to whether its port is bound. Empty = off.
+	//
+	// The difference is not academic. Docker's userland proxy binds a published
+	// port whether or not anything is listening behind it, so a container whose
+	// app never started still answers a TCP connect — which is exactly what the
+	// readiness check dials. Measured: a VPN-gated torrent client whose tunnel
+	// could not reconnect sat "running" for an hour with a bound port and no
+	// process behind it, while an external HTTP monitor saw it immediately.
+	addColumnIfMissing(db, "servers", "health_path", "TEXT NOT NULL DEFAULT ''")
 	addColumnIfMissing(db, "backup_targets", "keep_n", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "users", "totp_secret", "TEXT") // encrypted; pending until enabled

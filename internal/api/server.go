@@ -28,6 +28,7 @@ type Server struct {
 	cfg     *config.Config
 	db      *sql.DB
 	docker  *docker.Client
+	health  *healthState // HTTP health-check strikes; see health_check.go
 	router  *chi.Mux
 	webFS   fs.FS
 	docsKB  *docskb.KB   // embedded user docs, retrieval-grounding for the Kvasir chat
@@ -98,7 +99,9 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.viol.Start()
 	s.startDiskMonitor()
 	s.startImageBloatMonitor()
+	s.health = newHealthState()
 	s.startStatusReconciler()
+	s.startHealthChecks()
 	go s.startAutostartServers()
 	go s.autoUpdateLoop()
 	s.startOpsDigestLoop()

@@ -32,15 +32,54 @@
   // out of the data path — it only starts the transfer and waits for the result.
   let pullOpen = $state(false);
   let pull = $state({ url: "", token: "" });
+  // Saved connections. The token is never sent back by the API — a saved one is
+  // used by id, and the field stays empty unless you are replacing it.
+  let saved = $state([]);
+  let savedID = $state("");   // "" = type an address by hand
+  let saveThis = $state(false);
+  let saveName = $state("");
   let pullList = $state(null); // null = not listed yet
   let pullBusy = $state(false);
   let pullingID = $state("");
 
+  async function loadSavedPanels() {
+    try {
+      saved = await api.get("/panel/remotes");
+    } catch {
+      saved = []; // not an admin, or none saved yet — the form still works by hand
+    }
+  }
+
+  // What every remote call sends: a saved connection by id, or an address and a
+  // token typed here. A token typed alongside a saved connection overrides it
+  // for this request without being stored.
+  function remoteArgs() {
+    return savedID
+      ? { remote_id: savedID, token: pull.token.trim() }
+      : { url: pull.url.trim(), token: pull.token.trim() };
+  }
+
   async function listRemote() {
-    if (!pull.url.trim() || !pull.token.trim()) return toast("Address and token are required", "warn");
+    if (!savedID && (!pull.url.trim() || !pull.token.trim()))
+      return toast("Address and token are required", "warn");
     pullBusy = true;
     try {
-      pullList = await api.post("/panel/remote/servers", { url: pull.url.trim(), token: pull.token.trim() });
+      pullList = await api.post("/panel/remote/servers", remoteArgs());
+      if (saveThis && !savedID) {
+        // Only after the connection has been proven to work — saving one that
+        // does not is how a broken entry becomes permanent.
+        try {
+          await api.post("/panel/remotes", {
+            name: saveName.trim() || pull.url.trim(),
+            url: pull.url.trim(),
+            token: pull.token.trim(),
+          });
+          await loadSavedPanels();
+          toast("Connection saved — pick it from the list next time", "success");
+        } catch (e) {
+          toast("Listed the servers, but could not save the connection: " + e.message, "warn");
+        }
+      }
       if (!pullList.length) toast("That panel has no servers", "info");
     } catch (e) {
       pullList = null;
@@ -61,11 +100,7 @@
       return;
     pullingID = rs.id;
     try {
-      const r = await api.post("/panel/remote/import", {
-        url: pull.url.trim(),
-        token: pull.token.trim(),
-        server_id: rs.id,
-      });
+      const r = await api.post("/panel/remote/import", { ...remoteArgs(), server_id: rs.id });
       if (r.ports_changed?.length) {
         toast(
           `Imported “${r.name}”, but ${r.ports_changed.length} port(s) were already in use and moved: ${r.ports_changed.join(", ")}. The tunnel rule is rebuilt from this panel's own port, so there is nothing to repoint unless you forward ports by hand.`,
@@ -119,8 +154,7 @@
     handoverBusy = true;
     try {
       const r = await api.post(`/servers/${h.targetID}/takeover-domains`, {
-        url: pull.url.trim(),
-        token: pull.token.trim(),
+        ...remoteArgs(),
         source_server_id: h.sourceID,
       });
       toast(
@@ -631,7 +665,7 @@
       </button>
     {/if}
     {#if $user?.role === "admin"}
-      <button class="btn-ghost" onclick={() => (pullOpen = !pullOpen)}
+      <button class="btn-ghost" onclick={() => { pullOpen = !pullOpen; if (pullOpen) loadSavedPanels(); }}
         title="Copy a server straight from another Yggdrasil panel over the network — works for large servers, where uploading a bundle would hit a proxy's upload limit.">
         ⇄ From another panel
       </button>
@@ -660,20 +694,62 @@
       <button class="btn-ghost px-2 py-1 shrink-0" onclick={() => (pullOpen = false)} aria-label="Close">✕</button>
     </div>
 
-    <div class="grid sm:grid-cols-2 gap-2">
+    {#if saved.length}
       <div>
-        <label class="label" for="pull-url">Source panel address</label>
-        <input id="pull-url" class="input" bind:value={pull.url} placeholder="http://100.80.130.8:8080" autocomplete="off" />
+        <label class="label" for="pull-saved">Panel</label>
+        <select id="pull-saved" class="input" bind:value={savedID}>
+          <option value="">Type an address…</option>
+          {#each saved as p}
+            <option value={p.id}>
+              {p.name}{p.has_token ? "" : " (no saved token)"}
+            </option>
+          {/each}
+        </select>
       </div>
-      <div>
-        <label class="label" for="pull-token">API token from that panel</label>
-        <input id="pull-token" class="input" type="password" bind:value={pull.token}
-          placeholder="create one there under Settings → API tokens" autocomplete="off" />
+    {/if}
+
+    {#if !savedID}
+      <div class="grid sm:grid-cols-2 gap-2">
+        <div>
+          <label class="label" for="pull-url">Source panel address</label>
+          <input id="pull-url" class="input" bind:value={pull.url} placeholder="http://100.80.130.8:8080" autocomplete="off" />
+        </div>
+        <div>
+          <label class="label" for="pull-token">API token from that panel</label>
+          <input id="pull-token" class="input" type="password" bind:value={pull.token}
+            placeholder="create one there under Settings → API tokens" autocomplete="off" />
+        </div>
       </div>
-    </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" bind:checked={saveThis} />
+        Remember this panel
+      </label>
+      {#if saveThis}
+        <input class="input" bind:value={saveName} placeholder="Name it — e.g. kw01" autocomplete="off" />
+        <p class="text-xs text-muted">
+          Saved after the connection is proven to work. The token is encrypted here and never shown
+          again, not even to you. Create it on the source panel as a <b>Transfer only</b> token so
+          this panel holds a key that can read server bundles &mdash; not one that can control it.
+        </p>
+      {/if}
+    {:else}
+      {@const p = saved.find((x) => x.id === savedID)}
+      {#if p && !p.has_token}
+        <div>
+          <label class="label" for="pull-token2">API token from that panel</label>
+          <input id="pull-token2" class="input" type="password" bind:value={pull.token}
+            placeholder="no token saved for this one" autocomplete="off" />
+          <p class="text-xs text-muted">Used for this transfer only; it is not saved.</p>
+        </div>
+      {:else}
+        <p class="text-xs text-muted">
+          Using the saved token for <b>{p?.name}</b>. Manage saved panels under Settings → Integrations.
+        </p>
+      {/if}
+    {/if}
     <p class="text-xs text-muted">
       The bundle carries <b>decrypted</b> secrets, so pull over HTTPS or a private network — not plain
-      HTTP across the internet. The token is used for this transfer only and is never stored here.
+      HTTP across the internet.
     </p>
     <button class="btn-primary" onclick={listRemote} disabled={pullBusy}>
       {pullBusy ? "Connecting…" : "List its servers"}

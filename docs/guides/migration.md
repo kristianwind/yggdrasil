@@ -144,6 +144,31 @@ The bundle carries decrypted secrets, so pull over HTTPS or a private network �
 never plain HTTP across the internet. The token is used for that transfer only
 and is not stored.
 
+### Saving a connection
+
+Retyping an address and a token for every move is friction, and friction is not neutral: it is what
+makes people reuse one token everywhere, keep it in a note, and never rotate it. Tick **Remember this
+panel** when pulling and the connection is saved — after it has been proven to work, so a broken
+entry cannot become permanent.
+
+Three things about the saved token:
+
+- It is **encrypted at rest** with this panel's key and **never returned by the API**, not even to
+  the admin who saved it. The panel answers "there is one" and nothing more. Lose it and you replace
+  it; you cannot read it back.
+- Saving it is **optional and separable**. An address and a name carry no risk and remove half the
+  friction on their own, so a connection can exist without a token and ask for one each time.
+  Forgetting the token does not delete the connection.
+- Each connection records when it was last used, which is the cheapest way to spot one nothing needs
+  any more.
+
+**Create it on the source as a Transfer-only token.** A token that can pull is admin-scoped by
+default, so saving one would put a full admin key to the neighbouring panel in this panel's database
+— one compromise becoming several. A transfer-scoped token can list servers and download a bundle
+and nothing else. It is still a read credential for every secret it can export, because that is what
+a bundle is; it is much narrower than admin, not harmless. See
+[Users and permissions](guides-users-and-permissions.html#transfer-only-tokens).
+
 ### Moving the domains too
 
 Copying a server does not move its public hostnames, and that is deliberate: the

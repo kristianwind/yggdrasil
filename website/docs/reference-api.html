@@ -1867,10 +1867,28 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 <td>Verify the token, resolve the zone, and check the tunnel config</td>
 </tr>
 <tr>
+<td><code>GET</code></td>
+<td><code>/api/panel/remotes</code></td>
+<td>Admin</td>
+<td>Saved panel-to-panel connections. Returns <code>has_token</code>, never the token itself</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/panel/remotes</code></td>
+<td>Admin</td>
+<td>Create or update one: <code>{id?, name, url, token?}</code>. Omit <code>token</code> to leave it as it is; send <code>&quot;&quot;</code> to forget it while keeping the connection</td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/panel/remotes/{id}</code></td>
+<td>Admin</td>
+<td>Forget a saved connection</td>
+</tr>
+<tr>
 <td><code>POST</code></td>
 <td><code>/api/panel/remote/servers</code></td>
 <td>Admin</td>
-<td>List the servers on <strong>another</strong> panel: <code>{url, token}</code>. Each entry adds <code>exists_here</code> so a name clash shows before a long transfer. Nothing is stored</td>
+<td>List the servers on <strong>another</strong> panel: <code>{url, token}</code> — or <code>{remote_id}</code> for a saved connection. Each entry adds <code>exists_here</code> so a name clash shows before a long transfer. Nothing is stored</td>
 </tr>
 <tr>
 <td><code>POST</code></td>

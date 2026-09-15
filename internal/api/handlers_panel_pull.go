@@ -98,23 +98,22 @@ func remoteGet(base, token, path string) (*http.Response, error) {
 }
 
 // handleRemoteServers lists the servers on a source panel so the admin can pick
-// one. Nothing is stored: the address and token live only in this request.
+// one. Either give it an address and a token, or the id of a saved connection.
 func (s *Server) handleRemoteServers(w http.ResponseWriter, r *http.Request) {
-	var req remotePanel
+	var req struct {
+		remotePanel
+		RemoteID string `json:"remote_id"`
+	}
 	if decodeJSON(r, &req) != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	base, err := normalizeRemote(req.URL)
+	base, token, err := s.resolveRemote(r.Context(), req.RemoteID, req.URL, req.Token)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(req.Token) == "" {
-		jsonError(w, "an API token from the source panel is required", http.StatusBadRequest)
-		return
-	}
-	resp, err := remoteGet(base, req.Token, "/api/servers")
+	resp, err := remoteGet(base, token, "/api/servers")
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
@@ -161,6 +160,7 @@ func (s *Server) handleRemoteServers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRemoteImport(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		remotePanel
+		RemoteID string `json:"remote_id"`
 		ServerID string `json:"server_id"`
 		Skip     bool   `json:"skip_existing"`
 	}
@@ -168,12 +168,12 @@ func (s *Server) handleRemoteImport(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "source panel and server_id are required", http.StatusBadRequest)
 		return
 	}
-	base, err := normalizeRemote(req.URL)
+	base, token, err := s.resolveRemote(r.Context(), req.RemoteID, req.URL, req.Token)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	resp, err := remoteGet(base, req.Token, "/api/servers/"+url.PathEscape(strings.TrimSpace(req.ServerID))+"/export")
+	resp, err := remoteGet(base, token, "/api/servers/"+url.PathEscape(strings.TrimSpace(req.ServerID))+"/export")
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return

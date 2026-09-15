@@ -306,6 +306,22 @@ CREATE TABLE IF NOT EXISTS permissions (
 	UNIQUE(user_id, scope_type, scope_id)
 );
 
+-- Saved panel-to-panel connections, so moving a server between two panels you
+-- own does not mean finding a token every time.
+--
+-- The token is a credential on the OTHER panel, encrypted at rest here with
+-- this panel's key, and never returned by the API — the same shape as
+-- cf_api_token. It is nullable on purpose: an address and a name alone are
+-- useful and carry no risk, so saving the token stays a separate decision.
+CREATE TABLE IF NOT EXISTS remote_panels (
+	id           TEXT PRIMARY KEY,
+	name         TEXT NOT NULL,
+	url          TEXT NOT NULL,
+	token_enc    TEXT NOT NULL DEFAULT '',
+	last_used_at TEXT,
+	created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS api_tokens (
 	id          TEXT PRIMARY KEY,
 	user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

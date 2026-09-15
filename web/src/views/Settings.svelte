@@ -3248,6 +3248,7 @@
   <select class="input max-w-[16rem]" bind:value={newTokenScope}>
     <option value="">Full access (this account&rsquo;s)</option>
     <option value="transfer">Transfer only</option>
+    <option value="link">Link (show &amp; operate)</option>
   </select>
   <button class="btn-primary" onclick={createToken}>Create</button>
 </div>
@@ -3272,6 +3273,11 @@
           <span class="badge bg-panel2 border border-border text-muted text-[11px] mt-1"
             title="Can list servers and download a server bundle. Cannot start, stop, delete or reconfigure anything.">
             transfer only
+          </span>
+        {:else if t.scope === "link"}
+          <span class="badge bg-panel2 border border-border text-muted text-[11px] mt-1"
+            title="Can list servers and start/stop/restart them. Cannot export, delete, reconfigure or read files.">
+            link
           </span>
         {/if}
       </div>

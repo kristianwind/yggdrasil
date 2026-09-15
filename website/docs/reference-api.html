@@ -1868,6 +1868,18 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 </tr>
 <tr>
 <td><code>GET</code></td>
+<td><code>/api/panel/fleet</code></td>
+<td>Admin</td>
+<td>Every server on this panel and on each linked one, grouped by panel. A panel that is unreachable reports <code>error</code> and an empty list instead of failing the request</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/panel/fleet/{id}/servers/{serverID}/{action}</code></td>
+<td>Admin</td>
+<td>Proxy <code>start</code>, <code>stop</code>, <code>restart</code> or <code>safe-restart</code> to a server on a linked panel. The remote panel applies its own auth and RBAC</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
 <td><code>/api/panel/remotes</code></td>
 <td>Admin</td>
 <td>Saved panel-to-panel connections. Returns <code>has_token</code>, never the token itself</td>

@@ -241,6 +241,20 @@ You only ever see and delete your own tokens; the list is filtered by owner. Eac
 shows when it was created and when it was last used, which is the cheapest way to spot a
 token nothing needs any more.
 
+### Link tokens
+
+**Link** is the scope for "one login, several hosts". A link token lets another panel list this
+panel's servers, see their status and stats, and **start, stop or restart** them. It cannot export a
+bundle, delete a server, change settings, read files, open a console, or touch domains.
+
+Export is deliberately *not* included, and the split matters: a bundle carries decrypted secrets, so
+a controller that only needs to press Start has no business reading them. Linking a host and being
+able to copy it off are separate grants, and a token has one or the other.
+
+This is what the **Fleet** page runs on. The linked panel still applies its own authentication and
+permissions to every proxied action — the scope is a ceiling on what the controller may ask for, not
+a way around the host's rules.
+
 ### Transfer-only tokens
 
 Pulling a server from another panel needs a token **on that panel**, and exporting a

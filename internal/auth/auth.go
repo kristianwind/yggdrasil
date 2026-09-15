@@ -49,6 +49,16 @@ type Claims struct {
 // reconfigure or read anything else.
 const ScopeTransfer = "transfer"
 
+// ScopeLink is a token that lets another panel show and operate this one's
+// servers: read them, and start/stop/restart them. Nothing else.
+//
+// It is what "one login for several hosts" needs, and it is deliberately not
+// admin. A linked panel cannot delete a server, read or change settings, touch
+// users, browse files, or export a bundle — so linking a host does not hand the
+// controller the keys to it. The host keeps enforcing its own rules; this is a
+// ceiling on top of them, not a way around them.
+const ScopeLink = "link"
+
 func HashPassword(password string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {

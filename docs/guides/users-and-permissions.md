@@ -226,10 +226,10 @@ curl -H "Authorization: Bearer ygg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
 Three properties of API tokens deserve to be stated plainly, because the intuitive
 assumption is wrong in each case:
 
-- **A token inherits its owner's full role and grants. It has no scope of its own.**
-  There is no way to mint a read-only token or a token limited to one server. A token
-  created by an admin is an admin credential with no expiry. If you want a narrow token,
-  create a narrow *user*, grant it what you want, and mint the token as that user.
+- **A token inherits its owner's full role and grants, unless you narrow it.** By default
+  there is no scope: a token created by an admin is an admin credential with no expiry.
+  The one exception is **Transfer only** (below). For any other kind of narrowing, create
+  a narrow *user*, grant it what you want, and mint the token as that user.
 - **Logging out does not revoke API tokens.** Logout works by bumping the owner's
   `token_version`, which invalidates their JWT sessions. API tokens are looked up by hash
   and never consult `token_version`, so they keep working. The same goes for a password
@@ -240,6 +240,31 @@ assumption is wrong in each case:
 You only ever see and delete your own tokens; the list is filtered by owner. Each row
 shows when it was created and when it was last used, which is the cheapest way to spot a
 token nothing needs any more.
+
+### Transfer-only tokens
+
+Pulling a server from another panel needs a token **on that panel**, and exporting a
+server is admin-only — a bundle carries the server's secrets in plaintext. So the only
+token you could hand to another panel used to be a full admin key to this one, and a panel
+that stored it held the keys to its neighbour.
+
+Choose **Transfer only** when creating a token and it may do exactly two things: list the
+servers on this panel, and download one server's bundle. Not start, stop, delete,
+reconfigure, read the console, browse files, or release a hostname. Any other request is
+refused with *this token's scope does not allow that*.
+
+Be clear about what it still exposes: **a bundle contains that server's secrets**,
+decrypted, because the receiving panel has to re-encrypt them with its own key. A transfer
+token is therefore still a read credential for everything it can export. It is much
+narrower than admin, not harmless.
+
+The restriction is enforced where every API-token request enters the panel, not per
+endpoint — so a route added later is covered by default rather than by somebody
+remembering. A scope this build does not recognise is refused everywhere, so a token from
+a newer version cannot widen itself on an older panel.
+
+Existing tokens are unaffected: no scope means the old behaviour, and that is still the
+default for new ones.
 
 ## Login protection
 

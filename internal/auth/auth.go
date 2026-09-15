@@ -29,8 +29,25 @@ type Claims struct {
 	Username string `json:"sub"`
 	Role     string `json:"role"`
 	Ver      int    `json:"ver"` // token version; must equal users.token_version or the token is revoked
+	// Scope narrows what an API TOKEN may do, independently of the role it
+	// inherits. Empty means the token can do everything its owner can, which is
+	// how every token behaved before scopes existed and remains the default.
+	//
+	// Session cookies never carry a scope: a person signing in is not a token.
+	Scope string `json:"scope,omitempty"`
 	jwt.RegisteredClaims
 }
+
+// ScopeTransfer is a token that may only read server bundles from this panel —
+// the one thing another panel needs in order to pull a server across.
+//
+// It exists because pulling requires admin on the SOURCE (an export carries
+// decrypted secrets, so it is admin-only), which meant the only token you could
+// save on the target was a full admin key to the source. One compromised panel
+// then owned the rest. A transfer token still exposes every secret it can
+// export — that is what a bundle is — but it cannot start, stop, delete,
+// reconfigure or read anything else.
+const ScopeTransfer = "transfer"
 
 func HashPassword(password string) (string, error) {
 	salt := make([]byte, saltLen)

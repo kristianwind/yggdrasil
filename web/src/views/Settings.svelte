@@ -603,6 +603,7 @@
   // API tokens
   let tokens = $state([]);
   let newTokenName = $state("");
+  let newTokenScope = $state(""); // "" = full; "transfer" = export only
   let createdToken = $state(null); // plaintext shown once
 
   // Notifications
@@ -633,9 +634,10 @@
   async function createToken() {
     if (!newTokenName) return toast("Name required", "warn");
     try {
-      const res = await api.post("/tokens", { name: newTokenName });
+      const res = await api.post("/tokens", { name: newTokenName, scope: newTokenScope });
       createdToken = res.token;
       newTokenName = "";
+      newTokenScope = "";
       await loadTokens();
     } catch (e) {
       toast(e.message, "error");
@@ -3241,10 +3243,20 @@
     <button class="btn-ghost mt-2" onclick={() => (createdToken = null)}>Dismiss</button>
   </div>
 {/if}
-<div class="flex gap-2 mb-3">
+<div class="flex gap-2 mb-1">
   <input class="input" bind:value={newTokenName} placeholder="Token name (e.g. home-ai)" />
+  <select class="input max-w-[16rem]" bind:value={newTokenScope}>
+    <option value="">Full access (this account&rsquo;s)</option>
+    <option value="transfer">Transfer only</option>
+  </select>
   <button class="btn-primary" onclick={createToken}>Create</button>
 </div>
+<p class="text-xs text-muted mb-3">
+  A token normally does everything the account that made it can do. <b>Transfer only</b> narrows it to
+  listing servers and downloading a server bundle &mdash; what another panel needs to pull a server
+  across, and nothing else. Use it for the token you paste into another panel: a bundle still contains
+  that server&rsquo;s secrets, but the token cannot start, stop, delete or reconfigure anything.
+</p>
 <div class="card divide-y divide-border">
   {#if tokens.length === 0}
     <div class="p-4 text-muted text-sm">No API tokens.</div>
@@ -3256,6 +3268,12 @@
         <div class="text-xs text-muted">
           created {formatTime(t.created_at)}{t.last_used_at ? ` · last used ${formatTime(t.last_used_at)}` : " · never used"}
         </div>
+        {#if t.scope === "transfer"}
+          <span class="badge bg-panel2 border border-border text-muted text-[11px] mt-1"
+            title="Can list servers and download a server bundle. Cannot start, stop, delete or reconfigure anything.">
+            transfer only
+          </span>
+        {/if}
       </div>
       <button class="btn-danger" onclick={() => deleteToken(t)}>Delete</button>
     </div>

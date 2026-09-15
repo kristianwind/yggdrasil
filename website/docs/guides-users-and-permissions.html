@@ -279,10 +279,10 @@ you delete the token and mint another.</p>
 <p>Three properties of API tokens deserve to be stated plainly, because the intuitive
 assumption is wrong in each case:</p>
 <ul>
-<li><strong>A token inherits its owner&rsquo;s full role and grants. It has no scope of its own.</strong>
-There is no way to mint a read-only token or a token limited to one server. A token
-created by an admin is an admin credential with no expiry. If you want a narrow token,
-create a narrow <em>user</em>, grant it what you want, and mint the token as that user.</li>
+<li><strong>A token inherits its owner&rsquo;s full role and grants, unless you narrow it.</strong> By default
+there is no scope: a token created by an admin is an admin credential with no expiry.
+The one exception is <strong>Transfer only</strong> (below). For any other kind of narrowing, create
+a narrow <em>user</em>, grant it what you want, and mint the token as that user.</li>
 <li><strong>Logging out does not revoke API tokens.</strong> Logout works by bumping the owner&rsquo;s
 <code>token_version</code>, which invalidates their JWT sessions. API tokens are looked up by hash
 and never consult <code>token_version</code>, so they keep working. The same goes for a password
@@ -293,6 +293,25 @@ users table and requires the account to be enabled.</li>
 <p>You only ever see and delete your own tokens; the list is filtered by owner. Each row
 shows when it was created and when it was last used, which is the cheapest way to spot a
 token nothing needs any more.</p>
+<h3 id="transfer-only-tokens">Transfer-only tokens</h3>
+<p>Pulling a server from another panel needs a token <strong>on that panel</strong>, and exporting a
+server is admin-only — a bundle carries the server&rsquo;s secrets in plaintext. So the only
+token you could hand to another panel used to be a full admin key to this one, and a panel
+that stored it held the keys to its neighbour.</p>
+<p>Choose <strong>Transfer only</strong> when creating a token and it may do exactly two things: list the
+servers on this panel, and download one server&rsquo;s bundle. Not start, stop, delete,
+reconfigure, read the console, browse files, or release a hostname. Any other request is
+refused with <em>this token&rsquo;s scope does not allow that</em>.</p>
+<p>Be clear about what it still exposes: <strong>a bundle contains that server&rsquo;s secrets</strong>,
+decrypted, because the receiving panel has to re-encrypt them with its own key. A transfer
+token is therefore still a read credential for everything it can export. It is much
+narrower than admin, not harmless.</p>
+<p>The restriction is enforced where every API-token request enters the panel, not per
+endpoint — so a route added later is covered by default rather than by somebody
+remembering. A scope this build does not recognise is refused everywhere, so a token from
+a newer version cannot widen itself on an older panel.</p>
+<p>Existing tokens are unaffected: no scope means the old behaviour, and that is still the
+default for new ones.</p>
 <h2 id="login-protection">Login protection</h2>
 <p>Two independent limits sit in front of the login endpoints.</p>
 <p><strong>Per-source rate limit.</strong> At most 5 attempts per source address per rolling minute, on
@@ -358,7 +377,7 @@ in the sidebar.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#admins-and-delegates">Admins and delegates</a><a class="t2" href="#realms">Realms</a><a class="t2" href="#the-eight-permissions">The eight permissions</a><a class="t2" href="#scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</a><a class="t2" href="#the-permission-editor">The permission editor</a><a class="t2" href="#per-server-delegates">Per-server delegates</a><a class="t3" href="#worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</a><a class="t2" href="#two-factor-authentication-totp">Two-factor authentication (TOTP)</a><a class="t2" href="#passkeys-webauthn">Passkeys (WebAuthn)</a><a class="t2" href="#api-tokens">API tokens</a><a class="t2" href="#login-protection">Login protection</a><a class="t3" href="#unlocking-someone-who-just-mistyped-it">Unlocking someone who just mistyped it</a><a class="t2" href="#sessions-and-revocation">Sessions and revocation</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#admins-and-delegates">Admins and delegates</a><a class="t2" href="#realms">Realms</a><a class="t2" href="#the-eight-permissions">The eight permissions</a><a class="t2" href="#scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</a><a class="t2" href="#the-permission-editor">The permission editor</a><a class="t2" href="#per-server-delegates">Per-server delegates</a><a class="t3" href="#worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</a><a class="t2" href="#two-factor-authentication-totp">Two-factor authentication (TOTP)</a><a class="t2" href="#passkeys-webauthn">Passkeys (WebAuthn)</a><a class="t2" href="#api-tokens">API tokens</a><a class="t3" href="#transfer-only-tokens">Transfer-only tokens</a><a class="t2" href="#login-protection">Login protection</a><a class="t3" href="#unlocking-someone-who-just-mistyped-it">Unlocking someone who just mistyped it</a><a class="t2" href="#sessions-and-revocation">Sessions and revocation</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

@@ -232,7 +232,13 @@ func (s *Server) runInstall(serverID string) error {
 	if hadContainer != "" {
 		s.install.publish(serverID, "Recreating container to apply the update ...")
 		if rerr := s.recreateAndStart(ctx, serverID); rerr != nil {
-			s.install.publish(serverID, "WARN: could not restart after install: "+rerr.Error())
+			// Returned, not just published. The install files are on disk and the
+			// data is fine, but a server that was running and is now not is a
+			// failed update by any useful definition — and the only caller that
+			// reads this error is the scheduler, which was reporting "ok" for
+			// servers it had left stopped. The operator saw a green nightly run.
+			s.install.publish(serverID, "ERROR: could not restart after install: "+rerr.Error())
+			return fmt.Errorf("installed, but the server did not come back up: %w", rerr)
 		}
 	}
 	s.install.publish(serverID, "=== Install complete ===")

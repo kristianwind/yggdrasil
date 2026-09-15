@@ -80,6 +80,35 @@ func (s *Server) reloadSchedules() {
 
 // runScheduleByID loads a schedule and executes its action over its scope,
 // recording one schedule_runs row per target server so the UI can show a log.
+// scheduleAbortAfter is how many consecutive failures stop a fleet-wide run.
+const scheduleAbortAfter = 3
+
+// batchGuard counts consecutive failures across a schedule's targets.
+//
+// A fleet-wide action that keeps going after everything it touches fails is how
+// one bad image, a registry outage or a full disk becomes a fleet outage instead
+// of one failed server. Consecutive, not total: a run over thirty servers may
+// legitimately have a few fail for unrelated reasons, but three in a row is the
+// environment, not the servers.
+//
+// A type rather than two lines inside the loop, so the rule is tested as the
+// thing that runs instead of as a copy of it that can drift away from it.
+type batchGuard struct{ consecutive int }
+
+// record folds one server's outcome in. A skip is deliberately not a failure —
+// a stopped server, or one with players on it, says nothing about whether the
+// next server will work.
+func (g *batchGuard) record(status string) {
+	switch status {
+	case "ok":
+		g.consecutive = 0
+	case "error":
+		g.consecutive++
+	}
+}
+
+func (g *batchGuard) shouldStop() bool { return g.consecutive >= scheduleAbortAfter }
+
 func (s *Server) runScheduleByID(id string) {
 	defer recoverLog("runScheduleByID")
 	var name, action, argsJSON, serverID, realmID string
@@ -100,9 +129,26 @@ func (s *Server) runScheduleByID(id string) {
 		return
 	}
 	var oks, skips, errs []string
-	for _, srv := range targets {
+	// A fleet-wide action that keeps going after everything it touches fails is
+	// how one bad image, a registry outage or a full disk becomes a fleet outage
+	// instead of one failed server. Consecutive, not total: a schedule over thirty
+	// servers may legitimately have a few fail for unrelated reasons, but three in
+	// a row is the environment, not the servers.
+	var guard batchGuard
+	for i, srv := range targets {
+		if guard.shouldStop() {
+			remaining := targets[i:]
+			for _, rest := range remaining {
+				s.recordRun(id, name, rest, s.serverName(rest), action, "skipped", "batch stopped after repeated failures")
+				skips = append(skips, s.serverName(rest)+" (batch stopped)")
+			}
+			errs = append(errs, fmt.Sprintf("stopped after %d failures in a row — %d server(s) left untouched",
+				scheduleAbortAfter, len(remaining)))
+			break
+		}
 		status, detail := s.runAction(scheduler.Action(action), srv, args)
 		s.recordRun(id, name, srv, s.serverName(srv), action, status, detail)
+		guard.record(status)
 		switch status {
 		case "ok":
 			oks = append(oks, s.serverName(srv))
@@ -331,6 +377,17 @@ func (s *Server) runAction(action scheduler.Action, serverID string, args map[st
 		// has finished — report the real outcome for the run log + notification.
 		if err := s.runInstall(serverID); err != nil {
 			return "error", err.Error()
+		}
+		// The container being back is not the same as the app being back. Docker
+		// keeps a published port bound whether or not anything is listening behind
+		// it, so a server whose app failed to start looks identical to a healthy
+		// one from here — which is exactly how a nightly update reported success
+		// over a VPN-gated client that had been down since the moment it ran.
+		//
+		// Only when a health path is configured. Without one there is nothing to
+		// ask, and waiting would just make the run slower for no added certainty.
+		if msg, ok := s.waitForHealthAfterUpdate(serverID); !ok {
+			return "error", msg
 		}
 		return "ok", "update/reinstall complete"
 	}

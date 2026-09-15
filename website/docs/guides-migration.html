@@ -154,6 +154,28 @@ may cut it long before the copy finishes.</p>
 <p>The bundle carries decrypted secrets, so pull over HTTPS or a private network —
 never plain HTTP across the internet. The token is used for that transfer only
 and is not stored.</p>
+<h3 id="saving-a-connection">Saving a connection</h3>
+<p>Retyping an address and a token for every move is friction, and friction is not neutral: it is what
+makes people reuse one token everywhere, keep it in a note, and never rotate it. Tick <strong>Remember this
+panel</strong> when pulling and the connection is saved — after it has been proven to work, so a broken
+entry cannot become permanent.</p>
+<p>Three things about the saved token:</p>
+<ul>
+<li>It is <strong>encrypted at rest</strong> with this panel&rsquo;s key and <strong>never returned by the API</strong>, not even to
+the admin who saved it. The panel answers &ldquo;there is one&rdquo; and nothing more. Lose it and you replace
+it; you cannot read it back.</li>
+<li>Saving it is <strong>optional and separable</strong>. An address and a name carry no risk and remove half the
+friction on their own, so a connection can exist without a token and ask for one each time.
+Forgetting the token does not delete the connection.</li>
+<li>Each connection records when it was last used, which is the cheapest way to spot one nothing needs
+any more.</li>
+</ul>
+<p><strong>Create it on the source as a Transfer-only token.</strong> A token that can pull is admin-scoped by
+default, so saving one would put a full admin key to the neighbouring panel in this panel&rsquo;s database
+— one compromise becoming several. A transfer-scoped token can list servers and download a bundle
+and nothing else. It is still a read credential for every secret it can export, because that is what
+a bundle is; it is much narrower than admin, not harmless. See
+<a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/guides/guides-users-and-permissions.html#transfer-only-tokens">Users and permissions</a>.</p>
 <h3 id="moving-the-domains-too">Moving the domains too</h3>
 <p>Copying a server does not move its public hostnames, and that is deliberate: the
 copy arrives holding the same names but serving none of them, so you can check
@@ -228,7 +250,7 @@ it after the move.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-actually-makes-up-a-panel">What actually makes up a panel</a><a class="t2" href="#the-easy-way-migrate-export--migrate-import">The easy way: migrate export / migrate import</a><a class="t2" href="#the-manual-way-rsync">The manual way: rsync</a><a class="t2" href="#after-the-move">After the move</a><a class="t2" href="#moving-one-server">Moving one server</a><a class="t3" href="#pulling-instead-of-uploading">Pulling instead of uploading</a><a class="t3" href="#moving-the-domains-too">Moving the domains too</a><a class="t2" href="#moving-settings-and-servers-together">Moving settings and servers together</a><a class="t2" href="#moving-your-settings">Moving your settings</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-actually-makes-up-a-panel">What actually makes up a panel</a><a class="t2" href="#the-easy-way-migrate-export--migrate-import">The easy way: migrate export / migrate import</a><a class="t2" href="#the-manual-way-rsync">The manual way: rsync</a><a class="t2" href="#after-the-move">After the move</a><a class="t2" href="#moving-one-server">Moving one server</a><a class="t3" href="#pulling-instead-of-uploading">Pulling instead of uploading</a><a class="t3" href="#saving-a-connection">Saving a connection</a><a class="t3" href="#moving-the-domains-too">Moving the domains too</a><a class="t2" href="#moving-settings-and-servers-together">Moving settings and servers together</a><a class="t2" href="#moving-your-settings">Moving your settings</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

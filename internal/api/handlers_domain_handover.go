@@ -84,13 +84,14 @@ func (s *Server) handleTakeoverDomains(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		remotePanel
+		RemoteID       string `json:"remote_id"`
 		SourceServerID string `json:"source_server_id"`
 	}
 	if decodeJSON(r, &req) != nil || strings.TrimSpace(req.SourceServerID) == "" {
 		jsonError(w, "the source panel and its server_id are required", http.StatusBadRequest)
 		return
 	}
-	base, err := normalizeRemote(req.URL)
+	base, token, err := s.resolveRemote(r.Context(), req.RemoteID, req.URL, req.Token)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -114,7 +115,7 @@ func (s *Server) handleTakeoverDomains(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	released, err := remoteReleaseDomains(base, req.Token, req.SourceServerID)
+	released, err := remoteReleaseDomains(base, token, req.SourceServerID)
 	if err != nil {
 		// Deliberately fatal. Claiming without a release is the half-done state
 		// this whole endpoint exists to prevent.

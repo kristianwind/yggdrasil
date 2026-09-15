@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -149,6 +151,67 @@ func TestCFTunnelWarning(t *testing.T) {
 		// The token is a credential even when it is the wrong one.
 		if strings.Contains(got, ours) {
 			t.Errorf("warning must not echo the field's contents back: %q", got)
+		}
+	})
+}
+
+// The zone id is a cache of "which zone owns the base domain", filled in by
+// cfClient the first time it is needed and only ever written when empty. Change
+// the base domain and that cache answers a question nobody asked any more — but
+// it survived the change and kept being served.
+//
+// Measured across a fleet: three panels, two different base domains, one
+// identical zone id. Harmless for provisioning, because cfApplyRoute resolves
+// the zone per hostname and overrides it — which is exactly why nobody noticed.
+// Not harmless for Test connection, which skips the DNS half whenever a zone id
+// is set, and so reports success without having proved DNS access at all.
+func TestZoneCacheDropsWhenTheBaseDomainMoves(t *testing.T) {
+	ctx := context.Background()
+
+	save := func(s *Server, base, zone string) {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{
+			"account_id": "acct", "zone_id": zone, "tunnel_id": "t-1",
+			"base_domain": base, "internal_host": "10.0.0.1", "enabled": true,
+		})
+		w := httptest.NewRecorder()
+		s.handleSetCloudflareSettings(w, adminReq(t, http.MethodPut, "/api/settings/cloudflare", string(body), ""))
+		if w.Code != http.StatusOK {
+			t.Fatalf("save: status %d (%s)", w.Code, w.Body.String())
+		}
+	}
+
+	t.Run("base domain changes — cached zone is dropped", func(t *testing.T) {
+		s := testServer(t)
+		save(s, "example.com", "")
+		s.setSetting(ctx, "cf_zone_id", "zone-for-example-com") // as cfClient would cache it
+		// The form sends the cached value back untouched, because that is what it
+		// was showing. Only the base domain changed.
+		save(s, "other.dk", "zone-for-example-com")
+		if got := s.getSetting(ctx, "cf_zone_id"); got != "" {
+			t.Errorf("zone id = %q, want it dropped so the new base domain is resolved", got)
+		}
+	})
+
+	t.Run("base domain unchanged — cached zone is kept", func(t *testing.T) {
+		s := testServer(t)
+		save(s, "example.com", "")
+		s.setSetting(ctx, "cf_zone_id", "zone-for-example-com")
+		save(s, "example.com", "zone-for-example-com")
+		if got := s.getSetting(ctx, "cf_zone_id"); got != "zone-for-example-com" {
+			t.Errorf("zone id = %q, want the cache kept when nothing moved — re-resolving on every save is a wasted API call", got)
+		}
+	})
+
+	// An operator who types a zone id in the same save means it. Dropping that
+	// would make the field impossible to set while also changing the domain.
+	t.Run("operator typed a new zone id — it wins", func(t *testing.T) {
+		s := testServer(t)
+		save(s, "example.com", "")
+		s.setSetting(ctx, "cf_zone_id", "zone-for-example-com")
+		save(s, "other.dk", "zone-typed-by-hand")
+		if got := s.getSetting(ctx, "cf_zone_id"); got != "zone-typed-by-hand" {
+			t.Errorf("zone id = %q, want the value the operator typed", got)
 		}
 	})
 }

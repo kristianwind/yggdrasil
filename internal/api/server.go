@@ -680,6 +680,14 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 				jsonError(w, "invalid api token", http.StatusUnauthorized)
 				return
 			}
+			// Enforced HERE, in the one place every API-token request passes
+			// through, rather than in each handler. A scope checked per endpoint
+			// is a scope that stops covering the endpoint somebody adds next
+			// month, and nothing would fail to remind them.
+			if !scopeAllows(claims, r.Method, r.URL.Path) {
+				jsonError(w, "this token's scope does not allow that", http.StatusForbidden)
+				return
+			}
 			r = r.WithContext(withClaims(r.Context(), claims))
 			next.ServeHTTP(w, r)
 			return
@@ -719,16 +727,48 @@ func (s *Server) unauthorized(w http.ResponseWriter, r *http.Request) {
 // claimsForAPIToken resolves an API token to its owner's claims, or nil.
 func (s *Server) claimsForAPIToken(r *http.Request, token string) *auth.Claims {
 	hash := auth.HashToken(token)
-	var userID, username, role string
+	var userID, username, role, scope string
 	err := s.db.QueryRowContext(r.Context(), `
-		SELECT u.id, u.username, u.role FROM api_tokens t
+		SELECT u.id, u.username, u.role, COALESCE(t.scope,'') FROM api_tokens t
 		JOIN users u ON u.id = t.user_id
-		WHERE t.token_hash=? AND u.disabled=0`, hash).Scan(&userID, &username, &role)
+		WHERE t.token_hash=? AND u.disabled=0`, hash).Scan(&userID, &username, &role, &scope)
 	if err != nil {
 		return nil
 	}
 	s.db.Exec("UPDATE api_tokens SET last_used_at=datetime('now') WHERE token_hash=?", hash)
-	return &auth.Claims{UserID: userID, Username: username, Role: role}
+	return &auth.Claims{UserID: userID, Username: username, Role: role, Scope: scope}
+}
+
+// scopeAllows reports whether a request's claims permit this method+path.
+//
+// A scope is a ceiling, never a grant: it can only take authority away from what
+// the role already allows. An unscoped token (every token that existed before
+// scopes, and the default for new ones) is unaffected.
+//
+// The allowlist is on the METHOD as well as the path. A transfer token that
+// could POST to the export path would be a transfer token that could trigger
+// work on the source, and the whole point is that it can only read.
+func scopeAllows(claims *auth.Claims, method, path string) bool {
+	if claims == nil || claims.Scope == "" {
+		return true
+	}
+	switch claims.Scope {
+	case auth.ScopeTransfer:
+		if method != http.MethodGet {
+			return false
+		}
+		// Listing servers, so the other panel can show you what it can pull, and
+		// exporting one. Nothing else — not settings, not logs, not the console.
+		if path == "/api/servers" {
+			return true
+		}
+		return strings.HasPrefix(path, "/api/servers/") && strings.HasSuffix(path, "/export")
+	default:
+		// An unknown scope is a token this build does not understand. Refuse it
+		// rather than fall through to full access — a scope added by a newer
+		// version must not silently become "allowed everything" on an older one.
+		return false
+	}
 }
 
 func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {

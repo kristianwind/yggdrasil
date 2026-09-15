@@ -109,14 +109,82 @@ every server page has **Export**, and the Servers page has **Import server**.
 The bundle carries the whole habitat, not just the animal: the server's data
 directory, its rune (the target doesn't need it pre-installed), variables with
 their secrets, resource limits, host mounts, its group, its host ports — plus
-the server's **schedules, watchers, notification routing and subdomain**. On
-import the target re-encrypts the secrets with its own key, keeps the source's
-host ports so NPM/tunnel/DNS forwarding survives (a port is reallocated only on
-a real collision, and the response tells you which), and keeps the subdomain
-unless another server on the target already claims it.
+the server's **schedules, watchers, notification routing, subdomain and every
+extra hostname**. On import the target re-encrypts the secrets with its own key,
+keeps the source's host ports (a port is reallocated only on a real collision,
+and the response tells you which), and keeps each hostname unless another server
+on the target already claims it — a clash is reported rather than taken, because
+two servers claiming one name is not something the panel can resolve on its own.
+
+A reallocated port is nothing to chase. The tunnel or proxy rule is rebuilt from
+the target's own internal host and its own port, so there is nothing to repoint
+unless you forward ports by hand.
 
 Because the bundle contains the server's secrets in recoverable form, both ends
 are admin-only — treat the file like a password.
+
+### Pulling instead of uploading
+
+**Servers → Pull from another panel** is the same transfer with the direction
+reversed: give the target the source panel's address and an admin token there,
+and it fetches the bundle itself.
+
+Prefer this for anything large. An upload is a request *body*, and Cloudflare
+caps those at 100 MB — so a multi-gigabyte data directory cannot be pushed
+through a tunnel no matter what the panel does. A pull is a large *response*,
+which nothing caps, and the browser stays out of the data path entirely.
+
+Two panels on the same tailnet can pull over it directly
+(`http://100.x.y.z:8080`) and skip the CDN altogether. That is worth doing for a
+big site even when both panels have public hostnames: the browser's request to
+the target stays open for the whole transfer, and a proxy in front of the target
+may cut it long before the copy finishes.
+
+The bundle carries decrypted secrets, so pull over HTTPS or a private network —
+never plain HTTP across the internet. The token is used for that transfer only
+and is not stored.
+
+### Moving the domains too
+
+Copying a server does not move its public hostnames, and that is deliberate: the
+copy arrives holding the same names but serving none of them, so you can check
+it before anything changes for visitors. The source keeps running and keeps
+answering.
+
+Handing the names over is a separate, explicit step — **Hand over the domains**,
+offered on the Servers page right after a pull.
+
+The order matters and the panel enforces it. Each panel writes a `CNAME` to its
+*own* tunnel, and Yggdrasil refuses a hostname whose record points at a
+different tunnel, so that no panel can quietly take over a name another node is
+serving. That guard is also what makes a deliberate move impossible to do
+target-first: claim before the source has let go and you get the ingress rule on
+one panel with DNS still pointing at the other — a half-move whose only trace is
+a line in the panel log.
+
+So the source releases first. It drops the tunnel ingress rules and the DNS
+records **it created**, and nothing else: the server keeps running, keeps its
+data, and re-provisions if you start it again. Only once that release is
+confirmed does the target create its own rules. If the source cannot be reached,
+nothing changes on the target either.
+
+Two things worth knowing before you press it:
+
+- **The target must be running.** Handing over to a stopped server is refused,
+  because it would take the source's rules away and replace them with rules
+  pointing at a port nothing is listening on — the site would go down rather
+  than move.
+- **The source is not stopped for you.** Releasing is reversible; stopping a
+  live site because a copy exists somewhere else is a different decision, and it
+  stays yours. Stop it once you are happy with the copy.
+
+Visitors lose the site for the few seconds between release and claim.
+
+A hostname you created **by hand** in the Cloudflare dashboard is invisible to
+all of this — the panel only releases what it provisioned. Put the name in the
+server's **Public hostname** or **Additional hostnames** field first, start the
+server so the panel takes ownership of the rule, and the handover can then move
+it. Until then you are still editing Cloudflare yourself.
 
 ## Moving settings and servers together
 

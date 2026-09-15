@@ -232,7 +232,7 @@ Results are cached for 30 seconds per server/provider/domain.</p>
 <p>The domain is always recomputed server-side from the stored subdomain and never taken from the
 request, and the probe refuses to connect to anything that resolves to a loopback, private,
 link-local or metadata address.</p>
-<h2 id="three-things-that-will-catch-you-out">Three things that will catch you out</h2>
+<h2 id="four-things-that-will-catch-you-out">Four things that will catch you out</h2>
 <h3 id="a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</h3>
 <p>Cloudflare&rsquo;s <strong>proxied</strong> records — the orange cloud — carry HTTP(S) traffic and nothing else. They
 are exactly right for tunnel-routed web apps, which is why Yggdrasil always creates its tunnel <code>CNAME</code>
@@ -244,6 +244,21 @@ broken; the traffic is being dropped at the edge by design.</p>
 <p>For any hostname players use to join a game, use a <strong>DNS-only</strong> record (grey cloud), or hand out the
 IP and port. Keep game hostnames and web-app hostnames separate so you never have to change one
 record&rsquo;s mode back and forth.</p>
+<h3 id="a-tunnel-id-from-the-wrong-panel-looks-perfectly-healthy">A tunnel ID from the wrong panel looks perfectly healthy</h3>
+<p>The tunnel ID is typed by hand, and nothing about a wrong one looks wrong from inside the panel:
+the API calls succeed, the Domains page says <code>provisioned</code>, and the traffic goes to another machine.
+Paste a second panel&rsquo;s tunnel ID and this panel starts writing ingress rules into a tunnel it does
+not own — pointed at an address that tunnel&rsquo;s connector cannot reach — while both panels overwrite
+each other&rsquo;s rules with no locking between them.</p>
+<p>Yggdrasil now catches this. It reads the tunnel ID out of the <code>TUNNEL_TOKEN</code> of the <code>cloudflared</code>
+server it manages — the only local statement of which tunnel this host actually serves — and warns
+in <strong>Settings → Domains</strong> when that disagrees with the configured ID. Only the tunnel ID is read;
+the token&rsquo;s secret is never logged or shown.</p>
+<p>It also catches the neighbouring mistake: a <strong>tunnel ID pasted into the connector token field</strong>.
+Both sit on the same Cloudflare page and they are easy to swap, and the result is a connector that
+never comes up — so nothing the panel provisions is reachable, with no error anywhere obvious.</p>
+<p>There is no warning when the panel has no <code>cloudflared</code> server of its own. A panel sitting behind a
+connector someone else runs is a normal setup, and the panel has nothing to compare against.</p>
 <h3 id="the-cloudflare-token-permission-is-called-argo-tunnel-legacy">The Cloudflare token permission is called &ldquo;Argo Tunnel (Legacy)&rdquo;</h3>
 <p>Cloudflare&rsquo;s token UI does not offer a permission labelled &ldquo;Cloudflare Tunnel&rdquo;. The permission
 Yggdrasil needs is listed as <strong>Argo Tunnel (Legacy) → Edit</strong>, scoped to the whole <strong>account</strong> — that
@@ -289,7 +304,7 @@ bites hosts you created by hand. A telltale in the panel log is a <code>WebSocke
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#port-allocation">Port allocation</a><a class="t2" href="#public-hostname-and-the-external-ip-fallback">Public hostname and the external-IP fallback</a><a class="t2" href="#online-from-outside-reachability">“Online from outside” reachability</a><a class="t2" href="#per-server-auto-forward">Per-server auto-forward</a><a class="t2" href="#four-ways-to-expose-a-server">Four ways to expose a server</a><a class="t3" href="#upnp">UPnP</a><a class="t3" href="#unifi">UniFi</a><a class="t3" href="#nginx-proxy-manager-subdomains">Nginx Proxy Manager (subdomains)</a><a class="t3" href="#cloudflare-tunnel-subdomains">Cloudflare Tunnel (subdomains)</a><a class="t2" href="#the-domains-page">The Domains page</a><a class="t2" href="#three-things-that-will-catch-you-out">Three things that will catch you out</a><a class="t3" href="#a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</a><a class="t3" href="#the-cloudflare-token-permission-is-called-argo-tunnel-legacy">The Cloudflare token permission is called “Argo Tunnel (Legacy)”</a><a class="t3" href="#http2-and-websockets-do-not-mix-behind-nginx-proxy-manager">HTTP/2 and WebSockets do not mix behind Nginx Proxy Manager</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#port-allocation">Port allocation</a><a class="t2" href="#public-hostname-and-the-external-ip-fallback">Public hostname and the external-IP fallback</a><a class="t2" href="#online-from-outside-reachability">“Online from outside” reachability</a><a class="t2" href="#per-server-auto-forward">Per-server auto-forward</a><a class="t2" href="#four-ways-to-expose-a-server">Four ways to expose a server</a><a class="t3" href="#upnp">UPnP</a><a class="t3" href="#unifi">UniFi</a><a class="t3" href="#nginx-proxy-manager-subdomains">Nginx Proxy Manager (subdomains)</a><a class="t3" href="#cloudflare-tunnel-subdomains">Cloudflare Tunnel (subdomains)</a><a class="t2" href="#the-domains-page">The Domains page</a><a class="t2" href="#four-things-that-will-catch-you-out">Four things that will catch you out</a><a class="t3" href="#a-proxied-cloudflare-record-will-not-carry-a-game-port">A proxied Cloudflare record will not carry a game port</a><a class="t3" href="#a-tunnel-id-from-the-wrong-panel-looks-perfectly-healthy">A tunnel ID from the wrong panel looks perfectly healthy</a><a class="t3" href="#the-cloudflare-token-permission-is-called-argo-tunnel-legacy">The Cloudflare token permission is called “Argo Tunnel (Legacy)”</a><a class="t3" href="#http2-and-websockets-do-not-mix-behind-nginx-proxy-manager">HTTP/2 and WebSockets do not mix behind Nginx Proxy Manager</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

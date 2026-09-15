@@ -206,7 +206,7 @@ The domain is always recomputed server-side from the stored subdomain and never 
 request, and the probe refuses to connect to anything that resolves to a loopback, private,
 link-local or metadata address.
 
-## Three things that will catch you out
+## Four things that will catch you out
 
 ### A proxied Cloudflare record will not carry a game port
 
@@ -222,6 +222,26 @@ broken; the traffic is being dropped at the edge by design.
 For any hostname players use to join a game, use a **DNS-only** record (grey cloud), or hand out the
 IP and port. Keep game hostnames and web-app hostnames separate so you never have to change one
 record's mode back and forth.
+
+### A tunnel ID from the wrong panel looks perfectly healthy
+
+The tunnel ID is typed by hand, and nothing about a wrong one looks wrong from inside the panel:
+the API calls succeed, the Domains page says `provisioned`, and the traffic goes to another machine.
+Paste a second panel's tunnel ID and this panel starts writing ingress rules into a tunnel it does
+not own — pointed at an address that tunnel's connector cannot reach — while both panels overwrite
+each other's rules with no locking between them.
+
+Yggdrasil now catches this. It reads the tunnel ID out of the `TUNNEL_TOKEN` of the `cloudflared`
+server it manages — the only local statement of which tunnel this host actually serves — and warns
+in **Settings → Domains** when that disagrees with the configured ID. Only the tunnel ID is read;
+the token's secret is never logged or shown.
+
+It also catches the neighbouring mistake: a **tunnel ID pasted into the connector token field**.
+Both sit on the same Cloudflare page and they are easy to swap, and the result is a connector that
+never comes up — so nothing the panel provisions is reachable, with no error anywhere obvious.
+
+There is no warning when the panel has no `cloudflared` server of its own. A panel sitting behind a
+connector someone else runs is a normal setup, and the panel has nothing to compare against.
 
 ### The Cloudflare token permission is called "Argo Tunnel (Legacy)"
 

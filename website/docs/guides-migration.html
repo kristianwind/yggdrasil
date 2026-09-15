@@ -127,13 +127,68 @@ every server page has <strong>Export</strong>, and the Servers page has <strong>
 <p>The bundle carries the whole habitat, not just the animal: the server&rsquo;s data
 directory, its rune (the target doesn&rsquo;t need it pre-installed), variables with
 their secrets, resource limits, host mounts, its group, its host ports — plus
-the server&rsquo;s <strong>schedules, watchers, notification routing and subdomain</strong>. On
-import the target re-encrypts the secrets with its own key, keeps the source&rsquo;s
-host ports so NPM/tunnel/DNS forwarding survives (a port is reallocated only on
-a real collision, and the response tells you which), and keeps the subdomain
-unless another server on the target already claims it.</p>
+the server&rsquo;s <strong>schedules, watchers, notification routing, subdomain and every
+extra hostname</strong>. On import the target re-encrypts the secrets with its own key,
+keeps the source&rsquo;s host ports (a port is reallocated only on a real collision,
+and the response tells you which), and keeps each hostname unless another server
+on the target already claims it — a clash is reported rather than taken, because
+two servers claiming one name is not something the panel can resolve on its own.</p>
+<p>A reallocated port is nothing to chase. The tunnel or proxy rule is rebuilt from
+the target&rsquo;s own internal host and its own port, so there is nothing to repoint
+unless you forward ports by hand.</p>
 <p>Because the bundle contains the server&rsquo;s secrets in recoverable form, both ends
 are admin-only — treat the file like a password.</p>
+<h3 id="pulling-instead-of-uploading">Pulling instead of uploading</h3>
+<p><strong>Servers → Pull from another panel</strong> is the same transfer with the direction
+reversed: give the target the source panel&rsquo;s address and an admin token there,
+and it fetches the bundle itself.</p>
+<p>Prefer this for anything large. An upload is a request <em>body</em>, and Cloudflare
+caps those at 100 MB — so a multi-gigabyte data directory cannot be pushed
+through a tunnel no matter what the panel does. A pull is a large <em>response</em>,
+which nothing caps, and the browser stays out of the data path entirely.</p>
+<p>Two panels on the same tailnet can pull over it directly
+(<code>http://100.x.y.z:8080</code>) and skip the CDN altogether. That is worth doing for a
+big site even when both panels have public hostnames: the browser&rsquo;s request to
+the target stays open for the whole transfer, and a proxy in front of the target
+may cut it long before the copy finishes.</p>
+<p>The bundle carries decrypted secrets, so pull over HTTPS or a private network —
+never plain HTTP across the internet. The token is used for that transfer only
+and is not stored.</p>
+<h3 id="moving-the-domains-too">Moving the domains too</h3>
+<p>Copying a server does not move its public hostnames, and that is deliberate: the
+copy arrives holding the same names but serving none of them, so you can check
+it before anything changes for visitors. The source keeps running and keeps
+answering.</p>
+<p>Handing the names over is a separate, explicit step — <strong>Hand over the domains</strong>,
+offered on the Servers page right after a pull.</p>
+<p>The order matters and the panel enforces it. Each panel writes a <code>CNAME</code> to its
+<em>own</em> tunnel, and Yggdrasil refuses a hostname whose record points at a
+different tunnel, so that no panel can quietly take over a name another node is
+serving. That guard is also what makes a deliberate move impossible to do
+target-first: claim before the source has let go and you get the ingress rule on
+one panel with DNS still pointing at the other — a half-move whose only trace is
+a line in the panel log.</p>
+<p>So the source releases first. It drops the tunnel ingress rules and the DNS
+records <strong>it created</strong>, and nothing else: the server keeps running, keeps its
+data, and re-provisions if you start it again. Only once that release is
+confirmed does the target create its own rules. If the source cannot be reached,
+nothing changes on the target either.</p>
+<p>Two things worth knowing before you press it:</p>
+<ul>
+<li><strong>The target must be running.</strong> Handing over to a stopped server is refused,
+because it would take the source&rsquo;s rules away and replace them with rules
+pointing at a port nothing is listening on — the site would go down rather
+than move.</li>
+<li><strong>The source is not stopped for you.</strong> Releasing is reversible; stopping a
+live site because a copy exists somewhere else is a different decision, and it
+stays yours. Stop it once you are happy with the copy.</li>
+</ul>
+<p>Visitors lose the site for the few seconds between release and claim.</p>
+<p>A hostname you created <strong>by hand</strong> in the Cloudflare dashboard is invisible to
+all of this — the panel only releases what it provisioned. Put the name in the
+server&rsquo;s <strong>Public hostname</strong> or <strong>Additional hostnames</strong> field first, start the
+server so the panel takes ownership of the rule, and the handover can then move
+it. Until then you are still editing Cloudflare yourself.</p>
 <h2 id="moving-settings-and-servers-together">Moving settings and servers together</h2>
 <p>The same Host migration section can bundle <strong>settings plus any selection of
 servers</strong> into one archive: tick the groups, tick the servers (or <strong>All</strong>), and
@@ -173,7 +228,7 @@ it after the move.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-actually-makes-up-a-panel">What actually makes up a panel</a><a class="t2" href="#the-easy-way-migrate-export--migrate-import">The easy way: migrate export / migrate import</a><a class="t2" href="#the-manual-way-rsync">The manual way: rsync</a><a class="t2" href="#after-the-move">After the move</a><a class="t2" href="#moving-one-server">Moving one server</a><a class="t2" href="#moving-settings-and-servers-together">Moving settings and servers together</a><a class="t2" href="#moving-your-settings">Moving your settings</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#what-actually-makes-up-a-panel">What actually makes up a panel</a><a class="t2" href="#the-easy-way-migrate-export--migrate-import">The easy way: migrate export / migrate import</a><a class="t2" href="#the-manual-way-rsync">The manual way: rsync</a><a class="t2" href="#after-the-move">After the move</a><a class="t2" href="#moving-one-server">Moving one server</a><a class="t3" href="#pulling-instead-of-uploading">Pulling instead of uploading</a><a class="t3" href="#moving-the-domains-too">Moving the domains too</a><a class="t2" href="#moving-settings-and-servers-together">Moving settings and servers together</a><a class="t2" href="#moving-your-settings">Moving your settings</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

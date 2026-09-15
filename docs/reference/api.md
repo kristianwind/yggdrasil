@@ -635,7 +635,9 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | `POST` | `/api/panel/remotes` | Admin | Create or update one: `{id?, name, url, token?}`. Omit `token` to leave it as it is; send `""` to forget it while keeping the connection |
 | `DELETE` | `/api/panel/remotes/{id}` | Admin | Forget a saved connection |
 | `POST` | `/api/panel/remote/servers` | Admin | List the servers on **another** panel: `{url, token}` — or `{remote_id}` for a saved connection. Each entry adds `exists_here` so a name clash shows before a long transfer. Nothing is stored |
-| `POST` | `/api/panel/remote/import` | Admin | Copy one server **from** another panel: `{url, token, server_id, skip_existing?}`. Streams that panel's export straight into the normal import — see the note below |
+| `POST` | `/api/panel/remote/import` | Admin | Start a pull. Returns **202** with `{job_id}` and copies in the background — it no longer blocks until the transfer finishes, because anything in front of the panel timed that out on a large server |
+| `GET` | `/api/panel/transfers/{id}` | Admin | A pull's status: `running`/`done`/`failed`, bytes copied, and on success the import's own `result` (ports moved, hostnames dropped). Forgotten 6h after it finishes |
+| `GET` | `/api/panel/transfers/{id}/log` | Admin | WebSocket: the pull's progress lines, with history so a late or reconnecting client catches up |
 | `GET` | `/api/settings/github` | Admin | Whether a GitHub token is stored (`{configured}`); the token itself is never returned |
 | `PUT` | `/api/settings/github` | Admin | Store or clear the GitHub token (`{token}`; empty clears). Lets the rune browser read **private** repos and lifts the 60-req/hour anonymous limit. A repository may override it with its own token — see `/api/rune-repos` — which is the only way to reach two private repos owned by different accounts |
 | `POST` | `/api/settings/github/test` | Admin | Verify the stored token and report the account it authenticates as |

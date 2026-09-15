@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { api } from "../lib/api.js";
+  import { api, wsURL } from "../lib/api.js";
   import { livePoll } from "../lib/livePoll.js";
   import { toast } from "../lib/toast.js";
   import { navigate, route } from "../lib/router.js";
@@ -100,7 +100,13 @@
       return;
     pullingID = rs.id;
     try {
-      const r = await api.post("/panel/remote/import", { ...remoteArgs(), server_id: rs.id });
+      const started = await api.post("/panel/remote/import", { ...remoteArgs(), server_id: rs.id });
+      // The pull now answers immediately with a job and copies in the
+      // background — a multi-gigabyte site used to die on whatever timeout sat
+      // between the browser and the panel (a Cloudflare 524, typically) while
+      // the transfer itself was running fine.
+      const r = await followTransfer(started.job_id, rs.name);
+      if (!r) return;
       if (r.ports_changed?.length) {
         toast(
           `Imported “${r.name}”, but ${r.ports_changed.length} port(s) were already in use and moved: ${r.ports_changed.join(", ")}. The tunnel rule is rebuilt from this panel's own port, so there is nothing to repoint unless you forward ports by hand.`,
@@ -126,6 +132,45 @@
       toast(e.message, "error");
     } finally {
       pullingID = "";
+    }
+  }
+
+  // --- Following a pull --------------------------------------------------------
+  let progress = $state(null); // { name, lines: [], bytes }
+
+  // Progress streams over the same WebSocket machinery the install log uses, and
+  // the job is polled alongside it. Two channels on purpose: the socket is the
+  // running commentary, the poll is the answer — if the socket drops on a flaky
+  // link the transfer still finishes and we still learn how it went.
+  async function followTransfer(jobID, name) {
+    progress = { name, lines: [], bytes: 0 };
+    let ws = null;
+    try {
+      ws = new WebSocket(wsURL(`/panel/transfers/${jobID}/log`));
+      ws.onmessage = (ev) => {
+        progress = { ...progress, lines: [...progress.lines.slice(-200), ev.data] };
+      };
+    } catch {
+      // No stream is survivable; the poll below is what decides the outcome.
+    }
+    try {
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const job = await api.get(`/panel/transfers/${jobID}`);
+        progress = { ...progress, bytes: job.bytes || 0 };
+        if (job.status === "running") continue;
+        if (job.status === "failed") {
+          toast(`${name}: ${job.error}`, "error", 12000);
+          return null;
+        }
+        return job.result || {};
+      }
+    } catch (e) {
+      toast(`Lost track of the transfer: ${e.message}. It may still be running — check the Servers list.`, "warn", 12000);
+      return null;
+    } finally {
+      try { ws && ws.close(); } catch { /* already gone */ }
+      progress = null;
     }
   }
 
@@ -774,10 +819,23 @@
             </div>
           {/each}
         </div>
-        {#if pullingID}
-          <p class="text-xs text-muted">
-            Copying — a multi-gigabyte server can take a long time. Leave this page open.
-          </p>
+        {#if progress}
+          <div class="card p-3 mt-3">
+            <div class="text-sm font-medium mb-1">
+              Copying {progress.name}{progress.bytes ? ` — ${(progress.bytes / 1024 / 1024).toFixed(0)} MB` : ""}
+            </div>
+            <p class="text-xs text-muted mb-2">
+              The copy runs on the panel, not in this tab. Closing the page will not stop it — but you
+              will stop seeing it, and the result is only reported here.
+            </p>
+            {#if progress.lines.length}
+              <div class="term max-h-40 overflow-auto text-xs">
+                {#each progress.lines.slice(-8) as l}<div>{l}</div>{/each}
+              </div>
+            {/if}
+          </div>
+        {:else if pullingID}
+          <p class="text-xs text-muted">Starting…</p>
         {/if}
       {:else}
         <p class="text-sm text-muted">That panel has no servers.</p>

@@ -1906,7 +1906,19 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 <td><code>POST</code></td>
 <td><code>/api/panel/remote/import</code></td>
 <td>Admin</td>
-<td>Copy one server <strong>from</strong> another panel: <code>{url, token, server_id, skip_existing?}</code>. Streams that panel&rsquo;s export straight into the normal import — see the note below</td>
+<td>Start a pull. Returns <strong>202</strong> with <code>{job_id}</code> and copies in the background — it no longer blocks until the transfer finishes, because anything in front of the panel timed that out on a large server</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/panel/transfers/{id}</code></td>
+<td>Admin</td>
+<td>A pull&rsquo;s status: <code>running</code>/<code>done</code>/<code>failed</code>, bytes copied, and on success the import&rsquo;s own <code>result</code> (ports moved, hostnames dropped). Forgotten 6h after it finishes</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/panel/transfers/{id}/log</code></td>
+<td>Admin</td>
+<td>WebSocket: the pull&rsquo;s progress lines, with history so a late or reconnecting client catches up</td>
 </tr>
 <tr>
 <td><code>GET</code></td>

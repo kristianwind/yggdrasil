@@ -54,7 +54,7 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	// scopeAllows, so accepting one here would mint a token that silently cannot
 	// do anything — a support call, not a security feature.
 	switch req.Scope {
-	case "", auth.ScopeTransfer:
+	case "", auth.ScopeTransfer, auth.ScopeLink:
 	default:
 		jsonError(w, "unknown scope", http.StatusBadRequest)
 		return

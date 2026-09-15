@@ -271,6 +271,9 @@ func (s *Server) buildRouter() *chi.Mux {
 		// for why an upload can't work behind a tunnel.
 		// Saved panel-to-panel connections. Admin-only: the token is a credential
 		// on another panel, even when scoped to transfers.
+		// One list across this panel and every linked one.
+		r.Get("/api/panel/fleet", s.requireAdmin(s.handleFleetPanels))
+		r.Post("/api/panel/fleet/{id}/servers/{serverID}/{action}", s.requireAdmin(s.handleFleetAction))
 		r.Get("/api/panel/remotes", s.requireAdmin(s.handleListRemotePanels))
 		r.Post("/api/panel/remotes", s.requireAdmin(s.handleSaveRemotePanel))
 		r.Delete("/api/panel/remotes/{id}", s.requireAdmin(s.handleDeleteRemotePanel))
@@ -744,6 +747,28 @@ func (s *Server) claimsForAPIToken(r *http.Request, token string) *auth.Claims {
 	return &auth.Claims{UserID: userID, Username: username, Role: role, Scope: scope}
 }
 
+// serverSubpath splits "/api/servers/<id>/<rest>" into its id and remainder.
+// rest is "" for the server itself. Returns ok=false for anything that is not
+// under /api/servers/.
+//
+// Parsing rather than prefix-matching, because a scope that allowed
+// "/api/servers/" + anything ending in the right word would also allow paths
+// nobody intended — the allowlist has to mean the segment, not the suffix.
+func serverSubpath(path string) (id, rest string, ok bool) {
+	const prefix = "/api/servers/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+	tail := strings.TrimPrefix(path, prefix)
+	if tail == "" {
+		return "", "", false
+	}
+	if i := strings.IndexByte(tail, '/'); i >= 0 {
+		return tail[:i], tail[i+1:], true
+	}
+	return tail, "", true
+}
+
 // scopeAllows reports whether a request's claims permit this method+path.
 //
 // A scope is a ceiling, never a grant: it can only take authority away from what
@@ -768,6 +793,37 @@ func scopeAllows(claims *auth.Claims, method, path string) bool {
 			return true
 		}
 		return strings.HasPrefix(path, "/api/servers/") && strings.HasSuffix(path, "/export")
+
+	case auth.ScopeLink:
+		// Enough for another panel to show this one's servers and operate them.
+		// NOT export: a bundle carries decrypted secrets, and a controller that
+		// only needs to press Start has no business reading them. That is what
+		// ScopeTransfer is for, and the two are deliberately separate so linking
+		// a host and being able to copy it off are different grants.
+		if method == http.MethodGet {
+			switch path {
+			case "/api/servers", "/api/fleet/summary", "/api/fleet/metrics":
+				return true
+			}
+			// One server's own page: status, stats, history. Not its files, not
+			// its console, not its backups.
+			if id, rest, ok := serverSubpath(path); ok && id != "" {
+				switch rest {
+				case "", "stats", "history":
+					return true
+				}
+			}
+			return false
+		}
+		if method == http.MethodPost {
+			if id, rest, ok := serverSubpath(path); ok && id != "" {
+				switch rest {
+				case "start", "stop", "restart", "safe-restart":
+					return true
+				}
+			}
+		}
+		return false
 	default:
 		// An unknown scope is a token this build does not understand. Refuse it
 		// rather than fall through to full access — a scope added by a newer

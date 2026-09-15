@@ -293,6 +293,16 @@ users table and requires the account to be enabled.</li>
 <p>You only ever see and delete your own tokens; the list is filtered by owner. Each row
 shows when it was created and when it was last used, which is the cheapest way to spot a
 token nothing needs any more.</p>
+<h3 id="link-tokens">Link tokens</h3>
+<p><strong>Link</strong> is the scope for &ldquo;one login, several hosts&rdquo;. A link token lets another panel list this
+panel&rsquo;s servers, see their status and stats, and <strong>start, stop or restart</strong> them. It cannot export a
+bundle, delete a server, change settings, read files, open a console, or touch domains.</p>
+<p>Export is deliberately <em>not</em> included, and the split matters: a bundle carries decrypted secrets, so
+a controller that only needs to press Start has no business reading them. Linking a host and being
+able to copy it off are separate grants, and a token has one or the other.</p>
+<p>This is what the <strong>Fleet</strong> page runs on. The linked panel still applies its own authentication and
+permissions to every proxied action — the scope is a ceiling on what the controller may ask for, not
+a way around the host&rsquo;s rules.</p>
 <h3 id="transfer-only-tokens">Transfer-only tokens</h3>
 <p>Pulling a server from another panel needs a token <strong>on that panel</strong>, and exporting a
 server is admin-only — a bundle carries the server&rsquo;s secrets in plaintext. So the only
@@ -377,7 +387,7 @@ in the sidebar.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#admins-and-delegates">Admins and delegates</a><a class="t2" href="#realms">Realms</a><a class="t2" href="#the-eight-permissions">The eight permissions</a><a class="t2" href="#scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</a><a class="t2" href="#the-permission-editor">The permission editor</a><a class="t2" href="#per-server-delegates">Per-server delegates</a><a class="t3" href="#worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</a><a class="t2" href="#two-factor-authentication-totp">Two-factor authentication (TOTP)</a><a class="t2" href="#passkeys-webauthn">Passkeys (WebAuthn)</a><a class="t2" href="#api-tokens">API tokens</a><a class="t3" href="#transfer-only-tokens">Transfer-only tokens</a><a class="t2" href="#login-protection">Login protection</a><a class="t3" href="#unlocking-someone-who-just-mistyped-it">Unlocking someone who just mistyped it</a><a class="t2" href="#sessions-and-revocation">Sessions and revocation</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#admins-and-delegates">Admins and delegates</a><a class="t2" href="#realms">Realms</a><a class="t2" href="#the-eight-permissions">The eight permissions</a><a class="t2" href="#scopes-and-how-a-grant-is-matched">Scopes, and how a grant is matched</a><a class="t2" href="#the-permission-editor">The permission editor</a><a class="t2" href="#per-server-delegates">Per-server delegates</a><a class="t3" href="#worked-example-give-a-friend-console-access-to-one-server">Worked example: give a friend console access to one server</a><a class="t2" href="#two-factor-authentication-totp">Two-factor authentication (TOTP)</a><a class="t2" href="#passkeys-webauthn">Passkeys (WebAuthn)</a><a class="t2" href="#api-tokens">API tokens</a><a class="t3" href="#link-tokens">Link tokens</a><a class="t3" href="#transfer-only-tokens">Transfer-only tokens</a><a class="t2" href="#login-protection">Login protection</a><a class="t3" href="#unlocking-someone-who-just-mistyped-it">Unlocking someone who just mistyped it</a><a class="t2" href="#sessions-and-revocation">Sessions and revocation</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

@@ -629,6 +629,8 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | `GET` | `/api/settings/cloudflare` | Admin | The Cloudflare tunnel configuration |
 | `PUT` | `/api/settings/cloudflare` | Admin | Update the Cloudflare tunnel configuration |
 | `POST` | `/api/settings/cloudflare/test` | Admin | Verify the token, resolve the zone, and check the tunnel config |
+| `GET` | `/api/panel/fleet` | Admin | Every server on this panel and on each linked one, grouped by panel. A panel that is unreachable reports `error` and an empty list instead of failing the request |
+| `POST` | `/api/panel/fleet/{id}/servers/{serverID}/{action}` | Admin | Proxy `start`, `stop`, `restart` or `safe-restart` to a server on a linked panel. The remote panel applies its own auth and RBAC |
 | `GET` | `/api/panel/remotes` | Admin | Saved panel-to-panel connections. Returns `has_token`, never the token itself |
 | `POST` | `/api/panel/remotes` | Admin | Create or update one: `{id?, name, url, token?}`. Omit `token` to leave it as it is; send `""` to forget it while keeping the connection |
 | `DELETE` | `/api/panel/remotes/{id}` | Admin | Forget a saved connection |

@@ -391,9 +391,27 @@ func (s *Server) handleSetCloudflareSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.setSetting(r.Context(), "cf_account_id", strings.TrimSpace(req.AccountID))
-	s.setSetting(r.Context(), "cf_zone_id", strings.TrimSpace(req.ZoneID))
+	zone := strings.TrimSpace(req.ZoneID)
+	base := normalizeSubdomain(req.BaseDomain)
+	// The zone id is a CACHE of "which zone owns the base domain", filled in by
+	// cfClient the first time it is needed. Change the base domain and that cache
+	// is answering a question nobody asked any more — but it was only ever written
+	// when empty, so it survived the change and kept being served.
+	//
+	// Measured across a fleet: three panels, two different base domains, one
+	// identical zone id. Harmless for provisioning, because cfApplyRoute resolves
+	// the zone per hostname and overrides it — which is exactly why nobody noticed.
+	// Not harmless for Test connection, which skips the DNS half when a zone id is
+	// already set, so it reports success without having proved DNS access at all.
+	//
+	// Drop the cache when the thing it was derived from moves, unless the operator
+	// typed a zone id in the same save.
+	if prev := s.getSetting(r.Context(), "cf_base_domain"); prev != base && zone == s.getSetting(r.Context(), "cf_zone_id") {
+		zone = ""
+	}
+	s.setSetting(r.Context(), "cf_zone_id", zone)
 	s.setSetting(r.Context(), "cf_tunnel_id", strings.TrimSpace(req.TunnelID))
-	s.setSetting(r.Context(), "cf_base_domain", normalizeSubdomain(req.BaseDomain))
+	s.setSetting(r.Context(), "cf_base_domain", base)
 	s.setSetting(r.Context(), "cf_internal_host", strings.TrimSpace(req.InternalHost))
 	s.setSetting(r.Context(), "cf_enabled", boolStr(req.Enabled))
 	if req.Token != "" {

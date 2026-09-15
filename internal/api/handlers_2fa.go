@@ -33,10 +33,17 @@ func (s *Server) handle2FASetup(w http.ResponseWriter, r *http.Request) {
 	}
 	// Store as pending (secret set, enabled still 0).
 	s.db.ExecContext(r.Context(), "UPDATE users SET totp_secret=?, totp_enabled=0 WHERE id=?", enc, claims.UserID)
-	jsonOK(w, map[string]string{
-		"secret": secret,
-		"uri":    totp.URI(secret, claims.Username, "Yggdrasil"),
-	})
+	uri := totp.URI(secret, claims.Username, "Yggdrasil")
+	out := map[string]string{"secret": secret, "uri": uri}
+	// A failed QR is not a failed enrolment: the secret is still there to type in
+	// by hand. Losing the whole screen because an image could not be drawn would
+	// be a worse trade than an enrolment that is merely more tedious.
+	if png, qerr := totp.QRDataURI(uri); qerr == nil {
+		out["qr"] = png
+	}
+	// This response is the secret, in two forms. Nothing may keep a copy.
+	w.Header().Set("Cache-Control", "no-store")
+	jsonOK(w, out)
 }
 
 // handle2FAEnable verifies a code against the pending secret and turns 2FA on.

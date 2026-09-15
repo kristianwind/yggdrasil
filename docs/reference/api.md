@@ -261,7 +261,7 @@ is switched off, so a disabled status page or beacon receiver is not advertised.
 | `POST` | `/api/auth/logout` | Session | Clear the cookie and bump `token_version`, revoking every JWT for the user |
 | `GET` | `/api/auth/me` | Session | The caller's id, username, role, and the scopes they can create servers in |
 | `GET` | `/api/auth/2fa` | Session | Whether TOTP is enabled on the caller's account |
-| `POST` | `/api/auth/2fa/setup` | Session | Generate a pending secret and return its `otpauth://` URI |
+| `POST` | `/api/auth/2fa/setup` | Session | Generate a pending secret and return it as a QR code (`qr`, a PNG data URI), an `otpauth://` URI and the raw secret |
 | `POST` | `/api/auth/2fa/enable` | Session | Verify a code against the pending secret and turn TOTP on |
 | `POST` | `/api/auth/2fa/disable` | Session | Turn TOTP off; requires a valid code |
 | `GET` | `/api/auth/passkey/credentials` | Session | List the caller's registered passkeys |

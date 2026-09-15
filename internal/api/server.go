@@ -25,14 +25,15 @@ import (
 )
 
 type Server struct {
-	cfg     *config.Config
-	db      *sql.DB
-	docker  *docker.Client
-	health  *healthState // HTTP health-check strikes; see health_check.go
-	router  *chi.Mux
-	webFS   fs.FS
-	docsKB  *docskb.KB   // embedded user docs, retrieval-grounding for the Kvasir chat
-	install *progressHub // live install/build output, keyed by server id
+	cfg       *config.Config
+	db        *sql.DB
+	docker    *docker.Client
+	health    *healthState  // HTTP health-check strikes; see health_check.go
+	transfers *transferJobs // in-flight panel-to-panel pulls; see handlers_transfer_jobs.go
+	router    *chi.Mux
+	webFS     fs.FS
+	docsKB    *docskb.KB   // embedded user docs, retrieval-grounding for the Kvasir chat
+	install   *progressHub // live install/build output, keyed by server id
 	// One rune-wide restart sweep at a time, so a double-click can't recreate the
 	// same eight containers twice over.
 	runeRestarts *runeRestartState
@@ -100,6 +101,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.startDiskMonitor()
 	s.startImageBloatMonitor()
 	s.health = newHealthState()
+	s.transfers = newTransferJobs()
 	s.startStatusReconciler()
 	s.startHealthChecks()
 	go s.startAutostartServers()
@@ -272,6 +274,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		// Saved panel-to-panel connections. Admin-only: the token is a credential
 		// on another panel, even when scoped to transfers.
 		// One list across this panel and every linked one.
+		r.Get("/api/panel/transfers/{id}", s.requireAdmin(s.handleTransferJob))
+		r.Get("/api/panel/transfers/{id}/log", s.requireAdmin(s.handleTransferLog)) // WebSocket
 		r.Get("/api/panel/fleet", s.requireAdmin(s.handleFleetPanels))
 		r.Post("/api/panel/fleet/{id}/servers/{serverID}/{action}", s.requireAdmin(s.handleFleetAction))
 		r.Get("/api/panel/remotes", s.requireAdmin(s.handleListRemotePanels))

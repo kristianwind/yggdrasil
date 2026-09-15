@@ -144,6 +144,20 @@ The bundle carries decrypted secrets, so pull over HTTPS or a private network �
 never plain HTTP across the internet. The token is used for that transfer only
 and is not stored.
 
+### A pull does not block your browser
+
+Starting a pull answers immediately and the copy runs on the panel. Progress streams back — bytes
+copied, and the import's own log — and the result is reported when it lands.
+
+It did not always work that way, and the reason it changed is worth knowing, because it looks like a
+network fault when it bites. A synchronous pull keeps the browser's request open for the whole
+transfer, so **anything between you and the panel eventually times it out**: a 4.1 GB site reached
+through a Cloudflare tunnel died with a `524` after 100 seconds, while the transfer between the two
+panels was running perfectly. Only the browser's request had died.
+
+Closing the page no longer stops the copy. It does stop you seeing it — the outcome is reported in
+that tab, and a finished job is only readable for six hours afterwards.
+
 ### Saving a connection
 
 Retyping an address and a token for every move is friction, and friction is not neutral: it is what

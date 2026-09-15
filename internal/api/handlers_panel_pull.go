@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 // Panel-to-panel transfer, pull-style: this panel fetches a server bundle
@@ -178,15 +182,61 @@ func (s *Server) handleRemoteImport(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	// Answer NOW, and do the copy in the background.
+	//
+	// This used to block until gigabytes had crossed the network and been
+	// unpacked, which anything in front of the panel eventually killed — a
+	// Cloudflare 524 on a 4.1 GB site, with the transfer itself running fine and
+	// only the browser's request dying. A job id plus the existing progress
+	// stream removes the deadline entirely.
+	jobID := uuid.New().String()
+	s.transfers.start(jobID, base)
+	s.auditLog(r, "panel.remote_import_start", "transfer:"+jobID,
+		map[string]any{"source": base, "server_id": req.ServerID})
 
-	// The import reads the stream as it arrives; nothing is buffered whole.
-	out, err := s.importServerBundle(r.Context(), resp.Body, req.Skip)
-	if err != nil {
-		jsonError(w, "import: "+err.Error(), http.StatusBadRequest)
+	go func(body io.ReadCloser) {
+		defer recoverLog("remoteImport")
+		defer body.Close()
+		s.install.publish(jobID, fmt.Sprintf("=== Pull started %s from %s ===",
+			time.Now().UTC().Format(time.RFC3339), base))
+
+		counted := newCountingReader(body, 3*time.Second, func(n int64) {
+			s.transfers.update(jobID, func(j *transferJob) { j.Bytes = n })
+			s.install.publish(jobID, "copied "+humanBytes(n))
+		})
+
+		// context.Background(), NOT the request's: the request is already
+		// answered and its context is cancelled the moment the browser gets the
+		// job id. Using it would abort every transfer instantly.
+		out, ierr := s.importServerBundle(context.Background(), counted, req.Skip)
+		if ierr != nil {
+			s.install.publish(jobID, "ERROR: "+ierr.Error())
+			s.transfers.update(jobID, func(j *transferJob) {
+				j.Status, j.Error, j.Bytes = "failed", ierr.Error(), counted.n
+			})
+			return
+		}
+		s.install.publish(jobID, fmt.Sprintf("=== Pull complete — %s ===", humanBytes(counted.n)))
+		s.transfers.update(jobID, func(j *transferJob) {
+			j.Status, j.Result, j.Bytes = "done", out, counted.n
+			j.ServerID, _ = out["id"].(string)
+			j.Name, _ = out["name"].(string)
+		})
+		s.auditLog(r, "panel.remote_import", "server:"+fmt.Sprint(out["id"]),
+			map[string]any{"source": base, "name": out["name"], "job": jobID})
+	}(resp.Body)
+
+	w.WriteHeader(http.StatusAccepted)
+	jsonOK(w, map[string]any{"job_id": jobID, "status": "running"})
+}
+
+// handleTransferJob reports one pull's progress. Polling works on its own; the
+// WebSocket below is for the running commentary.
+func (s *Server) handleTransferJob(w http.ResponseWriter, r *http.Request) {
+	job, ok := s.transfers.get(chi.URLParam(r, "id"))
+	if !ok {
+		jsonError(w, "no such transfer — finished jobs are forgotten after a while", http.StatusNotFound)
 		return
 	}
-	s.auditLog(r, "panel.remote_import", "server:"+fmt.Sprint(out["id"]),
-		map[string]any{"source": base, "name": out["name"]})
-	jsonOK(w, out)
+	jsonOK(w, job)
 }

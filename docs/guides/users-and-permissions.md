@@ -184,8 +184,27 @@ step counter of every accepted code and rejects any code at or below the last ac
 one — the second use of a code fails with "2FA code already used; wait for the next one",
 and counts as a failed login attempt.
 
-There are no recovery codes. If you lose the authenticator, another admin has to reset
-you, so keep a second admin account or a passkey.
+**If you lose the authenticator.** There are no recovery codes, and — despite what this
+page used to say — *no other admin can reset you either*: turning 2FA off requires a
+current code from the account's own authenticator, on purpose, so that a hijacked session
+cannot strip the second factor. That protection applies to everyone, including the person
+who lost their phone.
+
+Two ways out, in order of preference:
+
+1. **A passkey.** It is a second factor in its own right and an independent way in, so a
+   deleted authenticator entry stops being an emergency. Register one *before* you need it.
+2. **The break-glass command**, run as root on the host — no panel and no login needed:
+
+   ```
+   yggdrasil reset-2fa <username>
+   ```
+
+   It clears the dead TOTP secret so you can enrol a fresh one, refuses if that account
+   had no 2FA to begin with (so a typo cannot quietly "succeed"), and leaves any passkeys
+   alone — in this situation a passkey is usually the credential that still works. It
+   tells you afterwards whether the account is now down to a single factor. Set 2FA up
+   again at the next sign-in; the enrolment screen shows a QR code to scan.
 
 ## Passkeys (WebAuthn)
 

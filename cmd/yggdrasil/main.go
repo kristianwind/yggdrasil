@@ -58,6 +58,11 @@ func main() {
 				log.Fatalf("migrate: %v", err)
 			}
 			return
+		case "reset-2fa":
+			if err := runResetTwoFactor(os.Args[2:]); err != nil {
+				log.Fatalf("reset-2fa: %v", err)
+			}
+			return
 		case "reset-password":
 			if err := runResetPassword(os.Args[2:]); err != nil {
 				log.Fatalf("reset-password: %v", err)
@@ -106,6 +111,7 @@ Usage:
   yggdrasil gen-config [<path>]                       write a starter config.yaml
   yggdrasil migrate export|import <bundle.tar.gz>     move an instance between hosts
   yggdrasil reset-password <user> [--password <pw>]   break-glass admin reset (run as root on the host)
+  yggdrasil reset-2fa <user>                         break-glass 2FA reset when the authenticator is lost
   yggdrasil update                                    upgrade note (self-update is not built in)
   yggdrasil help                                      print this help
 

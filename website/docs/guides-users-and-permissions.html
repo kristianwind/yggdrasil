@@ -249,8 +249,28 @@ which is long enough for someone watching your screen to reuse it. Yggdrasil rec
 step counter of every accepted code and rejects any code at or below the last accepted
 one — the second use of a code fails with &ldquo;2FA code already used; wait for the next one&rdquo;,
 and counts as a failed login attempt.</p>
-<p>There are no recovery codes. If you lose the authenticator, another admin has to reset
-you, so keep a second admin account or a passkey.</p>
+<p><strong>If you lose the authenticator.</strong> There are no recovery codes, and — despite what this
+page used to say — <em>no other admin can reset you either</em>: turning 2FA off requires a
+current code from the account&rsquo;s own authenticator, on purpose, so that a hijacked session
+cannot strip the second factor. That protection applies to everyone, including the person
+who lost their phone.</p>
+<p>Two ways out, in order of preference:</p>
+<ol>
+<li>
+<p><strong>A passkey.</strong> It is a second factor in its own right and an independent way in, so a
+deleted authenticator entry stops being an emergency. Register one <em>before</em> you need it.</p>
+</li>
+<li>
+<p><strong>The break-glass command</strong>, run as root on the host — no panel and no login needed:</p>
+<pre><code>yggdrasil reset-2fa &lt;username&gt;
+</code></pre>
+<p>It clears the dead TOTP secret so you can enrol a fresh one, refuses if that account
+had no 2FA to begin with (so a typo cannot quietly &ldquo;succeed&rdquo;), and leaves any passkeys
+alone — in this situation a passkey is usually the credential that still works. It
+tells you afterwards whether the account is now down to a single factor. Set 2FA up
+again at the next sign-in; the enrolment screen shows a QR code to scan.</p>
+</li>
+</ol>
 <h2 id="passkeys-webauthn">Passkeys (WebAuthn)</h2>
 <p>Under <strong>Settings → Security → Passkeys</strong>, choose <strong>Add a passkey</strong> and name it. On the
 login page, <strong>Sign in with a passkey</strong> then signs you in with no password and no TOTP

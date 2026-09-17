@@ -362,7 +362,22 @@ func (s *Server) reconcileStatuses() {
 
 	for _, x := range list {
 		running, exitCode, err := s.docker.State(context.Background(), x.cid)
-		if err != nil || !running {
+		if err != nil {
+			// We did not learn that the container is gone — we failed to ask.
+			// Those are different facts, and this loop used to act on them
+			// identically: on a cold boot, where the panel can be up before
+			// dockerd is (startAutostartServers waits up to 60s for the daemon
+			// while this ticker fires every 20s regardless), every server looked
+			// stopped and got torn down. stoppedCleanup then deleted each one's
+			// tunnel route and DNS record. When the containers finally came up,
+			// adoptRunningContainers put the status back and nothing put the
+			// hostnames back — a fleet running normally with its public names
+			// deleted, and not one line about it in the log.
+			//
+			// An unknown state earns no action at all. The next tick will know.
+			continue
+		}
+		if !running {
 			// Container exited (crash or external stop) — mark stopped and release
 			// any port-forward rules so they don't linger pointing at a dead port.
 			// Drop any watchdog streak so it can't heal a server the user stopped.
@@ -380,7 +395,7 @@ func (s *Server) reconcileStatuses() {
 			// The cost is not the rows. It is that a real crash becomes impossible to
 			// see among them, in exactly the history built to make it visible — and
 			// that the Dashboard activity feed reads as a fleet falling over nightly.
-			if err == nil && s.shouldRecordCrash(x.id) {
+			if s.shouldRecordCrash(x.id) {
 				s.recordCrash(x.id, x.cid, exitCode)
 			}
 			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
@@ -437,6 +452,21 @@ func (s *Server) adoptRunningContainers() {
 			"UPDATE servers SET status='running' WHERE id=? AND status='stopped'", x.id); err == nil {
 			if n, _ := res.RowsAffected(); n > 0 {
 				log.Printf("reconcile: %s was running but marked stopped — adopting it", x.id)
+				// Adopting used to restore the status and nothing else, which
+				// made the panel's picture right and left the world wrong: if
+				// the server had been marked stopped at any point, its tunnel
+				// route and DNS record were already deleted, and coming back
+				// did not bring them back. The only cure was a Start through
+				// the panel, which nobody knew to do because nothing said the
+				// names were gone.
+				//
+				// Re-provisioning is idempotent — UpsertHostname and EnsureDNS
+				// both converge — and it reads the server's INTENDED hostnames
+				// rather than the recorded ones, so it heals a server whose
+				// record was cleared as well as one that never lost it.
+				var name string
+				s.db.QueryRow("SELECT name FROM servers WHERE id=?", x.id).Scan(&name) //nolint:errcheck
+				go s.cfAddServer(x.id, name)
 			}
 		}
 	}

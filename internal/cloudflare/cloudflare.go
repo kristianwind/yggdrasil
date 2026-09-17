@@ -402,6 +402,19 @@ type dnsRecord struct {
 	Proxied bool   `json:"proxied"`
 }
 
+// FindDNSRecord reports whether a record for hostname exists in the current
+// zone. Exported for reconciliation, which needs to know what is missing before
+// it decides to write anything — an error is reported as "not found" only by
+// the caller's choice, never here, so a Cloudflare outage cannot be mistaken
+// for an absent record.
+func (c *Client) FindDNSRecord(hostname string) (bool, error) {
+	rec, err := c.findDNS(hostname)
+	if err != nil {
+		return false, err
+	}
+	return rec != nil, nil
+}
+
 func (c *Client) findDNS(hostname string) (*dnsRecord, error) {
 	if c.zoneID == "" {
 		return nil, fmt.Errorf("cloudflare: zone id not set")

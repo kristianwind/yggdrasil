@@ -300,6 +300,12 @@ func (s *Server) startAutostartServers() {
 	// Docker is confirmed up now — re-attach readiness detection to any server left
 	// mid-"starting" by this restart (its watcher goroutine didn't survive).
 	s.resumeStartingWatchers(ctx)
+
+	// And only now, with the container world known, check that Cloudflare still
+	// carries the hostnames those servers are supposed to serve. Deliberately
+	// after the wait: reconciling against a half-started fleet is what caused
+	// the damage this repairs.
+	go s.cfReconcileHostnames(ctx)
 }
 
 // startStackForAutostart brings a stack server's sidecars up before its app

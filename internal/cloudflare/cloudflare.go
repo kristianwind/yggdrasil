@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,6 +39,10 @@ type Client struct {
 	zoneID    string
 	tunnelID  string
 	hc        *http.Client
+	// baseURL is apiBase in production. It exists so the read-modify-write on
+	// the tunnel config can be exercised against a real HTTP server in tests —
+	// the concurrency bug it now guards cannot be reproduced with a stub.
+	baseURL string
 }
 
 // New builds a client. zoneID may be empty and resolved later via ResolveZoneID.
@@ -48,6 +53,7 @@ func New(token, accountID, zoneID, tunnelID string) *Client {
 		zoneID:    strings.TrimSpace(zoneID),
 		tunnelID:  strings.TrimSpace(tunnelID),
 		hc:        &http.Client{Timeout: 15 * time.Second},
+		baseURL:   apiBase,
 	}
 }
 
@@ -80,7 +86,7 @@ func (c *Client) do(method, path string, in, out any) error {
 		b, _ := json.Marshal(in)
 		rdr = bytes.NewReader(b)
 	}
-	req, _ := http.NewRequest(method, apiBase+path, rdr)
+	req, _ := http.NewRequest(method, c.baseURL+path, rdr)
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -166,6 +172,30 @@ func (c *Client) SetZoneID(id string) { c.zoneID = id }
 func (c *Client) cfTarget() string { return c.tunnelID + ".cfargotunnel.com" }
 
 // --- Tunnel ingress ---
+//
+// Every edit below is a read-modify-write of ONE shared document: fetch the
+// tunnel's whole config, change one rule, PUT it back. Two of those in flight at
+// once means the second PUT is built from a copy fetched before the first one
+// landed, so the first edit is silently undone. Nothing errors; the rule is
+// simply not there afterwards.
+//
+// That is not theoretical. On 2026-09-16 a reconciler tore down several servers
+// at once, each in its own goroutine: eleven DNS records went (independent
+// per-record DELETEs, so all of them landed) and only seven ingress rules did.
+// The four that survived were the lost writes — hostnames still routed by the
+// tunnel with no DNS pointing at them.
+//
+// So the config is edited under a per-tunnel lock. It serialises only this
+// process; two panels pointed at the same tunnel would still race, which is its
+// own misconfiguration and is what cfTunnelWarning is for.
+var ingressLocks sync.Map // tunnelID -> *sync.Mutex
+
+func (c *Client) lockIngress() func() {
+	v, _ := ingressLocks.LoadOrStore(c.tunnelID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
 
 // getConfig returns the tunnel's current config object (ingress + any other
 // keys), preserved as a map so we don't drop fields we don't manage on PUT.
@@ -236,6 +266,7 @@ func rebuildIngress(cfg map[string]any, rules []map[string]any) {
 
 // UpsertHostname adds or replaces the ingress rule for hostname → service.
 func (c *Client) UpsertHostname(hostname, service string) error {
+	defer c.lockIngress()()
 	cfg, err := c.getConfig()
 	if err != nil {
 		return err
@@ -258,6 +289,7 @@ func (c *Client) UpsertHostname(hostname, service string) error {
 
 // RemoveHostname deletes the ingress rule for hostname (no-op if absent).
 func (c *Client) RemoveHostname(hostname string) error {
+	defer c.lockIngress()()
 	cfg, err := c.getConfig()
 	if err != nil {
 		return err

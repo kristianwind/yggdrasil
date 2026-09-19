@@ -408,25 +408,50 @@ type dnsRecord struct {
 // the caller's choice, never here, so a Cloudflare outage cannot be mistaken
 // for an absent record.
 func (c *Client) FindDNSRecord(hostname string) (bool, error) {
-	rec, err := c.findDNS(hostname)
+	rec, err := c.findDNS(hostname, "CNAME", "A", "AAAA")
 	if err != nil {
 		return false, err
 	}
 	return rec != nil, nil
 }
 
-func (c *Client) findDNS(hostname string) (*dnsRecord, error) {
+// findDNS returns the first record for hostname of one of the given types.
+//
+// 🔴 The type filter is not an optimisation — it is the whole safety property.
+// A name in Cloudflare is a SET of records: at a zone apex that set contains
+// the A or CNAME the panel manages and also the MX, TXT and SRV records that
+// deliver the domain's mail. This function used to ask for the name alone and
+// return whichever record came back first, and EnsureDNS then PUT a CNAME over
+// that record id — converting, in place, whatever it happened to find.
+//
+// That destroyed live mail records on 2026-09-19: MX on executit.dk and
+// 3dekoration.dk, SPF on nolimit.dk. Which record died was down to the order
+// Cloudflare listed them in, so the same code was harmless for months and then
+// ate a mail server. Every zone where a server's hostname is the apex was
+// exposed, and the panel routes five of them.
+//
+// Never widen these types beyond records the panel actually owns.
+func (c *Client) findDNS(hostname string, types ...string) (*dnsRecord, error) {
 	if c.zoneID == "" {
 		return nil, fmt.Errorf("cloudflare: zone id not set")
 	}
-	var recs []dnsRecord
-	path := fmt.Sprintf("/zones/%s/dns_records?name=%s", c.zoneID, url.QueryEscape(strings.ToLower(hostname)))
-	if err := c.do("GET", path, nil, &recs); err != nil {
-		return nil, err
+	if len(types) == 0 {
+		return nil, fmt.Errorf("cloudflare: findDNS called without a record type")
 	}
-	for i := range recs {
-		if strings.EqualFold(recs[i].Name, hostname) {
-			return &recs[i], nil
+	for _, t := range types {
+		var recs []dnsRecord
+		path := fmt.Sprintf("/zones/%s/dns_records?name=%s&type=%s",
+			c.zoneID, url.QueryEscape(strings.ToLower(hostname)), url.QueryEscape(t))
+		if err := c.do("GET", path, nil, &recs); err != nil {
+			return nil, err
+		}
+		for i := range recs {
+			// Belt and braces: the filter is server-side, but a record of the
+			// wrong type reaching the PUT below is the failure mode that cost
+			// the mail records, so it is checked here too.
+			if strings.EqualFold(recs[i].Name, hostname) && strings.EqualFold(recs[i].Type, t) {
+				return &recs[i], nil
+			}
 		}
 	}
 	return nil, nil
@@ -441,7 +466,7 @@ func (c *Client) CNAMEForeign(hostname string) (foreign bool, target string, err
 	if zid, zerr := c.ZoneForHost(hostname); zerr == nil && zid != "" {
 		c.SetZoneID(zid)
 	}
-	rec, err := c.findDNS(hostname)
+	rec, err := c.findDNS(hostname, "CNAME")
 	if err != nil || rec == nil {
 		return false, "", err
 	}
@@ -457,7 +482,9 @@ func (c *Client) CNAMEForeign(hostname string) (foreign bool, target string, err
 // If a CNAME already points at a DIFFERENT tunnel it returns ErrForeignTunnel
 // instead of overwriting it — so we never steal a hostname another node serves.
 func (c *Client) EnsureDNS(hostname string) error {
-	rec, err := c.findDNS(hostname)
+	// CNAME first (what the panel normally owns), then the A/AAAA that a zone
+	// apex carries instead. Nothing else is ever a candidate for replacement.
+	rec, err := c.findDNS(hostname, "CNAME", "A", "AAAA")
 	if err != nil {
 		return err
 	}
@@ -483,7 +510,10 @@ func (c *Client) EnsureDNS(hostname string) error {
 // tunnel, so we never delete a record another node/tunnel owns (or an unrelated
 // record a user manages by hand). No-op if absent or foreign.
 func (c *Client) RemoveDNS(hostname string) error {
-	rec, err := c.findDNS(hostname)
+	// CNAME only. A tunnel record is always a CNAME, and asking without a type
+	// used to return the name's MX instead — whose content never matches the
+	// tunnel target, so removal silently did nothing and left the route behind.
+	rec, err := c.findDNS(hostname, "CNAME")
 	if err != nil || rec == nil {
 		return err
 	}

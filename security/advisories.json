@@ -16,5 +16,15 @@
     "by dismissing it. Keep it for things that actually need doing, and write the",
     "detail so a reader knows within one sentence whether it concerns them."
   ],
-  "advisories": []
+  "advisories": [
+    {
+      "id": "2026-09-19-cloudflare-overwrote-mail-records",
+      "severity": "high",
+      "title": "Cloudflare integration could overwrite a domain's MX or SPF record",
+      "detail": "This affects you only if you use the Cloudflare tunnel integration AND a server's hostname is a domain's own name (example.com) rather than a subdomain (app.example.com). If every hostname you route is a subdomain, nothing on your install was at risk.\n\nWhen provisioning a hostname, the panel asked Cloudflare for the records at that name and used the first one it got back. At a domain's own name that set also contains the MX, SPF and other records that make its mail work, and the panel then wrote its tunnel address over whichever record it had picked. Which one that was depended on the order Cloudflare happened to return them, so an install could do this correctly for months and then destroy a mail record. Nothing failed while it happened and nothing was logged: overwriting the wrong record is a successful request.\n\nCheck now, even after upgrading, because the damage is silent and is not undone by the fix. For every domain whose own name you route through the panel, confirm in Cloudflare that its MX and SPF (TXT) records are still what they should be. Records at sub-names — _dmarc, DKIM selectors, autodiscover — were never at risk. Cloudflare's account Audit Log lists every change the API token made, with the previous values, which is the reliable way to see what to restore.\n\nv0.3.19 asks for the specific record types the panel owns and will not replace anything else.",
+      "introduced_in": "",
+      "fixed_in": "v0.3.19",
+      "url": "https://github.com/kristianwind/yggdrasil/pull/381"
+    }
+  ]
 }

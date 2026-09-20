@@ -440,6 +440,8 @@ script on an existing installation changes nothing at all.
 update:
   image: "wordpress:cli"        # defaults to docker.image
   label: "Update WordPress"     # button text; defaults to "Update app"
+  app_writable:                 # paths the APP must still be able to write after
+    - wp-content                # the update; omit it and nothing is changed
   script: |
     wp core update --path=/data --allow-root
     wp core update-db --path=/data --allow-root
@@ -459,8 +461,28 @@ differences that matter:
   user *and* group; an update chowns only the user. Runes that grant the app access through the
   group — WordPress hands `www-data` group write while the panel stays owner — would otherwise have
   that access revoked by their own update.
-- **File modes are left exactly as they were.** Root writes through a mode it does not own, so a
-  rune that deliberately keeps files read-only to the app keeps them that way.
+- **File modes are left exactly as they were**, apart from the paths named in `app_writable`.
+  Root writes through a mode it does not own, so a rune that deliberately keeps files read-only to
+  the app keeps them that way.
+
+### `app_writable`
+
+Keeping the group is not the same as keeping access, and the difference is invisible until it is
+expensive. A file unpacked from a plugin zip is `0644`: reclaiming its owner while keeping its
+group leaves the app able to read it and not write it. Nothing reports that. It surfaces the next
+time somebody updates that plugin — possibly months later — as *"some files could not be copied"*
+about every file in it. Five plugins on one live shop, the security plugin among them.
+
+`app_writable` names the paths, relative to the data dir, where the app must keep write access.
+After the ownership pass the panel adds group write to those subtrees and nothing else. A rune that
+omits it behaves exactly as before.
+
+**Name the narrowest path that works.** The WordPress rune declares `wp-content` and not the
+webroot, because `wp-admin`, `wp-includes` and `wp-config.php` are kept unwritable by PHP on
+purpose: a compromised plugin must not be able to rewrite WordPress itself, nor read database
+credentials out of a file it can also change. A recursive `g+rw` over a whole webroot would trade a
+visible annoyance for a real vulnerability on a site that is actively attacked. Paths are confined
+to the data directory, and a path that resolves to the data directory itself is ignored.
 
 That last point is the reason this exists. The WordPress rune keeps core `644` and read-only to PHP
 so a compromised plugin cannot rewrite `wp-login.php` — which also stops WordPress updating itself

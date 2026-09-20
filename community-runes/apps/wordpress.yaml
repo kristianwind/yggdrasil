@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 19
+  version: 20
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -114,6 +114,18 @@ gameskill:
   update:
     image: "wordpress:cli"
     label: "Update WordPress"
+    # After an update the panel takes back ownership of what was written, which
+    # leaves a freshly unpacked 0644 plugin file readable and NOT writable by
+    # PHP — so the next update of that plugin fails with "some files could not
+    # be copied", about every file in it, months later and with no other sign.
+    #
+    # wp-content and nothing else. wp-admin, wp-includes and wp-config.php stay
+    # unwritable by PHP on purpose: a compromised plugin must not be able to
+    # rewrite WordPress itself, nor read database credentials out of a file it
+    # can also change. Widening this to the webroot would trade a visible
+    # annoyance for a real vulnerability on sites that are actively attacked.
+    app_writable:
+      - wp-content
     script: |
       set -e
       # The panel brings the database sidecar up for the update, but MariaDB starts

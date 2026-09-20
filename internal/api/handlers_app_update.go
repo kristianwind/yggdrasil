@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -182,6 +184,26 @@ func (s *Server) runAppUpdate(id string, rt *serverRuntime) error {
 		pub("WARN: could not set file ownership: " + cerr.Error())
 	}
 
+	// ...and give the app back write access on the paths the rune says it owns.
+	//
+	// The chown above is careful with the GROUP, and that is not the same as
+	// being careful with ACCESS. A file unpacked from a plugin zip is 0644;
+	// keeping its group while taking its owner leaves the app able to read it and
+	// not write it. Nothing reports that. It surfaces when somebody updates that
+	// plugin months later and WordPress says "some files could not be copied"
+	// about every file in it — five plugins on a live shop, Wordfence among them.
+	//
+	// Only the declared subtrees, and only the mode: these files were created
+	// inside the app's setgid directories, so the group is already right and
+	// there is nothing here that can hand a path to the wrong one.
+	if mode := appWritableScript(rt.gs.Update.AppWritable); mode != "" {
+		if merr := s.docker.RunEphemeralOpts(ctx, docker.EphemeralOptions{
+			Image: image, DataDir: dataDir, Script: mode, User: "0:0",
+		}, w); merr != nil {
+			pub("WARN: could not restore the app's write access: " + merr.Error())
+		}
+	}
+
 	pub("=== Update complete ===")
 	if wasRunning {
 		pub("Restarting the app ...")
@@ -250,4 +272,30 @@ func (s *Server) ensureStackUp(ctx context.Context, id, dataDir string, rt *serv
 		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("the app's services did not come up")
+}
+
+// appWritableScript builds the chmod for a rune's declared app-writable paths,
+// or "" when it declares none — in which case nothing runs at all and the
+// behaviour is exactly what it was before.
+//
+// Every path is confined under /data before it is used. A rune is a file
+// somebody wrote, and "wp-content" and "../../etc" arrive through the same
+// field. A path that cleans to the data dir itself is dropped rather than
+// applied: a recursive g+rw over a whole webroot is the vulnerability this
+// feature exists to avoid, not a permissive reading of it.
+func appWritableScript(paths []string) string {
+	var cmds []string
+	for _, raw := range paths {
+		rel := path.Clean("/" + strings.TrimSpace(raw))
+		if rel == "/" || rel == "." {
+			continue
+		}
+		target := shellSingleQuote("/data" + rel)
+		// -e rather than -d: a rune may name a single file it must rewrite.
+		cmds = append(cmds, fmt.Sprintf("[ -e %s ] && chmod -R g+rw %s 2>/dev/null || true", target, target))
+	}
+	if len(cmds) == 0 {
+		return ""
+	}
+	return strings.Join(cmds, "\n")
 }

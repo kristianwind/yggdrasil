@@ -193,12 +193,21 @@ gameskill:
         # earlier version of this rune has the right group but the wrong MODE,
         # and the group test alone would skip it forever. The marker records
         # which rule has been applied — bump its name whenever the rule changes.
-        if [ -d "$d" ] && { [ "$(stat -c '%g' "$d")" != "33" ] || [ ! -f "$d/.ygg-perms-v2" ]; }; then
+        #
+        # v2 -> v3: the rule now also covers files a PANEL UPDATE left behind at
+        # 0644. Those sites pass both guard conditions — the group is already 33
+        # because the directories are setgid, and the v2 marker is present — so
+        # without a bump this block skips them forever and the plugins stay
+        # unwritable by PHP. Measured on a live shop: wordfence 631 of 631 files,
+        # jetpack 4124 of 4124. Bumping the name is what makes the fix reach
+        # installations that are already broken, rather than only preventing the
+        # next one. It runs once more per site and then settles again.
+        if [ -d "$d" ] && { [ "$(stat -c '%g' "$d")" != "33" ] || [ ! -f "$d/.ygg-perms-v3" ]; }; then
           echo "yggdrasil: granting PHP (www-data) read+write access to wp-content"
           chgrp -R 33 "$d" 2>/dev/null || true
           chmod -R g+rw "$d" 2>/dev/null || true
           find "$d" -type d -exec chmod g+s {} + 2>/dev/null || true
-          : > "$d/.ygg-perms-v2" 2>/dev/null || true
+          : > "$d/.ygg-perms-v3" 2>/dev/null || true
         fi
         # A few files in the webroot ROOT are rewritten in place by WordPress and
         # by security plugins: .htaccess (permalinks, and Wordfence's

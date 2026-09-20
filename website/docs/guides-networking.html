@@ -169,6 +169,22 @@ port, named:</p>
 rules again. Every rule carrying a server&rsquo;s tag is deleted when that server stops, is deleted, or
 starts again (stale rules are cleared before fresh ones go in). Leave the tag alone in the rule name
 if you edit rules in the UniFi UI, or Yggdrasil will orphan them.</p>
+<h4 id="stray-rules">Stray rules</h4>
+<p>A rule with no tag cannot be matched, so the panel can never remove it — rules from older versions
+of Yggdrasil are named after the port alone, and a rule you rename by hand joins them. Tagged rules
+can also be left behind when the deletion could not run: the controller was unreachable, or the
+server&rsquo;s row went away while the panel was down.</p>
+<p>They are not merely untidy. <strong>An invisible rule still claims its external port</strong>, so the next server
+to want that port gets a forward that quietly loses to one nobody can see. On one router 16 of 67
+rules were strays, several holding ports that a server on a different host had since been given.</p>
+<p><strong>Settings → Network → UniFi → Find stray rules</strong> lists every <code>Yggdrasil:</code> rule that points at <em>this</em>
+host and names no server this panel has, marking the untagged ones. Nothing is deleted until you
+press the second button.</p>
+<p>🔴 The scoping to this host is the point, and it matters most when several panels share one
+controller — which is the normal arrangement for more than one Yggdrasil on a network. A rule tagged
+for a server this panel has never heard of usually belongs to a <em>different</em> panel, and is left
+alone. Without that check, &ldquo;remove what I don&rsquo;t recognise&rdquo; would mean &ldquo;remove my neighbour&rsquo;s port
+forwards&rdquo;, and the damage would appear on a machine nobody was looking at.</p>
 <h3 id="nginx-proxy-manager-subdomains">Nginx Proxy Manager (subdomains)</h3>
 <p>For <strong>HTTP apps only</strong>. NPM terminates TLS and proxies a subdomain to an app&rsquo;s published port, so
 <code>notes.example.com</code> reaches the app instead of <code>example.com:25004</code>.</p>

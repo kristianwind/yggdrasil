@@ -1832,6 +1832,18 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 </tr>
 <tr>
 <td><code>GET</code></td>
+<td><code>/api/settings/unifi/orphans</code></td>
+<td>Admin</td>
+<td>List port-forward rules on this host that name no server the panel has</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/settings/unifi/cleanup</code></td>
+<td>Admin</td>
+<td>Delete those rules</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
 <td><code>/api/settings/npm</code></td>
 <td>Admin</td>
 <td>The Nginx Proxy Manager configuration</td>

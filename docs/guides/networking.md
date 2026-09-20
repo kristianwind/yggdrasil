@@ -127,6 +127,27 @@ rules again. Every rule carrying a server's tag is deleted when that server stop
 starts again (stale rules are cleared before fresh ones go in). Leave the tag alone in the rule name
 if you edit rules in the UniFi UI, or Yggdrasil will orphan them.
 
+#### Stray rules
+
+A rule with no tag cannot be matched, so the panel can never remove it — rules from older versions
+of Yggdrasil are named after the port alone, and a rule you rename by hand joins them. Tagged rules
+can also be left behind when the deletion could not run: the controller was unreachable, or the
+server's row went away while the panel was down.
+
+They are not merely untidy. **An invisible rule still claims its external port**, so the next server
+to want that port gets a forward that quietly loses to one nobody can see. On one router 16 of 67
+rules were strays, several holding ports that a server on a different host had since been given.
+
+**Settings → Network → UniFi → Find stray rules** lists every `Yggdrasil:` rule that points at *this*
+host and names no server this panel has, marking the untagged ones. Nothing is deleted until you
+press the second button.
+
+🔴 The scoping to this host is the point, and it matters most when several panels share one
+controller — which is the normal arrangement for more than one Yggdrasil on a network. A rule tagged
+for a server this panel has never heard of usually belongs to a *different* panel, and is left
+alone. Without that check, "remove what I don't recognise" would mean "remove my neighbour's port
+forwards", and the damage would appear on a machine nobody was looking at.
+
 ### Nginx Proxy Manager (subdomains)
 
 For **HTTP apps only**. NPM terminates TLS and proxies a subdomain to an app's published port, so

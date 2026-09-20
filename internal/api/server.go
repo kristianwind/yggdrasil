@@ -522,6 +522,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/settings/unifi", s.requireAdmin(s.handleGetUnifiSettings))
 		r.Put("/api/settings/unifi", s.requireAdmin(s.handleSetUnifiSettings))
 		r.Post("/api/settings/unifi/test", s.requireAdmin(s.handleTestUnifi))
+		r.Get("/api/settings/unifi/orphans", s.requireAdmin(s.handleUnifiOrphans))
+		r.Post("/api/settings/unifi/cleanup", s.requireAdmin(s.handleUnifiCleanup))
 		r.Get("/api/settings/npm", s.requireAdmin(s.handleGetNpmSettings))
 		r.Put("/api/settings/npm", s.requireAdmin(s.handleSetNpmSettings))
 		r.Post("/api/settings/npm/test", s.requireAdmin(s.handleTestNpm))

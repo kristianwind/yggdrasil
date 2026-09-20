@@ -1109,6 +1109,41 @@
 
   // UniFi port forwarding
   let unifi = $state({ url: "", username: "", password: "", site: "default", enabled: false, configured: false });
+  let orphans = $state(null);      // null = not looked yet; [] = looked, nothing found
+  let orphanHost = $state("");
+  let orphanBusy = $state(false);
+
+  async function findOrphans() {
+    orphanBusy = true;
+    try {
+      const res = await api.get("/settings/unifi/orphans");
+      orphans = res.orphans || [];
+      orphanHost = res.this_host || "";
+    } catch (e) {
+      toast(e.message, "error", 9000);
+    } finally {
+      orphanBusy = false;
+    }
+  }
+
+  async function cleanupOrphans() {
+    if (!(await confirmDialog({
+      title: `Delete ${orphans.length} port-forward rule${orphans.length === 1 ? "" : "s"}`,
+      body: "They are removed from your UniFi controller now. Rules belonging to your other panels are not touched.",
+      confirmText: "Delete",
+    }))) return;
+    orphanBusy = true;
+    try {
+      const res = await api.post("/settings/unifi/cleanup");
+      toast(`Deleted ${(res.deleted || []).length}`, "success");
+      if ((res.failed || []).length) toast(`${res.failed.length} could not be deleted: ${res.failed[0]}`, "error", 12000);
+      await findOrphans();
+    } catch (e) {
+      toast(e.message, "error", 9000);
+    } finally {
+      orphanBusy = false;
+    }
+  }
   let savingUnifi = $state(false);
   let testingUnifi = $state(false);
   async function loadUnifi() {
@@ -2270,7 +2305,32 @@
   <div class="flex gap-2">
     <button class="btn-primary" onclick={saveUnifi} disabled={savingUnifi}>{savingUnifi ? "Saving…" : "Save"}</button>
     <button class="btn-ghost" onclick={testUnifi} disabled={testingUnifi}>{testingUnifi ? "Testing…" : "Test connection"}</button>
+    <button class="btn-ghost" onclick={findOrphans} disabled={orphanBusy}>{orphanBusy ? "Looking…" : "Find stray rules"}</button>
   </div>
+
+  {#if orphans}
+    <!-- Preview first, delete second, on purpose: the blast radius is a router. -->
+    <div class="card p-4 mt-3 text-sm">
+      {#if orphans.length === 0}
+        <span class="text-muted">No stray rules. Every <code>Yggdrasil:</code> rule pointing at this host belongs to a server it still has.</span>
+      {:else}
+        <p class="mb-2">
+          <b>{orphans.length}</b> rule{orphans.length === 1 ? "" : "s"} point at this host
+          (<code>{orphanHost}</code>) and name no server this panel has. Rules for your other
+          panels are never listed here.
+        </p>
+        <ul class="mb-3 space-y-1">
+          {#each orphans as o}
+            <li class="font-mono text-xs">
+              {o.name} — {o.proto} {o.dst_port} → {o.fwd}:{o.fwd_port}
+              {#if o.untagged}<span class="text-warn"> (no tag — the panel can never remove this one itself)</span>{/if}
+            </li>
+          {/each}
+        </ul>
+        <button class="btn-danger" onclick={cleanupOrphans} disabled={orphanBusy}>Delete these {orphans.length}</button>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 </div>

@@ -623,6 +623,8 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | `GET` | `/api/settings/unifi` | Admin | The UniFi controller configuration |
 | `PUT` | `/api/settings/unifi` | Admin | Update the UniFi controller configuration |
 | `POST` | `/api/settings/unifi/test` | Admin | Log in and list rules to confirm it works |
+| `GET` | `/api/settings/unifi/orphans` | Admin | List port-forward rules on this host that name no server the panel has |
+| `POST` | `/api/settings/unifi/cleanup` | Admin | Delete those rules |
 | `GET` | `/api/settings/npm` | Admin | The Nginx Proxy Manager configuration |
 | `PUT` | `/api/settings/npm` | Admin | Update the Nginx Proxy Manager configuration |
 | `POST` | `/api/settings/npm/test` | Admin | Log in and list proxy hosts to confirm it works |

@@ -260,6 +260,26 @@ type Update struct {
 	Script string `yaml:"script"          json:"script"`
 	// Label overrides the button text. Default: "Update app".
 	Label string `yaml:"label,omitempty" json:"label,omitempty"`
+	// AppWritable lists paths, relative to the data dir, that the APP itself must
+	// be able to write after an update.
+	//
+	// It exists because reclaiming ownership silently revokes access. The panel
+	// takes back the owner of what an update wrote and deliberately leaves the
+	// GROUP alone, which reads like it preserves the app's access — and does not.
+	// A file unpacked from a plugin zip is 0644: group can read, not write. Owned
+	// by the panel, grouped to the app, it is now unwritable by the app that owns
+	// the application. WordPress reports "some files could not be copied" for
+	// every file in the plugin, and only when somebody next tries to update it.
+	//
+	// The panel cannot decide these paths for itself, and must not try. For
+	// WordPress the answer is wp-content and emphatically NOT the webroot:
+	// wp-admin, wp-includes and wp-config.php are kept unwritable by PHP on
+	// purpose, so a compromised plugin cannot rewrite WordPress itself or read
+	// database credentials out of a file it can also change. A blanket chmod here
+	// would trade a visible annoyance for a real vulnerability on sites that are
+	// actively attacked. So the rune, which owns its permission model, names the
+	// paths; a rune that names none keeps today's behaviour exactly.
+	AppWritable []string `yaml:"app_writable,omitempty" json:"app_writable,omitempty"`
 }
 
 // Importer declares how to bring an EXISTING deployment of this app into a

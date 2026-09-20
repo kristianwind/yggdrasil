@@ -660,6 +660,8 @@ script on an existing installation changes nothing at all.</p>
 <pre><code class="language-yaml">update:
   image: &quot;wordpress:cli&quot;        # defaults to docker.image
   label: &quot;Update WordPress&quot;     # button text; defaults to &quot;Update app&quot;
+  app_writable:                 # paths the APP must still be able to write after
+    - wp-content                # the update; omit it and nothing is changed
   script: |
     wp core update --path=/data --allow-root
     wp core update-db --path=/data --allow-root
@@ -677,9 +679,25 @@ service name just as it does for the app.</li>
 user <em>and</em> group; an update chowns only the user. Runes that grant the app access through the
 group — WordPress hands <code>www-data</code> group write while the panel stays owner — would otherwise have
 that access revoked by their own update.</li>
-<li><strong>File modes are left exactly as they were.</strong> Root writes through a mode it does not own, so a
-rune that deliberately keeps files read-only to the app keeps them that way.</li>
+<li><strong>File modes are left exactly as they were</strong>, apart from the paths named in <code>app_writable</code>.
+Root writes through a mode it does not own, so a rune that deliberately keeps files read-only to
+the app keeps them that way.</li>
 </ul>
+<h3 id="app_writable"><code>app_writable</code></h3>
+<p>Keeping the group is not the same as keeping access, and the difference is invisible until it is
+expensive. A file unpacked from a plugin zip is <code>0644</code>: reclaiming its owner while keeping its
+group leaves the app able to read it and not write it. Nothing reports that. It surfaces the next
+time somebody updates that plugin — possibly months later — as <em>&ldquo;some files could not be copied&rdquo;</em>
+about every file in it. Five plugins on one live shop, the security plugin among them.</p>
+<p><code>app_writable</code> names the paths, relative to the data dir, where the app must keep write access.
+After the ownership pass the panel adds group write to those subtrees and nothing else. A rune that
+omits it behaves exactly as before.</p>
+<p><strong>Name the narrowest path that works.</strong> The WordPress rune declares <code>wp-content</code> and not the
+webroot, because <code>wp-admin</code>, <code>wp-includes</code> and <code>wp-config.php</code> are kept unwritable by PHP on
+purpose: a compromised plugin must not be able to rewrite WordPress itself, nor read database
+credentials out of a file it can also change. A recursive <code>g+rw</code> over a whole webroot would trade a
+visible annoyance for a real vulnerability on a site that is actively attacked. Paths are confined
+to the data directory, and a path that resolves to the data directory itself is ignored.</p>
 <p>That last point is the reason this exists. The WordPress rune keeps core <code>644</code> and read-only to PHP
 so a compromised plugin cannot rewrite <code>wp-login.php</code> — which also stops WordPress updating itself
 from its dashboard (&ldquo;some files could not be copied… inconsistent file permissions&rdquo;). An update
@@ -1495,7 +1513,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t3" href="#app_writable">app_writable</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

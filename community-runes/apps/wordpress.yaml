@@ -4,7 +4,7 @@ gameskill:
   category: "Apps"
   description: "The world's most popular website/CMS. An app stack: the panel runs WordPress together with its own MariaDB database on a private network — no separate database rune to set up. Just pick a database password and go."
   author: "yggdrasil-community"
-  version: 19
+  version: 20
   icon: "app"
 
   # WordPress serves from /var/www/html (Apache). Runs the image's entrypoint as
@@ -114,6 +114,18 @@ gameskill:
   update:
     image: "wordpress:cli"
     label: "Update WordPress"
+    # After an update the panel takes back ownership of what was written, which
+    # leaves a freshly unpacked 0644 plugin file readable and NOT writable by
+    # PHP — so the next update of that plugin fails with "some files could not
+    # be copied", about every file in it, months later and with no other sign.
+    #
+    # wp-content and nothing else. wp-admin, wp-includes and wp-config.php stay
+    # unwritable by PHP on purpose: a compromised plugin must not be able to
+    # rewrite WordPress itself, nor read database credentials out of a file it
+    # can also change. Widening this to the webroot would trade a visible
+    # annoyance for a real vulnerability on sites that are actively attacked.
+    app_writable:
+      - wp-content
     script: |
       set -e
       # The panel brings the database sidecar up for the update, but MariaDB starts
@@ -181,12 +193,21 @@ gameskill:
         # earlier version of this rune has the right group but the wrong MODE,
         # and the group test alone would skip it forever. The marker records
         # which rule has been applied — bump its name whenever the rule changes.
-        if [ -d "$d" ] && { [ "$(stat -c '%g' "$d")" != "33" ] || [ ! -f "$d/.ygg-perms-v2" ]; }; then
+        #
+        # v2 -> v3: the rule now also covers files a PANEL UPDATE left behind at
+        # 0644. Those sites pass both guard conditions — the group is already 33
+        # because the directories are setgid, and the v2 marker is present — so
+        # without a bump this block skips them forever and the plugins stay
+        # unwritable by PHP. Measured on a live shop: wordfence 631 of 631 files,
+        # jetpack 4124 of 4124. Bumping the name is what makes the fix reach
+        # installations that are already broken, rather than only preventing the
+        # next one. It runs once more per site and then settles again.
+        if [ -d "$d" ] && { [ "$(stat -c '%g' "$d")" != "33" ] || [ ! -f "$d/.ygg-perms-v3" ]; }; then
           echo "yggdrasil: granting PHP (www-data) read+write access to wp-content"
           chgrp -R 33 "$d" 2>/dev/null || true
           chmod -R g+rw "$d" 2>/dev/null || true
           find "$d" -type d -exec chmod g+s {} + 2>/dev/null || true
-          : > "$d/.ygg-perms-v2" 2>/dev/null || true
+          : > "$d/.ygg-perms-v3" 2>/dev/null || true
         fi
         # A few files in the webroot ROOT are rewritten in place by WordPress and
         # by security plugins: .htaccess (permalinks, and Wordfence's

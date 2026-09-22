@@ -80,11 +80,7 @@ func (s *Server) serverRoutePort(ctx context.Context, serverID, portName string)
 		if p.Name != portName {
 			continue
 		}
-		proto := p.Protocol
-		if proto == "" {
-			proto = "tcp"
-		}
-		if proto != "tcp" {
+		if !p.HasTCP() {
 			return 0
 		}
 		return rt.ports[p.Name]
@@ -107,11 +103,7 @@ func (s *Server) routablePorts(ctx context.Context, serverID string) []routableP
 		return out
 	}
 	for _, p := range rt.gs.Ports {
-		proto := p.Protocol
-		if proto == "" {
-			proto = "tcp"
-		}
-		if proto != "tcp" {
+		if !p.HasTCP() {
 			continue
 		}
 		if hp := rt.ports[p.Name]; hp > 0 {

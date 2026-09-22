@@ -613,7 +613,32 @@ ports:
 |-------|------|--------------|
 | `name` | string | **Required.** The port's role. Becomes `<NAME>_PORT` and `PORT_<name>`. |
 | `default` | int | The container-side port. |
-| `protocol` | string | **Required.** Exactly `tcp` or `udp`. |
+| `protocol` | string | **Required.** Exactly `tcp`, `udp`, or `tcp+udp`. |
+
+### `tcp+udp` — one host port, both protocols
+
+```yaml
+ports:
+  - { name: hbbs, default: 21116, protocol: tcp+udp }
+```
+
+Some servers need the *same number* on both protocols. RustDesk's `hbbs` registers clients over UDP
+and carries the connection over TCP on one `host:port` — the OSS server answers `NOT_SUPPORT` to a
+`RegisterPk` over TCP, so there is no way round it inside the container. Plenty of game servers do
+the same with `7777/tcp` + `7777/udp`.
+
+Two entries cannot express this. A host port number is allocated once — it is the primary key of
+the allocation table — so a `udp` entry beside a `tcp` one always lands on a *different* number,
+including when the operator picks the ports by hand. `tcp+udp` allocates one number and publishes
+it on both.
+
+Write it exactly that way round: `udp+tcp` is rejected. Two spellings for one behaviour is
+something every reader and every search has to know about forever.
+
+A `tcp+udp` port counts as a TCP port everywhere that matters — the web proxy, subdomain routing,
+the route editor and the `web` readiness check all accept it. On the router it becomes **one**
+forward, not two: UPnP opens a mapping per protocol (its API takes one protocol per call, and the
+removal path mirrors it), while UniFi has a native `tcp_udp` rule and gets a single line.
 
 For each entry, Yggdrasil allocates a free **host** port from the configured range (25000–30000 by
 default, see [Configuration](configuration.md)) and publishes the container port to it. The

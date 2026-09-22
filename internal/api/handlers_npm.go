@@ -65,11 +65,7 @@ func (s *Server) serverWebPort(ctx context.Context, serverID string) int {
 	}
 	var firstTCP int
 	for _, p := range rt.gs.Ports {
-		proto := p.Protocol
-		if proto == "" {
-			proto = "tcp"
-		}
-		if proto != "tcp" {
+		if !p.HasTCP() {
 			continue
 		}
 		hp := rt.ports[p.Name]

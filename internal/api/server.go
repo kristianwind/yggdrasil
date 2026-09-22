@@ -177,6 +177,7 @@ func (s *Server) buildRouter() *chi.Mux {
 		AllowCredentials: false,
 	}))
 	r.Use(s.secureHeaders)
+	r.Use(noIndexHeader)
 	// Demo mode, if on, refuses every state-changing request. Mounted here so it
 	// covers every route rather than each group remembering to opt in.
 	r.Use(s.demoGuard)
@@ -556,6 +557,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/system/auto-update", s.requireAdmin(s.handleGetAutoUpdate))
 		r.Post("/api/system/auto-update", s.requireAdmin(s.handleSetAutoUpdate))
 	})
+
+	// Ahead of the SPA fallback, or the catch-all answers with index.html and a
+	// crawler reads HTML where it asked for rules — which is the same as no
+	// robots.txt at all, i.e. "index everything".
+	r.Get("/robots.txt", handleRobotsTxt)
 
 	// Static assets + SPA fallback (serve index.html for client-side routes).
 	r.Handle("/*", s.spaHandler())

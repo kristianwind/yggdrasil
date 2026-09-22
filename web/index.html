@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
   <head>
+    <!-- A control panel is not a website: its login page names the software and
+         its version, and its hostname tells an attacker where an install lives.
+         Backed by /robots.txt and an X-Robots-Tag header, because a crawler may
+         ignore any one of the three. -->
+    <meta name="robots" content="noindex, nofollow" />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0f14" />

@@ -608,7 +608,9 @@ func shell(b built) string {
 <meta property="og:description" content="` + html.EscapeString(firstSentence(b.text)) + `" />
 <meta property="og:type" content="article" />
 <meta property="og:url" content="` + siteURL + `/docs/` + b.page.slug() + `.html" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="stylesheet" href="docs.css" />
 <!-- Plausible, self-hosted on this project's own panel. No cookies, so no consent
      banner; the script is first-party, so ad-blockers and Pi-hole do not remove it.
@@ -715,7 +717,9 @@ func indexPage() string {
 <title>` + siteTitle + `</title>
 <meta name="description" content="Documentation for Yggdrasil Panel — install, run and manage game and app servers on your own Debian/Ubuntu box." />
 <link rel="canonical" href="` + siteURL + `/docs/" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B3%3C/text%3E%3C/svg%3E" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="stylesheet" href="docs.css" />
 <!-- Plausible, self-hosted on this project's own panel. No cookies, so no consent
      banner; the script is first-party, so ad-blockers and Pi-hole do not remove it.

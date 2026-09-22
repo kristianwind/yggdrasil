@@ -148,6 +148,33 @@ type PortMapping struct {
 	Protocol      string
 }
 
+// publishedPorts turns the mappings into what Docker wants. It is split out of
+// Create so it can be tested without a daemon: this is the only place that knows
+// a single mapping may name more than one protocol.
+//
+// "tcp+udp" publishes the SAME host and container number twice, once per
+// protocol — 7777/tcp and 7777/udp — which is the whole point: a host port is
+// allocated one number at a time, so two rune entries could never share one.
+// Anything else (including the empty string, which every caller of this package
+// has always treated as tcp) yields exactly one entry, byte for byte what it
+// produced before.
+func publishedPorts(ports []PortMapping) (nat.PortMap, nat.PortSet) {
+	bindings := nat.PortMap{}
+	exposed := nat.PortSet{}
+	for _, pm := range ports {
+		for _, proto := range strings.Split(pm.Protocol, "+") {
+			proto = strings.TrimSpace(proto)
+			if proto == "" {
+				proto = "tcp"
+			}
+			p := nat.Port(fmt.Sprintf("%d/%s", pm.ContainerPort, proto))
+			exposed[p] = struct{}{}
+			bindings[p] = []nat.PortBinding{{HostPort: fmt.Sprintf("%d", pm.HostPort)}}
+		}
+	}
+	return bindings, exposed
+}
+
 func (c *Client) PullImage(ctx context.Context, ref string, out io.Writer) error {
 	rc, err := c.dc.ImagePull(ctx, ref, image.PullOptions{})
 	if err != nil {
@@ -162,17 +189,7 @@ func (c *Client) PullImage(ctx context.Context, ref string, out io.Writer) error
 }
 
 func (c *Client) Create(ctx context.Context, opts CreateOptions) (string, error) {
-	portBindings := nat.PortMap{}
-	exposedPorts := nat.PortSet{}
-	for _, pm := range opts.Ports {
-		proto := pm.Protocol
-		if proto == "" {
-			proto = "tcp"
-		}
-		p := nat.Port(fmt.Sprintf("%d/%s", pm.ContainerPort, proto))
-		exposedPorts[p] = struct{}{}
-		portBindings[p] = []nat.PortBinding{{HostPort: fmt.Sprintf("%d", pm.HostPort)}}
-	}
+	portBindings, exposedPorts := publishedPorts(opts.Ports)
 
 	var nanoCPU int64
 	if opts.CPUPercent > 0 {

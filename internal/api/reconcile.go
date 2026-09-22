@@ -126,11 +126,7 @@ func (s *Server) firstWebHostPort(serverID string) int {
 		return 0
 	}
 	for _, p := range rt.gs.Ports {
-		proto := p.Protocol
-		if proto == "" {
-			proto = "tcp"
-		}
-		if p.Name == "web" && proto == "tcp" {
+		if p.Name == "web" && p.HasTCP() {
 			if hp, ok := rt.ports["web"]; ok {
 				return hp
 			}

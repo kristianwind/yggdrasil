@@ -124,6 +124,7 @@ func (s *Server) handleClearServerCrashes(w http.ResponseWriter, r *http.Request
 // "flapping"/"crashed" badges on the server list and dashboard. Any authed user;
 // the frontend only shows badges for servers it already lists.
 func (s *Server) handleCrashesSummary(w http.ResponseWriter, r *http.Request) {
+	visible, admin := s.visibleServerIDs(r)
 	hours := 24
 	if h := r.URL.Query().Get("hours"); h != "" {
 		if n, err := strconv.Atoi(h); err == nil && n > 0 && n <= 720 {
@@ -144,9 +145,13 @@ func (s *Server) handleCrashesSummary(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id string
 		var n int
-		if rows.Scan(&id, &n) == nil {
-			out[id] = n
+		if rows.Scan(&id, &n) != nil {
+			continue
 		}
+		if !admin && !visible[id] {
+			continue // a crash count keyed by server id enumerates the fleet
+		}
+		out[id] = n
 	}
 	jsonOK(w, out)
 }

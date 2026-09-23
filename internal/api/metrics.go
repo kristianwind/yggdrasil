@@ -189,8 +189,25 @@ func (s *Server) handleServerMetrics(w http.ResponseWriter, r *http.Request) {
 // CPU/RAM the containers are using. Resource/player figures come from each running
 // server's most recent sample (within the last 15 min, so stopped servers drop out).
 func (s *Server) handleFleetSummary(w http.ResponseWriter, r *http.Request) {
+	visible, admin := s.visibleServerIDs(r)
 	var total, running int
-	s.db.QueryRowContext(r.Context(), "SELECT COUNT(*), COALESCE(SUM(status='running'),0) FROM servers").Scan(&total, &running)
+	if admin {
+		s.db.QueryRowContext(r.Context(), "SELECT COUNT(*), COALESCE(SUM(status='running'),0) FROM servers").Scan(&total, &running)
+	} else {
+		srows, serr := s.db.QueryContext(r.Context(), "SELECT id, status FROM servers")
+		if serr == nil {
+			for srows.Next() {
+				var id, st string
+				if srows.Scan(&id, &st) == nil && visible[id] {
+					total++
+					if st == "running" {
+						running++
+					}
+				}
+			}
+			srows.Close()
+		}
+	}
 
 	var cpu, mem float64
 	var players int
@@ -226,6 +243,7 @@ func (s *Server) handleFleetSummary(w http.ResponseWriter, r *http.Request) {
 // query per server (parallel), with player names where the protocol exposes them
 // (A2S/DayZ) and a count otherwise (Minecraft/Bedrock).
 func (s *Server) handleFleetPlayers(w http.ResponseWriter, r *http.Request) {
+	visible, admin := s.visibleServerIDs(r)
 	rows, err := s.db.QueryContext(r.Context(), "SELECT id, name FROM servers WHERE status='running' ORDER BY name COLLATE NOCASE")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
@@ -240,6 +258,17 @@ func (s *Server) handleFleetPlayers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows.Close()
+	// Only the servers this caller may see. Player NAMES are the sensitive part:
+	// a delegate with one server had the roster of every other one.
+	if !admin {
+		kept := list[:0]
+		for _, x := range list {
+			if visible[x.id] {
+				kept = append(kept, x)
+			}
+		}
+		list = kept
+	}
 
 	type serverPlayers struct {
 		Name  string   `json:"name"`
@@ -284,13 +313,18 @@ func (s *Server) handleServersMetricsMini(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer rows.Close()
+	visible, admin := s.visibleServerIDs(r)
 	out := map[string][]float64{}
 	for rows.Next() {
 		var id string
 		var c float64
-		if rows.Scan(&id, &c) == nil {
-			out[id] = append(out[id], c)
+		if rows.Scan(&id, &c) != nil {
+			continue
 		}
+		if !admin && !visible[id] {
+			continue // the id set alone enumerates the fleet
+		}
+		out[id] = append(out[id], c)
 	}
 	const cap = 40
 	for id, v := range out {

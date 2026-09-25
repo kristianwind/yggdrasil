@@ -68,6 +68,7 @@ var lookupMinLevel = map[string]int{
 	"roster":          1,
 	"events":          1,
 	"search_logs":     2,
+	"mod_check":       1,
 }
 
 // runLookup executes a read-only lookup against a server the caller controls and
@@ -118,6 +119,8 @@ func (s *Server) runLookup(ctx context.Context, servers []serverRow, req *lookup
 		return s.lookupRoster(ctx, srv)
 	case "search_logs":
 		return s.lookupSearchLogs(ctx, srv, req.Pattern)
+	case "mod_check":
+		return s.lookupModCheck(ctx, srv)
 	}
 	return fmt.Sprintf("Unknown lookup %q.", req.Tool)
 }
@@ -492,4 +495,56 @@ func (s *Server) lookupSearchLogs(ctx context.Context, srv *serverRow, pattern s
 	}
 	return fmt.Sprintf("%s — up to 30 log lines matching %q (newest 3000 lines searched):\n%s",
 		srv.Name, pattern, strings.Join(matches, "\n"))
+}
+
+// lookupModCheck reads the jars in this server's mod or plugin folder and reports
+// which of them this server can actually load. The verdicts come from
+// checkServerMods — the jars' own manifests — so the chat explains a decided
+// answer instead of estimating one. "Will this mod work here" is exactly the
+// question a model answers plausibly whether or not it knows.
+func (s *Server) lookupModCheck(ctx context.Context, srv *serverRow) string {
+	rt, err := s.loadRuntime(ctx, srv.ID)
+	if err != nil {
+		return "Could not read that server's settings."
+	}
+	serverType := rt.env["SERVER_TYPE"]
+	mc := rt.env["MC_VERSION"]
+	if serverType == "" {
+		return "That server has no SERVER_TYPE, so there is no mod or plugin folder to check."
+	}
+	var dataDir string
+	if err := s.db.QueryRowContext(ctx, "SELECT COALESCE(data_dir,'') FROM servers WHERE id=?", srv.ID).Scan(&dataDir); err != nil || dataDir == "" {
+		return "That server has no data directory."
+	}
+	verdicts, sub, err := checkServerMods(dataDir, serverType, mc)
+	if err != nil {
+		return fmt.Sprintf("%s runs %s (Minecraft %s) and has no %s/ folder yet.", srv.Name, serverType, mc, sub)
+	}
+	if len(verdicts) == 0 {
+		return fmt.Sprintf("%s runs %s (Minecraft %s). %s/ is empty.", srv.Name, serverType, mc, sub)
+	}
+	var b strings.Builder
+	bad := 0
+	for _, v := range verdicts {
+		if !v.OK {
+			bad++
+		}
+	}
+	fmt.Fprintf(&b, "%s runs %s, Minecraft %s. %d file(s) in %s/, %d cannot load.\n",
+		srv.Name, serverType, mc, len(verdicts), sub, bad)
+	for _, v := range verdicts {
+		if v.OK {
+			fmt.Fprintf(&b, "OK      %s%s\n", v.File, suffixDetail(v.Detail))
+			continue
+		}
+		fmt.Fprintf(&b, "BLOCKED %s — %s: %s\n", v.File, v.Problem, v.Detail)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func suffixDetail(d string) string {
+	if d == "" {
+		return ""
+	}
+	return " (" + d + ")"
 }

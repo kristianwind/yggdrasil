@@ -2,9 +2,9 @@ gameskill:
   id: minecraft-java
   name: "Minecraft (Java)"
   category: "Minecraft"
-  description: "Vanilla / Paper / Purpur / Fabric / Forge Java server"
+  description: "Vanilla / Paper / Purpur / Fabric / Forge / NeoForge Java server"
   author: "yggdrasil-core"
-  version: 11
+  version: 12
   icon: "minecraft"
 
   docker:
@@ -15,7 +15,7 @@ gameskill:
     - key: SERVER_TYPE
       name: "Server software"
       type: select
-      options: [vanilla, paper, purpur, fabric, forge]
+      options: [vanilla, paper, purpur, fabric, forge, neoforge]
       default: paper
     - key: MC_VERSION
       name: "Minecraft version"
@@ -88,6 +88,7 @@ gameskill:
       # Forge's build promotions. NOT on maven.minecraftforge.net — that host
       # 404s for this file; files.minecraftforge.net serves it.
       FORGE_PROMOS=https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json
+      NEOFORGE_META=https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml
 
       latest_vanilla() { curl -fsSL "$MANIFEST" | jq -r '.latest.release'; }
       need() { [ -n "$1" ] && [ "$1" != "null" ] || { echo "$2"; exit 1; }; }
@@ -164,6 +165,33 @@ gameskill:
           [ -f "$FARGS" ] || { echo "Forge installed but produced no $FARGS - this rune supports Forge for Minecraft 1.17 and newer"; exit 1; }
           printf '%s\n' "$FARGS" > .ygg_forge_args
           BUILD="$FV"
+          ;;
+        neoforge)
+          [ "$VER" = "latest" ] && VER="$(latest_vanilla)"
+          need "$VER" "could not resolve Minecraft version for NeoForge"
+          # NeoForge numbers itself after the Minecraft version with the leading
+          # "1." dropped: MC 1.21.4 -> 21.4.x, and the newer scheme straight
+          # through -> MC 26.2 -> 26.2.x. One rule covers both.
+          NF_PREFIX=$(echo "$VER" | sed 's/^1\.//')
+          NF=$(curl -fsSL "$NEOFORGE_META" \
+               | grep -oE '<version>[^<]+</version>' | sed -E 's|</?version>||g' \
+               | grep "^${NF_PREFIX}\." | grep -vi 'beta' | tail -1)
+          # Two real cases end here, and the message has to say which: NeoForge
+          # did not exist before Minecraft 1.20.2, and a version released days
+          # ago has no NeoForge build yet.
+          need "$NF" "NeoForge has no build for Minecraft $VER (it starts at 1.20.2, and a just-released version may not have one yet)"
+          echo "NeoForge $NF - running the installer (this patches Minecraft and takes a minute)"
+          curl -fsSL -o neoforge-installer.jar \
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/$NF/neoforge-$NF-installer.jar"
+          java -jar neoforge-installer.jar --installServer
+          rm -f neoforge-installer.jar neoforge-installer.jar.log
+          # Same shape as modern Forge: no runnable server.jar, an @argfile
+          # instead. Different path, same marker — startup reads whatever path
+          # this file holds, so nothing there needs to know which of the two it is.
+          FARGS="libraries/net/neoforged/neoforge/$NF/unix_args.txt"
+          [ -f "$FARGS" ] || { echo "NeoForge installed but produced no $FARGS"; exit 1; }
+          printf '%s\n' "$FARGS" > .ygg_forge_args
+          BUILD="$NF"
           ;;
         *)
           echo "unknown SERVER_TYPE: $TYPE"; exit 1 ;;

@@ -172,7 +172,7 @@ func buildChatMessages(history []llm.Message, servers []serverRow, actionsEnable
 			"guidance in them, mention the UI paths they name, and prefer them over memory:\n" + docs + "\n"
 	}
 	if dataLevel >= 1 {
-		tools := "player_history|player_sessions|metrics_window|list_backups|events|roster"
+		tools := "player_history|player_sessions|metrics_window|list_backups|events|roster|mod_check"
 		if dataLevel >= 2 {
 			tools += "|search_logs"
 		}
@@ -187,6 +187,12 @@ func buildChatMessages(history []llm.Message, servers []serverRow, actionsEnable
 			"use it for \"is this site being attacked / any errors?\". For \"is ANY of my sites attacked?\" call `events` " +
 			"with server \"*\" to scan every server in one lookup instead of checking them one at a time. " +
 			"`player_history` is counts only; `hours` also sets the window for metrics_window (default 24). "
+		system += "`mod_check` reads the jars in a Minecraft server's mods/ or plugins/ folder and reports which " +
+			"of them that server can actually load — the verdicts come from each jar's own manifest, so USE IT " +
+			"instead of reasoning about filenames or recalling which loader a mod supports. It is the answer to " +
+			"\"why isn't my mod working\", \"is this plugin compatible\" and \"can I run X here\". A jar for the " +
+			"wrong loader or the wrong Minecraft version is loaded by nothing and reported by nothing: the server " +
+			"starts cleanly and the mod is simply absent, which reads like a broken server. "
 		if dataLevel >= 2 {
 			system += "`search_logs` greps a server's live log for `pattern` — a fallback for names/events when " +
 				"player_sessions has no record (e.g. before tracking started), but the live log is short-lived, so " +

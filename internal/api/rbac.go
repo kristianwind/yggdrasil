@@ -99,3 +99,44 @@ func (s *Server) serverTarget(ctx context.Context, serverID string) rbac.Target 
 		Scan(&realmID, &gsID)
 	return rbac.Target{ServerID: serverID, RealmID: realmID, GameskillID: gsID}
 }
+
+// visibleServerIDs is the set of servers the caller may see, for the handlers
+// that answer about the fleet rather than about one server. Admins get (nil,
+// true) — every server, nothing to filter.
+//
+// The fleet endpoints used to query `servers` directly, so a signed-in user
+// with a single server-scoped grant received every server's name, its player
+// count and the names of the players on it. No privilege escalation, but on a
+// panel where servers are delegated to different households that is other
+// people's children's usernames.
+//
+// Grants are loaded BEFORE the server query on purpose: modernc SQLite serves
+// database/sql from one connection, so running loadGrants with a result set
+// still open deadlocks (it bit handleListServers, and only for non-admins —
+// admins skip the lookup, so the happy path hid it).
+func (s *Server) visibleServerIDs(r *http.Request) (map[string]bool, bool) {
+	if isAdmin(r) {
+		return nil, true
+	}
+	var grants []rbac.Grant
+	if c := claimsFromContext(r.Context()); c != nil {
+		grants = s.loadGrants(r.Context(), c.UserID)
+	}
+	rows, err := s.db.QueryContext(r.Context(),
+		"SELECT id, COALESCE(realm_id,''), gameskill_id FROM servers")
+	if err != nil {
+		return map[string]bool{}, false // fail closed
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id, realm, gs string
+		if rows.Scan(&id, &realm, &gs) != nil {
+			continue
+		}
+		if rbac.VisibleServer(grants, rbac.Target{ServerID: id, RealmID: realm, GameskillID: gs}) {
+			out[id] = true
+		}
+	}
+	return out, false
+}

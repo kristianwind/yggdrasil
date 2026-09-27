@@ -388,9 +388,38 @@ type Steam struct {
 }
 
 type Port struct {
-	Name     string `yaml:"name"     json:"name"`
-	Default  int    `yaml:"default"  json:"default"`
+	Name    string `yaml:"name"     json:"name"`
+	Default int    `yaml:"default"  json:"default"`
+	// Protocol is "tcp", "udp", or "tcp+udp" — one host port published on both.
+	// A server that registers over UDP and connects over TCP on the SAME number
+	// (RustDesk's hbbs, and game servers listening on 7777/tcp + 7777/udp) cannot
+	// be expressed as two entries: host ports are allocated one number at a time
+	// (port_allocations.port is the primary key), so a udp entry beside a tcp one
+	// always lands on a different number.
 	Protocol string `yaml:"protocol" json:"protocol"`
+}
+
+// Protocols lists the protocols this port is published on, lowest-common-
+// denominator first. An empty protocol means tcp, which is what every consumer
+// of this field already assumed — the helper exists so that assumption lives in
+// one place instead of nine.
+func (p Port) Protocols() []string {
+	switch p.Protocol {
+	case "udp":
+		return []string{"udp"}
+	case "tcp+udp":
+		return []string{"tcp", "udp"}
+	default: // "tcp" and "" — see above
+		return []string{"tcp"}
+	}
+}
+
+// HasTCP reports whether this port speaks TCP at all, which is the question the
+// web proxy, the route editor and the readiness check are actually asking. They
+// each used to spell it `proto == "tcp"`, which silently answers "no" for a
+// tcp+udp port that is perfectly routable.
+func (p Port) HasTCP() bool {
+	return p.Protocol != "udp"
 }
 
 type Anticheat struct {
@@ -477,8 +506,11 @@ func validate(gs *Gameskill) error {
 		if p.Name == "" {
 			return fmt.Errorf("port entry missing name")
 		}
-		if p.Protocol != "tcp" && p.Protocol != "udp" {
-			return fmt.Errorf("port %q has invalid protocol %q", p.Name, p.Protocol)
+		// Only this spelling of the pair is accepted. "udp+tcp" would mean the
+		// same thing and is still rejected: two spellings for one behaviour is a
+		// thing every reader and every grep has to know about forever.
+		if p.Protocol != "tcp" && p.Protocol != "udp" && p.Protocol != "tcp+udp" {
+			return fmt.Errorf("port %q has invalid protocol %q (want tcp, udp or tcp+udp)", p.Name, p.Protocol)
 		}
 	}
 

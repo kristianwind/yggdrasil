@@ -99,9 +99,16 @@ func (s *Server) unifiDeleteFor(c *unifi.Client, serverID string) {
 	}
 }
 
+// unifiProto maps a rune protocol to UniFi's own spelling. UniFi forwards a
+// tcp+udp pair as ONE rule (`tcp_udp`) rather than two, which keeps the router's
+// forward list one line per published port — two rules with the same generated
+// name for one port is what makes that list impossible to audit.
 func unifiProto(p string) string {
-	if p == "udp" || p == "UDP" {
+	switch p {
+	case "udp", "UDP":
 		return "udp"
+	case "tcp+udp":
+		return "tcp_udp"
 	}
 	return "tcp"
 }

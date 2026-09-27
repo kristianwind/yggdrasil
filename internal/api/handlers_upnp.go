@@ -16,6 +16,20 @@ func (s *Server) upnpEnabled(ctx context.Context) bool {
 	return s.getSetting(ctx, "upnp_enabled") == "1"
 }
 
+// upnpProtos expands a rune protocol into the protocols UPnP must be called
+// with: AddPortMapping/DeletePortMapping each take one NewProtocol, so "tcp+udp"
+// is two calls. Add and remove both go through here, so a pair that was opened
+// as two mappings is closed as two.
+func upnpProtos(protocol string) []string {
+	if protocol == "tcp+udp" {
+		return []string{"tcp", "udp"}
+	}
+	if protocol == "udp" {
+		return []string{"udp"}
+	}
+	return []string{"tcp"}
+}
+
 type portProto struct {
 	Port  int
 	Proto string
@@ -33,11 +47,12 @@ func (s *Server) serverPortProtos(ctx context.Context, serverID string) []portPr
 	var out []portProto
 	for _, p := range rt.gs.Ports {
 		if hp := rt.ports[p.Name]; hp > 0 {
-			proto := p.Protocol
-			if proto == "" {
-				proto = "tcp"
-			}
-			out = append(out, portProto{Port: hp, Proto: proto, Admin: strings.EqualFold(p.Name, "rcon")})
+			// The rune's protocol verbatim, "tcp+udp" included. Each consumer
+			// wants it differently: UPnP needs one call per protocol, UniFi has a
+			// single tcp_udp rule for the pair. Splitting here would force UniFi
+			// to create two identically-named rules for one port — the shape of
+			// duplicate that makes a router's forward list unreadable.
+			out = append(out, portProto{Port: hp, Proto: p.Protocol, Admin: strings.EqualFold(p.Name, "rcon")})
 		}
 	}
 	return out
@@ -58,7 +73,9 @@ func (s *Server) upnpAddServer(serverID, serverName string) {
 		if pp.Admin {
 			continue // never WAN-forward the RCON/admin port
 		}
-		_ = cl.AddMapping(pp.Port, pp.Proto, "Yggdrasil: "+serverName, upnpLease)
+		for _, proto := range upnpProtos(pp.Proto) {
+			_ = cl.AddMapping(pp.Port, proto, "Yggdrasil: "+serverName, upnpLease)
+		}
 	}
 }
 
@@ -74,7 +91,9 @@ func (s *Server) upnpRemoveServer(serverID string) {
 		return
 	}
 	for _, pp := range s.serverPortProtos(ctx, serverID) {
-		_ = cl.DeleteMapping(pp.Port, pp.Proto)
+		for _, proto := range upnpProtos(pp.Proto) {
+			_ = cl.DeleteMapping(pp.Port, proto)
+		}
 	}
 }
 

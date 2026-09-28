@@ -482,7 +482,7 @@ backup's server first, then checks.
 | `DELETE` | `/api/backup/targets/{id}` | Admin | Remove a backup destination |
 | `POST` | `/api/backup/targets/{id}/test` | Admin | Verify a destination's credentials and reachability |
 | `GET` | `/api/backup/browse` | Admin | List a host path's sub-directories (`?path=`), read-only — for the local-target folder picker |
-| `GET` | `/api/servers/{id}/backups` | `server.backup` | List a server's backups |
+| `GET` | `/api/servers/{id}/backups` | `server.backup` | List a server's backups, each with the location it was written to (`target_name`, `target_type`). Both are empty when that target has since been removed — the archive outlives it |
 | `POST` | `/api/servers/{id}/backup` | `server.backup` | Run a backup now |
 | `POST` | `/api/backups/{id}/restore` | `server.backup` | Restore a backup over the server's data |
 | `POST` | `/api/backups/{id}/verify` | `server.backup` | Check one backup's integrity on demand |

@@ -223,19 +223,32 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	if !s.can(w, r, rbac.ServerBackup, s.serverTarget(r.Context(), id)) {
 		return
 	}
+	// LEFT JOIN, not JOIN: a backup outlives the location it was written to, so an
+	// inner join silently drops exactly those rows -- the archives most in need of
+	// an explanation. (Deleting a target does not currently null the reference
+	// either: db.Open's DSN uses mattn/go-sqlite3 parameter syntax against the
+	// modernc driver, so PRAGMA foreign_keys reads 0 and every ON DELETE in the
+	// schema is inert. This query is correct under both.)
 	rows, err := s.db.QueryContext(r.Context(),
-		`SELECT id, COALESCE(target_id,''), COALESCE(path,''), COALESCE(size_bytes,0),
-		        status, COALESCE(error_msg,''), created_at, COALESCE(completed_at,''),
-		        COALESCE(verified_at,''), COALESCE(verify_ok,-1)
-		 FROM backups WHERE server_id=? ORDER BY created_at DESC`, id)
+		`SELECT b.id, COALESCE(b.target_id,''), COALESCE(t.name,''), COALESCE(t.type,''),
+		        COALESCE(b.path,''), COALESCE(b.size_bytes,0),
+		        b.status, COALESCE(b.error_msg,''), b.created_at, COALESCE(b.completed_at,''),
+		        COALESCE(b.verified_at,''), COALESCE(b.verify_ok,-1)
+		 FROM backups b LEFT JOIN backup_targets t ON t.id = b.target_id
+		 WHERE b.server_id=? ORDER BY b.created_at DESC`, id)
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 	type bk struct {
-		ID          string `json:"id"`
-		TargetID    string `json:"target_id"`
+		ID       string `json:"id"`
+		TargetID string `json:"target_id"`
+		// The backup LOCATION, resolved here rather than looked up in the browser:
+		// the client's target list carries only the targets that still exist, so a
+		// removed one would render as a blank cell -- and blank reads as "local".
+		TargetName  string `json:"target_name"`
+		TargetType  string `json:"target_type"`
 		Path        string `json:"path"`
 		Size        int64  `json:"size_bytes"`
 		Status      string `json:"status"`
@@ -248,7 +261,7 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 	list := []bk{}
 	for rows.Next() {
 		var b bk
-		if err := rows.Scan(&b.ID, &b.TargetID, &b.Path, &b.Size, &b.Status, &b.Error, &b.CreatedAt, &b.CompletedAt, &b.VerifiedAt, &b.VerifyOK); err != nil {
+		if err := rows.Scan(&b.ID, &b.TargetID, &b.TargetName, &b.TargetType, &b.Path, &b.Size, &b.Status, &b.Error, &b.CreatedAt, &b.CompletedAt, &b.VerifiedAt, &b.VerifyOK); err != nil {
 			continue
 		}
 		list = append(list, b)
@@ -515,7 +528,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	fail := func(msg string) error {
 		s.db.Exec("UPDATE backups SET status='error', error_msg=?, completed_at=? WHERE id=?",
 			msg, time.Now().UTC().Format(time.RFC3339), backupID)
-		s.notifyServer(serverID, "❌ Backup failed for " + s.serverName(serverID) + ": " + msg)
+		s.notifyServer(serverID, "❌ Backup failed for "+s.serverName(serverID)+": "+msg)
 		return errors.New(msg)
 	}
 	s.db.Exec("UPDATE backups SET status='running' WHERE id=?", backupID)

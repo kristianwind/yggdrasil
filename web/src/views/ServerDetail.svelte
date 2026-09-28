@@ -766,6 +766,20 @@
     const p = (b.path || "").split("/");
     return p[p.length - 1] || b.id;
   }
+  // Where the archive actually is. With more than one target configured, a row
+  // says when and how big but never which disk — the one thing you need before
+  // a restore, and what decides whether this morning's offline NAS matters.
+  //
+  // A backup outlives the location it was written to, so the name can be gone
+  // while the archive is not. Deliberately ONE message for that, rather than
+  // telling a nulled reference apart from a dangling one: those differ only by
+  // whether SQLite is enforcing foreign keys (it is not, today), which is not
+  // something the reader can act on, and the sentence would start lying the day
+  // that changes. Never blank — a blank cell reads as "local".
+  function backupLocation(b) {
+    if (b.target_name) return b.target_type ? `${b.target_name} (${b.target_type})` : b.target_name;
+    return "location no longer configured";
+  }
 
   // can(perm) — does the caller hold this permission on this server? The API
   // attaches `perms` (effective permissions; admins get all). Drives which tabs
@@ -3014,6 +3028,7 @@
             <div class="text-xs text-muted truncate">
               <span class="font-mono">{backupName(b)}</span> ·
               {fmtSize(b.size_bytes)} ·
+              <span title="The backup location this archive was written to.">{backupLocation(b)}</span> ·
               <span
                 class={b.status === "done"
                   ? "text-accent"

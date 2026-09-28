@@ -1273,7 +1273,7 @@ backup&rsquo;s server first, then checks.</p>
 <td><code>GET</code></td>
 <td><code>/api/servers/{id}/backups</code></td>
 <td><code>server.backup</code></td>
-<td>List a server&rsquo;s backups</td>
+<td>List a server&rsquo;s backups, each with the location it was written to (<code>target_name</code>, <code>target_type</code>). Both are empty when that target has since been removed — the archive outlives it</td>
 </tr>
 <tr>
 <td><code>POST</code></td>

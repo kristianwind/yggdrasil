@@ -319,7 +319,7 @@ gameskill:
             # thing standing between two sites and each other's carts if anyone
             # ever points them at one shared cache.
             sed -i "1a define( 'WP_REDIS_HOST', 'redis' ); define( 'WP_REDIS_PORT', 6379 ); define( 'WP_CACHE_KEY_SALT', '$WORDPRESS_DB_NAME' ); // ygg-object-cache" "$c"
-            if [ -d /var/www/html/wp-content/plugins/redis-cache ]; then
+            if [ -d "$(dirname "$c")/wp-content/plugins/redis-cache" ]; then
               echo "yggdrasil: object cache configured (redis:6379)"
             else
               echo "yggdrasil: object cache is ON and wp-config.php points at redis, but the"
@@ -334,7 +334,9 @@ gameskill:
             # sidecar that no longer exists. Only ours is removed — a site may be
             # running Memcached or APCu through the same filename, and deleting
             # somebody else's drop-in would take their cache out instead.
-            o=/var/www/html/wp-content/object-cache.php
+            # Derived from $c rather than hardcoded a second time: one webroot,
+            # named once, so the two can never come to disagree.
+            o="$(dirname "$c")/wp-content/object-cache.php"
             if [ -f "$o" ] && grep -qi 'redis object cache' "$o"; then
               rm -f "$o"
               echo "yggdrasil: object cache off — removed the redis drop-in"

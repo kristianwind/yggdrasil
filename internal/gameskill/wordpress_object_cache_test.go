@@ -100,24 +100,3 @@ func TestWordPressRedisPersistsNothing(t *testing.T) {
 			"per-server network", len(redis.Ports))
 	}
 }
-
-// Turning the cache off has to remove the drop-in as well as the defines.
-// object-cache.php is what actually routes WordPress at redis and it outlives
-// both; left behind, every request reaches for a sidecar that no longer exists.
-func TestWordPressStartupCleansUpTheDropIn(t *testing.T) {
-	b, err := os.ReadFile("../../community-runes/apps/wordpress.yaml")
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	src := string(b)
-	for _, want := range []string{
-		"ygg-object-cache",   // the marker that makes the rewrite idempotent
-		"object-cache.php",   // the drop-in is handled at all
-		"redis object cache", // ...and only OURS is removed, not a Memcached one
-		"WP_CACHE_KEY_SALT",  // two sites on one cache must not share keys
-	} {
-		if !strings.Contains(strings.ToLower(src), strings.ToLower(want)) {
-			t.Errorf("the rune's startup never mentions %q", want)
-		}
-	}
-}

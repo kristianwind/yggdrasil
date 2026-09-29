@@ -940,12 +940,42 @@ the server&rsquo;s data dir (<code>.stack/&lt;name&gt;</code>). Immich, Paperles
 <td>Optional argv override.</td>
 </tr>
 <tr>
+<td><code>enabled</code></td>
+<td>string</td>
+<td>Templated. Makes the sidecar optional: absent means always, <code>&quot;{{SOME_BOOL}}&quot;</code> lets a variable decide.</td>
+</tr>
+<tr>
 <td><code>ports</code></td>
 <td>list</td>
 <td>Host ports this sidecar publishes — same shape as top-level <code>ports</code>.</td>
 </tr>
 </tbody>
 </table>
+<h3 id="an-optional-sidecar">An optional sidecar</h3>
+<p><code>enabled</code> lets a rune offer a cache, a worker or a search index without forcing the container on
+everyone who installs it. It is templated, so the usual shape is a bool variable:</p>
+<pre><code class="language-yaml">- key: OBJECT_CACHE
+  name: &quot;Object cache (Redis)&quot;
+  type: bool
+  default: false
+</code></pre>
+<pre><code class="language-yaml">services:
+  - name: redis
+    enabled: &quot;{{OBJECT_CACHE}}&quot;
+    image: &quot;redis:7-alpine&quot;
+</code></pre>
+<p>Three values, not two. A recognised true (<code>true</code>, <code>1</code>, <code>yes</code>, <code>on</code>) runs it; a recognised false
+(<code>false</code>, <code>0</code>, <code>no</code>, <code>off</code>) does not; and a value that is <strong>still a placeholder</strong> after templating
+— <code>{{OBJECT_CACHE}}</code> on a server created before the rune gained that variable — does not run
+it either, silently. That last case is the one to understand: <code>{{VARS}}</code> are substituted only for
+keys the server actually has, so every existing install keeps the literal braces the moment its rune
+is updated. Failing there would break the <strong>start</strong> of every one of them; defaulting to on would hand
+them a container nobody asked for.</p>
+<p>Anything else is an error that names the service and the value, rather than a quiet false — a typo
+would otherwise produce a sidecar that simply is not there, with nothing to read explaining why.</p>
+<p>Turning one off removes its container on the next start. Whatever the sidecar was wired into is the
+rune&rsquo;s own business to unwire: the WordPress rune deletes the <code>object-cache.php</code> drop-in when its
+cache is switched off, because a drop-in left behind reaches for a container that no longer exists.</p>
 <p>Most sidecars (databases, caches, workers) publish <strong>no</strong> ports: they&rsquo;re internal, reached by name.
 Declare <code>ports</code> only when a sidecar has its own UI the user must open — TeslaMate&rsquo;s Grafana is the
 example. Each such port is host-allocated once and reused across restarts, and appears in the
@@ -1533,7 +1563,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t3" href="#app_writable">app_writable</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t3" href="#tcpudp--one-host-port-both-protocols">tcp+udp — one host port, both protocols</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t3" href="#app_writable">app_writable</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t3" href="#tcpudp--one-host-port-both-protocols">tcp+udp — one host port, both protocols</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t3" href="#an-optional-sidecar">An optional sidecar</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

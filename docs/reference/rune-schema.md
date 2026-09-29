@@ -682,7 +682,41 @@ services:
 | `env` | map | Fixed environment; values may reference `{{VARS}}`. |
 | `data_path` | string | Mount for the sidecar's own persisted directory. Omit for a stateless worker. |
 | `command` | list | Optional argv override. |
+| `enabled` | string | Templated. Makes the sidecar optional: absent means always, `"{{SOME_BOOL}}"` lets a variable decide. |
 | `ports` | list | Host ports this sidecar publishes — same shape as top-level `ports`. |
+
+### An optional sidecar
+
+`enabled` lets a rune offer a cache, a worker or a search index without forcing the container on
+everyone who installs it. It is templated, so the usual shape is a bool variable:
+
+```yaml
+- key: OBJECT_CACHE
+  name: "Object cache (Redis)"
+  type: bool
+  default: false
+```
+```yaml
+services:
+  - name: redis
+    enabled: "{{OBJECT_CACHE}}"
+    image: "redis:7-alpine"
+```
+
+Three values, not two. A recognised true (`true`, `1`, `yes`, `on`) runs it; a recognised false
+(`false`, `0`, `no`, `off`) does not; and a value that is **still a placeholder** after templating
+— `{{OBJECT_CACHE}}` on a server created before the rune gained that variable — does not run
+it either, silently. That last case is the one to understand: `{{VARS}}` are substituted only for
+keys the server actually has, so every existing install keeps the literal braces the moment its rune
+is updated. Failing there would break the **start** of every one of them; defaulting to on would hand
+them a container nobody asked for.
+
+Anything else is an error that names the service and the value, rather than a quiet false — a typo
+would otherwise produce a sidecar that simply is not there, with nothing to read explaining why.
+
+Turning one off removes its container on the next start. Whatever the sidecar was wired into is the
+rune's own business to unwire: the WordPress rune deletes the `object-cache.php` drop-in when its
+cache is switched off, because a drop-in left behind reaches for a container that no longer exists.
 
 Most sidecars (databases, caches, workers) publish **no** ports: they're internal, reached by name.
 Declare `ports` only when a sidecar has its own UI the user must open — TeslaMate's Grafana is the

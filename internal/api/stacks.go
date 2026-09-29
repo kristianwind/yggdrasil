@@ -43,6 +43,18 @@ func (s *Server) startStack(ctx context.Context, id, dataDir string, gs *gameski
 		name := sidecarName(id, svc.Name)
 		s.docker.Remove(ctx, name) // clear any orphan with our deterministic name
 
+		// An optional sidecar the operator has turned off. The Remove above already
+		// took care of the case that matters: a service switched from on to off
+		// leaves a container behind, and skipping before the Remove would keep it
+		// running and serving stale data for as long as the server lives.
+		on, err := svc.IsEnabled(env)
+		if err != nil {
+			return err
+		}
+		if !on {
+			continue
+		}
+
 		// A sidecar's data dir must be writable by the image's own user (postgres,
 		// redis run as their own uid), so it can't inherit the panel user's perms.
 		var srcDir string

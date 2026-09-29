@@ -70,6 +70,12 @@ type Service struct {
 	Env      map[string]string `yaml:"env,omitempty"      json:"env,omitempty"`        // values may reference {{VARS}}
 	DataPath string            `yaml:"data_path,omitempty" json:"data_path,omitempty"` // persisted mount inside the sidecar
 	Command  []string          `yaml:"command,omitempty"  json:"command,omitempty"`    // optional command override (argv)
+	// Enabled makes a sidecar optional, so a rune can offer a cache or a worker
+	// without forcing the container on everyone who installs it. It is templated,
+	// so the usual shape is a bool variable: enabled: "{{OBJECT_CACHE}}".
+	// Absent means always on -- every rune written before this existed is
+	// unaffected. See IsEnabled for how a value is read.
+	Enabled string `yaml:"enabled,omitempty" json:"enabled,omitempty"`
 	// Ports a sidecar publishes to the host — for a stack with more than one web UI
 	// (e.g. TeslaMate = app + its own Grafana). Most sidecars (databases, caches)
 	// declare none: they're reached internally by service name. Each port is host-
@@ -776,6 +782,45 @@ func validateExtraVolumeTarget(p string) error {
 }
 
 // ApplyTemplate replaces {{KEY}} placeholders with values from env.
+// IsEnabled decides whether this sidecar should run for a server with this env.
+//
+// Three cases, deliberately not two:
+//
+//   - absent, or a recognised true: run it. Absent means always, so every rune
+//     written before optional sidecars existed keeps behaving the same way.
+//   - a recognised false: do not run it.
+//   - STILL A PLACEHOLDER after templating ({{OBJECT_CACHE}} with no such key in
+//     env): do not run it, and do not complain. This is the upgrade path and it
+//     is the case that matters. ApplyTemplate only substitutes keys that are
+//     present, so every server created before the rune gained the variable keeps
+//     the literal braces. Treating that as an error would fail the START of every
+//     existing install the moment its rune is updated; treating it as true would
+//     hand them a container they never asked for. Off leaves the server exactly as
+//     it was until somebody sets the value in the UI.
+//
+// Anything else is an error rather than a quiet false: a typo in a rune would
+// otherwise produce a sidecar that simply is not there, with nothing to read
+// anywhere explaining why.
+func (svc Service) IsEnabled(env map[string]string) (bool, error) {
+	if strings.TrimSpace(svc.Enabled) == "" {
+		return true, nil
+	}
+	raw := strings.TrimSpace(ApplyTemplate(svc.Enabled, env))
+	if unresolvedTemplate.MatchString(raw) {
+		return false, nil
+	}
+	switch strings.ToLower(raw) {
+	case "true", "1", "yes", "on":
+		return true, nil
+	case "false", "0", "no", "off", "":
+		return false, nil
+	}
+	return false, fmt.Errorf("service %q: enabled=%q is neither true nor false", svc.Name, raw)
+}
+
+// unresolvedTemplate matches a {{VAR}} that nothing replaced.
+var unresolvedTemplate = regexp.MustCompile(`{{[A-Za-z0-9_]+}}`)
+
 func ApplyTemplate(tmpl string, env map[string]string) string {
 	result := tmpl
 	for k, v := range env {

@@ -1,4 +1,5 @@
 <script>
+  import ExposureNote from "../components/ExposureNote.svelte";
   import { onMount, onDestroy } from "svelte";
   import { api, wsURL, getToken } from "../lib/api.js";
   import { livePoll } from "../lib/livePoll.js";
@@ -2707,6 +2708,11 @@
             On by default. Turn off to keep this server LAN-only — its ports won't be forwarded
             on the router when it starts. Takes effect on the next start.
           </p>
+          <ExposureNote
+            danger
+            opens="This server's ports, forwarded on your router so anyone on the internet can connect."
+            reach="Anyone who knows the address. Whatever the server does about passwords, whitelists or bans is the only thing standing in front of it."
+            undo="This is ON for every new server. Switch it off to keep the server reachable only from your own network — the running server is not touched until its next start." />
         </div>
         <div>
           <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
@@ -2727,6 +2733,10 @@
             Off by default. When on, this server's name, game and online/players state appear on the
             public <code>/status</code> page (no login). Enable the page under Settings → Status page.
           </p>
+          <ExposureNote
+            opens="This server's name, which game it runs, and whether anyone is playing on it right now."
+            reach="Anybody who opens the page. There is no login, so search engines and anyone passed the link can read it too."
+            undo="Off by default. Switching it off here removes this server from the page immediately; the page itself stays on for the others." />
         </div>
         {#if $user?.role === "admin"}
           <div>

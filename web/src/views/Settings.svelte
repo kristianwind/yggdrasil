@@ -1,4 +1,5 @@
 <script>
+  import ExposureNote from "../components/ExposureNote.svelte";
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
   import { toast } from "../lib/toast.js";
@@ -2212,6 +2213,11 @@
       When a server starts, ask the router (via UPnP-IGD) to forward its ports, and release them on stop.
       Off by default — many routers (incl. UniFi) ship with UPnP disabled. If unavailable, forward ports manually.
     </p>
+    <ExposureNote
+      danger
+      opens="Every port of every server that starts, forwarded on your router and reachable from the internet."
+      reach="A UPnP request carries no password: the router grants it to anything on your network that asks. A phone, a TV or a device somebody else controls can open ports the same way, and this panel will not know it happened."
+      undo="Leave it off and add the forwards you need by hand. If you do switch it on, read your router's forwarding list now and then — a mapping can outlive the server that asked for it when the panel stops abruptly." />
     <div class="flex items-center gap-2 mt-2">
       <button class="btn-ghost px-2 py-1 text-xs" onclick={checkUpnp} disabled={checkingUpnp}>
         {checkingUpnp ? "Checking…" : "Check gateway"}
@@ -2278,6 +2284,11 @@
   Automatically create/remove WAN port-forward rules on your UniFi gateway when servers start/stop.
   Use a dedicated local admin account. Credentials are encrypted at rest.
 </p>
+<ExposureNote
+  danger
+  opens="A WAN port-forward rule on your gateway for each running server, so its port answers from the internet."
+  reach="Anyone who finds the address. Safer than UPnP in one way only — the panel signs in with an account you created, so every rule is yours and appears in the UniFi log. What it opens is exactly the same."
+  undo="Rules are removed when the server stops. Check the gateway's port-forward list after anything crashes, and keep the account to this one job so a leaked password cannot do more." />
 <div class="card p-4 mb-10 max-w-xl space-y-3">
   <div class="grid sm:grid-cols-2 gap-3">
     <div>
@@ -2344,6 +2355,10 @@
   the server's web port. Requires a wildcard DNS record (<code>*.domain → your public IP</code>)
   and ports 80/443 forwarded to NPM. Games (raw UDP) are unaffected. Credentials encrypted at rest.
 </p>
+<ExposureNote
+  opens="Each app on its own subdomain, served to the internet through your proxy."
+  reach="Anyone who knows the name. The proxy terminates TLS and can sit in front with a password, but it does not hide the machine behind it: your public IP still answers on 80 and 443, so anything reachable there is reachable directly — the subdomain is not the only way in."
+  undo="The proxy host is removed when the server stops. The wildcard DNS record and the 80/443 forward stay until you remove them yourself." />
 <div class="card p-4 mb-10 max-w-xl space-y-3">
   <div class="grid sm:grid-cols-2 gap-3">
     <div>
@@ -2395,6 +2410,11 @@
   fails only at the moment you try to block something. Token encrypted at rest. Uses the same
   per-server Subdomain field as NPM.
 </p>
+<ExposureNote
+  safe
+  opens="Each app on its own subdomain, reached through Cloudflare."
+  reach="Anyone who knows the name — but the connection is made OUTWARD from this machine, so there is no port forward, no rule on your router and nothing listening for the internet to find. Of the three ways to publish an app here, this is the one to prefer."
+  undo="The ingress rule and the DNS record go when the server stops. Put Cloudflare Access in front if the app itself should not be open to everyone." />
 <div class="card p-4 mb-10 max-w-xl space-y-3">
   <div class="grid sm:grid-cols-2 gap-3">
     <div>

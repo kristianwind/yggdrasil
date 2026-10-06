@@ -37,7 +37,9 @@ type Server struct {
 	// One rune-wide restart sweep at a time, so a double-click can't recreate the
 	// same eight containers twice over.
 	runeRestarts *runeRestartState
-	osUpd        osUpdateCache // host OS update status, refreshed on a TTL
+	// One-shot nonces for the OAuth consent form; see oauth.go.
+	consent consentNonces
+	osUpd   osUpdateCache // host OS update status, refreshed on a TTL
 
 	pubCount   *publicCount // cached public install count (unauthenticated endpoint)
 	pubCountAt time.Time
@@ -684,6 +686,24 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// "ygg_mcp_", which also matches the plain API-token prefix "ygg_", so the
 		// order of these two branches is what makes them distinguishable at all.
 		if strings.HasPrefix(tokenStr, oauthTokenPrefix) {
+			// A connector token is good for the MCP endpoint and nothing else.
+			//
+			// It used to be good for every route, because the only check was on
+			// the token's AUDIENCE string rather than on the path being asked
+			// for, and the claims it produced carry no scope for scopeAllows to
+			// enforce. So the token the consent screen describes as "read your
+			// servers and their logs, and start, stop or restart them" also
+			// reached /api/panel/export, which decrypts every integration
+			// secret, TOTP secret and password hash in the panel.
+			//
+			// Exactly the JSON-RPC endpoint, not a prefix: /api/mcp/connections
+			// revokes connections and /api/mcp/info is for the signed-in web UI.
+			// A connector has no business in either, and HasPrefix would hand it
+			// both.
+			if r.URL.Path != mcpResourcePath {
+				s.unauthorized(w, r)
+				return
+			}
 			claims := s.claimsForOAuthToken(r, tokenStr)
 			if claims == nil {
 				s.unauthorized(w, r)

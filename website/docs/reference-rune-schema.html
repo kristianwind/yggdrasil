@@ -626,13 +626,21 @@ must not turn leaving a field alone into an error.</li>
 <p><code>secret: true</code> does three things: the form renders a password field with show/generate/copy
 controls, the value is encrypted at rest in the database, and it&rsquo;s masked in API responses. The
 variable named by <code>rcon.password_var</code> gets the same treatment, whether or not it says so.</p>
-<p><strong>Set <code>secret: true</code> on every sensitive variable. Do not rely on the name.</strong> The form independently
-renders a password-style field for any string variable whose key or label matches <code>pass</code>,
-<code>password</code>, <code>secret</code>, or <code>token</code> — but that heuristic lives entirely in the frontend and only
-chooses the <em>input widget</em>. Encryption and API masking key off <code>secret: true</code> (or
-<code>rcon.password_var</code>) and nothing else. A variable called <code>API_TOKEN</code> without the flag therefore
-looks protected in the form while being stored in plaintext in <code>servers.env_json</code> and returned
-unmasked by <code>GET /api/servers/{id}</code>.</p>
+<p><strong>Set <code>secret: true</code> on every sensitive variable anyway.</strong> The panel also applies a floor of its
+own: a key whose <em>words</em> include <code>password</code>, <code>passwd</code>, <code>pass</code>, <code>secret</code>, <code>token</code>, <code>key</code>, <code>apikey</code>,
+<code>credential</code> or <code>psk</code> is encrypted at rest and masked in API responses whether or not the rune says
+so. Whole words after splitting on <code>_</code>, <code>-</code>, <code>.</code> and camelCase, so <code>DB_ROOT_PASSWORD</code> and <code>apiKey</code>
+are covered while <code>KEYBOARD_LAYOUT</code> and <code>BYPASS_CACHE</code> are not.</p>
+<p>That floor is a safety net, not the contract. It cannot guess a credential whose name does not say
+it is one — <code>DAYZ_ADMIN</code>, <code>LICENCE</code>, <code>JOIN_CODE</code> — and only the flag encrypts those. The flag is
+also what the editor reads to offer the generate/copy controls.</p>
+<p>It exists because the opposite arrangement failed quietly. Masking used to key off the flag and
+nothing else, so a variable the rune author simply had not flagged was stored in plaintext in
+<code>servers.env_json</code>, returned unmasked by <code>GET /api/servers/{id}</code> to anyone with <code>server.view</code>, and
+put verbatim into the prompt sent to an external model by the config-advice feature. Twenty
+variables across fifteen of the shipped runes were in that state, <code>cloudflared</code>&rsquo;s <code>TUNNEL_TOKEN</code> and
+<code>wordpress</code>&rsquo;s <code>DB_ROOT_PASSWORD</code> among them — while the form rendered a password field over each
+one, so they looked protected.</p>
 <h2 id="install"><code>install</code></h2>
 <p>Runs once, before the server may start, in a throwaway container. Its output streams live to the
 install log in the UI.</p>

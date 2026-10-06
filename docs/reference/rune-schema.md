@@ -392,13 +392,23 @@ Two rules the panel applies:
 controls, the value is encrypted at rest in the database, and it's masked in API responses. The
 variable named by `rcon.password_var` gets the same treatment, whether or not it says so.
 
-**Set `secret: true` on every sensitive variable. Do not rely on the name.** The form independently
-renders a password-style field for any string variable whose key or label matches `pass`,
-`password`, `secret`, or `token` — but that heuristic lives entirely in the frontend and only
-chooses the *input widget*. Encryption and API masking key off `secret: true` (or
-`rcon.password_var`) and nothing else. A variable called `API_TOKEN` without the flag therefore
-looks protected in the form while being stored in plaintext in `servers.env_json` and returned
-unmasked by `GET /api/servers/{id}`.
+**Set `secret: true` on every sensitive variable anyway.** The panel also applies a floor of its
+own: a key whose *words* include `password`, `passwd`, `pass`, `secret`, `token`, `key`, `apikey`,
+`credential` or `psk` is encrypted at rest and masked in API responses whether or not the rune says
+so. Whole words after splitting on `_`, `-`, `.` and camelCase, so `DB_ROOT_PASSWORD` and `apiKey`
+are covered while `KEYBOARD_LAYOUT` and `BYPASS_CACHE` are not.
+
+That floor is a safety net, not the contract. It cannot guess a credential whose name does not say
+it is one — `DAYZ_ADMIN`, `LICENCE`, `JOIN_CODE` — and only the flag encrypts those. The flag is
+also what the editor reads to offer the generate/copy controls.
+
+It exists because the opposite arrangement failed quietly. Masking used to key off the flag and
+nothing else, so a variable the rune author simply had not flagged was stored in plaintext in
+`servers.env_json`, returned unmasked by `GET /api/servers/{id}` to anyone with `server.view`, and
+put verbatim into the prompt sent to an external model by the config-advice feature. Twenty
+variables across fifteen of the shipped runes were in that state, `cloudflared`'s `TUNNEL_TOKEN` and
+`wordpress`'s `DB_ROOT_PASSWORD` among them — while the form rendered a password field over each
+one, so they looked protected.
 
 ## `install`
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kristianwind/yggdrasil/internal/npm"
+	"log"
 )
 
 // normalizeSubdomain lowercases and trims a user-supplied subdomain label (or a
@@ -136,6 +137,18 @@ func (s *Server) npmApplyRoute(ctx context.Context, c *npm.Client, serverID stri
 		if err != nil {
 			return
 		}
+		// Say it. The hostname then appears as provisioned on the server page
+		// while the site is served over plain HTTP, and a shop on http:// is not
+		// a detail to leave for somebody to notice. There is a real cause behind
+		// it most times -- HTTP-01 needs port 80 reachable for that domain -- and
+		// nothing printed it.
+		log.Printf("npm: %s has NO CERTIFICATE. Let's Encrypt issuance failed (%v) and the "+
+			"proxy host was created over plain HTTP so routing works. Check that port 80 "+
+			"reaches this proxy for that domain, then re-issue the certificate in NPM.", domain, err)
+		s.notifyAll(fmt.Sprintf("\u26a0\ufe0f %s is served WITHOUT a certificate. Let's Encrypt could not "+
+			"issue one, so the proxy host was created over plain HTTP and routing works \u2014 but "+
+			"anything sent to it, sign-ins included, crosses the network in the clear. HTTP-01 "+
+			"validation needs port 80 to reach this proxy for that domain.", domain))
 	}
 	// Recover the id from the host list if the create response didn't carry one, so
 	// the stored id is always precise for later deletes.

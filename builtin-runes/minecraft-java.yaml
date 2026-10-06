@@ -280,9 +280,15 @@ gameskill:
             fi
             need "$MODID" "CurseForge has no modpack at '$SLUG'. Copy the address out of the browser's address bar on the pack's own page and paste all of it."
 
-            if [ -n "${CF_FILE_ID:-}" ]; then
-              FID="$CF_FILE_ID"
-            else
+            # A pack's Files page address ends in the file id, so someone who
+            # pasted one of those has already named a version and should not get
+            # the newest instead.
+            FID="${CF_FILE_ID:-}"
+            if [ -z "$FID" ]; then
+              FID=$(printf '%s' "$CF_MODPACK" | sed -n 's#^.*/files/\([0-9][0-9]*\).*$#\1#p')
+              if [ -n "$FID" ]; then echo "Using the pack version in the address you pasted (file $FID)"; fi
+            fi
+            if [ -z "$FID" ]; then
               Q="$CF_API/mods/$MODID/files?pageSize=50&index=0"
               if [ -n "$VER" ] && [ "$VER" != "latest" ]; then Q="$Q&gameVersion=$VER"; fi
               FILES=$(cfapi "$Q")

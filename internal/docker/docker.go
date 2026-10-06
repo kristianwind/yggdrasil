@@ -146,6 +146,16 @@ type PortMapping struct {
 	HostPort      int
 	ContainerPort int
 	Protocol      string
+	// HostIP is the interface to publish on. Empty means every interface, which
+	// is what a game port wants: players have to reach it.
+	//
+	// An admin port does not. Leaving this empty published RCON on 0.0.0.0, so on
+	// any machine with a public address the console was answering the internet
+	// from the moment the container started -- whatever auto_forward said, and
+	// whatever the router was configured to forward, because Docker writes its
+	// own rules ahead of the host firewall. Behind NAT nobody could see it, which
+	// is why it held for so long.
+	HostIP string
 }
 
 // publishedPorts turns the mappings into what Docker wants. It is split out of
@@ -169,7 +179,7 @@ func publishedPorts(ports []PortMapping) (nat.PortMap, nat.PortSet) {
 			}
 			p := nat.Port(fmt.Sprintf("%d/%s", pm.ContainerPort, proto))
 			exposed[p] = struct{}{}
-			bindings[p] = []nat.PortBinding{{HostPort: fmt.Sprintf("%d", pm.HostPort)}}
+			bindings[p] = []nat.PortBinding{{HostIP: pm.HostIP, HostPort: fmt.Sprintf("%d", pm.HostPort)}}
 		}
 	}
 	return bindings, exposed

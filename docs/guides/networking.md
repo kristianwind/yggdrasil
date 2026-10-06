@@ -72,8 +72,18 @@ starts, Yggdrasil asks UPnP and UniFi (whichever you have enabled) to open its p
 or is deleted, the mappings and rules come back down. Turn auto-forward off for a server that should
 stay LAN-only, or one whose ports you forward by hand.
 
-The **RCON port is never forwarded**, regardless of the setting. An admin console on the open
+The **RCON port is never forwarded**, regardless of the setting, and since v0.3.22 it is also
+**published on loopback only** — `127.0.0.1`, not every interface. An admin console on the open
 internet is not something Yggdrasil will do for you.
+
+Those are two different things, and for a while only the first was true. Not forwarding a port says
+what the *router* may do; it says nothing about which interface the port is bound to, and Docker
+writes its own firewall rules ahead of the host's. On a machine behind NAT the difference never
+showed. On one with a public address — a VPS, a colocated box — the RCON port was answering the
+internet from the moment the container started.
+
+If you drive RCON from another machine, that stops working: use the panel's own console, or forward
+`127.0.0.1:<rcon port>` over SSH from the machine you administer from.
 
 Auto-forward covers firewall/NAT forwarding only. The two subdomain integrations — Nginx Proxy
 Manager and Cloudflare Tunnel — run independently of it and gate themselves on their own settings

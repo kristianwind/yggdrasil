@@ -728,6 +728,50 @@ func stopTimeout(gs *gameskill.Gameskill) int {
 // console, gives the game a moment to act, and finally docker-stops with the
 // rune's grace period before SIGKILL. Centralizes what restart/stop both need so
 // a game like DayZ isn't killed mid-persistence-save. A rune that declares
+
+// serverPortMappings turns a rune's ports and this server's allocations into
+// what Docker publishes. Split out of recreateAndStart so it can be tested
+// without a daemon, the same way publishedPorts is split out of Create.
+//
+// An admin port is published on LOOPBACK. The rest of the panel already treats
+// "rcon" as special -- serverPortProtos flags it so the UPnP and UniFi paths
+// skip it, and the comment there reads "reachable locally but never
+// WAN-forwarded". That was the intent and not the behaviour: skipping the
+// router does nothing about the bind. With no HostIP, Docker publishes on
+// 0.0.0.0 and writes its own rules ahead of the host firewall, so on a machine
+// with a public address the console answered the internet from the moment the
+// container started. Behind NAT nobody could see it, which is why it stood.
+//
+// The panel reaches RCON and the query protocol at 127.0.0.1 (see
+// handlers_query_rcon.go), so its own access is unchanged.
+func serverPortMappings(gs *gameskill.Gameskill, ports map[string]int) []docker.PortMapping {
+	// Steam games publish their port 1:1 (bind == advertised); others use the
+	// rune's fixed default container port.
+	steamGame := gs.Steam != nil
+	out := []docker.PortMapping{}
+	for _, p := range gs.Ports {
+		hostPort, ok := ports[p.Name]
+		if !ok {
+			continue
+		}
+		containerPort := p.Default
+		if steamGame {
+			containerPort = hostPort
+		}
+		hostIP := ""
+		if isAdminPort(p.Name) {
+			hostIP = "127.0.0.1"
+		}
+		out = append(out, docker.PortMapping{
+			HostPort:      hostPort,
+			ContainerPort: containerPort,
+			Protocol:      p.Protocol,
+			HostIP:        hostIP,
+		})
+	}
+	return out
+}
+
 // neither command just gets the (longer, rune-tunable) SIGTERM grace.
 func (s *Server) gracefulStop(ctx context.Context, containerID string, gs *gameskill.Gameskill) error {
 	if gs.Startup.SaveCommand != "" {
@@ -806,21 +850,7 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 
 	// Steam games publish their port 1:1 (bind==advertised); others use the
 	// gameskill's fixed default container port.
-	steamGame := gs.Steam != nil
-	portMappings := []docker.PortMapping{}
-	for _, p := range gs.Ports {
-		if hostPort, ok := ports[p.Name]; ok {
-			containerPort := p.Default
-			if steamGame {
-				containerPort = hostPort
-			}
-			portMappings = append(portMappings, docker.PortMapping{
-				HostPort:      hostPort,
-				ContainerPort: containerPort,
-				Protocol:      p.Protocol,
-			})
-		}
-	}
+	portMappings := serverPortMappings(gs, ports)
 
 	image := gameskill.ApplyTemplate(gs.Docker.Image, env)
 	var cmd []string

@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"strings"
 
+	"fmt"
 	"github.com/kristianwind/yggdrasil/internal/upnp"
+	"log"
 )
 
 // upnpLease is the mapping lease in seconds. 0 = permanent (removed on stop);
@@ -69,14 +71,43 @@ func (s *Server) upnpAddServer(serverID, serverName string) {
 	if err != nil {
 		return // no IGD; manual forwarding helper is shown instead
 	}
+	var opened, failed []string
 	for _, pp := range s.serverPortProtos(ctx, serverID) {
 		if pp.Admin {
 			continue // never WAN-forward the RCON/admin port
 		}
 		for _, proto := range upnpProtos(pp.Proto) {
-			_ = cl.AddMapping(pp.Port, proto, "Yggdrasil: "+serverName, upnpLease)
+			if err := cl.AddMapping(pp.Port, proto, "Yggdrasil: "+serverName, upnpLease); err != nil {
+				failed = append(failed, fmt.Sprintf("%d/%s (%v)", pp.Port, proto, err))
+				continue
+			}
+			opened = append(opened, fmt.Sprintf("%d/%s", pp.Port, proto))
 		}
 	}
+	// Opening a port to the internet is the most consequential thing this panel
+	// does on an operator's behalf, and it used to leave no trace: the result was
+	// discarded, nothing was logged, and no audit entry was written. So the
+	// question "is this port open, and who caused it" had no answer inside the
+	// panel -- which is also the input a teardown needs.
+	s.logUPnP(serverID, serverName, "opened", opened, failed)
+}
+
+// logUPnP records what the router was asked for and what it answered.
+func (s *Server) logUPnP(serverID, serverName, verb string, done, failed []string) {
+	if len(done) == 0 && len(failed) == 0 {
+		return
+	}
+	if len(done) > 0 {
+		log.Printf("upnp: %s %s on the router for %s", verb, strings.Join(done, ", "), serverName)
+	}
+	for _, f := range failed {
+		log.Printf("upnp: could NOT %s %s for %s", strings.TrimSuffix(verb, "ed"), f, serverName)
+	}
+	s.auditSystem("upnp."+verb, "server:"+serverID, "yggdrasil", map[string]any{
+		"server": serverName,
+		"ports":  done,
+		"failed": failed,
+	})
 }
 
 // upnpRemoveServer removes a server's router port mappings (best-effort, async).
@@ -90,11 +121,19 @@ func (s *Server) upnpRemoveServer(serverID string) {
 	if err != nil {
 		return
 	}
+	var closed, failed []string
 	for _, pp := range s.serverPortProtos(ctx, serverID) {
 		for _, proto := range upnpProtos(pp.Proto) {
-			_ = cl.DeleteMapping(pp.Port, proto)
+			if err := cl.DeleteMapping(pp.Port, proto); err != nil {
+				failed = append(failed, fmt.Sprintf("%d/%s (%v)", pp.Port, proto, err))
+				continue
+			}
+			closed = append(closed, fmt.Sprintf("%d/%s", pp.Port, proto))
 		}
 	}
+	// A failure here is the one that matters most: the mapping stays open and the
+	// panel goes on believing it closed it.
+	s.logUPnP(serverID, s.serverName(serverID), "closed", closed, failed)
 }
 
 // handleUPnPStatus reports whether UPnP is enabled and whether a gateway is

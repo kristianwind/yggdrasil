@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"context"
 	"github.com/kristianwind/yggdrasil/internal/auth"
 	"github.com/kristianwind/yggdrasil/internal/notify"
 )
@@ -81,7 +82,7 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	link := panelBaseURL(r) + "/#/reset?token=" + token
+	link := s.resetLinkBase(r.Context(), r) + "/#/reset?token=" + token
 	cfg.To = email
 	body := "A password reset was requested for your Yggdrasil account.\r\n\r\n" +
 		"Open this link to choose a new password (valid for 1 hour):\r\n\r\n" +
@@ -166,4 +167,31 @@ func panelBaseURL(r *http.Request) string {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host
+}
+
+// resetLinkBase decides which address a password-reset link points at.
+//
+// panelBaseURL reads the request's own Host header, which the client chooses.
+// For the OAuth metadata that is right -- a client has to be told the address it
+// actually reached. For an emailed link it is not: POST /api/auth/forgot is
+// unauthenticated, so anyone who knows a username can send it with
+// `Host: attacker.example` and have the panel mail the real user a working
+// reset link pointing at the attacker.
+//
+// When the operator has configured a public hostname, that is used instead and
+// the header is ignored. Without one there is nothing to check against, so the
+// header still decides -- the limiter, the single-use one-hour token and the
+// fact that a reset does not clear TOTP are what carry it then.
+func (s *Server) resetLinkBase(ctx context.Context, r *http.Request) string {
+	host := strings.TrimSpace(s.getSetting(ctx, "public_hostname"))
+	if host == "" {
+		return panelBaseURL(r)
+	}
+	if !strings.Contains(host, "://") {
+		// Stored as a bare hostname. A scheme-less value would make the browser
+		// read it as a path, which is the same mistake the site-address field in
+		// the WordPress rune guards against.
+		host = "https://" + host
+	}
+	return strings.TrimRight(host, "/")
 }

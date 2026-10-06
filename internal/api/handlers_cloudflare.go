@@ -413,6 +413,8 @@ func (s *Server) handleSetCloudflareSettings(w http.ResponseWriter, r *http.Requ
 	s.setSetting(r.Context(), "cf_tunnel_id", strings.TrimSpace(req.TunnelID))
 	s.setSetting(r.Context(), "cf_base_domain", base)
 	s.setSetting(r.Context(), "cf_internal_host", strings.TrimSpace(req.InternalHost))
+	s.closeWhatIntegrationOpened(r.Context(), "cloudflare",
+		s.getSetting(r.Context(), "cf_enabled") == "1", req.Enabled, s.cfRemoveServer)
 	s.setSetting(r.Context(), "cf_enabled", boolStr(req.Enabled))
 	if req.Token != "" {
 		if enc, err := s.cipher.Encrypt(req.Token); err == nil {

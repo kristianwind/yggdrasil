@@ -232,7 +232,7 @@ func (s *Server) handleModInstall(w http.ResponseWriter, r *http.Request) {
 // when the file is recognised by its checksum.
 type installedMod struct {
 	Filename         string `json:"filename"`
-	Managed          bool   `json:"managed"`           // recognised on Modrinth (installable/updatable)
+	Managed          bool   `json:"managed"` // recognised on Modrinth (installable/updatable)
 	ProjectID        string `json:"project_id,omitempty"`
 	Title            string `json:"title,omitempty"`
 	Slug             string `json:"slug,omitempty"`

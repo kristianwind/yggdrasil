@@ -266,6 +266,8 @@ func (s *Server) handleSetNpmSettings(w http.ResponseWriter, r *http.Request) {
 	s.setSetting(r.Context(), "npm_base_domain", normalizeSubdomain(req.BaseDomain))
 	s.setSetting(r.Context(), "npm_internal_host", strings.TrimSpace(req.InternalHost))
 	s.setSetting(r.Context(), "npm_le_email", strings.TrimSpace(req.LEEmail))
+	s.closeWhatIntegrationOpened(r.Context(), "npm",
+		s.getSetting(r.Context(), "npm_enabled") == "1", req.Enabled, s.npmRemoveServer)
 	s.setSetting(r.Context(), "npm_enabled", boolStr(req.Enabled))
 	if req.Password != "" {
 		if enc, err := s.cipher.Encrypt(req.Password); err == nil {

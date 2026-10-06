@@ -157,6 +157,8 @@ func (s *Server) handleSetUnifiSettings(w http.ResponseWriter, r *http.Request) 
 	s.setSetting(r.Context(), "unifi_url", url)
 	s.setSetting(r.Context(), "unifi_user", strings.TrimSpace(req.Username))
 	s.setSetting(r.Context(), "unifi_site", firstNonEmpty(strings.TrimSpace(req.Site), "default"))
+	s.closeWhatIntegrationOpened(r.Context(), "unifi",
+		s.getSetting(r.Context(), "unifi_enabled") == "1", req.Enabled, s.unifiRemoveServer)
 	s.setSetting(r.Context(), "unifi_enabled", boolStr(req.Enabled))
 	if req.Password != "" {
 		if enc, err := s.cipher.Encrypt(req.Password); err == nil {

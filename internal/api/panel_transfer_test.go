@@ -189,7 +189,9 @@ func TestPanelExportUsersNoDeadlock(t *testing.T) {
 // dir used to be created only as a side effect of unpacking one — so the import
 // reported success, wrote the row, and left data_dir pointing at nothing on disk.
 // The failure surfaced much later, on start, as
-//   bind source path does not exist: /var/lib/yggdrasil/servers/<uuid>
+//
+//	bind source path does not exist: /var/lib/yggdrasil/servers/<uuid>
+//
 // which names neither the import nor the empty directory. Measured on a real
 // redirect-only site moved between two panels.
 func TestImportCreatesDataDirWhenBundleCarriesNoData(t *testing.T) {

@@ -66,11 +66,11 @@ func TestPaperSearchesPluginFamily(t *testing.T) {
 // any version) rather than the literal "latest", which matches no Modrinth build.
 func TestModGameVersion(t *testing.T) {
 	for _, v := range []string{"latest", "LATEST", "", "  "} {
-		if got := modGameVersion(map[string]string{"MC_VERSION": v}); got != "" {
+		if got := modGameVersion(v); got != "" {
 			t.Errorf("MC_VERSION=%q → %q, want empty", v, got)
 		}
 	}
-	if got := modGameVersion(map[string]string{"MC_VERSION": "1.20.1"}); got != "1.20.1" {
+	if got := modGameVersion("1.20.1"); got != "1.20.1" {
 		t.Errorf("concrete version = %q, want 1.20.1", got)
 	}
 }

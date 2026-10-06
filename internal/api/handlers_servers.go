@@ -243,7 +243,7 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		srv.PlayersSup = rt.gs.Players != nil
 		srv.AdminLogSup = rt.gs.AdminLog != nil
 		srv.HasActivity = (rt.gs.Players != nil && rt.gs.Players.SessionJoin != "") || len(rt.gs.Events) > 0
-		_, srv.ModsSupported = modProfileFor(rt.env["SERVER_TYPE"]) // Modrinth mod manager
+		_, srv.ModsSupported = modProfileFor(rt.modServerType()) // Modrinth mod manager
 		srv.ConfigFiles = rt.gs.ConfigFiles
 	}
 	// AI features (digest, error-explainer) are available whenever AI is enabled;

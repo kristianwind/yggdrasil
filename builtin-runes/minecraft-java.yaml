@@ -2,9 +2,9 @@ gameskill:
   id: minecraft-java
   name: "Minecraft (Java)"
   category: "Minecraft"
-  description: "Vanilla / Paper / Purpur / Fabric / Forge / NeoForge Java server"
+  description: "Vanilla / Paper / Purpur / Fabric / Forge / NeoForge Java server, or a CurseForge modpack"
   author: "yggdrasil-core"
-  version: 12
+  version: 13
   icon: "minecraft"
 
   docker:
@@ -15,16 +15,40 @@ gameskill:
     - key: SERVER_TYPE
       name: "Server software"
       type: select
-      options: [vanilla, paper, purpur, fabric, forge, neoforge]
+      options: [vanilla, paper, purpur, fabric, forge, neoforge, curseforge]
       default: paper
+    # The four below are read only when Server software is "curseforge". They are
+    # always on the form because a rune variable has no way to say "only show me
+    # for one value of another one"; everything else ignores them.
+    - key: CF_MODPACK
+      name: "CurseForge modpack — the pack's page address (only used by 'curseforge')"
+      type: string
+      default: ""
+    - key: CF_FILE_ID
+      name: "Pack version to install (blank = newest; the number at the end of a file's address)"
+      type: string
+      default: ""
+    - key: CF_API_KEY
+      name: "CurseForge API key — free from console.curseforge.com"
+      type: string
+      default: ""
+      secret: true
+    - key: CF_SERVERPACK_URL
+      name: "Direct server-pack .zip address — skips CurseForge entirely (no key needed)"
+      type: string
+      default: ""
     - key: MC_VERSION
       name: "Minecraft version"
       type: string
       default: "latest"
+    # Which Java a server needs is decided by its Minecraft version, and old
+    # modpacks are the reason 8 and 11 are here: Minecraft 1.12 will not start on
+    # anything newer, and nothing newer than 1.16 will start on 8. The install
+    # works out what the pack wants and says so when this does not match.
     - key: JAVA_VERSION
-      name: "Java runtime"
+      name: "Java runtime (1.21+ → 21 or 25 · 1.17–1.20.4 → 17 · 1.16 and older → 8)"
       type: select
-      options: ["25", "21", "17"]
+      options: ["25", "21", "17", "11", "8"]
       default: "25"
     - key: MEMORY_MB
       name: "Max RAM (MB)"
@@ -77,8 +101,14 @@ gameskill:
     script: |
       set -eu
       # eclipse-temurin is Ubuntu-based; add curl + jq for robust JSON parsing.
+      # DEBIAN_FRONTEND and the stderr redirect are not tidiness: without them
+      # apt's debconf writes eight lines about a terminal it cannot find into the
+      # install log, which is the log an admin reads to find out why an install
+      # failed -- and it is long enough to push the actual error off the screen.
+      export DEBIAN_FRONTEND=noninteractive
       if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
-        apt-get update -qq && apt-get install -y -qq curl ca-certificates jq >/dev/null
+        apt-get update -qq >/dev/null 2>&1
+        apt-get install -y -qq curl ca-certificates jq >/dev/null 2>&1
       fi
 
       TYPE="{{SERVER_TYPE}}"
@@ -97,7 +127,7 @@ gameskill:
       # Switching a server from Forge to anything else must not leave the launch
       # marker behind, or startup would keep launching Forge from a stale args
       # file. Only the forge branch below writes it back.
-      rm -f .ygg_forge_args
+      rm -f .ygg_forge_args .ygg_loader
       case "$TYPE" in
         vanilla)
           [ "$VER" = "latest" ] && VER="$(latest_vanilla)"
@@ -193,6 +223,227 @@ gameskill:
           printf '%s\n' "$FARGS" > .ygg_forge_args
           BUILD="$NF"
           ;;
+        curseforge)
+          # --- CurseForge modpack ------------------------------------------
+          # A server pack is whatever its author chose to zip up, so nothing here
+          # assumes a layout: the pack is unpacked, then asked how it wants to be
+          # launched, in order of how definite the answer is.
+          #
+          # CurseForge serves nothing anonymously -- its API needs a free key from
+          # console.curseforge.com. The two key-free routes are checked FIRST and
+          # not as a fallback, because a pack whose author switched third-party
+          # downloads off cannot be fetched through the API at all (not by this
+          # panel and not by any other), and a hand-downloaded zip is then the
+          # only way in. Checking them first means that route never needs a key
+          # the user would otherwise be told to go and create for nothing.
+          if ! command -v unzip >/dev/null 2>&1; then
+            apt-get update -qq >/dev/null 2>&1 || true
+            apt-get install -y -qq unzip >/dev/null 2>&1
+          fi
+
+          CF_API=https://api.curseforge.com/v1
+          ZIP=.ygg_cf_pack.zip
+          PACK_ID=""   # recorded, so the next install can tell the pack changed
+          MCV=""       # Minecraft version the pack declares, when we can learn it
+          rm -f "$ZIP"
+
+          if [ -n "${CF_SERVERPACK_URL:-}" ]; then
+            echo "Downloading the server pack from the address in settings"
+            curl -fsSL -o "$ZIP" "$CF_SERVERPACK_URL"
+            PACK_ID="url-$(printf '%s' "$CF_SERVERPACK_URL" | md5sum | cut -c1-12)"
+          elif [ -s modpack.zip ]; then
+            echo "Using modpack.zip from this server's files"
+            cp modpack.zip "$ZIP"
+            PACK_ID="file-$(md5sum modpack.zip | cut -c1-12)"
+          else
+            [ -n "${CF_API_KEY:-}" ] || { echo "No CurseForge API key. Get a free one at https://console.curseforge.com/ (API Keys), paste it into this server's settings and reinstall. Or skip CurseForge entirely: download the pack's server files yourself and put the .zip address in 'Direct server-pack .zip address', or upload the file as modpack.zip under Files."; exit 1; }
+            [ -n "${CF_MODPACK:-}" ] || { echo "No modpack chosen. Open the pack on curseforge.com and paste the whole page address into 'CurseForge modpack'."; exit 1; }
+
+            # Ask once, by hand, whether the key works. Every call below goes
+            # through cfapi, which swallows a failure so the error can name the
+            # step -- without this check they would all fail identically and say
+            # "pack not found" over a key CurseForge rejected.
+            HTTP=$(curl -s -o /dev/null -w '%{http_code}' -H "x-api-key: $CF_API_KEY" -H "Accept: application/json" "$CF_API/games/432")
+            case "$HTTP" in
+              200) ;;
+              401|403) echo "CurseForge rejected the API key (HTTP $HTTP). Check it at https://console.curseforge.com/ and paste it again."; exit 1 ;;
+              *) echo "CurseForge did not answer (HTTP $HTTP). Try the install again in a minute."; exit 1 ;;
+            esac
+            cfapi() { curl -fsSL -H "x-api-key: $CF_API_KEY" -H "Accept: application/json" "$1" || true; }
+
+            # Accept the page address, the slug on its own, or the numeric id.
+            SLUG=$(printf '%s' "$CF_MODPACK" | sed -e 's#^.*/minecraft/modpacks/##' -e 's#[?#].*$##' -e 's#/.*$##' -e 's#^ *##' -e 's# *$##')
+            if printf '%s' "$SLUG" | grep -qE '^[0-9]+$'; then
+              MODID="$SLUG"
+            else
+              MODID=$(cfapi "$CF_API/mods/search?gameId=432&classId=4471&slug=$SLUG" | jq -r '.data[0].id // empty')
+            fi
+            need "$MODID" "CurseForge has no modpack at '$SLUG'. Copy the address out of the browser's address bar on the pack's own page and paste all of it."
+
+            # A pack's Files page address ends in the file id, so someone who
+            # pasted one of those has already named a version and should not get
+            # the newest instead.
+            FID="${CF_FILE_ID:-}"
+            if [ -z "$FID" ]; then
+              FID=$(printf '%s' "$CF_MODPACK" | sed -n 's#^.*/files/\([0-9][0-9]*\).*$#\1#p')
+              if [ -n "$FID" ]; then echo "Using the pack version in the address you pasted (file $FID)"; fi
+            fi
+            if [ -z "$FID" ]; then
+              Q="$CF_API/mods/$MODID/files?pageSize=50&index=0"
+              if [ -n "$VER" ] && [ "$VER" != "latest" ]; then Q="$Q&gameVersion=$VER"; fi
+              FILES=$(cfapi "$Q")
+              # Newest release; fall back to newest of any kind, because plenty of
+              # packs live on beta builds for months and "there is no release" is
+              # not something to make the admin work out from an empty answer.
+              pick() { printf '%s' "$FILES" | jq -r --argjson rt "$1" '[.data[] | select(.isServerPack != true) | select($rt == 0 or .releaseType == $rt)] | sort_by(.fileDate) | reverse | map(.id) | .[0] // empty'; }
+              FID=$(pick 1)
+              [ -n "$FID" ] || FID=$(pick 0)
+            fi
+            need "$FID" "That modpack has no files for Minecraft $VER. Leave 'Minecraft version' on latest, or set it to one the pack was built for."
+
+            FJSON=$(cfapi "$CF_API/mods/$MODID/files/$FID")
+            # A file either IS the server pack or points at one. Both happen: the
+            # id in a pack's download address is usually the client file.
+            SPID=$(printf '%s' "$FJSON" | jq -r 'if (.data.isServerPack // false) then (.data.id|tostring) else (.data.serverPackFileId // empty | tostring) end' | grep -v '^$' || true)
+            need "$SPID" "That version of the pack has no server files on CurseForge -- only the client download. Pick another version in 'Pack version to install', or download server files yourself and use 'Direct server-pack .zip address'."
+            MCV=$(printf '%s' "$FJSON" | jq -r '[.data.gameVersions[]? | select(test("^[0-9]+[.][0-9]"))] | .[0] // empty')
+
+            SPJSON=$(cfapi "$CF_API/mods/$MODID/files/$SPID")
+            URL=$(printf '%s' "$SPJSON" | jq -r '.data.downloadUrl // empty')
+            [ -n "$URL" ] || URL=$(cfapi "$CF_API/mods/$MODID/files/$SPID/download-url" | jq -r '.data // empty')
+            need "$URL" "CurseForge will not hand out a download link for this pack: its author switched third-party downloads off, which no panel can get around. Download the server pack from the pack's Files page yourself, then either paste that .zip address into 'Direct server-pack .zip address' or upload the file as modpack.zip under Files, and reinstall."
+            echo "Downloading $(printf '%s' "$SPJSON" | jq -r '.data.fileName // "the server pack"')"
+            curl -fsSL -o "$ZIP" "$URL"
+            PACK_ID="$MODID-$SPID"
+          fi
+          [ -s "$ZIP" ] || { echo "the server pack download produced no file"; exit 1; }
+
+          # Changing pack version is the one case where leaving files behind is
+          # worse than deleting them: the old version's jars sit in mods/ next to
+          # the new ones and the server dies on a duplicate-mod error that names
+          # neither the pack nor the update. The world is never in here.
+          PREV=$(cat .ygg_cf 2>/dev/null || true)
+          if [ -n "$PREV" ] && [ "$PREV" != "$PACK_ID" ]; then
+            echo "Pack changed ($PREV -> $PACK_ID): clearing mods/ and libraries/ first. Your world, server.properties, whitelist and ops are kept."
+            rm -rf mods libraries
+            rm -f .ygg_forge_args
+          fi
+
+          rm -rf .ygg_cf_tmp
+          mkdir .ygg_cf_tmp
+          unzip -q -o "$ZIP" -d .ygg_cf_tmp
+          # Some packs zip everything inside one folder and some do not.
+          INNER=.ygg_cf_tmp
+          if [ "$(find .ygg_cf_tmp -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]; then
+            ONLY=$(find .ygg_cf_tmp -mindepth 1 -maxdepth 1)
+            if [ -d "$ONLY" ]; then INNER="$ONLY"; fi
+          fi
+          # The pack owns the mods and the config. It does not own the world, who
+          # is allowed in, or who is an operator -- those belong to this server,
+          # and a reinstall to pick up a pack update must not reset them.
+          rm -rf "$INNER/world" "$INNER/world_nether" "$INNER/world_the_end"
+          rm -f "$INNER/eula.txt" "$INNER/banned-players.json" "$INNER/banned-ips.json"
+          if [ -f whitelist.json ]; then rm -f "$INNER/whitelist.json"; fi
+          if [ -f ops.json ]; then rm -f "$INNER/ops.json"; fi
+          if [ -f server.properties ]; then rm -f "$INNER/server.properties"; fi
+          cp -a "$INNER"/. ./
+          rm -rf .ygg_cf_tmp "$ZIP"
+
+          # How does this thing start? Most definite answer first.
+          find_args() {
+            for p in libraries/net/neoforged/neoforge/*/unix_args.txt \
+                     libraries/net/minecraftforge/forge/*/unix_args.txt; do
+              if [ -f "$p" ]; then printf '%s\n' "$p" > .ygg_forge_args; return 0; fi
+            done
+            return 1
+          }
+          if ! find_args; then
+            # head picks one candidate here; it is not counting anything.
+            INST=$(find . -maxdepth 1 -name '*nstaller*.jar' | head -n1)
+            if [ -n "$INST" ]; then
+              echo "Pack ships a loader installer ($INST) - running it, this takes a minute"
+              java -jar "$INST" --installServer
+              rm -f "$INST" "$INST.log"
+              find_args || true
+            fi
+          fi
+          if [ ! -s .ygg_forge_args ] && [ -f server-setup-config.yaml ]; then
+            SS=$(find . -maxdepth 1 -name 'serverstarter*.jar' | head -n1)
+            if [ -n "$SS" ]; then
+              echo "Pack ships the ServerStarter bootstrapper - running it once to fetch the loader and the mods"
+              java -jar "$SS" || true
+              find_args || true
+            fi
+          fi
+          if [ ! -s .ygg_forge_args ] && [ ! -s server.jar ]; then
+            for cand in fabric-server-launch.jar quilt-server-launch.jar \
+                        neoforge-*.jar forge-*.jar fabric-server-*.jar \
+                        minecraft_server*.jar; do
+              case "$cand" in *nstaller*) continue ;; esac
+              if [ -s "$cand" ]; then cp "$cand" server.jar; echo "Launching from $cand"; break; fi
+            done
+          fi
+          if [ ! -s .ygg_forge_args ] && [ ! -s server.jar ]; then
+            echo "Could not work out how to start this pack. The zip contained:"
+            find . -maxdepth 1 -not -name '.*' -not -name modpack.zip | sed 's#^./##' | sort
+            echo "If one of those is the server jar, rename a copy of it to server.jar under Files and start the server."
+            exit 1
+          fi
+
+          # Record the loader, because SERVER_TYPE now says "curseforge", which
+          # names a shop rather than a mod loader -- the Mods tab, the mod checker
+          # and Kvasir all read this file to answer what the server can load.
+          LOADER=""
+          if [ -s .ygg_forge_args ]; then
+            case "$(cat .ygg_forge_args)" in
+              */neoforged/*) LOADER=neoforge ;;
+              *) LOADER=forge ;;
+            esac
+          elif [ -f fabric-server-launch.jar ] || [ -f fabric-server-launcher.properties ] || [ -d .fabric ]; then
+            LOADER=fabric
+          elif [ -d libraries/net/neoforged ]; then
+            LOADER=neoforge
+          elif [ -d libraries/net/minecraftforge ]; then
+            LOADER=forge
+          fi
+          if [ -z "$MCV" ]; then
+            MCV=$(ls minecraft_server.*.jar 2>/dev/null | sed -n 's#^minecraft_server[.]\(.*\)[.]jar$#\1#p' | head -n1)
+          fi
+          if [ -z "$MCV" ] && [ -d libraries/net/minecraft/server ]; then
+            MCV=$(find libraries/net/minecraft/server -mindepth 1 -maxdepth 1 -type d \
+                  | sed -e 's#^.*/##' -e 's#-.*$##' \
+                  | grep -E '^[0-9]+[.][0-9]' | sort -u | head -n1)
+          fi
+          if [ -z "$MCV" ] && [ -s .ygg_forge_args ]; then
+            # Forge's library path carries the Minecraft version; NeoForge's does
+            # not, so this answers for one of the two and stays blank for the other.
+            MCV=$(sed -n 's#.*/forge/\([0-9][^-]*\)-.*#\1#p' .ygg_forge_args | head -n1)
+          fi
+          printf '%s %s\n' "${LOADER:-unknown}" "${MCV:-unknown}" > .ygg_loader
+
+          # The Java a pack needs is decided by its Minecraft version, and the
+          # image is already chosen by the time this runs -- so this can only say
+          # so. Getting it wrong is a crash on the first start whose message
+          # ("UnsupportedClassVersionError", or nothing at all) names no setting.
+          if [ -n "$MCV" ]; then
+            case "$MCV" in
+              1.[0-9].*|1.[0-9]|1.1[0-6]*) WANT=8;  MAXOK=11 ;;
+              1.17*)                       WANT=17; MAXOK=21 ;;
+              1.18*|1.19*|1.20|1.20.[1-4]*) WANT=17; MAXOK=21 ;;
+              *)                           WANT=21; MAXOK=25 ;;
+            esac
+            if [ "${JAVA_VERSION:-0}" -lt "$WANT" ] || [ "${JAVA_VERSION:-0}" -gt "$MAXOK" ]; then
+              echo ""
+              echo "NOTE: this pack is Minecraft $MCV, which wants Java $WANT (up to $MAXOK), and this server is set to Java ${JAVA_VERSION:-?}."
+              echo "      Set 'Java runtime' to $WANT in Settings and restart, or it will almost certainly fail to start."
+              echo ""
+            fi
+          fi
+          printf '%s\n' "$PACK_ID" > .ygg_cf
+          VER="${MCV:-unknown}"
+          BUILD="$PACK_ID"
+          echo "Installed CurseForge pack $PACK_ID - ${LOADER:-unknown}, Minecraft ${MCV:-unknown}"
+          ;;
         *)
           echo "unknown SERVER_TYPE: $TYPE"; exit 1 ;;
       esac
@@ -271,7 +522,11 @@ gameskill:
     # --enable-native-access=ALL-UNNAMED silences the Java 24+ "restricted
     # method ... java.lang.System::load (JNA)" warnings; harmless either way.
     command: |
-      setprop() { if grep -q "^$1=" server.properties 2>/dev/null; then sed -i "s/^$1=.*/$1=$2/" server.properties; else echo "$1=$2" >> server.properties; fi; }
+      # Rewrite the line rather than sed it in place: a value with a / or an & in
+      # it (an RCON password is the one that gets typed by hand) is a replacement
+      # expression to sed, not a string, and the server then starts with a
+      # password nobody has.
+      setprop() { if [ -f server.properties ]; then grep -v "^$1=" server.properties > .ygg_props.tmp || true; else : > .ygg_props.tmp; fi; printf '%s=%s\n' "$1" "$2" >> .ygg_props.tmp; mv .ygg_props.tmp server.properties; }
       echo eula={{EULA}} > eula.txt
       setprop difficulty {{DIFFICULTY}}
       # Hardcore belongs with the re-stamped settings, not the install-only ones:
@@ -280,14 +535,31 @@ gameskill:
       setprop hardcore {{HARDCORE}}
       setprop white-list {{ENABLE_WHITELIST}}
       setprop enforce-whitelist {{ENABLE_WHITELIST}}
-      # Forge (1.17+) has no runnable jar: it is launched from the @argfile the
-      # installer wrote, whose path the install step recorded. Everything else is
-      # a plain -jar server.jar. user_jvm_args.txt is deliberately skipped - it
-      # ships fully commented out and -Xmx is set here.
+      # RCON is re-stamped for the same reason as the rest: install writes these
+      # once, so changing the password in Settings did nothing and the panel went
+      # on using a password the server had never been told. A modpack makes it
+      # worse -- a CurseForge pack ships its own server.properties with
+      # enable-rcon=false, which install leaves alone, so the console, the player
+      # list and scheduled commands would all be dead on arrival.
+      setprop enable-rcon true
+      setprop rcon.port "$RCON_PORT"
+      setprop rcon.password "$RCON_PASSWORD"
+      # --enable-native-access=ALL-UNNAMED silences the Java 24+ "restricted
+      # method ... java.lang.System::load (JNA)" warnings. It is not merely
+      # ignored by an older JVM: Java 8 and 11 refuse to start on an option they
+      # do not know, and those are exactly the runtimes old modpacks need. Ask
+      # the JVM in front of us instead of inferring it from the setting.
+      NATIVE=""
+      java --enable-native-access=ALL-UNNAMED -version >/dev/null 2>&1 && NATIVE=--enable-native-access=ALL-UNNAMED
+      # Forge and NeoForge (1.17+) have no runnable jar: they are launched from
+      # the @argfile the installer wrote, whose path the install step recorded --
+      # including when the installer came inside a CurseForge server pack.
+      # Everything else is a plain -jar server.jar. user_jvm_args.txt is
+      # deliberately skipped - it ships fully commented out and -Xmx is set here.
       if [ -s .ygg_forge_args ]; then
-        exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED "@$(cat .ygg_forge_args)" nogui
+        exec java -Xmx{{MEMORY_MB}}M $NATIVE "@$(cat .ygg_forge_args)" nogui
       fi
-      exec java -Xmx{{MEMORY_MB}}M --enable-native-access=ALL-UNNAMED -jar server.jar nogui
+      exec java -Xmx{{MEMORY_MB}}M $NATIVE -jar server.jar nogui
     done_regex: 'Done \(.*\)! For help'
     # Flush chunks to disk before shutting down, then stop cleanly (the "stop"
     # command already saves, but save-all first makes a graceful restart robust).

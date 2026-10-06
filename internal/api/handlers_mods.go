@@ -63,14 +63,66 @@ func modProfileFor(serverType string) (modProfile, bool) {
 }
 
 // modGameVersion returns the concrete Minecraft version to filter by, or "" when
-// it can't be pinned (MC_VERSION "latest" or blank) so search stays unfiltered on
-// version rather than returning nothing.
-func modGameVersion(env map[string]string) string {
-	v := strings.TrimSpace(env["MC_VERSION"])
+// it can't be pinned ("latest" or blank) so search stays unfiltered on version
+// rather than returning nothing.
+func modGameVersion(v string) string {
+	v = strings.TrimSpace(v)
 	if v == "" || strings.EqualFold(v, "latest") {
 		return ""
 	}
 	return v
+}
+
+// mcTarget answers what a Minecraft server can actually load, and for which
+// Minecraft version. For every SERVER_TYPE but one those are simply the two
+// settings on the form.
+//
+// "curseforge" is the exception, and the reason this exists: it names where the
+// server software came from, not what it is. The modpack decides whether the
+// server ends up on Forge, NeoForge or Fabric and which Minecraft version it is
+// built against, and neither is known until the pack has been downloaded and
+// unpacked — so neither can be a form field. The install writes both into
+// .ygg_loader, and everything that asks "what will this server load" comes
+// through here, so the Mods tab, the compatibility check and Kvasir describe the
+// pack instead of describing the word "curseforge".
+func (rt *serverRuntime) mcTarget() (serverType, mcVersion string) {
+	serverType, mcVersion = rt.env["SERVER_TYPE"], rt.env["MC_VERSION"]
+	if !strings.EqualFold(strings.TrimSpace(serverType), "curseforge") {
+		return serverType, mcVersion
+	}
+	if l, v := readLoaderMarker(rt.dataDir); l != "" {
+		serverType = l
+		if v != "" {
+			mcVersion = v
+		}
+	}
+	return serverType, mcVersion
+}
+
+func (rt *serverRuntime) modServerType() string  { st, _ := rt.mcTarget(); return st }
+func (rt *serverRuntime) modGameVersion() string { _, v := rt.mcTarget(); return modGameVersion(v) }
+
+// readLoaderMarker parses the install's .ygg_loader file ("<loader> <version>").
+// The install writes the literal "unknown" for a field it could not work out —
+// a Fabric pack uploaded by hand carries its Minecraft version nowhere — and
+// that is reported as absent here, because a caller that treats "unknown" as a
+// value filters a mod search down to nothing and calls the result an answer.
+func readLoaderMarker(dataDir string) (loader, mcVersion string) {
+	if dataDir == "" {
+		return "", ""
+	}
+	b, err := os.ReadFile(filepath.Join(dataDir, ".ygg_loader"))
+	if err != nil {
+		return "", ""
+	}
+	f := strings.Fields(string(b))
+	at := func(i int) string {
+		if i >= len(f) || f[i] == "unknown" {
+			return ""
+		}
+		return f[i]
+	}
+	return at(0), at(1)
 }
 
 // handleModIcon proxies a Modrinth icon through the panel, so mod icons show
@@ -105,13 +157,13 @@ func (s *Server) handleModSearch(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "could not load server", http.StatusInternalServerError)
 		return
 	}
-	profile, ok := modProfileFor(rt.env["SERVER_TYPE"])
+	profile, ok := modProfileFor(rt.modServerType())
 	if !ok {
 		// Vanilla or a non-Minecraft rune — no mod folder to manage.
 		jsonError(w, "this server type doesn't support mods or plugins", http.StatusBadRequest)
 		return
 	}
-	gameVersion := modGameVersion(rt.env)
+	gameVersion := rt.modGameVersion()
 	hits, err := modrinth.Search(r.Context(), r.URL.Query().Get("q"), profile.Loaders, gameVersion, 30)
 	if err != nil {
 		jsonError(w, "mod search failed: "+err.Error(), http.StatusBadGateway)
@@ -214,13 +266,13 @@ func (s *Server) handleModInstall(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "could not load server", http.StatusInternalServerError)
 		return
 	}
-	profile, ok := modProfileFor(rt.env["SERVER_TYPE"])
+	profile, ok := modProfileFor(rt.modServerType())
 	if !ok {
 		jsonError(w, "this server type doesn't support mods or plugins", http.StatusBadRequest)
 		return
 	}
 	var installed []string
-	if err := s.installOne(r.Context(), dataDir, profile, modGameVersion(rt.env), strings.TrimSpace(req.Project), map[string]bool{}, &installed); err != nil {
+	if err := s.installOne(r.Context(), dataDir, profile, rt.modGameVersion(), strings.TrimSpace(req.Project), map[string]bool{}, &installed); err != nil {
 		jsonError(w, "install failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -260,7 +312,7 @@ func (s *Server) handleModList(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "could not load server", http.StatusInternalServerError)
 		return
 	}
-	profile, ok := modProfileFor(rt.env["SERVER_TYPE"])
+	profile, ok := modProfileFor(rt.modServerType())
 	if !ok {
 		jsonError(w, "this server type doesn't support mods or plugins", http.StatusBadRequest)
 		return
@@ -291,7 +343,7 @@ func (s *Server) handleModList(w http.ResponseWriter, r *http.Request) {
 	// Identify + update-check on Modrinth. Failures degrade to an un-enriched list
 	// rather than erroring the whole page — you can still see and remove jars.
 	installed, _ := modrinth.LookupByHashes(r.Context(), hashes)
-	latest, _ := modrinth.LatestByHashes(r.Context(), hashes, profile.Loaders, modGameVersion(rt.env))
+	latest, _ := modrinth.LatestByHashes(r.Context(), hashes, profile.Loaders, rt.modGameVersion())
 	var projectIDs []string
 	for _, v := range installed {
 		projectIDs = append(projectIDs, v.ProjectID)
@@ -337,7 +389,7 @@ func (s *Server) handleModUpdate(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "could not load server", http.StatusInternalServerError)
 		return
 	}
-	profile, ok := modProfileFor(rt.env["SERVER_TYPE"])
+	profile, ok := modProfileFor(rt.modServerType())
 	if !ok {
 		jsonError(w, "this server type doesn't support mods or plugins", http.StatusBadRequest)
 		return
@@ -363,7 +415,7 @@ func (s *Server) handleModUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var installed []string
-	if err := s.installOne(r.Context(), dataDir, profile, modGameVersion(rt.env), cur.ProjectID, map[string]bool{}, &installed); err != nil {
+	if err := s.installOne(r.Context(), dataDir, profile, rt.modGameVersion(), cur.ProjectID, map[string]bool{}, &installed); err != nil {
 		jsonError(w, "update failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -400,7 +452,7 @@ func (s *Server) handleModRemove(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "could not load server", http.StatusInternalServerError)
 		return
 	}
-	profile, ok := modProfileFor(rt.env["SERVER_TYPE"])
+	profile, ok := modProfileFor(rt.modServerType())
 	if !ok {
 		jsonError(w, "this server type doesn't support mods or plugins", http.StatusBadRequest)
 		return

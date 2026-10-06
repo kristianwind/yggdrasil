@@ -507,8 +507,7 @@ func (s *Server) lookupModCheck(ctx context.Context, srv *serverRow) string {
 	if err != nil {
 		return "Could not read that server's settings."
 	}
-	serverType := rt.env["SERVER_TYPE"]
-	mc := rt.env["MC_VERSION"]
+	serverType, mc := rt.mcTarget()
 	if serverType == "" {
 		return "That server has no SERVER_TYPE, so there is no mod or plugin folder to check."
 	}

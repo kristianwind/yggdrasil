@@ -19,16 +19,17 @@ import (
 
 // serverRuntime bundles the parsed gameskill plus a server's env and host ports.
 type serverRuntime struct {
-	gs    *gameskill.Gameskill
-	env   map[string]string
-	ports map[string]int
+	gs      *gameskill.Gameskill
+	env     map[string]string
+	ports   map[string]int
+	dataDir string
 }
 
 func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRuntime, error) {
-	var gameskillID, envJSON, portsJSON, name string
+	var gameskillID, envJSON, portsJSON, name, dataDir string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT gameskill_id, env_json, ports_json, name FROM servers WHERE id=?", serverID).
-		Scan(&gameskillID, &envJSON, &portsJSON, &name)
+		"SELECT gameskill_id, env_json, ports_json, name, COALESCE(data_dir,'') FROM servers WHERE id=?", serverID).
+		Scan(&gameskillID, &envJSON, &portsJSON, &name, &dataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +48,7 @@ func (s *Server) loadRuntime(ctx context.Context, serverID string) (*serverRunti
 	// through literally and the container rejects it (this broke Bedrock servers
 	// when the rune gained ONLINE_MODE). Defaults make new variables safe for
 	// existing servers; env_json still wins wherever it has a value.
-	rt := &serverRuntime{gs: gs, env: gameskill.DefaultEnv(gs), ports: map[string]int{}}
+	rt := &serverRuntime{gs: gs, env: gameskill.DefaultEnv(gs), ports: map[string]int{}, dataDir: dataDir}
 	json.Unmarshal([]byte(envJSON), &rt.env)
 	// Decrypt secret-typed env (RCON password, password vars) — this is the one
 	// path that feeds real values to the container and RCON.

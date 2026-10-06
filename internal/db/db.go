@@ -8,7 +8,23 @@ import (
 )
 
 func Open(path string) (*sql.DB, error) {
-	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000", path)
+	// modernc.org/sqlite spells pragmas as _pragma=name(value). The DSN used to
+	// carry mattn/go-sqlite3's syntax (_journal_mode=WAL&_foreign_keys=on&
+	// _busy_timeout=5000), which this driver ignores silently -- so for as long
+	// as it stood, NONE of the three were in effect. Measured side by side on the
+	// same file: the old form gives foreign_keys=0, journal_mode=delete,
+	// busy_timeout=0; this one gives 1, wal and 5000.
+	//
+	// foreign_keys is deliberately NOT here. Every ON DELETE in the schema has
+	// been inert since the beginning, so these databases have been accumulating
+	// rows that a constraint would have forbidden. Switching enforcement on
+	// against them can make deletes that have always worked start failing, which
+	// is a migration with a question in it, not a DSN change.
+	//
+	// The other two are free: WAL is how SQLite is meant to be run, and a
+	// busy_timeout of zero means a second process -- the reset-password CLI, a
+	// backup reading the file -- gets SQLITE_BUSY instantly instead of waiting.
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -556,50 +572,50 @@ func migrate(db *sql.DB) error {
 	addColumnIfMissing(db, "backup_targets", "keep_days", "INTEGER NOT NULL DEFAULT 0")
 	addColumnIfMissing(db, "users", "totp_secret", "TEXT") // encrypted; pending until enabled
 	addColumnIfMissing(db, "users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0")
-	addColumnIfMissing(db, "users", "email", "TEXT NOT NULL DEFAULT ''") // optional; the address password-reset links are sent to
-	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''")        // BattleMetrics server id (optional)
-	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")      // open firewall ports on start (UPnP/UniFi)
-	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")           // DayZ Norn loot settings (re-applied after reinstall)
-	addColumnIfMissing(db, "notifications", "server_id", "TEXT")                          // optional: scope a channel to one server (NULL = global)
-	addColumnIfMissing(db, "realms", "sort_order", "INTEGER NOT NULL DEFAULT 0")          // manual realm order (Settings → Realms)
-	addColumnIfMissing(db, "realms", "collapsed", "INTEGER NOT NULL DEFAULT 0")           // foldable realm groups on the Servers page (server-side so it syncs across devices)
-	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")           // NPM subdomain label/full domain for HTTP apps (empty = off)
-	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")       // NPM proxy-host id we created (0 = none)
-	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")         // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)
-	addColumnIfMissing(db, "servers", "subdomain_port", "TEXT NOT NULL DEFAULT ''")      // which rune port the primary hostname targets (empty = "web", else first TCP)
-	addColumnIfMissing(db, "servers", "host_mounts", "TEXT NOT NULL DEFAULT ''")         // admin-set host bind mounts (JSON array); read-only by default
-	addColumnIfMissing(db, "servers", "autostart", "INTEGER NOT NULL DEFAULT 1")         // start this server when the panel/host boots (default on)
-	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")       // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)
-	addColumnIfMissing(db, "users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0")   // last accepted TOTP step; rejects replay within the validity window
-	addColumnIfMissing(db, "schedules", "managed", "TEXT NOT NULL DEFAULT ''")           // non-empty = owned by a per-server convenience toggle (e.g. 'auto-restart'); hidden from the generic schedule list
-	addColumnIfMissing(db, "ai_config", "digest_enabled", "INTEGER NOT NULL DEFAULT 0")  // daily AI ops digest to notification channels
-	addColumnIfMissing(db, "ai_config", "digest_hour", "INTEGER NOT NULL DEFAULT 8")     // local hour to send the daily digest
-	addColumnIfMissing(db, "ai_config", "digest_last_day", "TEXT NOT NULL DEFAULT ''")   // once-per-day guard (YYYY-MM-DD)
-	addColumnIfMissing(db, "ai_config", "actions_enabled", "INTEGER NOT NULL DEFAULT 0") // higher tier: let AI PROPOSE server actions (always confirmed); default off
-	addColumnIfMissing(db, "ai_config", "proactive_level", "INTEGER NOT NULL DEFAULT 0")           // Kvasir proactive monitoring: 0 off, 1 passive (explain), 2 active-observe (propose), 3 active-help (safe auto-fix)
+	addColumnIfMissing(db, "users", "email", "TEXT NOT NULL DEFAULT ''")                                               // optional; the address password-reset links are sent to
+	addColumnIfMissing(db, "servers", "bm_server_id", "TEXT NOT NULL DEFAULT ''")                                      // BattleMetrics server id (optional)
+	addColumnIfMissing(db, "servers", "auto_forward", "INTEGER NOT NULL DEFAULT 1")                                    // open firewall ports on start (UPnP/UniFi)
+	addColumnIfMissing(db, "servers", "norn_json", "TEXT NOT NULL DEFAULT ''")                                         // DayZ Norn loot settings (re-applied after reinstall)
+	addColumnIfMissing(db, "notifications", "server_id", "TEXT")                                                       // optional: scope a channel to one server (NULL = global)
+	addColumnIfMissing(db, "realms", "sort_order", "INTEGER NOT NULL DEFAULT 0")                                       // manual realm order (Settings → Realms)
+	addColumnIfMissing(db, "realms", "collapsed", "INTEGER NOT NULL DEFAULT 0")                                        // foldable realm groups on the Servers page (server-side so it syncs across devices)
+	addColumnIfMissing(db, "servers", "subdomain", "TEXT NOT NULL DEFAULT ''")                                         // NPM subdomain label/full domain for HTTP apps (empty = off)
+	addColumnIfMissing(db, "servers", "npm_host_id", "INTEGER NOT NULL DEFAULT 0")                                     // NPM proxy-host id we created (0 = none)
+	addColumnIfMissing(db, "servers", "cf_hostname", "TEXT NOT NULL DEFAULT ''")                                       // Cloudflare Tunnel hostname we provisioned (ingress + CNAME)
+	addColumnIfMissing(db, "servers", "subdomain_port", "TEXT NOT NULL DEFAULT ''")                                    // which rune port the primary hostname targets (empty = "web", else first TCP)
+	addColumnIfMissing(db, "servers", "host_mounts", "TEXT NOT NULL DEFAULT ''")                                       // admin-set host bind mounts (JSON array); read-only by default
+	addColumnIfMissing(db, "servers", "autostart", "INTEGER NOT NULL DEFAULT 1")                                       // start this server when the panel/host boots (default on)
+	addColumnIfMissing(db, "users", "token_version", "INTEGER NOT NULL DEFAULT 0")                                     // bumped to revoke all of a user's JWT sessions (logout/disable/role/password change)
+	addColumnIfMissing(db, "users", "totp_last_counter", "INTEGER NOT NULL DEFAULT 0")                                 // last accepted TOTP step; rejects replay within the validity window
+	addColumnIfMissing(db, "schedules", "managed", "TEXT NOT NULL DEFAULT ''")                                         // non-empty = owned by a per-server convenience toggle (e.g. 'auto-restart'); hidden from the generic schedule list
+	addColumnIfMissing(db, "ai_config", "digest_enabled", "INTEGER NOT NULL DEFAULT 0")                                // daily AI ops digest to notification channels
+	addColumnIfMissing(db, "ai_config", "digest_hour", "INTEGER NOT NULL DEFAULT 8")                                   // local hour to send the daily digest
+	addColumnIfMissing(db, "ai_config", "digest_last_day", "TEXT NOT NULL DEFAULT ''")                                 // once-per-day guard (YYYY-MM-DD)
+	addColumnIfMissing(db, "ai_config", "actions_enabled", "INTEGER NOT NULL DEFAULT 0")                               // higher tier: let AI PROPOSE server actions (always confirmed); default off
+	addColumnIfMissing(db, "ai_config", "proactive_level", "INTEGER NOT NULL DEFAULT 0")                               // Kvasir proactive monitoring: 0 off, 1 passive (explain), 2 active-observe (propose), 3 active-help (safe auto-fix)
 	addColumnIfMissing(db, "ai_config", "proactive_triggers", "TEXT NOT NULL DEFAULT 'crash,slowstart,resource,host'") // which events Kvasir reacts to
 	// Kvasir chat data-access tier: 0 snapshot-only (no lookups), 1 panel data
 	// (metrics/player history/backups/roster — default), 2 also lets it search a
 	// server's live LOG. Default 1 keeps logs (which can hold player chat/IPs and
 	// get sent to the LLM) an explicit opt-in rather than always-on.
 	addColumnIfMissing(db, "ai_config", "chat_data_level", "INTEGER NOT NULL DEFAULT 1")
-	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")          // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
-	addColumnIfMissing(db, "servers", "status_public", "INTEGER NOT NULL DEFAULT 0")     // show this server on the public /status page (opt-in, default off)
-	addColumnIfMissing(db, "backups", "verified_at", "TEXT NOT NULL DEFAULT ''")         // when this backup's archive was last integrity-checked
-	addColumnIfMissing(db, "backups", "verify_ok", "INTEGER NOT NULL DEFAULT -1")        // -1 unknown, 0 corrupt, 1 decompresses cleanly
-	addColumnIfMissing(db, "servers", "cpu_alarm_pct", "INTEGER NOT NULL DEFAULT 0")     // alert when CPU% stays at/above this (0 = off)
-	addColumnIfMissing(db, "servers", "mem_alarm_mb", "INTEGER NOT NULL DEFAULT 0")      // alert when memory MB stays at/above this (0 = off)
-	addColumnIfMissing(db, "servers", "disk_alarm_mb", "INTEGER NOT NULL DEFAULT 0")     // alert when the data dir grows to/above this many MB (0 = off)
-	addColumnIfMissing(db, "servers", "notes", "TEXT NOT NULL DEFAULT ''")               // free-text admin notes shared across the team
+	addColumnIfMissing(db, "servers", "watchdog", "INTEGER NOT NULL DEFAULT 0")      // auto-heal: game query fails repeatedly while the container is up → auto-restart (default off)
+	addColumnIfMissing(db, "servers", "status_public", "INTEGER NOT NULL DEFAULT 0") // show this server on the public /status page (opt-in, default off)
+	addColumnIfMissing(db, "backups", "verified_at", "TEXT NOT NULL DEFAULT ''")     // when this backup's archive was last integrity-checked
+	addColumnIfMissing(db, "backups", "verify_ok", "INTEGER NOT NULL DEFAULT -1")    // -1 unknown, 0 corrupt, 1 decompresses cleanly
+	addColumnIfMissing(db, "servers", "cpu_alarm_pct", "INTEGER NOT NULL DEFAULT 0") // alert when CPU% stays at/above this (0 = off)
+	addColumnIfMissing(db, "servers", "mem_alarm_mb", "INTEGER NOT NULL DEFAULT 0")  // alert when memory MB stays at/above this (0 = off)
+	addColumnIfMissing(db, "servers", "disk_alarm_mb", "INTEGER NOT NULL DEFAULT 0") // alert when the data dir grows to/above this many MB (0 = off)
+	addColumnIfMissing(db, "servers", "notes", "TEXT NOT NULL DEFAULT ''")           // free-text admin notes shared across the team
 	// Off by default: an existing note keeps rendering exactly as it reads now, so
 	// turning this on is a choice rather than a surprise reformat.
 	addColumnIfMissing(db, "servers", "notes_markdown", "INTEGER NOT NULL DEFAULT 0")
-	addColumnIfMissing(db, "servers", "tags", "TEXT NOT NULL DEFAULT ''")                // normalized comma-separated labels for grouping/filtering
+	addColumnIfMissing(db, "servers", "tags", "TEXT NOT NULL DEFAULT ''") // normalized comma-separated labels for grouping/filtering
 	// Where an imported rune came from, so the update check can compare against its
 	// own source repo (not just the default catalog). Empty = installed by upload/paste.
-	addColumnIfMissing(db, "gameskills", "source_repo", "TEXT NOT NULL DEFAULT ''")      // owner/repo
-	addColumnIfMissing(db, "gameskills", "source_path", "TEXT NOT NULL DEFAULT ''")      // dir within the repo
-	addColumnIfMissing(db, "gameskills", "source_ref", "TEXT NOT NULL DEFAULT ''")       // branch/tag
+	addColumnIfMissing(db, "gameskills", "source_repo", "TEXT NOT NULL DEFAULT ''") // owner/repo
+	addColumnIfMissing(db, "gameskills", "source_path", "TEXT NOT NULL DEFAULT ''") // dir within the repo
+	addColumnIfMissing(db, "gameskills", "source_ref", "TEXT NOT NULL DEFAULT ''")  // branch/tag
 	// An optional GitHub token for THIS repository, encrypted at rest. The panel
 	// otherwise holds a single token, which cannot cover two private repos owned by
 	// different people: a fine-grained token can only select repositories its owner

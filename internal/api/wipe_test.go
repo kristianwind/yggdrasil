@@ -8,7 +8,11 @@ import (
 
 func TestWipePathsJail(t *testing.T) {
 	root := t.TempDir()
-	must := func(e error) { if e != nil { t.Fatal(e) } }
+	must := func(e error) {
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
 	must(os.MkdirAll(filepath.Join(root, "world"), 0o755))
 	must(os.WriteFile(filepath.Join(root, "world", "level.dat"), []byte("x"), 0o644))
 	must(os.MkdirAll(filepath.Join(root, "mpmissions", "cher", "storage_1"), 0o755))

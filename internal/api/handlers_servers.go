@@ -500,9 +500,34 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Subdomain != nil {
 		sub := normalizeSubdomain(*req.Subdomain)
-		// If the subdomain changed and a proxy host exists, drop it; the next start
-		// re-creates one for the new domain (and clears npm_host_id when cleared).
 		if sub != srv.Subdomain {
+			// A hostname is not this server's to claim. Changing it needs admin,
+			// and the same clash check the extra-routes handler has had all along.
+			//
+			// server.control was enough before, and a value containing a dot is a
+			// full domain rather than a subdomain -- so a delegate trusted with one
+			// Minecraft server could set it to the family shop's hostname, and on
+			// their next start the NPM path deletes the existing proxy host for
+			// that domain and points it at their container. The Cloudflare path
+			// does the same to the tunnel ingress rule.
+			if !isAdmin(r) {
+				jsonError(w, "only an admin can change a server's hostname", http.StatusForbidden)
+				return
+			}
+			if sub != "" {
+				host := strings.ToLower(sub)
+				var routeClash, subClash int
+				s.db.QueryRowContext(r.Context(),
+					"SELECT COUNT(*) FROM server_routes WHERE LOWER(hostname)=?", host).Scan(&routeClash)
+				s.db.QueryRowContext(r.Context(),
+					"SELECT COUNT(*) FROM servers WHERE LOWER(COALESCE(subdomain,''))=? AND id<>?", host, id).Scan(&subClash)
+				if routeClash+subClash > 0 {
+					jsonError(w, "that hostname is already used by a server on this panel", http.StatusConflict)
+					return
+				}
+			}
+			// The subdomain changed and a proxy host exists: drop it; the next start
+			// re-creates one for the new domain (and clears npm_host_id when cleared).
 			go s.npmRemoveServer(id)
 			go s.cfRemoveServer(id)
 		}
@@ -512,6 +537,16 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET bm_server_id=? WHERE id=?", strings.TrimSpace(*req.BMServerID), id)
 	}
 	if req.AutoForward != nil {
+		// Turning this ON opens ports on the household's router. The admin opted
+		// in to UPnP or UniFi once, globally; this flag is what spends that opt-in,
+		// and server.control was enough to spend it. A delegate trusted with their
+		// own Minecraft server could open its ports to the internet, and nothing
+		// recorded that they had.
+		if *req.AutoForward != srv.AutoForward && !isAdmin(r) {
+			jsonError(w, "only an admin can change whether this server's ports are opened on the router",
+				http.StatusForbidden)
+			return
+		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET auto_forward=? WHERE id=?", boolInt(*req.AutoForward), id)
 	}
 	if req.Autostart != nil {

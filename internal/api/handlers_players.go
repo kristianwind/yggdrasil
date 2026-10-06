@@ -93,7 +93,7 @@ type playersResponse struct {
 	CanKick      bool         `json:"can_kick"`
 	CanBroadcast bool         `json:"can_broadcast"`
 	CanLock      bool         `json:"can_lock"`
-	CanBan       bool         `json:"can_ban"` // DayZ: ban by writing ban.txt (effective on rejoin)
+	CanBan       bool         `json:"can_ban"`          // DayZ: ban by writing ban.txt (effective on rejoin)
 	Reason       string       `json:"reason,omitempty"` // why the list is unavailable (offline vs. RCON down)
 }
 

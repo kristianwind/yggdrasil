@@ -24,9 +24,9 @@ import (
 
 const (
 	watcherScanInterval = 30 * time.Second // how often every running server is scanned
-	watcherCooldown     = 10 * time.Minute  // min gap between firings of one watcher
-	watcherMaxWindow    = 3600              // clamp window_secs so a scan stays cheap
-	watcherSampleLines  = 20                // matched lines handed to Kvasir / shown
+	watcherCooldown     = 10 * time.Minute // min gap between firings of one watcher
+	watcherMaxWindow    = 3600             // clamp window_secs so a scan stays cheap
+	watcherSampleLines  = 20               // matched lines handed to Kvasir / shown
 )
 
 type logWatcher struct {
@@ -78,7 +78,7 @@ func (s *Server) scanWatchers() {
 }
 
 // watchersFor returns the enabled watchers that apply to a server (its own plus
-// the global server_id='' ones).
+// the global server_id=” ones).
 func (s *Server) watchersFor(serverID string) []logWatcher {
 	rows, err := s.db.Query(
 		`SELECT id, server_id, name, pattern, threshold, window_secs, action, enabled, COALESCE(last_fired,'')

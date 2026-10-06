@@ -74,6 +74,8 @@ func (s *Server) handleSetNetworkSettings(w http.ResponseWriter, r *http.Request
 	host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
 	host = strings.TrimSuffix(host, "/")
 	s.setSetting(r.Context(), "public_hostname", host)
+	s.closeWhatIntegrationOpened(r.Context(), "upnp",
+		s.getSetting(r.Context(), "upnp_enabled") == "1", req.UPnPEnabled, s.upnpRemoveServer)
 	s.setSetting(r.Context(), "upnp_enabled", boolStr(req.UPnPEnabled))
 	// BattleMetrics token is optional; only overwrite when provided (so the UI can
 	// omit it to keep the existing one). Encrypted at rest like other secrets.

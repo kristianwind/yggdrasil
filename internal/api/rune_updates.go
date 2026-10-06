@@ -51,9 +51,9 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 	// a recorded source (uploaded by hand) fall back to the default catalog by id,
 	// which is right for the ones that actually came from there.
 	type local struct {
-		name              string
-		version           int
-		repo, path, ref   string
+		name            string
+		version         int
+		repo, path, ref string
 	}
 	installed := map[string]local{}
 	rows, err := s.db.QueryContext(r.Context(),

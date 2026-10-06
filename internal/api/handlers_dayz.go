@@ -27,11 +27,11 @@ import (
 // modded), plus friendly editing of the globals cleanup timers.
 
 var (
-	dzLifetimeRe   = regexp.MustCompile(`<lifetime>\s*(\d+)\s*</lifetime>`)
-	dzTypeNameRe   = regexp.MustCompile(`<type\s+name=`)
-	dzGlobalVarRe  = regexp.MustCompile(`<var\s+name="(Cleanup\w+)"[^>]*\bvalue="(\d+)"`)
-	dzCeBlockRe    = regexp.MustCompile(`(?is)<ce\s+folder="([^"]+)"\s*>(.*?)</ce>`)
-	dzCeTypesFile  = regexp.MustCompile(`(?i)<file\s+name="([^"]+)"\s+type="types"\s*/>`)
+	dzLifetimeRe  = regexp.MustCompile(`<lifetime>\s*(\d+)\s*</lifetime>`)
+	dzTypeNameRe  = regexp.MustCompile(`<type\s+name=`)
+	dzGlobalVarRe = regexp.MustCompile(`<var\s+name="(Cleanup\w+)"[^>]*\bvalue="(\d+)"`)
+	dzCeBlockRe   = regexp.MustCompile(`(?is)<ce\s+folder="([^"]+)"\s*>(.*?)</ce>`)
+	dzCeTypesFile = regexp.MustCompile(`(?i)<file\s+name="([^"]+)"\s+type="types"\s*/>`)
 )
 
 // dayzMission resolves a DayZ server's data dir + mission name (empty ok=false if
@@ -500,9 +500,9 @@ func dayzWorkshopLookup(ctx context.Context, ids []string) map[string]workshopIt
 type dayzModStatus struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
-	Installed bool   `json:"installed"`        // an @<id> folder exists in the data dir
-	Workshop  string `json:"workshop"`         // ok | removed | unknown
-	URL       string `json:"url"`              // Workshop page link
+	Installed bool   `json:"installed"` // an @<id> folder exists in the data dir
+	Workshop  string `json:"workshop"`  // ok | removed | unknown
+	URL       string `json:"url"`       // Workshop page link
 }
 
 func dayzWorkshopURL(id string) string {

@@ -52,7 +52,7 @@ func (s *Server) serverPortProtos(ctx context.Context, serverID string) []portPr
 			// single tcp_udp rule for the pair. Splitting here would force UniFi
 			// to create two identically-named rules for one port — the shape of
 			// duplicate that makes a router's forward list unreadable.
-			out = append(out, portProto{Port: hp, Proto: p.Protocol, Admin: strings.EqualFold(p.Name, "rcon")})
+			out = append(out, portProto{Port: hp, Proto: p.Protocol, Admin: isAdminPort(p.Name)})
 		}
 	}
 	return out
@@ -115,3 +115,12 @@ func (s *Server) handleUPnPStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOK(w, resp)
 }
+
+// isAdminPort reports whether a rune's port is an administrative one.
+//
+// One definition, used by both the thing that decides what the router may
+// forward and the thing that decides which interface to bind. They disagreed
+// before: the forwarding path knew RCON was special and the bind did not, so a
+// port everyone believed was local answered the internet on any host with a
+// public address.
+func isAdminPort(name string) bool { return strings.EqualFold(name, "rcon") }

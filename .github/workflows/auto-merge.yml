@@ -5,7 +5,12 @@ name: Auto-merge
 # why it works without a human in the loop. Safety rails:
 #   - only fires when the CI workflow concluded "success";
 #   - only merges PRs opened by the repo owner (never external contributors);
-#   - skips any PR labelled "hold" or "no-automerge" (the manual-review escape hatch).
+#   - skips any PR labelled "hold" or "no-automerge" (the manual-review escape hatch);
+#   - skips a DRAFT pull request. Without this the job tries to merge one, GitHub
+#     refuses with "Pull Request is still a draft (mergePullRequest)", and the run
+#     goes red -- on every draft PR, which is how they are opened here. A red run
+#     for a correct refusal is the kind nobody reads, and it sits in the history
+#     next to the ones that mean something.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -29,7 +34,7 @@ jobs:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           pr=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
-                 --json number,author,labels --limit 1)
+                 --json number,author,labels,isDraft --limit 1)
           num=$(echo "$pr" | jq -r '.[0].number // empty')
           if [ -z "$num" ]; then
             echo "No open PR for branch '$BRANCH' — nothing to merge."
@@ -39,6 +44,10 @@ jobs:
           owner="${REPO%%/*}"
           if [ "$author" != "$owner" ]; then
             echo "PR #$num is by '$author' (not the owner '$owner') — leaving it for manual review."
+            exit 0
+          fi
+          if [ "$(echo "$pr" | jq -r '.[0].isDraft')" = "true" ]; then
+            echo "PR #$num is a draft — leaving it until it is marked ready for review."
             exit 0
           fi
           if echo "$pr" | jq -r '.[0].labels[].name' | grep -qiE '^(hold|no-automerge)$'; then

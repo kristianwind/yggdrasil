@@ -524,6 +524,9 @@ func weakSecret(v string) bool {
 // Secret values are never sent verbatim — only "(set)" / "(WEAK...)" — so the
 // advisor can flag a default/weak password without the plaintext leaving the box.
 func (s *Server) configSnapshot(rt *serverRuntime) string {
+	// Widened to the name-based floor: this snapshot leaves the machine for an
+	// external model, so a credential the rune forgot to flag would be sent to a
+	// third party and sit in their logs. See looksSecret.
 	secrets := secretEnvKeys(rt.gs)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Game/app rune: %s (%s)\nSettings (name [key] = value):\n", rt.gs.Name, rt.gs.ID)

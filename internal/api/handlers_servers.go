@@ -35,52 +35,52 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 type serverRow struct {
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	GameskillID    string            `json:"gameskill_id"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	GameskillID string `json:"gameskill_id"`
 	// RuneVersion is the rune's version in the catalog now; RuneVersionApplied is
 	// the one baked into the running container. They differ after a rune update
 	// until the server is restarted, which is worth showing: a rune fix that is
 	// "deployed" but not yet in effect looks identical to one that didn't work.
-	RuneVersion        int `json:"rune_version"`
-	RuneVersionApplied int `json:"rune_version_applied"`
-	RealmID        string            `json:"realm_id,omitempty"`
-	Status         string            `json:"status"`
-	ContainerID    string            `json:"container_id,omitempty"`
-	EnvJSON        string            `json:"-"`
-	PortsJSON      string            `json:"-"`
-	Ports          map[string]int    `json:"ports"`
-	Env            map[string]string `json:"env,omitempty"` // populated only on single GET
-	Tags           []string          `json:"tags"`          // normalized labels for grouping/filtering
-	CPUPercent     float64           `json:"cpu_percent"`
-	MemoryMB       int64             `json:"memory_mb"`
-	DataDir        string            `json:"data_dir"`
-	Installed      bool              `json:"installed"`
-	InstallStatus  string            `json:"install_status"`
-	CreatedAt      string            `json:"created_at"`
-	BMServerID     string            `json:"bm_server_id,omitempty"`
-	AutoForward    bool              `json:"auto_forward"`
-	Autostart      bool              `json:"autostart"`     // start on panel/host boot
-	StatusPublic   bool              `json:"status_public"` // listed on the public /status page (opt-in)
-	Subdomain      string            `json:"subdomain,omitempty"`
-	Perms          []string          `json:"perms"`                  // caller's effective permissions on this server
-	HostMountsJSON string            `json:"-"`                      // raw servers.host_mounts (admin host binds)
-	HostMounts     []hostMount       `json:"host_mounts,omitempty"`  // populated on single GET for admins only
-	WipeSupported  bool              `json:"wipe_supported"`         // rune declares a wipe: block (single GET)
-	RestartWarn    bool              `json:"restart_warn"`           // rune declares restart warnings (single GET)
-	Watchdog       bool              `json:"watchdog"`               // auto-heal enabled for this server
-	WatchdogSup    bool              `json:"watchdog_supported"`     // rune has a query the watchdog can health-check (single GET)
-	PlayersSup     bool              `json:"players_supported"`      // rune declares a players: block (Players tab; single GET)
-	AdminLogSup    bool              `json:"admin_log_supported"`    // rune declares an admin_log: block (Activity tab; single GET)
-	HasActivity    bool              `json:"has_activity"`           // rune records player sessions and/or app events (History tab; single GET)
-	ModsSupported  bool              `json:"mods_supported"`         // SERVER_TYPE maps to a Modrinth loader (Mods tab; single GET)
-	ConfigFiles    []string          `json:"config_files,omitempty"` // rune's config_files: the files worth editing (Files tab shortcuts; single GET)
-	AIEnabled      bool              `json:"ai_enabled"`             // advisory AI features are on (digest button; single GET)
-	CPUAlarmPct    int               `json:"cpu_alarm_pct"`          // alert when CPU% sustained at/above this (0 = off)
-	MemAlarmMB     int               `json:"mem_alarm_mb"`           // alert when memory MB sustained at/above this (0 = off)
-	DiskAlarmMB    int               `json:"disk_alarm_mb"`          // alert when the data dir grows to/above this many MB (0 = off)
-	Notes          string            `json:"notes"`                  // free-text admin notes (single GET)
-	NotesMarkdown  bool              `json:"notes_markdown"`         // render the note as markdown rather than plain text
+	RuneVersion        int               `json:"rune_version"`
+	RuneVersionApplied int               `json:"rune_version_applied"`
+	RealmID            string            `json:"realm_id,omitempty"`
+	Status             string            `json:"status"`
+	ContainerID        string            `json:"container_id,omitempty"`
+	EnvJSON            string            `json:"-"`
+	PortsJSON          string            `json:"-"`
+	Ports              map[string]int    `json:"ports"`
+	Env                map[string]string `json:"env,omitempty"` // populated only on single GET
+	Tags               []string          `json:"tags"`          // normalized labels for grouping/filtering
+	CPUPercent         float64           `json:"cpu_percent"`
+	MemoryMB           int64             `json:"memory_mb"`
+	DataDir            string            `json:"data_dir"`
+	Installed          bool              `json:"installed"`
+	InstallStatus      string            `json:"install_status"`
+	CreatedAt          string            `json:"created_at"`
+	BMServerID         string            `json:"bm_server_id,omitempty"`
+	AutoForward        bool              `json:"auto_forward"`
+	Autostart          bool              `json:"autostart"`     // start on panel/host boot
+	StatusPublic       bool              `json:"status_public"` // listed on the public /status page (opt-in)
+	Subdomain          string            `json:"subdomain,omitempty"`
+	Perms              []string          `json:"perms"`                  // caller's effective permissions on this server
+	HostMountsJSON     string            `json:"-"`                      // raw servers.host_mounts (admin host binds)
+	HostMounts         []hostMount       `json:"host_mounts,omitempty"`  // populated on single GET for admins only
+	WipeSupported      bool              `json:"wipe_supported"`         // rune declares a wipe: block (single GET)
+	RestartWarn        bool              `json:"restart_warn"`           // rune declares restart warnings (single GET)
+	Watchdog           bool              `json:"watchdog"`               // auto-heal enabled for this server
+	WatchdogSup        bool              `json:"watchdog_supported"`     // rune has a query the watchdog can health-check (single GET)
+	PlayersSup         bool              `json:"players_supported"`      // rune declares a players: block (Players tab; single GET)
+	AdminLogSup        bool              `json:"admin_log_supported"`    // rune declares an admin_log: block (Activity tab; single GET)
+	HasActivity        bool              `json:"has_activity"`           // rune records player sessions and/or app events (History tab; single GET)
+	ModsSupported      bool              `json:"mods_supported"`         // SERVER_TYPE maps to a Modrinth loader (Mods tab; single GET)
+	ConfigFiles        []string          `json:"config_files,omitempty"` // rune's config_files: the files worth editing (Files tab shortcuts; single GET)
+	AIEnabled          bool              `json:"ai_enabled"`             // advisory AI features are on (digest button; single GET)
+	CPUAlarmPct        int               `json:"cpu_alarm_pct"`          // alert when CPU% sustained at/above this (0 = off)
+	MemAlarmMB         int               `json:"mem_alarm_mb"`           // alert when memory MB sustained at/above this (0 = off)
+	DiskAlarmMB        int               `json:"disk_alarm_mb"`          // alert when the data dir grows to/above this many MB (0 = off)
+	Notes              string            `json:"notes"`                  // free-text admin notes (single GET)
+	NotesMarkdown      bool              `json:"notes_markdown"`         // render the note as markdown rather than plain text
 	// NotesHTML is the note rendered server-side, present only when NotesMarkdown
 	// is on. The frontend injects it, so it is produced by a renderer that drops
 	// raw HTML and empties dangerous URLs — see notes_render.go. Never build this
@@ -234,12 +234,9 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	// never echoed — neither plaintext nor the at-rest ciphertext — to anyone with
 	// only ServerView. The update handler treats secretMask as "keep existing", so
 	// the edit form round-trips without clobbering the real value.
+	maskSecretEnv(srv.Env, nil)
 	if rt, err := s.loadRuntime(r.Context(), id); err == nil {
-		for k := range secretEnvKeys(rt.gs) {
-			if srv.Env[k] != "" {
-				srv.Env[k] = secretMask
-			}
-		}
+		maskSecretEnv(srv.Env, rt.gs)
 		srv.WipeSupported = rt.gs.Wipe != nil
 		srv.RestartWarn = rt.gs.Restart != nil && len(rt.gs.Restart.Warnings) > 0
 		srv.WatchdogSup = rt.gs.Query != nil

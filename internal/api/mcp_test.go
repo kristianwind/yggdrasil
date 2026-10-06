@@ -13,6 +13,7 @@ import (
 	"github.com/kristianwind/yggdrasil/internal/auth"
 	"github.com/kristianwind/yggdrasil/internal/config"
 	"github.com/kristianwind/yggdrasil/internal/db"
+	"time"
 )
 
 // mcpTestServer is a panel with a real (in-memory) database and one admin, which
@@ -194,7 +195,7 @@ func TestOAuthConnectorFlow(t *testing.T) {
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 	q := url.Values{
 		"response_type": {"code"}, "client_id": {client.ClientID},
-		"redirect_uri": {"https://claude.ai/api/mcp/auth_callback"},
+		"redirect_uri":   {"https://claude.ai/api/mcp/auth_callback"},
 		"code_challenge": {challenge}, "code_challenge_method": {"S256"},
 		"state": {"xyz"}, "resource": {"https://panel.example/api/mcp"},
 	}
@@ -204,6 +205,10 @@ func TestOAuthConnectorFlow(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Claude") {
 		t.Fatalf("consent screen: %d", rec.Code)
 	}
+	// A browser carries the page's own nonce back in the form. Read it out of
+	// the rendered HTML rather than minting one, so this test exercises the
+	// round trip a real client makes.
+	csrf := consentCSRFFrom(t, rec.Body.String())
 
 	// 3. Approving posts back same-site, carrying the session cookie.
 	session, err := auth.GenerateToken(userID, "kw", "admin", 0, s.cfg.Auth.SecretKey, 24)
@@ -213,7 +218,7 @@ func TestOAuthConnectorFlow(t *testing.T) {
 	form := url.Values{
 		"client_id": {client.ClientID}, "redirect_uri": {"https://claude.ai/api/mcp/auth_callback"},
 		"code_challenge": {challenge}, "state": {"xyz"}, "decision": {"allow"},
-		"resource": {"https://panel.example/api/mcp"},
+		"resource": {"https://panel.example/api/mcp"}, "csrf": {csrf},
 	}
 	post := httptest.NewRequest("POST", "https://panel.example/oauth/authorize", strings.NewReader(form.Encode()))
 	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -332,5 +337,208 @@ func TestMCPUnauthorizedAdvertisesMetadata(t *testing.T) {
 	s.unauthorized(rec, httptest.NewRequest("GET", "https://panel.example/api/servers", nil))
 	if rec.Header().Get("WWW-Authenticate") != "" {
 		t.Error("only the MCP endpoint should advertise resource metadata")
+	}
+}
+
+// consentCSRFFrom pulls the one-shot nonce out of the rendered consent page,
+// the way a browser does when it submits the form.
+func consentCSRFFrom(t *testing.T, page string) string {
+	t.Helper()
+	const marker = `name="csrf" value="`
+	i := strings.Index(page, marker)
+	if i < 0 {
+		t.Fatal("the consent page carries no csrf field, so the form anyone could " +
+			"submit on the admin's behalf is back")
+	}
+	rest := page[i+len(marker):]
+	j := strings.Index(rest, `"`)
+	if j <= 0 {
+		t.Fatal("the csrf field is empty")
+	}
+	return rest[:j]
+}
+
+// The hole this closes: POST /oauth/authorize was a form with no proof it came
+// from this panel. SameSite=Strict stops a cross-SITE page and the attack is
+// same-site -- the panel and the apps it publishes share one base domain by
+// design, so script on a shop could auto-submit decision=allow while the admin
+// held a session and collect a connector token at its own redirect_uri.
+func TestConsentWithoutItsNonceIsRefused(t *testing.T) {
+	s, client, userID, challenge := oauthConsentFixture(t)
+
+	for _, tc := range []struct{ name, csrf string }{
+		{"no nonce at all, as a forged form would send", ""},
+		{"a nonce this panel never issued", "0000000000000000000000000000000000000000000000000000000000000000"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			session, err := auth.GenerateToken(userID, "kw", "admin", 0, s.cfg.Auth.SecretKey, 24)
+			if err != nil {
+				t.Fatalf("session: %v", err)
+			}
+			form := url.Values{
+				"client_id": {client.ClientID}, "redirect_uri": {"https://claude.ai/api/mcp/auth_callback"},
+				"code_challenge": {challenge}, "state": {"xyz"}, "decision": {"allow"},
+				"csrf": {tc.csrf},
+			}
+			post := httptest.NewRequest("POST", "https://panel.example/oauth/authorize", strings.NewReader(form.Encode()))
+			post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			post.AddCookie(&http.Cookie{Name: "ygg_token", Value: session})
+			rec := httptest.NewRecorder()
+
+			s.handleAuthorizeSubmit(rec, post)
+
+			if rec.Code == http.StatusFound {
+				t.Errorf("a consent form with %s was accepted and issued a code: %s",
+					tc.name, rec.Header().Get("Location"))
+			}
+		})
+	}
+}
+
+// A nonce is spent on use, so a captured form cannot be replayed.
+func TestConsentNonceIsSingleUse(t *testing.T) {
+	s, client, userID, challenge := oauthConsentFixture(t)
+
+	q := url.Values{
+		"response_type": {"code"}, "client_id": {client.ClientID},
+		"redirect_uri":   {"https://claude.ai/api/mcp/auth_callback"},
+		"code_challenge": {challenge}, "code_challenge_method": {"S256"},
+		"state": {"xyz"},
+	}
+	get := httptest.NewRequest("GET", "https://panel.example/oauth/authorize?"+q.Encode(), nil)
+	rec := httptest.NewRecorder()
+	s.handleAuthorize(rec, get)
+	csrf := consentCSRFFrom(t, rec.Body.String())
+
+	session, err := auth.GenerateToken(userID, "kw", "admin", 0, s.cfg.Auth.SecretKey, 24)
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	submit := func() int {
+		form := url.Values{
+			"client_id": {client.ClientID}, "redirect_uri": {"https://claude.ai/api/mcp/auth_callback"},
+			"code_challenge": {challenge}, "state": {"xyz"}, "decision": {"allow"}, "csrf": {csrf},
+		}
+		post := httptest.NewRequest("POST", "https://panel.example/oauth/authorize", strings.NewReader(form.Encode()))
+		post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		post.AddCookie(&http.Cookie{Name: "ygg_token", Value: session})
+		w := httptest.NewRecorder()
+		s.handleAuthorizeSubmit(w, post)
+		return w.Code
+	}
+
+	if first := submit(); first != http.StatusFound {
+		t.Fatalf("the first submit should succeed, got %d", first)
+	}
+	if second := submit(); second == http.StatusFound {
+		t.Error("the same nonce was accepted twice — a captured form can be replayed")
+	}
+}
+
+// oauthConsentFixture gives a panel, a registered client, a user and a PKCE
+// challenge — everything the consent step needs and nothing it does not.
+func oauthConsentFixture(t *testing.T) (s *Server, client struct {
+	ClientID string `json:"client_id"`
+}, userID, challenge string) {
+	t.Helper()
+	s, userID = mcpTestServer(t)
+
+	reg := httptest.NewRequest("POST", "https://panel.example/oauth/register",
+		strings.NewReader(`{"redirect_uris":["https://claude.ai/api/mcp/auth_callback"],"client_name":"Claude"}`))
+	reg.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.handleOAuthRegister(rec, reg)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	json.Unmarshal(rec.Body.Bytes(), &client) //nolint:errcheck
+	if client.ClientID == "" {
+		t.Fatal("no client_id issued")
+	}
+
+	sum := sha256.Sum256([]byte("a-verifier-long-enough-to-be-realistic-0123456789"))
+	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
+	return s, client, userID, challenge
+}
+
+// A connector token authenticated every route in the panel.
+//
+// The only check was on the token's AUDIENCE string, and the claims it produced
+// carry no scope for scopeAllows to enforce, so the middleware waved it through
+// for any path. The consent screen says the connector can "read your servers and
+// their logs, and start, stop or restart them"; the same token also reached
+// /api/panel/export, which decrypts every integration secret, TOTP secret and
+// password hash the panel holds.
+//
+// Driven through authMiddleware rather than a handler, because the hole was in
+// the middleware and a handler test cannot see it.
+func TestConnectorTokenIsConfinedToTheMCPEndpoint(t *testing.T) {
+	s, userID := mcpTestServer(t)
+
+	const token = oauthTokenPrefix + "test-connector-token"
+	if _, err := s.db.Exec(
+		`INSERT INTO oauth_tokens (token_hash, refresh_hash, client_id, user_id, resource, expires_at)
+		 VALUES (?,?,?,?,?,?)`,
+		auth.HashToken(token), auth.HashToken("refresh"), "c1", userID,
+		"https://panel.example/api/mcp", time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+
+	var reached bool
+	guarded := s.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, tc := range []struct {
+		path string
+		want bool
+		why  string
+	}{
+		{"/api/mcp", true, "the endpoint the token was issued for"},
+		{"/api/panel/export", false, "decrypts every secret in the panel"},
+		{"/api/servers", false, "every server, with env"},
+		{"/api/users", false, "user administration"},
+		{"/api/mcp/connections", false, "revokes connectors — a prefix check would allow it"},
+		{"/api/mcp/info", false, "for the signed-in web UI, not for a connector"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			reached = false
+			req := httptest.NewRequest("POST", "https://panel.example"+tc.path, nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+
+			guarded.ServeHTTP(rec, req)
+
+			if reached != tc.want {
+				if tc.want {
+					t.Errorf("the connector token was refused on %s (%s) — the connector is broken", tc.path, tc.why)
+				} else {
+					t.Errorf("the connector token reached %s, which %s", tc.path, tc.why)
+				}
+			}
+		})
+	}
+}
+
+// A token whose audience is empty used to skip the audience check altogether,
+// making it valid against every address the panel answers on.
+func TestConnectorTokenWithNoAudienceIsRefused(t *testing.T) {
+	s, userID := mcpTestServer(t)
+
+	const token = oauthTokenPrefix + "audience-less-token"
+	if _, err := s.db.Exec(
+		`INSERT INTO oauth_tokens (token_hash, refresh_hash, client_id, user_id, resource, expires_at)
+		 VALUES (?,?,?,?,'',?)`,
+		auth.HashToken(token), auth.HashToken("r"), "c1", userID,
+		time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "https://panel.example/api/mcp", nil)
+	if c := s.claimsForOAuthToken(req, token); c != nil {
+		t.Error("a token with no audience was accepted, so it is valid on every address this panel answers on")
 	}
 }

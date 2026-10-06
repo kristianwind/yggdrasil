@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -208,7 +211,7 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "redirect_uri does not match this client's registration")
 		return
 	}
-	renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName()})
+	renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(), CSRF: s.consent.issue()})
 }
 
 // handleAuthorizeSubmit is the POST from the consent screen — same-site, so the
@@ -218,10 +221,23 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "malformed form")
 		return
 	}
+	// Browsers that send it say where this POST came from. Checked first, and
+	// treated as advisory: a browser that omits the header is not refused,
+	// because the nonce below is the actual defence.
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		oauthError(w, http.StatusForbidden, "invalid_request", "this form was submitted from somewhere else")
+		return
+	}
 	p := readAuthorizeParams(r.PostForm)
 	client, err := s.oauthClient(r, p.ClientID)
 	if err != nil || !client.allows(p.RedirectURI) {
 		oauthError(w, http.StatusBadRequest, "invalid_client", "unknown client or redirect_uri")
+		return
+	}
+	// Spent whatever the decision is, so one cannot be reused after a Cancel.
+	if !s.consent.spend(r.PostForm.Get("csrf")) {
+		oauthError(w, http.StatusForbidden, "invalid_request",
+			"this consent form is stale or did not come from this panel - open the link again")
 		return
 	}
 
@@ -230,7 +246,8 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		// Not logged in on this browser. Re-render the same consent screen with a
 		// prompt rather than losing the request — the user opens the panel, signs
 		// in, and presses Allow again.
-		renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(), NeedLogin: true})
+		renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(),
+			NeedLogin: true, CSRF: s.consent.issue()})
 		return
 	}
 	if r.PostForm.Get("decision") != "allow" {
@@ -243,10 +260,10 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not issue a code")
 		return
 	}
-	resource := p.Resource
-	if resource == "" {
-		resource = mcpResourceURI(r)
-	}
+	// Pinned here, never taken from the client. A posted resource could only
+	// ever be the one value this panel issues tokens for, so accepting one was a
+	// way to get it wrong rather than a way to get it right.
+	resource := mcpResourceURI(r)
 	if _, err := s.db.ExecContext(r.Context(),
 		`INSERT INTO oauth_codes (code_hash, client_id, user_id, redirect_uri, challenge, resource, expires_at)
 		 VALUES (?,?,?,?,?,?,?)`,
@@ -386,7 +403,11 @@ func (s *Server) claimsForOAuthToken(r *http.Request, token string) *auth.Claims
 	if t, perr := time.Parse(time.RFC3339, expires); perr != nil || time.Now().After(t) {
 		return nil
 	}
-	if resource != "" && resource != mcpResourceURI(r) {
+	// An empty resource used to skip this check entirely, so a token issued
+	// without one was valid for every address the panel answers on. The audience
+	// is pinned when the token is issued; an empty one here is a token from
+	// before that, and it is refused rather than trusted.
+	if resource != mcpResourceURI(r) {
 		return nil
 	}
 	return &auth.Claims{UserID: userID, Username: username, Role: role}
@@ -475,6 +496,78 @@ type consentView struct {
 	PanelName string
 	Params    authorizeParams
 	NeedLogin bool
+	CSRF      string
+}
+
+// Consent nonces. One is minted when the consent page is rendered, carried in
+// the form, and spent when it comes back.
+//
+// Without it, POST /oauth/authorize was a form anyone could submit on the
+// admin's behalf. The session cookie is SameSite=Strict, which stops a
+// CROSS-SITE page -- and the attack is same-site: this product's own subdomain
+// feature puts the panel and the apps it publishes on one site, so a vulnerable
+// plugin on a shop could auto-submit decision=allow while the admin held a
+// panel session, and walk away with a connector token.
+//
+// The nonce lives in the page BODY, which is why it works where the cookie flag
+// does not: same-site or not, the Same-Origin Policy stops another origin from
+// READING this response, so it cannot learn the value it would have to send.
+//
+// Deliberately not derived from the session: the consent screen re-renders with
+// "you are not signed in, sign in and press Allow again", and a value bound to a
+// session that did not exist at render time cannot be checked once it does.
+//
+// In memory, not in the database. These live for minutes, and losing them on a
+// restart costs the user one reload of a link they already have.
+type consentNonces struct {
+	mu   sync.Mutex
+	seen map[string]time.Time
+}
+
+const consentNonceTTL = 15 * time.Minute
+
+// The zero value works. Deliberately: the Server is built by hand in tests and
+// through New() in production, and a field that has to be wired up in both is a
+// field somebody forgets in one of them -- here that was a nil map panicking in
+// the consent handler rather than a test failing with a message.
+//
+// issue mints a nonce and remembers it.
+func (c *consentNonces) issue() string {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "" // an empty nonce never verifies, so this fails closed
+	}
+	v := hex.EncodeToString(buf)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.seen == nil {
+		c.seen = map[string]time.Time{}
+	}
+	now := time.Now()
+	for k, t := range c.seen {
+		if now.Sub(t) > consentNonceTTL {
+			delete(c.seen, k)
+		}
+	}
+	c.seen[v] = now
+	return v
+}
+
+// spend reports whether this nonce was issued and not yet used, and consumes it.
+func (c *consentNonces) spend(v string) bool {
+	if v == "" {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t, ok := c.seen[v]
+	if !ok || time.Since(t) > consentNonceTTL {
+		delete(c.seen, v)
+		return false
+	}
+	delete(c.seen, v)
+	return true
 }
 
 func renderConsent(w http.ResponseWriter, v consentView) {
@@ -524,6 +617,7 @@ restart them. It gets your permissions, not more.</p>
   <input type="hidden" name="code_challenge" value="{{.Params.Challenge}}">
   <input type="hidden" name="resource" value="{{.Params.Resource}}">
   <input type="hidden" name="scope" value="{{.Params.Scope}}">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
   <div class="row">
     <button class="deny" type="submit" name="decision" value="deny">Cancel</button>
     <button class="allow" type="submit" name="decision" value="allow">Allow</button>

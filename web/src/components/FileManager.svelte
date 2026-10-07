@@ -1,6 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { api } from "../lib/api.js";
+  import { uploadFile } from "../lib/upload.js";
   import { toast } from "../lib/toast.js";
   import { promptDialog, confirmDialog } from "../lib/dialog.js";
 
@@ -179,29 +180,37 @@
   let dragOver = $state(false);
 
   // Upload a batch of { file, rel } (rel = subdir relative to the current path, ""
-  // for top level). The single-file endpoint is called once per file; subfolders
-  // are preserved by passing the joined path.
+  // for top level). Subfolders are preserved by passing the joined path.
   async function uploadFiles(items) {
     if (!items.length || uploading) return;
     uploading = true;
     let ok = 0;
     let fail = 0;
+    let lastErr = "";
     for (const { file, rel } of items) {
       const dest = [path, rel].filter(Boolean).join("/");
-      const fd = new FormData();
-      fd.append("path", dest);
-      fd.append("file", file);
+      const label = items.length > 1 ? `${ok + fail + 1}/${items.length} ` : "";
+      uploadMsg = `Uploading ${label}${file.name}…`;
       try {
-        await api.post(`/servers/${serverId}/files/upload`, fd);
+        await uploadFile(api.post, serverId, file, dest, (p) => {
+          uploadMsg = `Uploading ${label}${file.name}… ${Math.round(p * 100)}%`;
+        });
         ok++;
-      } catch {
+      } catch (e) {
         fail++;
+        lastErr = e?.message || "";
       }
-      uploadMsg = `Uploading… ${ok + fail}/${items.length}`;
     }
     uploading = false;
     uploadMsg = "";
-    toast(`Uploaded ${ok} file${ok !== 1 ? "s" : ""}${fail ? `, ${fail} failed` : ""}`, fail ? "warn" : "success");
+    // Say why, not just how many. A failed upload here is almost always one
+    // specific thing — out of disk, or a proxy limit smaller than our smallest
+    // piece — and "1 failed" sends the admin looking in the wrong place.
+    toast(
+      `Uploaded ${ok} file${ok !== 1 ? "s" : ""}` +
+        (fail ? `, ${fail} failed${lastErr ? `: ${lastErr}` : ""}` : ""),
+      fail ? "warn" : "success",
+    );
     list();
   }
 

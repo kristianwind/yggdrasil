@@ -14,6 +14,13 @@ import (
 	"syscall"
 )
 
+// UploadScratchDir is the folder inside a server's data directory where a
+// chunked upload accumulates before its final rename. It is scratch space, never
+// content: excluded from archives here, and swept by the API package that writes
+// it. One name, one definition — two copies of it is how an archive quietly
+// starts carrying gigabytes of nothing again.
+const UploadScratchDir = ".ygg_uploads"
+
 // Archive writes a gzip-compressed tar of dataDir to w. When include is
 // non-empty, only those top-level paths (files or directories) are archived —
 // matching a gameskill's backup.include. Paths are stored relative to dataDir.
@@ -61,6 +68,15 @@ func Archive(dataDir string, include []string, w io.Writer) (skipped []string, e
 				return nil
 			}
 			if fi.IsDir() {
+				// Never archive the half-assembled pieces of an upload somebody
+				// abandoned. A browser tab closed mid-upload leaves a .part file
+				// of up to the whole modpack, and a backup that happens in the
+				// hours before the sweep collects it would otherwise carry it to
+				// the NAS -- doubling the archive for a file that is not data,
+				// and that nothing could restore.
+				if fi.Name() == UploadScratchDir {
+					return filepath.SkipDir
+				}
 				return nil // tar entries for files carry their dir path
 			}
 			sk, ferr := addFile(tw, dataDir, path)

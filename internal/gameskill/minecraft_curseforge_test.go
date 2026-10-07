@@ -297,3 +297,65 @@ func TestMinecraftJavaCountsDownloadsInTheCurrentShell(t *testing.T) {
 		}
 	}
 }
+
+// A watcher's whole value is that it fires on the line a real server prints, so
+// the test matches the pattern against lines copied out of one — not against a
+// sample invented from the pattern, which would agree with anything.
+//
+// The first is from HogDay on 2026-10-07, a NeoForge 1.21.1 modpack that stopped
+// twice before anyone read far enough into the trace to find the mod's name.
+func TestMinecraftJavaWatchesForModpackStartFailures(t *testing.T) {
+	gs := loadMinecraftJava(t)
+
+	cases := []struct {
+		watcher string
+		line    string
+	}{
+		{
+			"A client-only mod is in mods/ — remove it and start again",
+			`Exception in thread "main" java.lang.NoClassDefFoundError: org/lwjgl/Version`,
+		},
+		{
+			"A mod is missing something it depends on",
+			`[18:04:11] [main/ERROR] [ne.ne.fm.lo.ModSorter/LOADING]: Missing or unsupported mandatory dependencies:`,
+		},
+		{"Out of memory", `[12:00:00] [Server thread/ERROR]: java.lang.OutOfMemoryError: Java heap space`},
+		{"Server can't keep up (lag)", `[12:00:00] [Server thread/WARN]: Can't keep up! Is the server overloaded?`},
+	}
+
+	// Lines a healthy server prints. None of the patterns may match these, or the
+	// watcher reports a quiet evening as an incident and gets switched off.
+	quiet := []string{
+		`[16:16:06] [Server thread/INFO] [minecraft/DedicatedServer]: Done (11.992s)! For help, type "help"`,
+		`[16:16:06] [Server thread/INFO] [minecraft/RconThread]: RCON running on 0.0.0.0:25011`,
+		`[16:15:40] [main/WARN] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Mod file ... is missing mods.toml file`,
+		`[16:15:41] [main/INFO] [ne.ne.fm.lo.mo.JarInJarDependencyLocator/]: Found 12 dependencies adding them to mods collection`,
+	}
+
+	for _, c := range cases {
+		var found bool
+		for _, w := range gs.Watchers {
+			if w.Name != c.watcher {
+				continue
+			}
+			found = true
+			re, err := regexp.Compile(w.Pattern)
+			if err != nil {
+				t.Errorf("watcher %q has an invalid pattern %q: %v", w.Name, w.Pattern, err)
+				continue
+			}
+			if !re.MatchString(c.line) {
+				t.Errorf("watcher %q does not match the line a server actually prints:\n  pattern %q\n  line    %q",
+					w.Name, w.Pattern, c.line)
+			}
+			for _, q := range quiet {
+				if re.MatchString(q) {
+					t.Errorf("watcher %q fires on an ordinary line:\n  pattern %q\n  line    %q", w.Name, w.Pattern, q)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("no watcher named %q", c.watcher)
+		}
+	}
+}

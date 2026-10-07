@@ -417,7 +417,7 @@ gameskill:
               rm -rf overrides
             fi
 
-            mkdir -p mods resourcepacks shaderpacks
+            mkdir -p mods resourcepacks shaderpacks mods-client-only
             jq -r '.files[]? | "\(.projectID) \(.fileID)"' manifest.json > .ygg_cf_files
             TOTAL=$(wc -l < .ygg_cf_files | tr -d ' ')
             echo "Fetching $TOTAL files from CurseForge"
@@ -446,6 +446,19 @@ gameskill:
                 6552) DESTDIR=shaderpacks ;;
                 *)    DESTDIR=mods ;;
               esac
+              # A mod the admin pulled out of mods/ because it crashed the server
+              # stays out. Without this, reinstalling to pick up a pack update
+              # downloads it again -- and the one mod anybody ever removes by hand
+              # is the client-only one that stopped the server, so the reinstall
+              # silently undoes the fix and the server dies on the next start for
+              # a reason that was already found once. Move a jar into
+              # mods-client-only/ and it is remembered.
+              if [ -f "mods-client-only/$FNAME" ]; then
+                echo "  - $FNAME is in mods-client-only/, leaving it out"
+                SKIPPED=$((SKIPPED+1))
+                GOT=$((GOT+1))
+                continue
+              fi
               if curl -fsSL -o "$DESTDIR/$FNAME" "$URL"; then
                 GOT=$((GOT+1))
                 [ "$DESTDIR" = mods ] || SKIPPED=$((SKIPPED+1))

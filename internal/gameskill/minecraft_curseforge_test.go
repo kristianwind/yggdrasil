@@ -359,3 +359,29 @@ func TestMinecraftJavaWatchesForModpackStartFailures(t *testing.T) {
 		}
 	}
 }
+
+// The one mod anybody ever removes from mods/ by hand is the client-only one
+// that stopped the server — which means a reinstall that downloads it again
+// silently undoes the only fix there was, and the server dies on the next start
+// for a reason somebody already found. mods-client-only/ is how it is remembered.
+func TestMinecraftJavaRemembersRemovedClientMods(t *testing.T) {
+	script := loadMinecraftJava(t).Install.Script
+	block := script[strings.Index(script, "minecraftModpack"):]
+
+	if !strings.Contains(block, `if [ -f "mods-client-only/$FNAME" ]; then`) {
+		t.Error("the download loop does not check mods-client-only/, so a reinstall re-adds a mod the admin removed")
+	}
+	// The check has to come before the download, or it remembers nothing.
+	skip := strings.Index(block, `mods-client-only/$FNAME`)
+	dl := strings.Index(block, `if curl -fsSL -o "$DESTDIR/$FNAME"`)
+	if skip < 0 || dl < 0 {
+		t.Fatalf("download loop is not shaped as expected (skip at %d, download at %d)", skip, dl)
+	}
+	if skip > dl {
+		t.Error("mods-client-only/ is consulted after the file has already been downloaded")
+	}
+	// And the folder has to exist, or the admin has nowhere to put the jar.
+	if !strings.Contains(block, "mkdir -p mods resourcepacks shaderpacks mods-client-only") {
+		t.Error("mods-client-only/ is never created, so there is nowhere to move a crashing mod to")
+	}
+}

@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge / NeoForge Java server, or a CurseForge modpack"
   author: "yggdrasil-core"
-  version: 14
+  version: 15
   icon: "minecraft"
 
   docker:
@@ -417,7 +417,7 @@ gameskill:
               rm -rf overrides
             fi
 
-            mkdir -p mods resourcepacks shaderpacks
+            mkdir -p mods resourcepacks shaderpacks mods-client-only
             jq -r '.files[]? | "\(.projectID) \(.fileID)"' manifest.json > .ygg_cf_files
             TOTAL=$(wc -l < .ygg_cf_files | tr -d ' ')
             echo "Fetching $TOTAL files from CurseForge"
@@ -446,6 +446,19 @@ gameskill:
                 6552) DESTDIR=shaderpacks ;;
                 *)    DESTDIR=mods ;;
               esac
+              # A mod the admin pulled out of mods/ because it crashed the server
+              # stays out. Without this, reinstalling to pick up a pack update
+              # downloads it again -- and the one mod anybody ever removes by hand
+              # is the client-only one that stopped the server, so the reinstall
+              # silently undoes the fix and the server dies on the next start for
+              # a reason that was already found once. Move a jar into
+              # mods-client-only/ and it is remembered.
+              if [ -f "mods-client-only/$FNAME" ]; then
+                echo "  - $FNAME is in mods-client-only/, leaving it out"
+                SKIPPED=$((SKIPPED+1))
+                GOT=$((GOT+1))
+                continue
+              fi
               if curl -fsSL -o "$DESTDIR/$FNAME" "$URL"; then
                 GOT=$((GOT+1))
                 [ "$DESTDIR" = mods ] || SKIPPED=$((SKIPPED+1))
@@ -742,6 +755,25 @@ gameskill:
       action: kvasir
     - name: "Out of memory"
       pattern: "java\\.lang\\.OutOfMemoryError"
+      threshold: 1
+      window_secs: 300
+      action: kvasir
+    # The two ways a modpack fails to start, both of which otherwise arrive as a
+    # thirty-line stack trace whose answer is one mod's name.
+    #
+    # LWJGL is the client's windowing and graphics library and is not on a server
+    # at all, so this message always means exactly one thing: a client-only mod is
+    # sitting in mods/. Nothing in a NeoForge mod's own metadata says which side
+    # it belongs on -- measured on Sodium 0.8.13, whose neoforge.mods.toml has no
+    # side field -- so it cannot be prevented at install time, only recognised
+    # here. Seen on a real pack 2026-10-07: it cost two start attempts.
+    - name: "A client-only mod is in mods/ — remove it and start again"
+      pattern: "NoClassDefFoundError: org/lwjgl"
+      threshold: 1
+      window_secs: 300
+      action: kvasir
+    - name: "A mod is missing something it depends on"
+      pattern: "Missing or unsupported mandatory dependencies"
       threshold: 1
       window_secs: 300
       action: kvasir

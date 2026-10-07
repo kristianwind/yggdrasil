@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge / NeoForge Java server, or a CurseForge modpack"
   author: "yggdrasil-core"
-  version: 13
+  version: 14
   icon: "minecraft"
 
   docker:
@@ -242,6 +242,20 @@ gameskill:
           fi
 
           CF_API=https://api.curseforge.com/v1
+          cfapi() { curl -fsSL -H "x-api-key: ${CF_API_KEY:-}" -H "Accept: application/json" "$1" || true; }
+          # Ask once, by hand, whether the key works. Every call goes through
+          # cfapi, which swallows a failure so the error can name the step --
+          # without this check they would all fail identically and blame the pack
+          # for a key CurseForge rejected.
+          cf_need_key() {
+            [ -n "${CF_API_KEY:-}" ] || { echo "$1"; exit 1; }
+            HTTP=$(curl -s -o /dev/null -w '%{http_code}' -H "x-api-key: $CF_API_KEY" -H "Accept: application/json" "$CF_API/games/432")
+            case "$HTTP" in
+              200) ;;
+              401|403) echo "CurseForge rejected the API key (HTTP $HTTP). Check it at https://console.curseforge.com/ and paste it again."; exit 1 ;;
+              *) echo "CurseForge did not answer (HTTP $HTTP). Try the install again in a minute."; exit 1 ;;
+            esac
+          }
           ZIP=.ygg_cf_pack.zip
           PACK_ID=""   # recorded, so the next install can tell the pack changed
           MCV=""       # Minecraft version the pack declares, when we can learn it
@@ -256,20 +270,8 @@ gameskill:
             cp modpack.zip "$ZIP"
             PACK_ID="file-$(md5sum modpack.zip | cut -c1-12)"
           else
-            [ -n "${CF_API_KEY:-}" ] || { echo "No CurseForge API key. Get a free one at https://console.curseforge.com/ (API Keys), paste it into this server's settings and reinstall. Or skip CurseForge entirely: download the pack's server files yourself and put the .zip address in 'Direct server-pack .zip address', or upload the file as modpack.zip under Files."; exit 1; }
-            [ -n "${CF_MODPACK:-}" ] || { echo "No modpack chosen. Open the pack on curseforge.com and paste the whole page address into 'CurseForge modpack'."; exit 1; }
-
-            # Ask once, by hand, whether the key works. Every call below goes
-            # through cfapi, which swallows a failure so the error can name the
-            # step -- without this check they would all fail identically and say
-            # "pack not found" over a key CurseForge rejected.
-            HTTP=$(curl -s -o /dev/null -w '%{http_code}' -H "x-api-key: $CF_API_KEY" -H "Accept: application/json" "$CF_API/games/432")
-            case "$HTTP" in
-              200) ;;
-              401|403) echo "CurseForge rejected the API key (HTTP $HTTP). Check it at https://console.curseforge.com/ and paste it again."; exit 1 ;;
-              *) echo "CurseForge did not answer (HTTP $HTTP). Try the install again in a minute."; exit 1 ;;
-            esac
-            cfapi() { curl -fsSL -H "x-api-key: $CF_API_KEY" -H "Accept: application/json" "$1" || true; }
+            [ -n "${CF_MODPACK:-}" ] || { echo "No modpack chosen. Open the pack on curseforge.com and paste the whole page address into 'CurseForge modpack'. Or skip CurseForge: put a server-pack .zip address in 'Direct server-pack .zip address', or upload the file as modpack.zip under Files."; exit 1; }
+            cf_need_key "No CurseForge API key. Get a free one at https://console.curseforge.com/ (API Keys), paste it into this server's settings and reinstall. Or skip CurseForge entirely: download the pack's server files yourself and put the .zip address in 'Direct server-pack .zip address', or upload the file as modpack.zip under Files."
 
             # Accept the page address, the slug on its own, or the numeric id.
             SLUG=$(printf '%s' "$CF_MODPACK" | sed -e 's#^.*/minecraft/modpacks/##' -e 's#[?#].*$##' -e 's#/.*$##' -e 's#^ *##' -e 's# *$##')
@@ -348,6 +350,126 @@ gameskill:
           if [ -f server.properties ]; then rm -f "$INNER/server.properties"; fi
           cp -a "$INNER"/. ./
           rm -rf .ygg_cf_tmp "$ZIP"
+
+          # A CurseForge CLIENT export, not a server pack: manifest.json naming
+          # the loader and every mod by id, modlist.html, and an overrides/ folder.
+          # It contains no mods and no server -- the launcher fetches them -- and
+          # it is what somebody sends you when they built the pack themselves, so
+          # it arrives at least as often as a published server pack does. Without
+          # this the unpack produces three files and a folder, no loader, no jars,
+          # and an error listing them, which is accurate and no help at all.
+          if [ -f manifest.json ] && [ "$(jq -r '.manifestType // empty' manifest.json)" = "minecraftModpack" ]; then
+            PACKNAME=$(jq -r '.name // "this pack"' manifest.json)
+            MCV=$(jq -r '.minecraft.version // empty' manifest.json)
+            # The primary loader, falling back to the first when none is flagged.
+            LOADER_ID=$(jq -r '[.minecraft.modLoaders[]? | select(.primary == true)] + [.minecraft.modLoaders[]?] | map(.id) | .[0] // empty' manifest.json)
+            need "$MCV" "manifest.json does not say which Minecraft version this pack is for"
+            need "$LOADER_ID" "manifest.json does not name a mod loader"
+            echo "CurseForge client pack \"$PACKNAME\" - Minecraft $MCV, $LOADER_ID"
+
+            # Before the loader, not after: installing one takes a minute, and
+            # without a key this pack cannot be finished whatever happens next.
+            # An error that arrives first is the same error, for free.
+            cf_need_key "This is a CurseForge client pack: it lists its mods by id instead of containing them, so every one has to be fetched from CurseForge, and that needs an API key. Get a free one at https://console.curseforge.com/ (API Keys) and paste it into this server's settings. There is no way around the key for this kind of pack -- the files are not in the zip."
+
+            # The manifest names the exact loader build, so nothing is resolved
+            # here: no "latest", no promotions file, no guessing.
+            case "$LOADER_ID" in
+              neoforge-*)
+                NF=${LOADER_ID#neoforge-}
+                echo "Installing NeoForge $NF (this takes a minute)"
+                curl -fsSL -o neoforge-installer.jar \
+                  "https://maven.neoforged.net/releases/net/neoforged/neoforge/$NF/neoforge-$NF-installer.jar"
+                java -jar neoforge-installer.jar --installServer
+                rm -f neoforge-installer.jar neoforge-installer.jar.log
+                LOADER=neoforge
+                ;;
+              forge-*)
+                FV=${LOADER_ID#forge-}
+                # A manifest writes forge as either "forge-47.2.0" or the full
+                # "forge-1.20.1-47.2.0"; maven only knows the full form.
+                case "$FV" in "$MCV-"*) FULL="$FV" ;; *) FULL="$MCV-$FV" ;; esac
+                echo "Installing Forge $FULL (this takes a minute)"
+                curl -fsSL -o forge-installer.jar \
+                  "https://maven.minecraftforge.net/net/minecraftforge/forge/$FULL/forge-$FULL-installer.jar"
+                java -jar forge-installer.jar --installServer
+                rm -f forge-installer.jar forge-installer.jar.log
+                LOADER=forge
+                ;;
+              fabric-*)
+                FL=${LOADER_ID#fabric-}
+                FI=$(curl -fsSL https://meta.fabricmc.net/v2/versions/installer | jq -r '.[0].version')
+                need "$FI" "could not reach the Fabric installer index"
+                curl -fsSL -o server.jar \
+                  "https://meta.fabricmc.net/v2/versions/loader/$MCV/$FL/$FI/server/jar"
+                LOADER=fabric
+                ;;
+              *)
+                echo "This pack wants the loader \"$LOADER_ID\", which this rune cannot install. Forge, NeoForge and Fabric are supported."
+                exit 1 ;;
+            esac
+
+            # overrides/ is the pack's own config, scripts and resources. It goes
+            # in before the mods so a mod's first start reads the pack's config
+            # rather than writing its own defaults.
+            if [ -d overrides ]; then
+              cp -a overrides/. ./
+              rm -rf overrides
+            fi
+
+            mkdir -p mods resourcepacks shaderpacks
+            jq -r '.files[]? | "\(.projectID) \(.fileID)"' manifest.json > .ygg_cf_files
+            TOTAL=$(wc -l < .ygg_cf_files | tr -d ' ')
+            echo "Fetching $TOTAL files from CurseForge"
+            GOT=0; SKIPPED=0; MISSING=""
+            # Redirected, not piped: a `while read` on the right-hand side of a
+            # pipe runs in a subshell under sh, and every count below would be
+            # lost at the end of the loop while the loop itself looked fine.
+            while read -r PID FID2; do
+              [ -n "$PID" ] || continue
+              FJ=$(cfapi "$CF_API/mods/$PID/files/$FID2")
+              URL=$(printf '%s' "$FJ" | jq -r '.data.downloadUrl // empty')
+              [ -n "$URL" ] || URL=$(cfapi "$CF_API/mods/$PID/files/$FID2/download-url" | jq -r '.data // empty')
+              FNAME=$(printf '%s' "$FJ" | jq -r '.data.fileName // empty')
+              [ -n "$FNAME" ] || FNAME=$(printf '%s' "$URL" | sed 's#.*/##' | sed 's#?.*##')
+              if [ -z "$URL" ]; then
+                MISSING="$MISSING\n  - project $PID file $FID2${FNAME:+ ($FNAME)}"
+                continue
+              fi
+              # A pack lists resource packs and shaders alongside its mods, and
+              # CurseForge says which is which (classId 6 = mod, 12 = resource
+              # pack, 6552 = shader). Loading a resource pack as a mod is a crash
+              # on start, so put each where it belongs rather than in mods/.
+              CLASS=$(cfapi "$CF_API/mods/$PID" | jq -r '.data.classId // empty')
+              case "$CLASS" in
+                12)   DESTDIR=resourcepacks ;;
+                6552) DESTDIR=shaderpacks ;;
+                *)    DESTDIR=mods ;;
+              esac
+              if curl -fsSL -o "$DESTDIR/$FNAME" "$URL"; then
+                GOT=$((GOT+1))
+                [ "$DESTDIR" = mods ] || SKIPPED=$((SKIPPED+1))
+              else
+                MISSING="$MISSING\n  - $FNAME (download failed)"
+              fi
+            done < .ygg_cf_files
+            rm -f .ygg_cf_files manifest.json modlist.html
+
+            echo "Installed $GOT of $TOTAL files ($((GOT-SKIPPED)) mods, $SKIPPED resource/shader packs)."
+            if [ -n "$MISSING" ]; then
+              # Not fatal: a pack of forty mods where two authors disallow
+              # third-party downloads should still produce a server, with the two
+              # named so they can be dropped into mods/ by hand.
+              printf 'CurseForge would not hand out these, so they are NOT installed:%b\n' "$MISSING"
+              echo "Download each from its CurseForge page and upload it into mods/ under Files."
+            fi
+            # Said plainly because nothing can detect it: a NeoForge mod does not
+            # declare which side it belongs on. Measured on Sodium 0.8.13, the
+            # most client-only mod there is -- its own neoforge.mods.toml has no
+            # side field at all, only side="CLIENT" on its dependencies. So a
+            # client pack's rendering mods come across with everything else.
+            echo "Note: this was a client pack, so it may include mods that only work on a client (a rendering mod such as Sodium, a minimap). Nothing in a mod's own metadata says which, so they are installed with the rest. If the server dies on its first start, the crash names the mod -- delete it under Files in mods/ and start again."
+          fi
 
           # How does this thing start? Most definite answer first.
           find_args() {

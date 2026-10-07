@@ -11,9 +11,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/backup"
 	"github.com/kristianwind/yggdrasil/internal/docker"
 	"github.com/kristianwind/yggdrasil/internal/rbac"
 )
@@ -284,12 +289,79 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"status": "deleted"})
 }
 
+// Where a chunked upload accumulates: inside the server's own data directory
+// rather than /tmp, because a modpack or a world is hundreds of megabytes, and
+// assembling it on the same filesystem as its destination makes the final move a
+// rename instead of a second full copy — and makes the space it needs the space
+// the admin can already see. The name is defined once, in the backup package,
+// which is the other half that has to agree about it.
+const uploadDir = backup.UploadScratchDir
+
+// uploadState tracks one in-flight chunked upload. Chunks have to arrive in
+// order and exactly once: a retried chunk that simply appended again would
+// produce a file that is the right name, the right place, and quietly corrupt —
+// so the server decides which index it will accept next, rather than trusting
+// the number the client puts in the form.
+type uploadState struct {
+	next    int
+	tmp     string
+	started time.Time
+}
+
+type uploadTracker struct {
+	mu sync.Mutex
+	m  map[string]*uploadState
+}
+
+func (t *uploadTracker) get(id string) (*uploadState, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	st, ok := t.m[id]
+	return st, ok
+}
+
+func (t *uploadTracker) put(id string, st *uploadState) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.m == nil {
+		t.m = map[string]*uploadState{}
+	}
+	t.m[id] = st
+}
+
+func (t *uploadTracker) drop(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.m, id)
+}
+
+// sweep forgets uploads nobody finished and deletes what they left behind. A
+// browser tab closed halfway through is the ordinary case, not an error, and
+// without this every one of them keeps its partial file on the admin's disk for
+// good — in a folder they have no reason to look in.
+func (t *uploadTracker) sweep(olderThan time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for id, st := range t.m {
+		if time.Since(st.started) > olderThan {
+			os.Remove(st.tmp) //nolint:errcheck
+			delete(t.m, id)
+		}
+	}
+}
+
+// uploadIDRe keeps an upload id to characters that cannot climb out of the
+// upload directory or name something else. It is part of a filename.
+var uploadIDRe = regexp.MustCompile(`^[a-zA-Z0-9]{8,64}$`)
+
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	dataDir, ok := s.serverDataDir(w, r)
 	if !ok {
 		return
 	}
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
+	// 8 MB of form in memory; anything larger spills to a temp file. A chunk is
+	// well under this, and a whole-file upload still works the way it always did.
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		jsonError(w, "parse form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -301,7 +373,13 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dest, ok := safeJoin(dataDir, filepath.Join(rel, header.Filename))
+	// The browser sends its own name for a chunk; the real one is a separate
+	// field, because a chunk's Blob has no filename of its own.
+	name := header.Filename
+	if n := strings.TrimSpace(r.FormValue("name")); n != "" {
+		name = n
+	}
+	dest, ok := safeJoin(dataDir, filepath.Join(rel, filepath.Base(name)))
 	if !ok {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return
@@ -310,17 +388,88 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	out, err := os.Create(dest)
+
+	count, _ := strconv.Atoi(r.FormValue("chunk_count"))
+	if count <= 1 {
+		// Whole file in one request — unchanged, and still what a small file and
+		// any existing API client does.
+		out, err := os.Create(dest)
+		if err != nil {
+			jsonError(w, "create: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer out.Close()
+		if _, err := io.Copy(out, file); err != nil {
+			jsonError(w, "write: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.auditLog(r, "file.upload", "server:"+chi.URLParam(r, "id"), map[string]string{"name": name})
+		jsonOK(w, map[string]string{"status": "uploaded"})
+		return
+	}
+
+	id := r.FormValue("upload_id")
+	if !uploadIDRe.MatchString(id) {
+		jsonError(w, "invalid upload id", http.StatusBadRequest)
+		return
+	}
+	index, err := strconv.Atoi(r.FormValue("chunk_index"))
+	if err != nil || index < 0 || index >= count {
+		jsonError(w, "invalid chunk index", http.StatusBadRequest)
+		return
+	}
+	s.uploads.sweep(6 * time.Hour)
+
+	st, known := s.uploads.get(id)
+	if index == 0 {
+		if err := os.MkdirAll(filepath.Join(dataDir, uploadDir), 0755); err != nil {
+			jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		st = &uploadState{tmp: filepath.Join(dataDir, uploadDir, id+".part"), started: time.Now()}
+		os.Remove(st.tmp) //nolint:errcheck
+		s.uploads.put(id, st)
+	} else if !known {
+		// The panel restarted, or the upload was swept. Say which, because the
+		// browser's only other reading of a 409 is "this file already exists".
+		jsonError(w, "this upload is no longer in progress — start it again", http.StatusConflict)
+		return
+	}
+	if index != st.next {
+		jsonError(w, fmt.Sprintf("expected chunk %d, got %d", st.next, index), http.StatusConflict)
+		return
+	}
+
+	out, err := os.OpenFile(st.tmp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		jsonError(w, "create: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer out.Close()
 	if _, err := io.Copy(out, file); err != nil {
+		out.Close()
 		jsonError(w, "write: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.auditLog(r, "file.upload", "server:"+chi.URLParam(r, "id"), map[string]string{"name": header.Filename})
+	if err := out.Close(); err != nil {
+		jsonError(w, "write: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	st.next++
+
+	if st.next < count {
+		jsonOK(w, map[string]any{"status": "chunk", "received": st.next, "of": count})
+		return
+	}
+	// Last chunk: the assembled file becomes the real one in a single rename, so
+	// nothing ever observes it half-written under its final name.
+	if err := os.Rename(st.tmp, dest); err != nil {
+		os.Remove(st.tmp) //nolint:errcheck
+		s.uploads.drop(id)
+		jsonError(w, "finish: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.uploads.drop(id)
+	s.auditLog(r, "file.upload", "server:"+chi.URLParam(r, "id"), map[string]string{"name": name, "chunks": strconv.Itoa(count)})
 	jsonOK(w, map[string]string{"status": "uploaded"})
 }
 

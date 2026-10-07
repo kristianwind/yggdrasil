@@ -39,6 +39,10 @@ type Server struct {
 	runeRestarts *runeRestartState
 	// One-shot nonces for the OAuth consent form; see oauth.go.
 	consent consentNonces
+	// In-flight chunked file uploads, keyed by upload id; see handlers_files.go.
+	// A value, not a pointer: the zero value is usable and the map inside it is
+	// created on first use.
+	uploads uploadTracker
 	osUpd   osUpdateCache // host OS update status, refreshed on a TTL
 
 	pubCount   *publicCount // cached public install count (unauthenticated endpoint)

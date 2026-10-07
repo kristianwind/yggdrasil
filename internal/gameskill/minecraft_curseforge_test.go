@@ -212,3 +212,88 @@ func TestMinecraftJavaScriptsParseAsShell(t *testing.T) {
 		}
 	}
 }
+
+// A CurseForge CLIENT export is what somebody sends you when they built the pack
+// themselves: manifest.json naming the loader and every mod by id, modlist.html,
+// and overrides/. It contains no mods and no server, so without a branch for it
+// the unpack produces three files and an error listing them — accurate, and no
+// help at all.
+func TestMinecraftJavaInstallsAClientManifest(t *testing.T) {
+	gs := loadMinecraftJava(t)
+	script := gs.Install.Script
+
+	for _, want := range []string{"minecraftModpack", "manifest.json", "overrides"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("install script never mentions %q, so a client export cannot be installed", want)
+		}
+	}
+
+	// The key is demanded BEFORE a loader is installed. Getting this the other way
+	// round costs a minute of somebody's time installing NeoForge for a pack that
+	// then cannot be finished — the same error, paid for.
+	//
+	// Measured inside the client-pack block, not across the whole script: the
+	// ordinary neoforge SERVER_TYPE branch downloads an installer by the same
+	// name and sits earlier in the file, so a search over the whole thing answers
+	// a different question correctly and reports this one as broken. It did, the
+	// first time this test ran.
+	block := script[strings.Index(script, "minecraftModpack"):]
+	// The call has to be a call, not merely a line containing those words. A
+	// `: ` in front of it — the shell no-op — leaves every substring in place and
+	// switches the check off, and the first version of this test passed over
+	// exactly that. Recognising a string is not evaluating what it does.
+	key := lineStarting(block, `cf_need_key "This is a CurseForge client pack`)
+	loader := lineStarting(block, "curl -fsSL -o neoforge-installer.jar")
+	if key < 0 || loader < 0 {
+		t.Fatalf("client-pack branch is not shaped as expected (key at %d, loader at %d)", key, loader)
+	}
+	if key > loader {
+		t.Error("the client pack installs a loader before checking for an API key it cannot finish without")
+	}
+
+	// A pack lists resource packs and shaders beside its mods, and loading a
+	// resource pack as a mod is a crash on start. Assert the routing itself, not
+	// that the words appear: "mkdir -p mods resourcepacks shaderpacks" contains
+	// both names while sending every file to mods/, which is how the loose
+	// version of this check passed over a deleted case arm.
+	for _, want := range []string{"12)   DESTDIR=resourcepacks", "6552) DESTDIR=shaderpacks", `case "$CLASS" in`} {
+		if !strings.Contains(block, want) {
+			t.Errorf("pack files are not sorted by kind: %q missing", want)
+		}
+	}
+}
+
+// lineStarting returns the offset of the first line whose trimmed text starts
+// with prefix, or -1. Used instead of strings.Index where a disabled copy of the
+// same line would otherwise read as the live one.
+func lineStarting(s, prefix string) int {
+	off := 0
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			return off
+		}
+		off += len(line) + 1
+	}
+	return -1
+}
+
+// Measured on bash and dash: a `while read` on the right-hand side of a pipe runs
+// in a subshell, so every counter it keeps is discarded when the loop ends — the
+// install would report "Installed 0 of 30 files" after installing all thirty, and
+// the loop itself would look perfectly correct. The redirect form keeps the loop
+// in the current shell.
+func TestMinecraftJavaCountsDownloadsInTheCurrentShell(t *testing.T) {
+	script := loadMinecraftJava(t).Install.Script
+	if !strings.Contains(script, "done < .ygg_cf_files") {
+		t.Error("the mod download loop does not read from a redirect; piping into `while read` loses every count it keeps")
+	}
+	for _, line := range strings.Split(script, "\n") {
+		l := strings.TrimSpace(line)
+		if strings.HasPrefix(l, "#") {
+			continue
+		}
+		if strings.Contains(l, "| while read") {
+			t.Errorf("a `while read` is fed by a pipe, so it runs in a subshell: %s", l)
+		}
+	}
+}

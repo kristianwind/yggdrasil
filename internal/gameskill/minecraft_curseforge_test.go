@@ -238,8 +238,12 @@ func TestMinecraftJavaInstallsAClientManifest(t *testing.T) {
 	// a different question correctly and reports this one as broken. It did, the
 	// first time this test ran.
 	block := script[strings.Index(script, "minecraftModpack"):]
-	key := strings.Index(block, `cf_need_key "This is a CurseForge client pack`)
-	loader := strings.Index(block, "neoforge-installer.jar")
+	// The call has to be a call, not merely a line containing those words. A
+	// `: ` in front of it — the shell no-op — leaves every substring in place and
+	// switches the check off, and the first version of this test passed over
+	// exactly that. Recognising a string is not evaluating what it does.
+	key := lineStarting(block, `cf_need_key "This is a CurseForge client pack`)
+	loader := lineStarting(block, "curl -fsSL -o neoforge-installer.jar")
 	if key < 0 || loader < 0 {
 		t.Fatalf("client-pack branch is not shaped as expected (key at %d, loader at %d)", key, loader)
 	}
@@ -247,13 +251,30 @@ func TestMinecraftJavaInstallsAClientManifest(t *testing.T) {
 		t.Error("the client pack installs a loader before checking for an API key it cannot finish without")
 	}
 
-	// A pack lists resource packs and shaders beside its mods. Loading a resource
-	// pack as a mod is a crash on start, so each has to land in its own folder.
-	for _, want := range []string{"resourcepacks", "shaderpacks", "classId"} {
-		if !strings.Contains(script, want) {
-			t.Errorf("install script does not sort pack files by kind: %q missing", want)
+	// A pack lists resource packs and shaders beside its mods, and loading a
+	// resource pack as a mod is a crash on start. Assert the routing itself, not
+	// that the words appear: "mkdir -p mods resourcepacks shaderpacks" contains
+	// both names while sending every file to mods/, which is how the loose
+	// version of this check passed over a deleted case arm.
+	for _, want := range []string{"12)   DESTDIR=resourcepacks", "6552) DESTDIR=shaderpacks", `case "$CLASS" in`} {
+		if !strings.Contains(block, want) {
+			t.Errorf("pack files are not sorted by kind: %q missing", want)
 		}
 	}
+}
+
+// lineStarting returns the offset of the first line whose trimmed text starts
+// with prefix, or -1. Used instead of strings.Index where a disabled copy of the
+// same line would otherwise read as the live one.
+func lineStarting(s, prefix string) int {
+	off := 0
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			return off
+		}
+		off += len(line) + 1
+	}
+	return -1
 }
 
 // Measured on bash and dash: a `while read` on the right-hand side of a pipe runs

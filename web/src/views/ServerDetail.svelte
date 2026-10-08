@@ -1244,6 +1244,7 @@
     }
   }
   let connectHost = $derived(network?.effective || "");
+  let lanHost = $derived(network?.internal || "");
 
   // Host-port editing (admin) — PUT /servers/{id}/ports. A running server is
   // recreated on the new port; a stopped one binds it on next start.
@@ -2076,10 +2077,32 @@
         <div class="flex flex-wrap gap-2">
           {#each Object.entries(server.ports) as [name, port]}
             <span class="badge bg-panel2 border border-border font-mono text-xs">
-              {name}: {connectHost || "your-host"}:{port}
+              {#if (server.local_only_ports || []).includes(name)}
+                {name}: 127.0.0.1:{port}
+              {:else}
+                {name}: {connectHost || "your-host"}:{port}
+              {/if}
             </span>
           {/each}
         </div>
+        {#if (server.local_only_ports || []).length}
+          <!-- The admin port is published to loopback only (since v0.3.22), so
+               printing it beside the public host invited someone to connect to an
+               address that cannot answer — and then to read the failure as the
+               server being broken. -->
+          <div class="text-muted text-xs mt-1">
+            {server.local_only_ports.join(", ")} listens on the panel host only — reach it from the console here, or forward it over SSH.
+          </div>
+        {/if}
+        {#if lanHost && lanHost !== connectHost}
+          <!-- The public hostname is the address from OUTSIDE. On the same network
+               as the panel, a home router usually will not route back in on it, so
+               the one address the admin is shown is the one that cannot work from
+               the chair they are sitting in. -->
+          <div class="text-muted text-xs mt-1">
+            On this network: <span class="font-mono">{lanHost}</span> instead of <span class="font-mono">{connectHost}</span>.
+          </div>
+        {/if}
         {#if !connectHost}
           <div class="text-muted text-xs mt-1">Set a public hostname in <a href="#/settings" class="underline">Settings → Network</a> to replace “your-host”.</div>
         {/if}

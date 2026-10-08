@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -43,26 +44,71 @@ func unifiRuleTag(serverID string) string {
 	return "[ygg:" + serverID + "]"
 }
 
+// logUniFi records what the panel did (or could not do) on the router, the same
+// way logUPnP does for UPnP.
+//
+// This exists because the UniFi half had none of it. Every failure path returned
+// bare, and CreatePortForward's error was discarded with `_ =` -- so a server
+// with "auto forward" switched on could be unreachable from the internet for a
+// day with the panel showing the setting as on, the log saying nothing at all,
+// and no way to tell "the rule was never attempted" from "the router refused
+// it". Measured 2026-10-08 on a server whose UniFi login was answering HTTP 403:
+// the panel had been failing silently every start.
+func (s *Server) logUniFi(serverID, serverName, verb string, done, failed []string, reason string) {
+	if reason != "" {
+		log.Printf("unifi: could not %s port forwards for %s: %s", verb, serverName, reason)
+		s.auditSystem("unifi."+verb+".failed", "server:"+serverID, "yggdrasil", map[string]any{
+			"server": serverName, "reason": reason,
+		})
+		s.notifyServer(serverID, fmt.Sprintf(
+			"⚠️ %s has automatic port forwarding on, but the panel could not reach UniFi: %s. The server is running; it is just not opened to the internet.",
+			serverName, reason))
+		return
+	}
+	if len(done) == 0 && len(failed) == 0 {
+		return
+	}
+	if len(done) > 0 {
+		log.Printf("unifi: %s %s on the router for %s", verb, strings.Join(done, ", "), serverName)
+	}
+	for _, f := range failed {
+		log.Printf("unifi: could NOT %s %s for %s", strings.TrimSuffix(verb, "ed"), f, serverName)
+	}
+	s.auditSystem("unifi."+verb, "server:"+serverID, "yggdrasil", map[string]any{
+		"server": serverName, "ports": done, "failed": failed,
+	})
+	if len(failed) > 0 {
+		s.notifyServer(serverID, fmt.Sprintf(
+			"⚠️ UniFi refused %d port forward(s) for %s: %s", len(failed), serverName, strings.Join(failed, ", ")))
+	}
+}
+
 // unifiAddServer creates WAN port-forward rules for a server (best-effort).
 func (s *Server) unifiAddServer(serverID, serverName string) {
 	defer recoverLog("unifiAddServer")
 	ctx := context.Background()
 	c, err := s.unifiClient(ctx)
-	if err != nil || c == nil {
+	if err != nil {
+		s.logUniFi(serverID, serverName, "open", nil, nil, err.Error())
 		return
+	}
+	if c == nil {
+		return // UniFi is not configured at all; nothing was promised
 	}
 	s.unifiDeleteFor(c, serverID) // clear stale rules first
 	lan := localLANIP()
 	if lan == "" {
+		s.logUniFi(serverID, serverName, "open", nil, nil, "the panel could not work out its own LAN address")
 		return
 	}
 	tag := unifiRuleTag(serverID)
+	var opened, failed []string
 	for _, pp := range s.serverPortProtos(ctx, serverID) {
 		if pp.Admin {
 			continue // never WAN-forward the RCON/admin port
 		}
 		port := strconv.Itoa(pp.Port)
-		_ = c.CreatePortForward(unifi.PortForward{
+		if err := c.CreatePortForward(unifi.PortForward{
 			Name:          fmt.Sprintf("Yggdrasil: %s %s", serverName, tag),
 			Enabled:       true,
 			Src:           "any",
@@ -71,8 +117,13 @@ func (s *Server) unifiAddServer(serverID, serverName string) {
 			FwdPort:       port,
 			Proto:         unifiProto(pp.Proto),
 			PfwdInterface: "wan",
-		})
+		}); err != nil {
+			failed = append(failed, fmt.Sprintf("%s/%s (%v)", port, pp.Proto, err))
+			continue
+		}
+		opened = append(opened, fmt.Sprintf("%s/%s", port, pp.Proto))
 	}
+	s.logUniFi(serverID, serverName, "opened", opened, failed, "")
 }
 
 // unifiRemoveServer removes a server's WAN port-forward rules (best-effort).

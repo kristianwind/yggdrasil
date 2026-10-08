@@ -251,6 +251,15 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		srv.HasActivity = (rt.gs.Players != nil && rt.gs.Players.SessionJoin != "") || len(rt.gs.Events) > 0
 		_, srv.ModsSupported = modProfileFor(rt.modServerType()) // Modrinth mod manager
 		srv.ConfigFiles = rt.gs.ConfigFiles
+		// Which ports are published to 127.0.0.1 only, computed with the same
+		// isAdminPort the container's port mapping uses so the badge and the
+		// binding cannot drift apart. The UI printed "<host>:<rcon port>" as
+		// something to connect to; since v0.3.22 nothing outside the host can.
+		for _, p := range rt.gs.Ports {
+			if isAdminPort(p.Name) {
+				srv.LocalOnlyPorts = append(srv.LocalOnlyPorts, p.Name)
+			}
+		}
 	}
 	// AI features (digest, error-explainer) are available whenever AI is enabled;
 	// the digest button additionally lives inside the admin-log-gated Activity tab.

@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -181,5 +183,23 @@ func TestUniFiAddServerReportsAnUnreachableController(t *testing.T) {
 	}
 	if !strings.Contains(detail, "connect") && !strings.Contains(detail, "refused") {
 		t.Errorf("the reason did not survive into the record: %q", detail)
+	}
+}
+
+// "The integration is switched off here" and "the router did not answer" both
+// came back 502. A 502 names an upstream that failed, so it sends somebody to
+// look at their gateway when the answer is a checkbox on the page they are
+// already on — which is what happened, at a cost of one round trip. The panel
+// never contacted anything: 1.3ms, 50 bytes.
+func TestUniFiOffIsNotABadGateway(t *testing.T) {
+	if got := unifiErrStatus(errUnifiOff); got != 409 {
+		t.Errorf("a disabled integration returned %d, want 409 — 502 blames the router", got)
+	}
+	// Anything the controller itself did must still read as an upstream failure.
+	if got := unifiErrStatus(errors.New("connect: connection refused")); got != 502 {
+		t.Errorf("a controller failure returned %d, want 502", got)
+	}
+	if got := unifiErrStatus(fmt.Errorf("listing rules: %w", errUnifiOff)); got != 409 {
+		t.Errorf("a wrapped errUnifiOff returned %d, want 409 — errors.Is, not ==", got)
 	}
 }

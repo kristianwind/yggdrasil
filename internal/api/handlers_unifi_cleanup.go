@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -113,7 +114,7 @@ type unifiOrphanView struct {
 func (s *Server) handleUnifiOrphans(w http.ResponseWriter, r *http.Request) {
 	orphans, myIP, err := s.unifiFindOrphans(r.Context())
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusBadGateway)
+		jsonError(w, err.Error(), unifiErrStatus(err))
 		return
 	}
 	out := make([]unifiOrphanView, 0, len(orphans))
@@ -132,7 +133,7 @@ func (s *Server) handleUnifiOrphans(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUnifiCleanup(w http.ResponseWriter, r *http.Request) {
 	orphans, myIP, err := s.unifiFindOrphans(r.Context())
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusBadGateway)
+		jsonError(w, err.Error(), unifiErrStatus(err))
 		return
 	}
 	c, cerr := s.unifiClient(r.Context())
@@ -174,3 +175,15 @@ type unifiErr string
 func (e unifiErr) Error() string { return string(e) }
 
 const errUnifiOff = unifiErr("UniFi is not configured on this panel")
+
+// unifiErrStatus keeps "the switch here is off" apart from "the router did not
+// answer". Both used to come back 502, which sends somebody to look at their
+// gateway when the answer is a checkbox on this page -- and it did, costing a
+// round trip on 2026-10-08. A 502 names an upstream that failed; nothing
+// upstream was ever contacted (1.3ms, before any network call).
+func unifiErrStatus(err error) int {
+	if errors.Is(err, errUnifiOff) {
+		return http.StatusConflict
+	}
+	return http.StatusBadGateway
+}

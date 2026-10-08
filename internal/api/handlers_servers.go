@@ -91,6 +91,12 @@ type serverRow struct {
 	// "down". See health_check.go for why the readiness dial cannot answer this.
 	HealthPath string `json:"health_path"`      // single GET
 	Health     string `json:"health,omitempty"` // "", "ok", "down"
+	// LocalOnlyPorts names the ports published to 127.0.0.1 rather than to every
+	// interface -- RCON, since v0.3.22. The UI prints a connect address per port,
+	// and for these it was printing one nobody outside the host can use. Computed
+	// here with the same isAdminPort the container's port mapping uses, so the
+	// badge and the binding cannot drift apart.
+	LocalOnlyPorts []string `json:"local_only_ports,omitempty"` // single GET
 }
 
 const serverCols = "id, name, gameskill_id, COALESCE(realm_id,''), status, COALESCE(container_id,''), data_dir, installed, install_status, COALESCE(ports_json,'{}'), created_at, COALESCE(bm_server_id,''), COALESCE(auto_forward,1), COALESCE(subdomain,''), COALESCE(host_mounts,''), COALESCE(autostart,1), COALESCE(watchdog,0), COALESCE(status_public,0), COALESCE(cpu_alarm_pct,0), COALESCE(mem_alarm_mb,0), COALESCE(disk_alarm_mb,0), COALESCE(tags,''), COALESCE((SELECT version FROM gameskills g WHERE g.id = servers.gameskill_id),0), COALESCE(rune_version_applied,0)"

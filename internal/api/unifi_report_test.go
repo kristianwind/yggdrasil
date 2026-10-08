@@ -2,8 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/auth"
 
 	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
@@ -69,24 +74,60 @@ func TestNoUniFiConfiguredIsNotAFailure(t *testing.T) {
 }
 
 // The RCON port is published to 127.0.0.1 only. Printing it beside the public
-// host invited someone to connect to an address that cannot answer, and then to
-// read the failure as the server being broken.
+// hostname invited someone to connect to an address that cannot answer, and then
+// to read the failure as the server being broken.
+//
+// This drives the real handler. The first version re-implemented the loop in the
+// test and was green over a planted `if false` in the code it was meant to be
+// checking — a correct answer to a question nobody had asked.
 func TestAdminPortIsReportedAsLocalOnly(t *testing.T) {
-	gs := &gameskill.Gameskill{Ports: []gameskill.Port{
-		{Name: "game", Default: 25565, Protocol: "tcp"},
-		{Name: "rcon", Default: 25575, Protocol: "tcp"},
-	}}
-	var local []string
-	for _, p := range gs.Ports {
-		if isAdminPort(p.Name) {
-			local = append(local, p.Name)
-		}
+	s := testServer(t)
+	id := "cccccccc-0000-0000-0000-000000000000"
+	const runeYAML = `gameskill:
+  id: mc-test
+  name: MC Test
+  version: 1
+  docker: {image: "eclipse-temurin:21-jre"}
+  startup: {command: "true"}
+  ports:
+    - {name: game, default: 25565, protocol: tcp}
+    - {name: rcon, default: 25575, protocol: tcp}
+`
+	if _, err := s.db.Exec(`INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin) VALUES ('mc-test','MC Test','Minecraft',1,?,1)`, runeYAML); err != nil {
+		t.Fatal(err)
 	}
-	if len(local) != 1 || local[0] != "rcon" {
-		t.Errorf("local-only ports = %v, want [rcon]", local)
+	if _, err := s.db.Exec(
+		`INSERT INTO servers (id, name, gameskill_id, data_dir, status, ports_json) VALUES (?,?,?,?,'running','{"game":25010,"rcon":25011}')`,
+		id, "HogDay", "mc-test", t.TempDir()); err != nil {
+		t.Fatal(err)
 	}
-	// And the mapping it is derived from really does bind loopback, so the badge
-	// and the binding cannot say different things.
+
+	r := httptest.NewRequest("GET", "/api/servers/"+id, nil)
+	rc := chi.NewRouteContext()
+	rc.URLParams.Add("id", id)
+	ctx := context.WithValue(r.Context(), chi.RouteCtxKey, rc)
+	ctx = withClaims(ctx, &auth.Claims{UserID: "a1", Username: "admin", Role: "admin"})
+	w := httptest.NewRecorder()
+	s.handleGetServer(w, r.WithContext(ctx))
+	if w.Code != 200 {
+		t.Fatalf("GET server returned %d: %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		LocalOnlyPorts []string `json:"local_only_ports"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.LocalOnlyPorts) != 1 || got.LocalOnlyPorts[0] != "rcon" {
+		t.Errorf("local_only_ports = %v, want [rcon] — the UI would print the public host for a port bound to loopback", got.LocalOnlyPorts)
+	}
+
+	// And the binding it describes: the badge and the port mapping must not be
+	// able to say different things.
+	gs, err := gameskill.Parse([]byte(runeYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, pm := range serverPortMappings(gs, map[string]int{"game": 25010, "rcon": 25011}) {
 		if pm.ContainerPort == 25575 && pm.HostIP != "127.0.0.1" {
 			t.Errorf("rcon is published on %q, so calling it local-only would be a lie", pm.HostIP)

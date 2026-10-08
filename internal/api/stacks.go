@@ -122,6 +122,43 @@ const sidecarHealthTimeout = 2 * time.Minute
 // 'database' before the sidecar was on the network and exited 1. WordPress only
 // ever survived the same race because its entrypoint retries.
 //
+// enabledSidecars returns the services that should be running for a server with
+// this env. A sidecar can be optional -- the WordPress rune's object cache is
+// `enabled: "{{OBJECT_CACHE}}"` -- and one that is switched off is not a sidecar
+// that failed to start. It is one that is not supposed to exist, and nothing was
+// ever going to create it.
+//
+// Anything that waits for "the stack" has to ask this, or it waits for a
+// container nobody will ever make. Found 2026-10-08 on 3dekoration.dk, a server
+// created before the rune had an object cache: an app update stopped the site,
+// waited sixty seconds for a redis that does not exist, and failed.
+//
+// A service whose Enabled is neither true nor false is counted as REQUIRED here,
+// which is the opposite of how startStack reads it -- deliberately. startStack
+// turns that into an error and refuses to bring the stack up; if this said "off"
+// the caller would conclude the stack was fine, skip startStack, and never see
+// that error. Counting it in means startStack runs and says what is wrong.
+func enabledSidecars(gs *gameskill.Gameskill, env map[string]string) []gameskill.Service {
+	out := make([]gameskill.Service, 0, len(gs.Services))
+	for _, svc := range gs.Services {
+		on, err := svc.IsEnabled(env)
+		if err != nil || on {
+			out = append(out, svc)
+		}
+	}
+	return out
+}
+
+// stackUp reports whether every sidecar that SHOULD be running is running.
+func (s *Server) stackUp(ctx context.Context, id string, gs *gameskill.Gameskill, env map[string]string) bool {
+	for _, svc := range enabledSidecars(gs, env) {
+		if running, _, err := s.docker.State(ctx, sidecarName(id, svc.Name)); err != nil || !running {
+			return false
+		}
+	}
+	return true
+}
+
 // Only an image that declares a healthcheck can be waited on. A sidecar without
 // one is skipped rather than guessed at — "running" is all Docker can say about
 // it, and that is already true by the time we get here. (Immich's postgres has

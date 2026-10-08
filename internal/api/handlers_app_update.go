@@ -242,15 +242,7 @@ func appUpdateEnv(rt *serverRuntime) []string {
 // update script that queries a database should still expect to retry (the
 // WordPress rune polls before it starts).
 func (s *Server) ensureStackUp(ctx context.Context, id, dataDir string, rt *serverRuntime, pub func(string)) error {
-	allUp := true
-	for _, svc := range rt.gs.Services {
-		running, _, err := s.docker.State(ctx, sidecarName(id, svc.Name))
-		if err != nil || !running {
-			allUp = false
-			break
-		}
-	}
-	if allUp {
+	if s.stackUp(ctx, id, rt.gs, rt.env) {
 		return nil
 	}
 	pub("Bringing the app's own services up for the update ...")
@@ -258,15 +250,7 @@ func (s *Server) ensureStackUp(ctx context.Context, id, dataDir string, rt *serv
 		return fmt.Errorf("could not start the app's services: %w", err)
 	}
 	for i := 0; i < 30; i++ {
-		allUp = true
-		for _, svc := range rt.gs.Services {
-			running, _, err := s.docker.State(ctx, sidecarName(id, svc.Name))
-			if err != nil || !running {
-				allUp = false
-				break
-			}
-		}
-		if allUp {
+		if s.stackUp(ctx, id, rt.gs, rt.env) {
 			return nil
 		}
 		time.Sleep(2 * time.Second)

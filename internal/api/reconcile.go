@@ -314,14 +314,12 @@ func (s *Server) startStackForAutostart(ctx context.Context, id string) {
 	if err != nil || rt.gs == nil || len(rt.gs.Services) == 0 {
 		return
 	}
-	allUp := true
-	for _, svc := range rt.gs.Services {
-		if running, _, err := s.docker.State(ctx, sidecarName(id, svc.Name)); err != nil || !running {
-			allUp = false
-			break
-		}
-	}
-	if allUp {
+	// Same question as the app update asks, and for the same reason: a sidecar the
+	// operator turned off is not down. Without this every autostart check finds
+	// the stack "incomplete" and calls startStack, which removes and recreates a
+	// perfectly healthy database -- exactly what the comment above says this is
+	// here to avoid.
+	if s.stackUp(ctx, id, rt.gs, rt.env) {
 		return
 	}
 	srv, err := s.getServer(ctx, id)

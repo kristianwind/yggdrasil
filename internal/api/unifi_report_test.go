@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
@@ -92,5 +94,51 @@ func TestAdminPortIsReportedAsLocalOnly(t *testing.T) {
 		if pm.ContainerPort == 25565 && pm.HostIP != "" {
 			t.Errorf("the game port is bound to %q; it must stay reachable", pm.HostIP)
 		}
+	}
+}
+
+// The test above proves the reporting works; this one proves the call site uses
+// it, which is the half that was missing. UniFi is pointed at a port where
+// nothing is listening, so Login fails for real — no controller required, and no
+// assumption about what one would say.
+func TestUniFiAddServerReportsAnUnreachableController(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	id := "bbbbbbbb-0000-0000-0000-000000000000"
+	if _, err := s.db.Exec(
+		`INSERT INTO servers (id, name, gameskill_id, data_dir, status, ports_json) VALUES (?,?,?,?,'running','{"game":25010}')`,
+		id, "HogDay", "minecraft-java", t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	// testServer leaves the cipher nil; unifiClient has to decrypt the stored
+	// password, so give this one a real key rather than reach around the path
+	// under test.
+	ciph, err := crypto.New("unit-test-key-at-least-16")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.cipher = ciph
+	enc, err := ciph.Encrypt("not-the-real-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.setSetting(ctx, "unifi_enabled", "1")
+	s.setSetting(ctx, "unifi_url", "https://127.0.0.1:1") // nothing listens here
+	s.setSetting(ctx, "unifi_user", "probe")
+	s.setSetting(ctx, "unifi_pass", enc)
+
+	s.unifiAddServer(id, "HogDay")
+
+	var action, detail string
+	if err := s.db.QueryRow(
+		`SELECT action, COALESCE(detail_json,'') FROM audit_log WHERE resource=? ORDER BY rowid DESC LIMIT 1`,
+		"server:"+id).Scan(&action, &detail); err != nil {
+		t.Fatalf("unifiAddServer failed silently — nothing in the audit log: %v", err)
+	}
+	if !strings.HasPrefix(action, "unifi.") || !strings.Contains(action, "failed") {
+		t.Errorf("audit action = %q, want a unifi failure", action)
+	}
+	if !strings.Contains(detail, "connect") && !strings.Contains(detail, "refused") {
+		t.Errorf("the reason did not survive into the record: %q", detail)
 	}
 }

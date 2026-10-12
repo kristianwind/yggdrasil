@@ -251,6 +251,15 @@ func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 		srv.HasActivity = (rt.gs.Players != nil && rt.gs.Players.SessionJoin != "") || len(rt.gs.Events) > 0
 		_, srv.ModsSupported = modProfileFor(rt.modServerType()) // Modrinth mod manager
 		srv.ConfigFiles = rt.gs.ConfigFiles
+		// Which ports are published to 127.0.0.1 only, computed with the same
+		// isAdminPort the container's port mapping uses so the badge and the
+		// binding cannot drift apart. The UI printed "<host>:<rcon port>" as
+		// something to connect to; since v0.3.22 nothing outside the host can.
+		for _, p := range rt.gs.Ports {
+			if isAdminPort(p.Name) {
+				srv.LocalOnlyPorts = append(srv.LocalOnlyPorts, p.Name)
+			}
+		}
 	}
 	// AI features (digest, error-explainer) are available whenever AI is enabled;
 	// the digest button additionally lives inside the admin-log-gated Activity tab.
@@ -554,6 +563,21 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.db.ExecContext(r.Context(), "UPDATE servers SET auto_forward=? WHERE id=?", boolInt(*req.AutoForward), id)
+		// Turning it OFF has to close what it opened, or the switch is a label.
+		// It wrote the flag and nothing else: the router kept forwarding the port
+		// to this server for as long as it existed, while the panel showed the
+		// setting as off. Found 2026-10-08 on a server whose auto_forward had
+		// been 0 for weeks with its WAN rule still in the UniFi list and still
+		// answering from the internet.
+		//
+		// Same shape as the integration-level teardown added in v0.3.22, which
+		// closed the global switch and left this one -- so the fix was written,
+		// and then only half applied.
+		if srv.AutoForward && !*req.AutoForward {
+			go s.upnpRemoveServer(id)
+			go s.unifiRemoveServer(id)
+			s.auditLog(r, "server.auto_forward.off", "server:"+id, map[string]any{"name": srv.Name})
+		}
 	}
 	if req.Autostart != nil {
 		s.db.ExecContext(r.Context(), "UPDATE servers SET autostart=? WHERE id=?", boolInt(*req.Autostart), id)

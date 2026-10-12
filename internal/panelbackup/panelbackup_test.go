@@ -186,8 +186,22 @@ func TestEachArchiveIsSaltedAfresh(t *testing.T) {
 	if err := Create(cfg, database, "same", &b); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(a.Bytes()[:len(magic)+saltLen+12], b.Bytes()[:len(magic)+saltLen+12]) {
-		t.Error("two archives share a salt and nonce")
+	// Compared separately. The first version compared the whole header in one
+	// slice, which the still-random nonce made different on its own — so it went
+	// green over a salt that had been fixed to all zeroes.
+	saltA := a.Bytes()[len(magic) : len(magic)+saltLen]
+	saltB := b.Bytes()[len(magic) : len(magic)+saltLen]
+	if bytes.Equal(saltA, saltB) {
+		t.Errorf("two archives share a salt (%x) — the key is then the same for both", saltA)
+	}
+	var zero [saltLen]byte
+	if bytes.Equal(saltA, zero[:]) {
+		t.Error("the salt is all zeroes; it is not being generated")
+	}
+	nonceA := a.Bytes()[len(magic)+saltLen : len(magic)+saltLen+12]
+	nonceB := b.Bytes()[len(magic)+saltLen : len(magic)+saltLen+12]
+	if bytes.Equal(nonceA, nonceB) {
+		t.Errorf("two archives share a nonce (%x)", nonceA)
 	}
 }
 

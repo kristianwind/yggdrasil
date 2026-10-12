@@ -931,6 +931,53 @@
     }
   }
 
+  // Backing up the PANEL itself — the database and the one key every stored
+  // credential is encrypted with. See internal/panelbackup for why the archive
+  // must contain that key, and therefore why it must be encrypted.
+  let panelBackup = $state({ enabled: false, hour: 4, keep: 7, target_id: "", passphrase_set: false, last_day: "" });
+  let panelPass = $state("");
+  let savingPanelBackup = $state(false);
+  let runningPanelBackup = $state(false);
+  let panelBackupHistory = $state([]);
+  async function loadPanelBackup() {
+    try {
+      panelBackup = await api.get("/panel/backup");
+      panelBackupHistory = await api.get("/panel/backup/history");
+    } catch {
+      /* non-fatal */
+    }
+  }
+  async function savePanelBackup() {
+    savingPanelBackup = true;
+    try {
+      panelBackup = await api.put("/panel/backup", {
+        enabled: !!panelBackup.enabled,
+        target_id: panelBackup.target_id || "",
+        hour: Number(panelBackup.hour) || 0,
+        keep: Number(panelBackup.keep) || 0,
+        passphrase: panelPass,
+      });
+      panelPass = "";
+      toast("Panel backup saved", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      savingPanelBackup = false;
+    }
+  }
+  async function runPanelBackupNow() {
+    runningPanelBackup = true;
+    try {
+      const r = await api.post("/panel/backup/run", {});
+      toast("Panel backup written: " + r.path, "success");
+      panelBackupHistory = await api.get("/panel/backup/history");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      runningPanelBackup = false;
+    }
+  }
+
   // Confirmation prompts before a stop or a restart. Panel-wide and on by
   // default; the value also rides on /auth/me, so after saving the user store is
   // reloaded and the buttons change behaviour without a page refresh.
@@ -1527,6 +1574,7 @@
     loadMCP();
     loadBackupVerify();
     loadBackupPolicy();
+    loadPanelBackup();
     loadUnifi();
     loadNpm();
     loadCf();
@@ -3191,6 +3239,83 @@
   {/if}
   <button class="btn-primary" onclick={saveBackupPolicy} disabled={savingBackupPolicy}>
     {savingBackupPolicy ? "Saving…" : "Save policy"}</button>
+</div>
+
+<!-- The panel's own backup -->
+<h2 class="text-xl font-semibold mb-2 mt-10">Panel backup</h2>
+<p class="text-muted mb-4 text-sm">
+  Every server has backups. This backs up <b>the panel</b>: which servers exist, their settings and ports,
+  users, domains, backup targets, schedules and runes — everything you would otherwise rebuild from memory.
+  About 13 MB. Server data is not included; it has its own backups.
+</p>
+<div class="card p-4 space-y-3">
+  <!-- Said before the switch, not after. The archive has to carry the panel's
+       encryption key or it cannot be restored, which makes the file itself a
+       master key to every credential the panel holds. -->
+  <p class="text-xs text-warn">
+    The archive contains the key that decrypts every stored credential, so it is encrypted with a passphrase
+    you set. <b>Keep that passphrase somewhere other than this panel</b> — restoring happens on a host that
+    cannot read it from here, and without it the backup is unrecoverable.
+  </p>
+  <div>
+    <label class="label" for="pb-pass">Passphrase</label>
+    <input id="pb-pass" class="input" type="password" bind:value={panelPass}
+      placeholder={panelBackup.passphrase_set ? "Set — type to replace" : "Choose a passphrase"} />
+  </div>
+  <label class="flex items-center gap-2 text-sm cursor-pointer">
+    <input type="checkbox" bind:checked={panelBackup.enabled} />
+    Back up the panel daily
+  </label>
+  {#if panelBackup.enabled}
+    <div class="flex flex-wrap gap-4">
+      <div>
+        <label class="label" for="pb-hour">At (hour)</label>
+        <select id="pb-hour" class="input w-auto" bind:value={panelBackup.hour}>
+          {#each Array(24) as _, h}
+            <option value={h}>{String(h).padStart(2, "0")}:00</option>
+          {/each}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="pb-target">Target</label>
+        <select id="pb-target" class="input w-auto" bind:value={panelBackup.target_id}>
+          <option value="">Select a target…</option>
+          {#each targets.filter((t) => t.type !== "pbs") as t}
+            <option value={t.id}>{t.name} ({t.type})</option>
+          {/each}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="pb-keep">Keep</label>
+        <input id="pb-keep" class="input w-auto" type="number" min="0" bind:value={panelBackup.keep} />
+      </div>
+    </div>
+    {#if targets.filter((t) => t.type !== "pbs").length === 0}
+      <!-- A Proxmox target stores deduplicated chunks of a directory, not a
+           named blob, so it cannot hold this archive and is left out of the list
+           rather than accepted and failed later. -->
+      <p class="text-xs text-warn">Add a file backup target above first (local, NFS, SMB or SFTP).</p>
+    {/if}
+  {/if}
+  <div class="flex items-center gap-2">
+    <button class="btn-primary" onclick={savePanelBackup} disabled={savingPanelBackup}>
+      {savingPanelBackup ? "Saving…" : "Save"}</button>
+    <button class="btn-ghost" onclick={runPanelBackupNow} disabled={runningPanelBackup}>
+      {runningPanelBackup ? "Backing up…" : "Back up now"}</button>
+  </div>
+  {#if panelBackupHistory.length}
+    <div class="text-xs text-muted">
+      {#each panelBackupHistory.slice(0, 5) as b}
+        <div class="font-mono">
+          {b.created_at} — {b.status}{b.size_bytes ? ` (${Math.round(b.size_bytes / 1024)} kB)` : ""}{b.error_msg ? `: ${b.error_msg}` : ""}
+        </div>
+      {/each}
+    </div>
+  {/if}
+  <p class="text-xs text-muted">
+    Restore on the new host with <code>yggdrasil panel-restore -i &lt;file&gt;</code> — it shows what is in the
+    archive first and only writes with <code>--apply</code>.
+  </p>
 </div>
 
 <!-- Nightly backup verification -->

@@ -409,6 +409,10 @@ is admin-only and the files should be treated like passwords.
 | --- | --- | --- | --- |
 | `GET` | `/api/servers/{id}/export` | Admin | One server as a portable `.tar.gz`: data dir, rune, variables (secrets decrypted), limits, ports, group, schedules, watchers, notification routing, subdomain |
 | `POST` | `/api/servers/import` | Admin | Create a server from an exported bundle. Keeps the source's host ports when free (reports `ports_changed` otherwise) and the subdomain unless taken (`subdomain_dropped`) |
+| `GET` | `/api/panel/backup` | Admin | The panel's own backup schedule: target, hour, how many to keep, and whether a passphrase is set (never the passphrase itself) |
+| `PUT` | `/api/panel/backup` | Admin | Save it. `passphrase` blank keeps the stored one; enabling without a passphrase or a target is refused |
+| `POST` | `/api/panel/backup/run` | Admin | Write one archive now and apply retention |
+| `GET` | `/api/panel/backup/history` | Admin | The last 50 panel backups with status, size and any error |
 | `GET` | `/api/panel/export` | Admin | Panel configuration as JSON. `?include=` any of `channels,ai,integrations,network,rune_repos,watchers,users` |
 | `POST` | `/api/panel/import` | Admin | Merge a panel-settings bundle: existing rows are skipped, never overwritten; AI config and integration keys are applied; returns a per-category summary. API tokens, beacon identity and passkeys never transfer |
 | `GET` | `/api/migration/export` | Admin | One archive of settings + servers: `?include=` settings groups, `?servers=` ids or `all` |

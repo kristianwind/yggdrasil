@@ -981,6 +981,30 @@ is admin-only and the files should be treated like passwords.</p>
 </tr>
 <tr>
 <td><code>GET</code></td>
+<td><code>/api/panel/backup</code></td>
+<td>Admin</td>
+<td>The panel&rsquo;s own backup schedule: target, hour, how many to keep, and whether a passphrase is set (never the passphrase itself)</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/api/panel/backup</code></td>
+<td>Admin</td>
+<td>Save it. <code>passphrase</code> blank keeps the stored one; enabling without a passphrase or a target is refused</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/panel/backup/run</code></td>
+<td>Admin</td>
+<td>Write one archive now and apply retention</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/api/panel/backup/history</code></td>
+<td>Admin</td>
+<td>The last 50 panel backups with status, size and any error</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
 <td><code>/api/panel/export</code></td>
 <td>Admin</td>
 <td>Panel configuration as JSON. <code>?include=</code> any of <code>channels,ai,integrations,network,rune_repos,watchers,users</code></td>

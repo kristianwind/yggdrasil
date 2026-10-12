@@ -134,6 +134,37 @@ func Export(cfg *config.Config, db *sql.DB, w io.Writer) error {
 // data directory back to its recorded path, and returns the manifest so the
 // caller can install the secret_key into the new host's config. Guards every
 // entry against path traversal.
+// Inspect reads a bundle's manifest and writes nothing.
+//
+// Restoring replaces a panel's whole database, so there has to be a way to see
+// what is in the file first. Without one the only way to find out an archive is
+// the wrong one is to apply it.
+func Inspect(r io.Reader) (*Manifest, error) {
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if hdr.Name != "manifest.json" {
+			continue
+		}
+		var man Manifest
+		if err := json.NewDecoder(tr).Decode(&man); err != nil {
+			return nil, fmt.Errorf("manifest: %w", err)
+		}
+		return &man, nil
+	}
+	return nil, fmt.Errorf("no manifest.json in the bundle")
+}
+
 func Import(r io.Reader, dbPath string) (*Manifest, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {

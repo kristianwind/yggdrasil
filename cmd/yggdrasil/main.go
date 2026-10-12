@@ -58,6 +58,12 @@ func main() {
 				log.Fatalf("migrate: %v", err)
 			}
 			return
+		case "panel-restore":
+			if err := runPanelRestore(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "panel-restore:", err)
+				os.Exit(1)
+			}
+			return
 		case "reset-2fa":
 			if err := runResetTwoFactor(os.Args[2:]); err != nil {
 				log.Fatalf("reset-2fa: %v", err)
@@ -110,6 +116,7 @@ Usage:
   yggdrasil version                                   print the version and exit
   yggdrasil gen-config [<path>]                       write a starter config.yaml
   yggdrasil migrate export|import <bundle.tar.gz>     move an instance between hosts
+  yggdrasil panel-restore -i <file.yggpanel.enc>      restore the panel from its own encrypted backup
   yggdrasil reset-password <user> [--password <pw>]   break-glass admin reset (run as root on the host)
   yggdrasil reset-2fa <user>                         break-glass 2FA reset when the authenticator is lost
   yggdrasil update                                    upgrade note (self-update is not built in)

@@ -122,6 +122,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.startWatcherLoop()
 	s.startAnomalyLoop()
 	s.startStillDownLoop()
+	s.startPanelBackupLoop()
 	s.startDataAccessLoop()
 	s.startBlockExpiryLoop()
 	return s
@@ -274,6 +275,13 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Post("/api/servers/{id}/clone", s.handleCloneServer)
 		r.Get("/api/servers/{id}/export", s.handleServerExport)
 		r.Post("/api/servers/import", s.handleServerImport)
+		// Backing up the panel itself. Admin-only throughout: the settings hold a
+		// passphrase that protects the panel's own encryption key, and running one
+		// writes that key (encrypted) to a backup target.
+		r.Get("/api/panel/backup", s.requireAdmin(s.handleGetPanelBackupSettings))
+		r.Put("/api/panel/backup", s.requireAdmin(s.handleSetPanelBackupSettings))
+		r.Post("/api/panel/backup/run", s.requireAdmin(s.handleRunPanelBackup))
+		r.Get("/api/panel/backup/history", s.requireAdmin(s.handleListPanelBackups))
 		r.Get("/api/panel/export", s.requireAdmin(s.handlePanelExport))
 		r.Post("/api/panel/import", s.requireAdmin(s.handlePanelImport))
 		// Pull a server straight from another panel — see handlers_panel_pull.go

@@ -136,6 +136,21 @@ CREATE TABLE IF NOT EXISTS backups (
 	completed_at TEXT
 );
 
+-- Backups of the PANEL itself (database + the secret key every stored
+-- credential is encrypted with), as opposed to a server's data. Kept in its own
+-- table rather than in the backups table: that one hangs off a server_id, and
+-- the whole point of this one is that it survives when no server does.
+CREATE TABLE IF NOT EXISTS panel_backups (
+	id           TEXT PRIMARY KEY,
+	target_id    TEXT REFERENCES backup_targets(id) ON DELETE SET NULL,
+	path         TEXT,
+	size_bytes   INTEGER,
+	status       TEXT NOT NULL DEFAULT 'pending',
+	error_msg    TEXT,
+	created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+	completed_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS schedules (
 	id          TEXT PRIMARY KEY,
 	name        TEXT NOT NULL,

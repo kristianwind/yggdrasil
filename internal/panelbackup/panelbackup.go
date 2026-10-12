@@ -104,8 +104,12 @@ func Create(cfg *config.Config, db *sql.DB, passphrase string, w io.Writer) erro
 	if _, err := rand.Read(nonce); err != nil {
 		return err
 	}
-	// The header is authenticated as additional data, so a file whose magic or
-	// salt was edited fails to open rather than opening onto something else.
+	// The header travels as additional authenticated data. Belt and braces rather
+	// than the only guard, and the comment says so because a plant that removed
+	// it changed no observable behaviour: the magic is checked on read, the salt
+	// is an input to the key, and the nonce is covered by GCM, so every header
+	// byte is already protected by something else. Kept because it costs nothing
+	// and is correct -- not because it carries the format on its own.
 	header := append(append(append([]byte{}, magic...), salt...), nonce...)
 	sealed := aead.Seal(nil, nonce, plain.Bytes(), header)
 

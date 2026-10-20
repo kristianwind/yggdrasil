@@ -50,6 +50,7 @@ func (s *Server) cfClient(ctx context.Context) (*cloudflare.Client, error) {
 	}
 	zone := s.getSetting(ctx, "cf_zone_id")
 	c := cloudflare.New(token, account, zone, tunnel)
+	c.Logf = log.Printf
 	if zone == "" {
 		base := s.getSetting(ctx, "cf_base_domain")
 		if base == "" {
@@ -109,29 +110,43 @@ func (s *Server) cfApplyRoute(ctx context.Context, c *cloudflare.Client, serverI
 	// If this route's hostname changed, the old one is still recorded — tear it
 	// down first so we do not leave an orphan ingress rule / DNS record behind.
 	if old := s.routeProvisionedCF(ctx, serverID, rt); old != "" && !strings.EqualFold(old, domain) {
-		if zid, zerr := c.ZoneForHost(old); zerr == nil && zid != "" {
-			c.SetZoneID(zid)
-		}
+		log.Printf("cloudflare: %s's route changed from %q to %q — removing the old name", serverID, old, domain)
 		_ = c.RemoveHostname(old)
-		_ = c.RemoveDNS(old)
+		cfRemoveDNSIn(c, old, "cfApplyRoute")
 	}
 
+	service := fmt.Sprintf("http://%s:%d", internalHost, port)
+	if err := c.UpsertHostname(domain, service); err != nil {
+		log.Printf("cloudflare: could not add the tunnel route for %q: %v", domain, err)
+		return // ingress is the critical part; don't record a half-applied state
+	}
 	// Manage the CNAME in the hostname's OWN zone so one tunnel can serve several
 	// different root domains, not just subdomains of cf_base_domain. Falls back to
 	// the client's default (base-domain) zone when the account owns no match.
-	if zid, zerr := c.ZoneForHost(domain); zerr == nil && zid != "" {
-		c.SetZoneID(zid)
-	}
-	service := fmt.Sprintf("http://%s:%d", internalHost, port)
-	if err := c.UpsertHostname(domain, service); err != nil {
-		return // ingress is the critical part; don't record a half-applied state
-	}
-	// DNS is non-fatal (may be managed manually). A foreign-tunnel conflict is
-	// surfaced loudly so a hostname another node serves isn't silently hijacked.
-	if err := c.EnsureDNS(domain); errors.Is(err, cloudflare.ErrForeignTunnel) {
+	// DNS is non-fatal (may be managed manually, and the periodic reconcile puts
+	// back a record that is missing). A foreign-tunnel conflict is surfaced
+	// loudly so a hostname another node serves isn't silently hijacked.
+	if err := c.UseZoneFor(domain); err != nil {
+		log.Printf("cloudflare: could not find the zone for %q, DNS left for the next reconcile: %v", domain, err)
+	} else if err := c.EnsureDNS(domain); errors.Is(err, cloudflare.ErrForeignTunnel) {
 		log.Printf("cfAddServer: %q already CNAMEs to a different Cloudflare tunnel — DNS left untouched to avoid hijacking it (ingress on this tunnel was still added)", domain)
+	} else if err != nil {
+		log.Printf("cloudflare: could not write the DNS record for %q: %v", domain, err)
 	}
 	s.setRouteProvisionedCF(ctx, serverID, rt, domain)
+}
+
+// cfRemoveDNSIn deletes host's tunnel CNAME from host's own zone. When the zone
+// cannot be determined nothing is deleted: the alternative is acting in
+// whichever zone the client was last pointed at.
+func cfRemoveDNSIn(c *cloudflare.Client, host, caller string) {
+	if err := c.UseZoneFor(host); err != nil {
+		log.Printf("%s: could not find the zone for %q, its DNS record was left in place: %v", caller, host, err)
+		return
+	}
+	if err := c.RemoveDNS(host); err != nil {
+		log.Printf("%s: could not remove the DNS record for %q: %v", caller, host, err)
+	}
 }
 
 // routeProvisionedCF / setRouteProvisionedCF read and write the hostname actually
@@ -194,12 +209,16 @@ func (s *Server) cfRemoveServer(serverID string) {
 	if err != nil || c == nil {
 		return
 	}
+	// Teardown is the only path that deletes a working name, so it says whose
+	// names and in what state the server was when it did — the line that was
+	// missing when a restart was followed by a deleted record and no trace.
+	var name, status string
+	s.db.QueryRowContext(ctx, "SELECT name, status FROM servers WHERE id=?", serverID).Scan(&name, &status) //nolint:errcheck
+	log.Printf("cloudflare: removing %d hostname(s) of %s (%s, status %q): %s",
+		len(hosts), name, serverID, status, strings.Join(hosts, ", "))
 	for _, host := range hosts {
-		if zid, zerr := c.ZoneForHost(host); zerr == nil && zid != "" {
-			c.SetZoneID(zid) // remove the CNAME from the hostname's own zone
-		}
 		_ = c.RemoveHostname(host)
-		_ = c.RemoveDNS(host)
+		cfRemoveDNSIn(c, host, "cfRemoveServer")
 	}
 	s.db.ExecContext(ctx, "UPDATE servers SET cf_hostname='' WHERE id=?", serverID)
 	s.db.ExecContext(ctx, "UPDATE server_routes SET cf_hostname='' WHERE server_id=?", serverID)
@@ -215,11 +234,9 @@ func (s *Server) dropRouteHost(ctx context.Context, routeID string) {
 		routeID).Scan(&host, &npmID)
 	if host != "" {
 		if c, err := s.cfClient(ctx); err == nil && c != nil {
-			if zid, zerr := c.ZoneForHost(host); zerr == nil && zid != "" {
-				c.SetZoneID(zid)
-			}
+			log.Printf("cloudflare: route %s deleted — removing %q", routeID, host)
 			_ = c.RemoveHostname(host)
-			_ = c.RemoveDNS(host)
+			cfRemoveDNSIn(c, host, "dropRouteHost")
 		}
 	}
 	if npmID != 0 {

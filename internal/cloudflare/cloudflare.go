@@ -38,7 +38,22 @@ type Client struct {
 	accountID string
 	zoneID    string
 	tunnelID  string
-	hc        *http.Client
+	// homeZone is the panel's default zone (cf_base_domain's). UseZoneFor falls
+	// back to it — never to whichever zone the previous hostname happened to
+	// leave behind on this client.
+	homeZone string
+	// zones caches the account's zone list for the client's lifetime. A client
+	// lives for one provisioning pass, so this turns "one /zones call per
+	// hostname" into one per pass without ever going stale for long.
+	zones []zoneRef
+
+	// Logf, when set, is told about every change this client makes to DNS or to
+	// the tunnel's ingress. Nothing else in the panel records those writes, so
+	// without it a deleted record leaves no trace of which code removed it —
+	// measured on 2026-10-20, when app.getcellarius.com vanished for eight hours
+	// after a restart and the journal had not one line about it.
+	Logf func(format string, args ...any)
+	hc   *http.Client
 	// baseURL is apiBase in production. It exists so the read-modify-write on
 	// the tunnel config can be exercised against a real HTTP server in tests —
 	// the concurrency bug it now guards cannot be reproduced with a stub.
@@ -51,6 +66,7 @@ func New(token, accountID, zoneID, tunnelID string) *Client {
 		token:     strings.TrimSpace(token),
 		accountID: strings.TrimSpace(accountID),
 		zoneID:    strings.TrimSpace(zoneID),
+		homeZone:  strings.TrimSpace(zoneID),
 		tunnelID:  strings.TrimSpace(tunnelID),
 		hc:        &http.Client{Timeout: 15 * time.Second},
 		baseURL:   apiBase,
@@ -145,15 +161,18 @@ func (c *Client) ZoneForHost(hostname string) (string, error) {
 	if hostname == "" {
 		return "", nil
 	}
-	var zones []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	if err := c.do("GET", "/zones?per_page=200", nil, &zones); err != nil {
-		return "", err
+	if c.zones == nil {
+		var zones []zoneRef
+		if err := c.do("GET", "/zones?per_page=200", nil, &zones); err != nil {
+			return "", err
+		}
+		if zones == nil {
+			zones = []zoneRef{}
+		}
+		c.zones = zones
 	}
 	bestID, bestLen := "", 0
-	for _, z := range zones {
+	for _, z := range c.zones {
 		zn := strings.ToLower(z.Name)
 		if (hostname == zn || strings.HasSuffix(hostname, "."+zn)) && len(zn) > bestLen {
 			bestID, bestLen = z.ID, len(zn)
@@ -162,11 +181,43 @@ func (c *Client) ZoneForHost(hostname string) (string, error) {
 	return bestID, nil
 }
 
+type zoneRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// UseZoneFor points the client at hostname's own zone, or at the home zone when
+// the account owns no zone matching it.
+//
+// A failed lookup is an error and the zone is left UNSET rather than as it was.
+// The pattern this replaces — `if zid, err := ZoneForHost(h); err == nil {
+// SetZoneID(zid) }` — kept the previous hostname's zone on any API hiccup, so
+// one server's routes could be written to, or deleted from, the zone of the
+// route before it.
+func (c *Client) UseZoneFor(hostname string) error {
+	zid, err := c.ZoneForHost(hostname)
+	if err != nil {
+		c.zoneID = ""
+		return err
+	}
+	if zid == "" {
+		zid = c.homeZone
+	}
+	c.zoneID = zid
+	return nil
+}
+
 // ZoneID returns the (possibly resolved) zone id.
 func (c *Client) ZoneID() string { return c.zoneID }
 
-// SetZoneID overrides the zone id (after ResolveZoneID).
-func (c *Client) SetZoneID(id string) { c.zoneID = id }
+// SetZoneID sets the home zone (after ResolveZoneID) and selects it.
+func (c *Client) SetZoneID(id string) { c.zoneID, c.homeZone = id, id }
+
+func (c *Client) logf(format string, args ...any) {
+	if c.Logf != nil {
+		c.Logf(format, args...)
+	}
+}
 
 // cfTarget is the tunnel's stable CNAME target.
 func (c *Client) cfTarget() string { return c.tunnelID + ".cfargotunnel.com" }
@@ -272,19 +323,33 @@ func (c *Client) UpsertHostname(hostname, service string) error {
 		return err
 	}
 	var kept []map[string]any
+	var had []string
 	for _, r := range ingressRules(cfg) {
 		h, _ := r["hostname"].(string)
 		if h == "" {
 			continue // drop the old catch-all; rebuildIngress re-adds it
 		}
 		if strings.EqualFold(h, hostname) {
+			svc, _ := r["service"].(string)
+			had = append(had, svc)
 			continue // replace ours
 		}
 		kept = append(kept, r)
 	}
+	if len(had) == 1 && had[0] == service {
+		return nil // already exactly this — a PUT would change nothing
+	}
 	kept = append(kept, map[string]any{"hostname": hostname, "service": service})
 	rebuildIngress(cfg, kept)
-	return c.putConfig(cfg)
+	if err := c.putConfig(cfg); err != nil {
+		return err
+	}
+	if len(had) == 0 {
+		c.logf("cloudflare: added tunnel route %s -> %s", hostname, service)
+	} else {
+		c.logf("cloudflare: changed tunnel route %s from %v to %s", hostname, had, service)
+	}
+	return nil
 }
 
 // RemoveHostname deletes the ingress rule for hostname (no-op if absent).
@@ -295,15 +360,27 @@ func (c *Client) RemoveHostname(hostname string) error {
 		return err
 	}
 	var kept []map[string]any
+	removed := false
 	for _, r := range ingressRules(cfg) {
 		h, _ := r["hostname"].(string)
-		if h == "" || strings.EqualFold(h, hostname) {
+		if h == "" {
+			continue
+		}
+		if strings.EqualFold(h, hostname) {
+			removed = true
 			continue
 		}
 		kept = append(kept, r)
 	}
+	if !removed {
+		return nil // nothing to remove; a PUT would only rewrite the same config
+	}
 	rebuildIngress(cfg, kept)
-	return c.putConfig(cfg)
+	if err := c.putConfig(cfg); err != nil {
+		return err
+	}
+	c.logf("cloudflare: removed tunnel route %s", hostname)
+	return nil
 }
 
 // --- Firewall (IP Access Rules) ---
@@ -462,9 +539,9 @@ func (c *Client) findDNS(hostname string, types ...string) (*dnsRecord, error) {
 // tunnel owns the hostname. Returns the offending target for display. Absent, a
 // non-CNAME, or a CNAME pointing at this tunnel all report foreign=false.
 func (c *Client) CNAMEForeign(hostname string) (foreign bool, target string, err error) {
-	// Resolve the hostname's own zone (multi-domain); fall back to the current zone.
-	if zid, zerr := c.ZoneForHost(hostname); zerr == nil && zid != "" {
-		c.SetZoneID(zid)
+	// Resolve the hostname's own zone (multi-domain); fall back to the home zone.
+	if err := c.UseZoneFor(hostname); err != nil {
+		return false, "", err
 	}
 	rec, err := c.findDNS(hostname, "CNAME")
 	if err != nil || rec == nil {
@@ -493,6 +570,10 @@ func (c *Client) EnsureDNS(hostname string) error {
 		!strings.EqualFold(rec.Content, c.cfTarget()) {
 		return ErrForeignTunnel
 	}
+	if rec != nil && strings.EqualFold(rec.Type, "CNAME") && rec.Proxied &&
+		strings.EqualFold(rec.Content, c.cfTarget()) {
+		return nil // already correct
+	}
 	body := map[string]any{
 		"type":    "CNAME",
 		"name":    hostname,
@@ -501,9 +582,18 @@ func (c *Client) EnsureDNS(hostname string) error {
 		"ttl":     1,
 	}
 	if rec == nil {
-		return c.do("POST", fmt.Sprintf("/zones/%s/dns_records", c.zoneID), body, nil)
+		if err := c.do("POST", fmt.Sprintf("/zones/%s/dns_records", c.zoneID), body, nil); err != nil {
+			return err
+		}
+		c.logf("cloudflare: created DNS record %s -> %s (zone %s)", hostname, c.cfTarget(), c.zoneID)
+		return nil
 	}
-	return c.do("PUT", fmt.Sprintf("/zones/%s/dns_records/%s", c.zoneID, rec.ID), body, nil)
+	if err := c.do("PUT", fmt.Sprintf("/zones/%s/dns_records/%s", c.zoneID, rec.ID), body, nil); err != nil {
+		return err
+	}
+	c.logf("cloudflare: replaced %s record %s (was %s) with a CNAME to %s (zone %s)",
+		rec.Type, hostname, rec.Content, c.cfTarget(), c.zoneID)
+	return nil
 }
 
 // RemoveDNS deletes the CNAME for hostname — but only when it points at THIS
@@ -520,5 +610,9 @@ func (c *Client) RemoveDNS(hostname string) error {
 	if !strings.EqualFold(rec.Content, c.cfTarget()) {
 		return nil // not ours — leave it alone
 	}
-	return c.do("DELETE", fmt.Sprintf("/zones/%s/dns_records/%s", c.zoneID, rec.ID), nil, nil)
+	if err := c.do("DELETE", fmt.Sprintf("/zones/%s/dns_records/%s", c.zoneID, rec.ID), nil, nil); err != nil {
+		return err
+	}
+	c.logf("cloudflare: deleted DNS record %s (zone %s)", hostname, c.zoneID)
+	return nil
 }

@@ -300,8 +300,9 @@ func (s *Server) startAutostartServers() {
 	// And only now, with the container world known, check that Cloudflare still
 	// carries the hostnames those servers are supposed to serve. Deliberately
 	// after the wait: reconciling against a half-started fleet is what caused
-	// the damage this repairs.
-	go s.cfReconcileHostnames(ctx)
+	// the damage this repairs. It then keeps doing so, so a name lost while the
+	// panel is up comes back in minutes rather than at the next panel restart.
+	go s.cfReconcileLoop(ctx)
 }
 
 // startStackForAutostart brings a stack server's sidecars up before its app

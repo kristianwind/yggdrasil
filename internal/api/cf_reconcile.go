@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Putting back what should be there.
@@ -28,7 +30,32 @@ import (
 // whatever caused it.
 //
 // It writes only what is missing. A fleet whose records are all present costs
-// one ListIngress call and one DNS lookup per hostname, and changes nothing.
+// one ListIngress call, one zone listing and one DNS lookup per hostname, and
+// changes nothing.
+//
+// It runs every cfReconcileInterval, not only at startup. Startup-only meant a
+// name lost while the panel was up stayed lost until the panel next restarted:
+// on 2026-10-20 app.getcellarius.com was gone for eight hours after a server
+// restart, on a panel that had been up for two days.
+
+// cfReconcileInterval is how long a missing hostname can stay missing.
+const cfReconcileInterval = 10 * time.Minute
+
+// cfReconcileMu keeps two passes from running at once — the startup pass can
+// still be working through a large fleet when the first tick fires.
+var cfReconcileMu sync.Mutex
+
+// cfReconcileLoop runs the reconcile now and then every cfReconcileInterval.
+func (s *Server) cfReconcileLoop(ctx context.Context) {
+	for {
+		s.cfReconcileHostnames(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(cfReconcileInterval):
+		}
+	}
+}
 
 // cfHostnameState is what reconciliation needs to know about one hostname.
 type cfHostnameState struct {
@@ -60,6 +87,10 @@ func cfNeedsProvision(states []cfHostnameState) []string {
 // cfReconcileHostnames restores any hostname a running server should have.
 func (s *Server) cfReconcileHostnames(ctx context.Context) {
 	defer recoverLog("cfReconcileHostnames")
+	if !cfReconcileMu.TryLock() {
+		return
+	}
+	defer cfReconcileMu.Unlock()
 
 	c, err := s.cfClient(ctx)
 	if err != nil || c == nil {
@@ -107,8 +138,9 @@ func (s *Server) cfReconcileHostnames(ctx context.Context) {
 			}
 			// The DNS record lives in the hostname's own zone, which is not
 			// necessarily the panel's default one.
-			if zid, zerr := c.ZoneForHost(domain); zerr == nil && zid != "" {
-				c.SetZoneID(zid)
+			if zerr := c.UseZoneFor(domain); zerr != nil {
+				log.Printf("cloudflare: could not find the zone for %q, leaving it alone: %v", domain, zerr)
+				continue
 			}
 			rec, derr := c.FindDNSRecord(domain)
 			if derr != nil {
@@ -124,6 +156,14 @@ func (s *Server) cfReconcileHostnames(ctx context.Context) {
 				HasRecord: rec,
 			}})
 			if len(need) == 0 {
+				continue
+			}
+			// The list was read before the Cloudflare calls above, which take
+			// a while across a fleet. A server stopped since then is having
+			// its names removed right now; restoring them would undo the stop.
+			var status string
+			s.db.QueryRowContext(ctx, "SELECT status FROM servers WHERE id=?", x.id).Scan(&status) //nolint:errcheck
+			if status != "running" {
 				continue
 			}
 			log.Printf("cloudflare: %s (%s) should serve %q but it is missing from %s — restoring",

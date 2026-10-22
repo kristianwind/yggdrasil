@@ -231,6 +231,7 @@ func (s *Server) markStarted(serverID string) {
 // Runs once at startup; bounded waiting for the Docker daemon on a cold boot.
 func (s *Server) startAutostartServers() {
 	defer recoverLog("startAutostartServers")
+	defer s.booting.Store(false) // every return path, including a panic
 	ctx := context.Background()
 	// On a cold boot the panel may come up just before dockerd; wait for it.
 	for i := 0; i < 10; i++ {
@@ -346,7 +347,37 @@ func (s *Server) startStatusReconciler() {
 	}()
 }
 
+// reconcileHeld reports whether reconcileStatuses should wait for autostart.
+func (s *Server) reconcileHeld(now time.Time) bool {
+	return s.booting.Load() && now.Before(s.bootDeadline)
+}
+
+// autostartGrace caps how long reconcileStatuses waits for startAutostartServers.
+// Autostart can pull images when it has to recreate a container, so it gets real
+// time — but not forever: a hung pull must not switch off crash detection.
+const autostartGrace = 10 * time.Minute
+
+// reconcileStatuses does nothing while the panel is still bringing the fleet
+// back after its own start.
+//
+// The ticker fires every 20s from the moment the panel starts, and autostart
+// takes longer than that on a box with a few app stacks to bring back. After a
+// host reboot, or a Docker restart, every container is sitting at exit 0 waiting
+// for autostart to start it — and the first tick read each of those as a server
+// that had stopped: status set to stopped, a "crash" filed, and stoppedCleanup
+// deleting its tunnel routes and DNS records. Autostart then started it, adoption
+// re-added the names, and for a minute every site on the box was NXDOMAIN, with
+// resolvers free to cache that answer for longer. Measured on .164 2026-10-22,
+// with the logging added in v0.3.27: garageristeriet.dk and Cellarius torn down
+// at 08:18:10, 20s after the panel started, adopted and re-added at 08:18:51; the
+// same for Warden and getcellarius.com 20s after the 08:31 reboot.
+//
+// Waiting until autostart has finished means the loop judges a container only
+// after the panel has had its chance to start it.
 func (s *Server) reconcileStatuses() {
+	if s.reconcileHeld(time.Now()) {
+		return
+	}
 	rows, err := s.db.Query("SELECT id, COALESCE(container_id,'') FROM servers WHERE status IN ('running','starting') AND container_id<>''")
 	if err != nil {
 		return

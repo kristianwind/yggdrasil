@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -45,6 +46,11 @@ type Server struct {
 	uploads  uploadTracker
 	osUpd    osUpdateCache // host OS update status, refreshed on a TTL
 	phpCheck phpCheckState // the PHP versions on the host and in servers, and how supported they are
+
+	// booting is true while startAutostartServers is still bringing the fleet
+	// back, until bootDeadline at the latest. See reconcileStatuses.
+	booting      atomic.Bool
+	bootDeadline time.Time
 
 	pubCount   *publicCount // cached public install count (unauthenticated endpoint)
 	pubCountAt time.Time
@@ -112,6 +118,8 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.transfers = newTransferJobs()
 	s.startStatusReconciler()
 	s.startHealthChecks()
+	s.booting.Store(true)
+	s.bootDeadline = time.Now().Add(autostartGrace)
 	go s.startAutostartServers()
 	go s.autoUpdateLoop()
 	s.startOpsDigestLoop()

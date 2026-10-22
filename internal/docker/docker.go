@@ -5,6 +5,7 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -685,6 +686,34 @@ func calcCPUPercent(s *container.StatsResponse) float64 {
 
 func (c *Client) Inspect(ctx context.Context, id string) (container.InspectResponse, error) {
 	return c.dc.ContainerInspect(ctx, id)
+}
+
+// ExecOutput runs argv inside a running container — directly, with no shell, so
+// an image without /bin/sh still answers — and returns what it printed on stdout
+// and stderr together (capped at 64 KiB) and its exit code. Used for read-only
+// probes such as asking a container which PHP it runs; never for anything that
+// changes the container.
+func (c *Client) ExecOutput(ctx context.Context, id string, argv []string) (string, int, error) {
+	ex, err := c.dc.ContainerExecCreate(ctx, id, container.ExecOptions{
+		Cmd: argv, AttachStdout: true, AttachStderr: true,
+	})
+	if err != nil {
+		return "", -1, err
+	}
+	att, err := c.dc.ContainerExecAttach(ctx, ex.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return "", -1, err
+	}
+	defer att.Close()
+	var out bytes.Buffer
+	if _, err := stdcopy.StdCopy(&out, &out, io.LimitReader(att.Reader, 64<<10)); err != nil && out.Len() == 0 {
+		return "", -1, err
+	}
+	insp, err := c.dc.ContainerExecInspect(ctx, ex.ID)
+	if err != nil {
+		return out.String(), -1, err
+	}
+	return out.String(), insp.ExitCode, nil
 }
 
 // StartedAt returns when the container's current run began (zero time if unknown),

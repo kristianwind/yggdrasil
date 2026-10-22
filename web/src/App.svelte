@@ -105,6 +105,38 @@
   $effect(() => {
     if (ready && $user) loadAdvisories();
   });
+
+  // PHP that no longer gets security fixes, on the host or in a server. Checked
+  // server-side every six hours; this only reads the last result, so it is
+  // refreshed on navigation like the rune badge below. Admin-only.
+  let phpFindings = $state([]);
+  async function loadPHP() {
+    if (!$user || $user.role !== "admin") {
+      phpFindings = [];
+      return;
+    }
+    try {
+      const r = await api.get("/system/php");
+      phpFindings = r?.findings || [];
+    } catch {
+      /* not fatal — retried on the next navigation */
+    }
+  }
+  async function ackPHP(key) {
+    try {
+      await api.post(`/system/php/${encodeURIComponent(key)}/ack`, {});
+      phpFindings = phpFindings.filter((f) => f.key !== key);
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  $effect(() => {
+    $route.path; // re-read on navigation
+    if (ready && $user) loadPHP();
+  });
+  function phpWhere(f) {
+    return f.where === "host" ? "The host" : f.server_name;
+  }
   // Same shape, and for the same reason. This used to be called straight from
   // onMount, which awaits loadUser() first — so it worked on a reload where a
   // session already existed, and silently did nothing on the path that matters
@@ -337,6 +369,48 @@
         <span class="font-semibold">🌳 {build?.panel_name || "Yggdrasil Panel"}</span>
       </header>
       <main class="flex-1 p-4 md:p-6 overflow-auto">
+        <!-- PHP first: an unsupported PHP is an emergency now, on this box. -->
+        {#each phpFindings as f (f.key)}
+          <div
+            class="card p-4 mb-4 border {f.status === 'eol' ? 'border-danger/60 bg-danger/5' : 'border-warn/60 bg-warn/5'}"
+            role={f.status === "eol" ? "alert" : "status"}
+          >
+            <div class="font-semibold mb-1">
+              {#if f.status === "eol"}
+                🚨 Emergency: {phpWhere(f)} runs PHP {f.version}, which no longer gets security fixes
+              {:else if f.status === "eol-distro"}
+                🟠 {phpWhere(f)} runs PHP {f.version}, whose upstream support has ended
+              {:else}
+                🟠 {phpWhere(f)} runs PHP {f.version} — security support ends in {f.days_left} days
+              {/if}
+            </div>
+            <p class="text-sm text-muted mb-2">
+              {#if f.status === "eol"}
+                PHP {f.branch} has had no security support{f.security_until ? ` since ${f.security_until}` : ""},
+                so every vulnerability found in it stays open.
+              {:else if f.status === "eol-distro"}
+                php.net stopped fixing PHP {f.branch} on {f.security_until}. It comes from the OS package
+                <span class="font-mono text-xs">{f.package}</span>, which the distribution may still be
+                patching — but only while that OS release is supported.
+              {:else}
+                PHP {f.branch} gets security fixes until {f.security_until}. Plan the move now.
+              {/if}
+              {#if f.where === "host"}
+                Upgrade PHP on the host to a supported branch, or remove it if nothing uses it:
+                <span class="font-mono text-xs">{(f.paths || []).join(", ")}</span>.
+              {:else}
+                Move the server to an image with a supported PHP — Restart pulls the rune's image again.
+              {/if}
+            </p>
+            <div class="flex flex-wrap gap-2">
+              {#if f.server_id}
+                <a class="btn-primary" href="#/servers/{f.server_id}">Open {f.server_name}</a>
+              {/if}
+              <a class="btn-ghost" href="https://www.php.net/supported-versions.php" target="_blank" rel="noopener noreferrer">PHP support dates ↗</a>
+              <button class="btn-ghost" onclick={() => ackPHP(f.key)}>Dismiss for this version</button>
+            </div>
+          </div>
+        {/each}
         {#each advisories as a (a.id)}
           <!-- Deliberately plain text plus one link. An advisory is never
                something the panel acts on, and it is the most attractive thing

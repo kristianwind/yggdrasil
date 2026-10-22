@@ -496,6 +496,35 @@ This exists because [the security policy](../../SECURITY.md) says the fix for th
 advisories is keeping Docker updated on the host. Until now nothing in the panel would tell you
 whether you had.
 
+## PHP that no longer gets security fixes
+
+Every six hours the panel checks which PHP is installed **on the host** and which PHP each
+**running server** has, and compares the branch with [PHP's published support
+dates](https://www.php.net/supported-versions.php).
+
+- **On the host** it asks every PHP binary it finds — `php`, `php8.x`, `php-fpm8.x`, `php-cgi`, in
+  the usual system paths and under `/opt` (Plesk, cPanel, Remi) — for its version.
+- **In a server** it reads the `PHP_VERSION` the official `php`, `wordpress`, `phpmyadmin` and
+  `adminer` images set. For any other image it runs `php -v` in the container once, and asks again
+  only after the container is recreated.
+
+| What it finds | What you get |
+|---|---|
+| A branch past its end of life | 🚨 **Emergency**: a notification, an incident in the activity feed, and a red banner at the top of every page. Repeated weekly while it stands. |
+| A branch with 90 days or less left (not for the OS's own packages, which keep being patched past that date) | 🟠 A warning in the same places, repeated monthly, while there is time to plan. |
+| An ended branch from the OS's own packages (Ubuntu, Debian security) | 🟠 A warning, not an emergency: the distribution keeps patching its own PHP after php.net stops, for as long as that OS release is supported. Ubuntu 24.04's PHP 8.3.6 is a patched build under an old-looking number, for example. PHP from a third-party repository such as deb.sury.org follows php.net's dates and counts as an emergency. |
+
+**Dismiss for this version** hides a finding for the whole panel. A different unsupported version
+shows again.
+
+It is read-only. The panel never upgrades PHP or recreates a server for you, because moving a site
+to a new PHP breaks plugins often enough to need a person deciding it. For a server, Restart pulls
+the rune's image again (`wordpress:latest` follows the image's current PHP); for the host, upgrade
+the package or remove it if nothing uses it.
+
+The journal says what each check found, healthy or not — `php check: the host=8.3.6(ok), Blog=8.3.35(ok)` —
+so a quiet result can be told apart from a check that never ran.
+
 ## See also
 
 - [Servers](servers.md)

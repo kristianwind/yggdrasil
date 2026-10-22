@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +64,10 @@ type cfHostnameState struct {
 	Domain    string
 	HasRoute  bool
 	HasRecord bool
+	// WrongTarget: the route exists but sends traffic somewhere other than
+	// where this server now listens — an old LAN address after a DHCP change,
+	// or an old port.
+	WrongTarget bool
 }
 
 // cfNeedsProvision decides which hostnames to write. Split out from the API
@@ -77,7 +83,7 @@ func cfNeedsProvision(states []cfHostnameState) []string {
 		if st.Domain == "" {
 			continue
 		}
-		if !st.HasRoute || !st.HasRecord {
+		if !st.HasRoute || !st.HasRecord || st.WrongTarget {
 			out = append(out, st.Domain)
 		}
 	}
@@ -96,7 +102,7 @@ func (s *Server) cfReconcileHostnames(ctx context.Context) {
 	if err != nil || c == nil {
 		return // Cloudflare not configured here; nothing to reconcile against
 	}
-	internalHost := firstNonEmpty(s.getSetting(ctx, "cf_internal_host"), localLANIP())
+	internalHost := s.cfInternalHost(ctx)
 	if internalHost == "" {
 		// Provisioning would produce an ingress rule pointing nowhere. Say so:
 		// this is also why a panel can look configured and quietly do nothing.
@@ -111,8 +117,10 @@ func (s *Server) cfReconcileHostnames(ctx context.Context) {
 		return
 	}
 	routed := make(map[string]bool, len(ingress))
+	target := make(map[string]string, len(ingress))
 	for _, in := range ingress {
 		routed[strings.ToLower(in.Hostname)] = true
+		target[strings.ToLower(in.Hostname)] = in.Service
 	}
 
 	rows, err := s.db.QueryContext(ctx, "SELECT id, name FROM servers WHERE status='running'")
@@ -150,10 +158,21 @@ func (s *Server) cfReconcileHostnames(ctx context.Context) {
 				log.Printf("cloudflare: could not check DNS for %q, leaving it alone: %v", domain, derr)
 				continue
 			}
+			// A route that exists but points at the wrong place is as broken as
+			// a missing one, and quieter: on 2026-10-22 .164 came back from a
+			// reboot on a new DHCP address and every route still named the old
+			// one — all present, all 502.
+			want := ""
+			if port := s.serverRoutePort(ctx, x.id, rt.PortName); port != 0 {
+				want = fmt.Sprintf("http://%s:%d", internalHost, port)
+			}
+			have := target[strings.ToLower(domain)]
+			wrong := routed[strings.ToLower(domain)] && want != "" && !strings.EqualFold(have, want)
 			need := cfNeedsProvision([]cfHostnameState{{
-				Domain:    domain,
-				HasRoute:  routed[strings.ToLower(domain)],
-				HasRecord: rec,
+				Domain:      domain,
+				HasRoute:    routed[strings.ToLower(domain)],
+				HasRecord:   rec,
+				WrongTarget: wrong,
 			}})
 			if len(need) == 0 {
 				continue
@@ -166,14 +185,19 @@ func (s *Server) cfReconcileHostnames(ctx context.Context) {
 			if status != "running" {
 				continue
 			}
-			log.Printf("cloudflare: %s (%s) should serve %q but it is missing from %s — restoring",
-				x.name, x.id, domain, missingWhat(routed[strings.ToLower(domain)], rec))
+			if wrong && rec {
+				log.Printf("cloudflare: %s (%s) serves %q from %s but listens on %s — repointing",
+					x.name, x.id, domain, have, want)
+			} else {
+				log.Printf("cloudflare: %s (%s) should serve %q but it is missing from %s — restoring",
+					x.name, x.id, domain, missingWhat(routed[strings.ToLower(domain)], rec))
+			}
 			s.cfApplyRoute(ctx, c, x.id, rt, internalHost)
 			restored++
 		}
 	}
 	if restored > 0 {
-		log.Printf("cloudflare: restored %d hostname(s) that were missing", restored)
+		log.Printf("cloudflare: restored %d hostname(s) that were missing or pointed at the wrong place", restored)
 	}
 }
 
@@ -189,4 +213,58 @@ func missingWhat(hasRoute, hasRecord bool) string {
 	default:
 		return "DNS"
 	}
+}
+
+// cfInternalHost is the address the tunnel's connector reaches this machine's
+// server ports on.
+//
+// The setting wins, with one exception: an IP literal that is not an address of
+// this machine. Every server the panel routes runs here, so such a value can
+// only be stale — and it is exactly what a DHCP change leaves behind. On
+// 2026-10-22 .164 rebooted, came back as 192.168.1.151, and cf_internal_host
+// still said 192.168.1.164: every tunnel site on the box answered 502 while the
+// containers behind them were fine. Following the address the machine actually
+// has turns that into a self-correcting blip at the next reconcile.
+func (s *Server) cfInternalHost(ctx context.Context) string {
+	configured := strings.TrimSpace(s.getSetting(ctx, "cf_internal_host"))
+	host, stale := chooseInternalHost(configured, localLANIP(), localAddrs())
+	if stale {
+		log.Printf("cloudflare: cf_internal_host is %s, which is not an address of this machine any more — using %s, its current LAN address. Update the setting (or reserve the address in DHCP) to silence this.", configured, host)
+	}
+	return host
+}
+
+// chooseInternalHost is cfInternalHost's decision, without the machine. stale
+// reports that the configured value was set aside.
+func chooseInternalHost(configured, auto string, local []net.IP) (host string, stale bool) {
+	if configured == "" {
+		return auto, false
+	}
+	ip := net.ParseIP(configured)
+	if ip == nil || auto == "" || len(local) == 0 {
+		return configured, false // a hostname, or nothing to compare against: trust it
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() {
+		return configured, false
+	}
+	for _, l := range local {
+		if l.Equal(ip) {
+			return configured, false
+		}
+	}
+	return auto, true
+}
+
+func localAddrs() []net.IP {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []net.IP
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok {
+			out = append(out, n.IP)
+		}
+	}
+	return out
 }

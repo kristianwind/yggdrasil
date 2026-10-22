@@ -215,6 +215,17 @@ When a server with a subdomain starts, Yggdrasil adds a tunnel ingress rule mapp
 `<tunnel-id>.cfargotunnel.com`. The ingress rule is the critical half — if it fails, nothing is
 recorded. A DNS failure is tolerated, since you may manage the record yourself.
 
+Every ten minutes the panel also checks that each running server's hostnames are still there and
+still point at the right place, and fixes only what is wrong: a missing route or record, or a route
+sending traffic to an old address or port.
+
+**If the host's LAN address changes** — a DHCP lease that moved after a reboot — an internal host
+you typed in by hand is now an address the machine does not have, and every route sends traffic to
+nobody. When the internal host is an IP that is not one of this machine's addresses, the panel uses
+its current LAN address instead, says so in its log, and the ten-minute check repoints the routes.
+Reserve the address in your router's DHCP settings (or clear the field, so it always follows the LAN
+address) to make it stop.
+
 Servers use the same per-server **Subdomain** field as NPM, and the same "port named `web`, else first
 TCP port" rule applies.
 

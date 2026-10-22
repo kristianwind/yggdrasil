@@ -241,6 +241,15 @@ tells you which half failed.</p>
 <code>http_status:404</code> catch-all, then creates or updates a proxied <code>CNAME</code> from the hostname to
 <code>&lt;tunnel-id&gt;.cfargotunnel.com</code>. The ingress rule is the critical half — if it fails, nothing is
 recorded. A DNS failure is tolerated, since you may manage the record yourself.</p>
+<p>Every ten minutes the panel also checks that each running server&rsquo;s hostnames are still there and
+still point at the right place, and fixes only what is wrong: a missing route or record, or a route
+sending traffic to an old address or port.</p>
+<p><strong>If the host&rsquo;s LAN address changes</strong> — a DHCP lease that moved after a reboot — an internal host
+you typed in by hand is now an address the machine does not have, and every route sends traffic to
+nobody. When the internal host is an IP that is not one of this machine&rsquo;s addresses, the panel uses
+its current LAN address instead, says so in its log, and the ten-minute check repoints the routes.
+Reserve the address in your router&rsquo;s DHCP settings (or clear the field, so it always follows the LAN
+address) to make it stop.</p>
 <p>Servers use the same per-server <strong>Subdomain</strong> field as NPM, and the same &ldquo;port named <code>web</code>, else first
 TCP port&rdquo; rule applies.</p>
 <h2 id="the-domains-page">The Domains page</h2>

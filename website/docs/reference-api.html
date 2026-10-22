@@ -2256,6 +2256,18 @@ shows players; writing it is admin-only.</p>
 </tr>
 <tr>
 <td><code>GET</code></td>
+<td><code>/api/system/php</code></td>
+<td>Admin</td>
+<td>PHP on the host and in running servers from the last six-hourly check: <code>{checked_at, findings, all}</code>. <code>findings</code> holds what needs attention (<code>status</code> <code>eol</code>, <code>eol-distro</code> or <code>ending</code>) and has not been dismissed, with <code>version</code>, <code>branch</code>, <code>security_until</code>, <code>days_left</code>, and for the host the binaries (<code>paths</code>) and owning OS <code>package</code>. <code>all</code> includes the supported ones</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/system/php/{key}/ack</code></td>
+<td>Admin</td>
+<td>Dismiss one finding (<code>host:&lt;branch&gt;</code> or <code>server:&lt;id&gt;</code>) at its current version, for the whole install. A different unsupported version shows again. Audited as <code>php.ack</code></td>
+</tr>
+<tr>
+<td><code>GET</code></td>
 <td><code>/api/advisories</code></td>
 <td>Admin</td>
 <td>Published security advisories that apply to this build and have not been dismissed. Pulled from a static file in the project repo — the request carries nothing about the install, and it works with the beacon switched off, which is precisely the install that still needs to hear</td>

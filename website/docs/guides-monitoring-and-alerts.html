@@ -501,6 +501,47 @@ counts. See <a href="guides-servers.html#auto-restart">auto-restart</a>.</p>
 <p>This exists because <a href="https://github.com/kristianwind/yggdrasil/blob/main/docs/../SECURITY.md">the security policy</a> says the fix for the open Docker
 advisories is keeping Docker updated on the host. Until now nothing in the panel would tell you
 whether you had.</p>
+<h2 id="php-that-no-longer-gets-security-fixes">PHP that no longer gets security fixes</h2>
+<p>Every six hours the panel checks which PHP is installed <strong>on the host</strong> and which PHP each
+<strong>running server</strong> has, and compares the branch with <a href="https://www.php.net/supported-versions.php">PHP&rsquo;s published support
+dates</a>.</p>
+<ul>
+<li><strong>On the host</strong> it asks every PHP binary it finds — <code>php</code>, <code>php8.x</code>, <code>php-fpm8.x</code>, <code>php-cgi</code>, in
+the usual system paths and under <code>/opt</code> (Plesk, cPanel, Remi) — for its version.</li>
+<li><strong>In a server</strong> it reads the <code>PHP_VERSION</code> the official <code>php</code>, <code>wordpress</code>, <code>phpmyadmin</code> and
+<code>adminer</code> images set. For any other image it runs <code>php -v</code> in the container once, and asks again
+only after the container is recreated.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>What it finds</th>
+<th>What you get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A branch past its end of life</td>
+<td>🚨 <strong>Emergency</strong>: a notification, an incident in the activity feed, and a red banner at the top of every page. Repeated weekly while it stands.</td>
+</tr>
+<tr>
+<td>A branch with 90 days or less left (not for the OS&rsquo;s own packages, which keep being patched past that date)</td>
+<td>🟠 A warning in the same places, repeated monthly, while there is time to plan.</td>
+</tr>
+<tr>
+<td>An ended branch from the OS&rsquo;s own packages (Ubuntu, Debian security)</td>
+<td>🟠 A warning, not an emergency: the distribution keeps patching its own PHP after php.net stops, for as long as that OS release is supported. Ubuntu 24.04&rsquo;s PHP 8.3.6 is a patched build under an old-looking number, for example. PHP from a third-party repository such as deb.sury.org follows php.net&rsquo;s dates and counts as an emergency.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Dismiss for this version</strong> hides a finding for the whole panel. A different unsupported version
+shows again.</p>
+<p>It is read-only. The panel never upgrades PHP or recreates a server for you, because moving a site
+to a new PHP breaks plugins often enough to need a person deciding it. For a server, Restart pulls
+the rune&rsquo;s image again (<code>wordpress:latest</code> follows the image&rsquo;s current PHP); for the host, upgrade
+the package or remove it if nothing uses it.</p>
+<p>The journal says what each check found, healthy or not — <code>php check: the host=8.3.6(ok), Blog=8.3.35(ok)</code> —
+so a quiet result can be told apart from a check that never ran.</p>
 <h2 id="see-also">See also</h2>
 <ul>
 <li><a href="guides-servers.html">Servers</a></li>
@@ -516,7 +557,7 @@ whether you had.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#what-a-scheduled-update-does-when-things-go-wrong">What a scheduled update does when things go wrong</a><a class="t2" href="#health-check-is-the-app-alive-or-just-the-port">Health check (is the app alive, or just the port?)</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t3" href="#docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</a><a class="t3" href="#the-statistics-page">The Statistics page</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#live-cpu-and-memory">Live CPU and memory</a><a class="t2" href="#metrics-history">Metrics history</a><a class="t2" href="#quiet-hours">Quiet hours</a><a class="t2" href="#resource-alarms">Resource alarms</a><a class="t3" href="#what-clears-when-a-server-stops">What clears when a server stops</a><a class="t2" href="#what-a-scheduled-update-does-when-things-go-wrong">What a scheduled update does when things go wrong</a><a class="t2" href="#health-check-is-the-app-alive-or-just-the-port">Health check (is the app alive, or just the port?)</a><a class="t2" href="#watchdog">Watchdog</a><a class="t2" href="#start-failure-detection">Start-failure detection</a><a class="t2" href="#kvasir-watchers">Kvasir Watchers</a><a class="t2" href="#the-alert-policy">The alert policy</a><a class="t3" href="#incidents-that-arent-traffic">Incidents that aren’t traffic</a><a class="t2" href="#the-history-tab">The History tab</a><a class="t2" href="#rune-versions">Rune versions</a><a class="t2" href="#host-system-info">Host system info</a><a class="t3" href="#low-disk-alert">Low-disk alert</a><a class="t3" href="#docker-leftovers-and-why-the-disk-fills">Docker leftovers, and why the disk fills</a><a class="t3" href="#the-statistics-page">The Statistics page</a><a class="t2" href="#updates">Updates</a><a class="t2" href="#security-advisories">Security advisories</a><a class="t2" href="#host-operating-system">Host operating system</a><a class="t2" href="#php-that-no-longer-gets-security-fixes">PHP that no longer gets security fixes</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

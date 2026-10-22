@@ -42,8 +42,9 @@ type Server struct {
 	// In-flight chunked file uploads, keyed by upload id; see handlers_files.go.
 	// A value, not a pointer: the zero value is usable and the map inside it is
 	// created on first use.
-	uploads uploadTracker
-	osUpd   osUpdateCache // host OS update status, refreshed on a TTL
+	uploads  uploadTracker
+	osUpd    osUpdateCache // host OS update status, refreshed on a TTL
+	phpCheck phpCheckState // the PHP versions on the host and in servers, and how supported they are
 
 	pubCount   *publicCount // cached public install count (unauthenticated endpoint)
 	pubCountAt time.Time
@@ -99,6 +100,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 		anomalies:    newAnomalyState(),
 		startWD:      newStartState(),
 		alarms:       newAlarmState(),
+		phpCheck:     phpCheckState{probed: map[string]string{}},
 	}
 	s.router = s.buildRouter()
 	s.StartScheduler()
@@ -124,6 +126,7 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.startStillDownLoop()
 	s.startPanelBackupLoop()
 	s.startDataAccessLoop()
+	s.startPHPCheckLoop()
 	s.startBlockExpiryLoop()
 	return s
 }
@@ -564,6 +567,8 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/host/mounts", s.requireAdmin(s.handleHostMountsList))
 		r.Get("/api/host/browse", s.requireAdmin(s.handleHostBrowse)) // ?path=
 		r.Get("/api/system/os-updates", s.requireAdmin(s.handleOSUpdates))
+		r.Get("/api/system/php", s.requireAdmin(s.handlePHPStatus))
+		r.Post("/api/system/php/{key}/ack", s.requireAdmin(s.handleAckPHP))
 		r.Get("/api/system/backup-coverage", s.requireAdmin(s.handleBackupCoverage))
 		r.Post("/api/system/update", s.requireAdmin(s.handleSystemUpdate))
 		r.Post("/api/system/check-update", s.requireAdmin(s.handleCheckUpdate))

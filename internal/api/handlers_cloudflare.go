@@ -87,7 +87,7 @@ func (s *Server) cfAddServer(serverID, serverName string) {
 	if err != nil || c == nil {
 		return
 	}
-	internalHost := firstNonEmpty(s.getSetting(ctx, "cf_internal_host"), localLANIP())
+	internalHost := s.cfInternalHost(ctx)
 	if internalHost == "" {
 		return
 	}

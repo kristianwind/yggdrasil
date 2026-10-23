@@ -528,6 +528,11 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	fail := func(msg string) error {
 		s.db.Exec("UPDATE backups SET status='error', error_msg=?, completed_at=? WHERE id=?",
 			msg, time.Now().UTC().Format(time.RFC3339), backupID)
+		// Also in the journal. The notification is the only other trace, and a
+		// panel with no notification channel sends it nowhere: ygg-ovh failed
+		// every nightly backup for three nights (PBS2 unreachable, 2026-10-21 to
+		// 10-23) and not one line said so outside the Backups tab.
+		log.Printf("backup %s (%s) failed: %s", backupID, s.serverName(serverID), msg)
 		s.notifyServer(serverID, "❌ Backup failed for "+s.serverName(serverID)+": "+msg)
 		return errors.New(msg)
 	}

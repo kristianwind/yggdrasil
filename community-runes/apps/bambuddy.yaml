@@ -1,0 +1,63 @@
+gameskill:
+  id: bambuddy
+  name: "Bambuddy"
+  category: "Apps"
+  description: >
+    A self-hosted control panel for Bambu Lab 3D printers: live status and
+    camera, a print queue, and an archive of everything you have printed, for
+    one printer or a whole farm.
+
+    Add your printers by IP address under Printers. Automatic discovery and
+    the virtual printer (sending from Bambu Studio / OrcaSlicer straight to
+    Bambuddy) are not available here: both need the container on the host's
+    own network, and the panel gives every server its own.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Pattern A: the panel clears the image's entrypoint and runs the app as its
+  # own service account. That is safe here because the upstream entrypoint does
+  # exactly one thing for a non-root start: exec the command. As root it would
+  # chown /app/data to PUID:PGID — 1000:1000 by default — and take the server's
+  # files away from the panel (the PUID trap); this way that code never runs.
+  #
+  # data_path is the image's own DATA_DIR, so its SQLite database, archive,
+  # backups and secrets (JWT, MFA key, both generated on first start) all live
+  # in the server's folder. LOG_DIR moves into it too: the image's /app/logs is
+  # root-owned and would be unwritable, and outside the folder it would be lost
+  # on every restart anyway. HOME points there for asyncssh (SpoolBuddy updates)
+  # — the panel's default HOME=/data does not exist with this data_path.
+  #
+  # APP_URL is what the app falls back to for links in e-mails (login, MFA)
+  # until an external URL is set in its own settings; without it they point at
+  # http://localhost:5173.
+  docker:
+    image: "ghcr.io/maziggy/bambuddy:latest"
+    data_path: /app/data
+    env:
+      DATA_DIR: /app/data
+      LOG_DIR: /app/data/logs
+      HOME: /app/data
+      APP_URL: "{{PUBLIC_URL}}"
+
+  variables:
+    - key: TZ
+      name: "Time zone"
+      type: string
+      default: "Europe/Copenhagen"
+      pattern: '^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$'
+      hint: "An IANA time zone, for example Europe/Copenhagen"
+
+  # exec: uvicorn must be PID 1 to get SIGTERM, or every stop ends in SIGKILL
+  # with no SQLite checkpoint. The flags are the image's own CMD, with the port
+  # fixed to the one declared below.
+  startup:
+    command: "mkdir -p /app/data/logs && exec uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --loop asyncio --timeout-graceful-shutdown 5"
+    done_regex: 'Uvicorn running on|Application startup complete'
+    stop_timeout: 30
+
+  ports:
+    - { name: web, default: 8000, protocol: tcp }
+
+  backup:
+    include: ["."]

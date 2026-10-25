@@ -312,12 +312,12 @@ create-server form needs it; everything that changes the catalogue is admin-only
 | `POST` | `/api/gameskills` | Admin | Upload a rune YAML (body capped at 512 KB) |
 | `POST` | `/api/gameskills/import-egg` | Admin | Convert a Pterodactyl egg JSON into a rune |
 | `POST` | `/api/gameskills/import-xml` | Admin | Import a rune expressed in XML |
-| `GET` | `/api/gameskills/github` | Admin | List runes in a GitHub repo directory. Each entry carries the repo copy's `version`, plus `installed` / `installed_version` / `builtin` for the local one |
+| `GET` | `/api/gameskills/github` | Admin | List runes in a repo directory on GitHub, or on a self-hosted Gitea/Forgejo given as `host=https://…` (only a host a saved repository names is contacted). Each entry carries the repo copy's `version`, plus `installed` / `installed_version` / `builtin` for the local one |
 | `GET` | `/api/gameskills/updates` | Admin | Installed non-builtin runes the catalog has moved past: `{updates:[{id,name,installed_version,available_version,download_url}], checked_at, note?}`. Matched by rune id against the community catalog; a `note` means the check couldn't run, which is not the same as everything being current |
-| `POST` | `/api/gameskills/install-from-github` | Admin | Fetch, validate, and store one rune from GitHub |
+| `POST` | `/api/gameskills/install-from-github` | Admin | Fetch, validate, and store one rune from GitHub or a saved Gitea repository, recording its source (`source_host` too) for the update check |
 | `DELETE` | `/api/gameskills/{id}` | Admin | Delete a rune |
 | `GET` | `/api/rune-repos` | Admin | Saved rune repositories, the built-in catalog first. `has_token` says a repo carries its own GitHub token; the token itself is never returned |
-| `POST` | `/api/rune-repos` | Admin | Save a repository: `{name, repo, path, ref, token?}` |
+| `POST` | `/api/rune-repos` | Admin | Save a repository: `{name, host?, repo, path, ref, token?}`. `host` is empty for GitHub, else an `https://` Gitea/Forgejo base URL; its token is used for that repository alone and the panel-wide GitHub token is never sent there |
 | `PUT` | `/api/rune-repos/{id}` | Admin | Edit one: `{name?, path?, ref?, token?}`. An omitted or masked `token` keeps what's stored, an empty string clears it |
 | `DELETE` | `/api/rune-repos/{id}` | Admin | Forget a repository (and its token) |
 | `POST` | `/api/gameskills/import-compose` | Admin | Translate an uploaded `docker-compose` file into a rune and store it. Returns `{id, name, warnings}` — `warnings` lists bind mounts to re-add as host mounts and anything the translation dropped. Create the server from the returned id the normal way |

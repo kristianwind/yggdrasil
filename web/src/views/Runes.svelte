@@ -249,6 +249,8 @@
   let ghData = $state(null);
   let ghError = $state("");
   let ghBusy = $state(""); // download_url currently installing
+  // The forge: empty = GitHub, else a self-hosted Gitea/Forgejo base URL.
+  let ghHost = $state("");
   let ghRepo = $state("kristianwind/yggdrasil");
   let ghPath = $state("community-runes");
   let ghRef = $state("main");
@@ -274,7 +276,23 @@
   async function loadRepos() {
     repos = await api.get("/rune-repos").catch(() => []);
   }
+  // The same canonical form the server stores, so a typed address matches a
+  // saved repository: https, lowercase host, no trailing slash, GitHub = "".
+  function normHost(h) {
+    let v = (h || "").trim();
+    if (!v) return "";
+    if (!v.includes("://")) v = "https://" + v;
+    try {
+      const u = new URL(v);
+      const host = u.host.toLowerCase();
+      if (["github.com", "www.github.com", "api.github.com"].includes(host)) return "";
+      return `${u.protocol}//${host}${u.pathname.replace(/\/+$/, "")}`;
+    } catch {
+      return v;
+    }
+  }
   function pickRepo(rp) {
+    ghHost = rp.host || "";
     ghRepo = rp.repo;
     ghPath = rp.path;
     ghRef = rp.ref || "main";
@@ -284,12 +302,15 @@
     savingRepo = true;
     try {
       await api.post("/rune-repos", {
-        name: ghRepo.trim(), repo: ghRepo.trim(), path: ghPath.trim(), ref: ghRef.trim(),
+        name: ghRepo.trim(), host: ghHost.trim(), repo: ghRepo.trim(), path: ghPath.trim(), ref: ghRef.trim(),
         token: ghToken.trim(),
       });
       toast("Repository saved", "success");
       ghToken = "";
       await loadRepos();
+      // A repository on a self-hosted server can only be listed once it is saved,
+      // so list it now rather than leaving the reader on the "save it first" note.
+      if (normHost(ghHost)) loadGithub(true);
     } catch (e) {
       toast(e.message, "error");
     } finally {
@@ -323,8 +344,11 @@
     }
   }
   const currentRepo = $derived(
-    repos.find((rp) => rp.repo === ghRepo.trim() && rp.path === ghPath.trim()),
+    repos.find(
+      (rp) => (rp.host || "") === normHost(ghHost) && rp.repo === ghRepo.trim() && rp.path === ghPath.trim(),
+    ),
   );
+  const onGitea = $derived(!!normHost(ghHost));
   const repoSaved = $derived(!!currentRepo);
   // The listing is cached for ten minutes, and nothing said so. A rune updated
   // in the catalogue and then updated from here returned the OLD version twice
@@ -338,10 +362,18 @@
   }
 
   async function loadGithub(refresh) {
+    // The panel only contacts a self-hosted server a saved repository names, so
+    // say that here instead of sending a request it will refuse.
+    if (normHost(ghHost) && !repos.some((rp) => (rp.host || "") === normHost(ghHost))) {
+      ghData = null;
+      ghError = "Save this repository first (＋ Save repo) — the panel only contacts servers a saved repository names.";
+      return;
+    }
     ghLoading = true;
     ghError = "";
     try {
       const q = new URLSearchParams({ repo: ghRepo.trim(), path: ghPath.trim() });
+      if (normHost(ghHost)) q.set("host", normHost(ghHost));
       if (ghRef.trim()) q.set("ref", ghRef.trim());
       if (refresh) q.set("refresh", "1");
       ghData = await api.get(`/gameskills/github?${q}`);
@@ -523,7 +555,7 @@
   <div class="fixed inset-0 z-50 bg-black/60 grid place-items-center p-4">
     <div class="card w-full max-w-2xl max-h-[90vh] overflow-auto p-5 space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Browse runes on GitHub</h2>
+        <h2 class="text-lg font-semibold">Browse runes on GitHub or your own Gitea</h2>
         <button class="btn-ghost px-2 py-1" aria-label="Close" onclick={() => (ghOpen = false)}>✕</button>
       </div>
       <p class="text-muted text-sm">
@@ -537,9 +569,9 @@
           <span class="text-xs text-muted">Repositories:</span>
           {#each repos as rp}
             <span class="inline-flex items-center rounded-full border border-border text-xs overflow-hidden">
-              <button class="px-2.5 py-1 hover:bg-panel2 {ghRepo === rp.repo && ghPath === rp.path ? 'bg-accent/15 text-accent' : ''}"
+              <button class="px-2.5 py-1 hover:bg-panel2 {currentRepo && currentRepo.id === rp.id ? 'bg-accent/15 text-accent' : ''}"
                 onclick={() => pickRepo(rp)}
-                title="{rp.repo}/{rp.path} @ {rp.ref}{rp.has_token ? ' · uses its own GitHub token' : ''}"
+                title="{rp.host ? rp.host + ' · ' : ''}{rp.repo}/{rp.path} @ {rp.ref}{rp.has_token ? ' · uses its own token' : ''}"
                 >{rp.name}{#if rp.has_token}<span class="ml-1 text-xs" aria-label="has its own token">🔑</span>{/if}</button>
               {#if !rp.default}
                 <button class="px-1.5 py-1 text-muted hover:text-danger border-l border-border" title="Remove this repository" onclick={() => removeRepo(rp)}>✕</button>
@@ -550,6 +582,10 @@
       {/if}
 
       <div class="flex flex-wrap gap-2 items-end">
+        <div class="flex-1 min-w-[11rem]">
+          <label class="label" for="ghHost">Server</label>
+          <input id="ghHost" class="input" bind:value={ghHost} placeholder="GitHub, or https://gitea.example.com" />
+        </div>
         <div class="flex-1 min-w-[10rem]">
           <label class="label" for="ghRepo">Repository (owner/name)</label>
           <input id="ghRepo" class="input" bind:value={ghRepo} placeholder="kristianwind/yggdrasil" />
@@ -565,7 +601,7 @@
         <div class="flex-1 min-w-[9rem]">
           <label class="label" for="ghToken">Token for this repo (optional)</label>
           <input id="ghToken" class="input" type="password" autocomplete="off" bind:value={ghToken}
-            placeholder={currentRepo?.has_token ? "•••••••• stored" : "ghp_… / github_pat_…"} />
+            placeholder={currentRepo?.has_token ? "•••••••• stored" : onGitea ? "Gitea access token" : "ghp_… / github_pat_…"} />
         </div>
         <button class="btn-ghost" onclick={() => loadGithub(true)} disabled={ghLoading}>
           {ghLoading ? "Loading…" : "Reload"}
@@ -580,6 +616,12 @@
         {/if}
       </div>
       <p class="text-muted text-xs -mt-1">
+        <b>Your own Gitea or Forgejo:</b> put its address in Server, save the repository, and for a
+        private one give it an access token with <span class="font-mono">read:repository</span>. The
+        panel-wide GitHub token is never sent to another server, and the panel only contacts servers a
+        saved repository names.
+      </p>
+      <p class="text-muted text-xs -mt-1">
         A token here is used for this repository only, in place of the panel-wide one under
         Settings → Integrations. That's what makes two private repos with different owners
         reachable at the same time — a fine-grained token can only ever select repos its own
@@ -587,7 +629,7 @@
       </p>
 
       {#if ghLoading}
-        <div class="text-muted text-sm">Fetching from GitHub…</div>
+        <div class="text-muted text-sm">Fetching from {onGitea ? normHost(ghHost) : "GitHub"}…</div>
       {:else if !ghData}
         <div class="text-sm text-danger">{ghError || "Couldn't load the listing — check the repo/folder and try Reload."}</div>
         <div class="text-muted text-xs mt-1">
@@ -635,7 +677,7 @@
           {/each}
         </div>
         <p class="text-muted text-xs flex items-center gap-2 flex-wrap">
-          <span>{ghData.repo}/{ghData.path} @ {ghData.ref}</span>
+          <span>{ghData.host ? ghData.host + " · " : ""}{ghData.repo}/{ghData.path} @ {ghData.ref}</span>
           {#if ghData.from_cache}
             <span>· cached {cacheAge(ghData.cache_seconds)}</span>
             <button class="underline hover:text-text" onclick={() => loadGithub(true)}>

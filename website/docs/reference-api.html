@@ -576,7 +576,7 @@ create-server form needs it; everything that changes the catalogue is admin-only
 <td><code>GET</code></td>
 <td><code>/api/gameskills/github</code></td>
 <td>Admin</td>
-<td>List runes in a GitHub repo directory. Each entry carries the repo copy&rsquo;s <code>version</code>, plus <code>installed</code> / <code>installed_version</code> / <code>builtin</code> for the local one</td>
+<td>List runes in a repo directory on GitHub, or on a self-hosted Gitea/Forgejo given as <code>host=https://…</code> (only a host a saved repository names is contacted). Each entry carries the repo copy&rsquo;s <code>version</code>, plus <code>installed</code> / <code>installed_version</code> / <code>builtin</code> for the local one</td>
 </tr>
 <tr>
 <td><code>GET</code></td>
@@ -588,7 +588,7 @@ create-server form needs it; everything that changes the catalogue is admin-only
 <td><code>POST</code></td>
 <td><code>/api/gameskills/install-from-github</code></td>
 <td>Admin</td>
-<td>Fetch, validate, and store one rune from GitHub</td>
+<td>Fetch, validate, and store one rune from GitHub or a saved Gitea repository, recording its source (<code>source_host</code> too) for the update check</td>
 </tr>
 <tr>
 <td><code>DELETE</code></td>
@@ -606,7 +606,7 @@ create-server form needs it; everything that changes the catalogue is admin-only
 <td><code>POST</code></td>
 <td><code>/api/rune-repos</code></td>
 <td>Admin</td>
-<td>Save a repository: <code>{name, repo, path, ref, token?}</code></td>
+<td>Save a repository: <code>{name, host?, repo, path, ref, token?}</code>. <code>host</code> is empty for GitHub, else an <code>https://</code> Gitea/Forgejo base URL; its token is used for that repository alone and the panel-wide GitHub token is never sent there</td>
 </tr>
 <tr>
 <td><code>PUT</code></td>

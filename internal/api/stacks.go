@@ -273,7 +273,7 @@ func (s *Server) sidecarPorts(ctx context.Context, id string, svc gameskill.Serv
 // container is created — seen live when a Pi's machine-learning image download
 // broke mid-transfer and took the whole stack start with it.
 func (s *Server) pullImageRetry(ctx context.Context, image string) {
-	if err := s.docker.PullImage(ctx, image, io.Discard); err != nil {
-		s.docker.PullImage(ctx, image, io.Discard) //nolint:errcheck // second failure surfaces at create
+	if err := s.pullImage(ctx, image, io.Discard); err != nil {
+		s.pullImage(ctx, image, io.Discard) //nolint:errcheck // second failure surfaces at create
 	}
 }

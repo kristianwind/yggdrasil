@@ -219,7 +219,7 @@ func pbsErrorMessage(what string, out []byte, err error) error {
 // pbsEnsureImage pulls the client image if it is missing. Doing it once, up
 // front, keeps a first-run pull from being reported as a backup failure.
 func (s *Server) pbsEnsureImage(ctx context.Context) error {
-	return s.docker.PullImage(ctx, s.pbsImage(), nil)
+	return s.pullImage(ctx, s.pbsImage(), nil)
 }
 
 // pbsBackupID is the PBS backup group for a panel server: stable for the life of

@@ -4,7 +4,7 @@ gameskill:
   category: "Minecraft"
   description: "Vanilla / Paper / Purpur / Fabric / Forge / NeoForge Java server, or a CurseForge modpack"
   author: "yggdrasil-core"
-  version: 15
+  version: 16
   icon: "minecraft"
 
   docker:
@@ -78,10 +78,6 @@ gameskill:
       name: "Hardcore — death is permanent and the world is locked to hard"
       type: bool
       default: false
-    - key: RCON_PORT
-      name: "RCON port (container-internal)"
-      type: int
-      default: 25575
     - key: RCON_PASSWORD
       name: "RCON password"
       type: string
@@ -607,7 +603,7 @@ gameskill:
         ensure_nl
         {
           echo "enable-rcon=true"
-          echo "rcon.port={{RCON_PORT}}"
+          echo "rcon.port=25575"
           echo "rcon.password={{RCON_PASSWORD}}"
           echo "white-list={{ENABLE_WHITELIST}}"
           echo "enforce-whitelist={{ENABLE_WHITELIST}}"
@@ -677,7 +673,15 @@ gameskill:
       # enable-rcon=false, which install leaves alone, so the console, the player
       # list and scheduled commands would all be dead on arrival.
       setprop enable-rcon true
-      setprop rcon.port "$RCON_PORT"
+      # 25575 is the container side of the rcon port below; the panel publishes
+      # it on a host port of its own choosing. This used to read $RCON_PORT, a
+      # variable of this rune -- but the panel injects <NAME>_PORT for every
+      # declared port, so RCON_PORT is always the HOST port and the variable never
+      # had a say. Every server then listened for RCON on the host port number
+      # inside the container, where nothing is forwarded, and the panel's console,
+      # bans and player list fell back to stdin or failed (found 2026-10-25: all
+      # six Minecraft servers on game2).
+      setprop rcon.port 25575
       setprop rcon.password "$RCON_PASSWORD"
       # --enable-native-access=ALL-UNNAMED silences the Java 24+ "restricted
       # method ... java.lang.System::load (JNA)" warnings. It is not merely

@@ -60,7 +60,7 @@ The values come from the server's variables, plus two things the panel injects:
 | Injected key | Value |
 |--------------|-------|
 | `SERVER_NAME` | The server's name as typed in the panel. Don't declare a variable for it. |
-| `<NAME>_PORT` | The allocated host port for each declared port, name uppercased — `game` becomes `GAME_PORT`. |
+| `<NAME>_PORT` | The allocated host port for each declared port, name uppercased — `game` becomes `GAME_PORT`. It overrides a variable of the same name, so never declare one: bind to the port's `default` inside the container and use `{{GAME_PORT}}` only to advertise the external port (Steam runes, which publish 1:1, are the exception). |
 | `PUBLIC_URL` | The address this server answers on from outside: `https://<its domain>` when one is configured, else `http://<panel host>:<port>`. Empty if neither is known. |
 
 `PUBLIC_URL` exists because a rune cannot hardcode it. Apps that need to know their own address —

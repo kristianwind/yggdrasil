@@ -459,6 +459,53 @@
     }
   }
 
+  // Container registry logins — let runes name PRIVATE images (your own Gitea's
+  // packages, a private GHCR image). Secrets are write-only.
+  let regLogins = $state([]);
+  let regForm = $state({ registry: "", username: "", secret: "" });
+  let regBusy = $state(false);
+  let regTesting = $state("");
+  async function loadRegistries() {
+    regLogins = await api.get("/registry-logins").catch(() => []);
+  }
+  async function saveRegistry() {
+    regBusy = true;
+    try {
+      const saved = await api.post("/registry-logins", {
+        registry: regForm.registry.trim(),
+        username: regForm.username.trim(),
+        secret: regForm.secret.trim(),
+      });
+      toast(`Login for ${saved.registry} saved`, "success");
+      regForm = { registry: "", username: "", secret: "" };
+      await loadRegistries();
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      regBusy = false;
+    }
+  }
+  async function testRegistry(l) {
+    regTesting = l.id;
+    try {
+      const res = await api.post(`/registry-logins/${l.id}/test`, {});
+      toast(`${res.registry}: ${res.status || "login works"}`, "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      regTesting = "";
+    }
+  }
+  async function removeRegistry(l) {
+    if (!(await confirmDialog({ title: "Remove registry login", body: `Remove the login for ${l.registry}? Servers whose image is on it will fail to pull a new version.`, danger: true, confirmText: "Remove" }))) return;
+    try {
+      await api.del(`/registry-logins/${l.id}`);
+      await loadRegistries();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
   // IP blocking (attack mitigation)
   let blockCfg = $state({ enabled: false, mode: "propose", nft_enabled: false, nft_available: false, cf_configured: false, allowlist: "" });
   let blocks = $state([]);
@@ -1560,6 +1607,7 @@
     loadPasskeys();
     loadBlocking();
     loadGithub();
+    loadRegistries();
     loadBuild();
     loadAutoUpdate();
     loadOSUpdates();
@@ -3165,6 +3213,47 @@
       <button class="btn-ghost shrink-0" onclick={() => { ghInput = ''; saveGithub(); }} disabled={ghBusy}>Clear</button>
     {/if}
   </div>
+</div>
+
+<h2 class="text-xl font-semibold mb-2">Container registries</h2>
+<p class="text-muted mb-4 text-sm">
+  Optional. Lets a rune run a <b>private</b> image — a package on your own Gitea or Forgejo, a private
+  GHCR image. A login is used only when an image names that registry
+  (<code class="text-xs bg-black/30 px-1 rounded">gitea.example.com/owner/app</code> uses the login for
+  <code class="text-xs bg-black/30 px-1 rounded">gitea.example.com</code>), and is handed to Docker for
+  that pull alone. On Gitea, use your user name and an access token with the
+  <code class="text-xs bg-black/30 px-1 rounded">read:package</code> scope. Stored encrypted, write-only.
+</p>
+<div class="card p-4 mb-10 max-w-xl space-y-3">
+  {#if regLogins.length}
+    <div class="divide-y divide-border">
+      {#each regLogins as l (l.id)}
+        <div class="flex items-center gap-2 py-2">
+          <div class="min-w-0 flex-1">
+            <div class="font-mono text-sm truncate">{l.registry}</div>
+            <div class="text-xs text-muted">as {l.username}</div>
+          </div>
+          <button class="btn-ghost shrink-0" onclick={() => testRegistry(l)} disabled={regTesting === l.id}>
+            {regTesting === l.id ? "Testing…" : "Test"}
+          </button>
+          <button class="btn-ghost shrink-0" onclick={() => removeRegistry(l)}>Remove</button>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <div class="text-sm text-muted">No logins — every image is pulled anonymously.</div>
+  {/if}
+  <div class="grid gap-2 sm:grid-cols-3">
+    <input class="input" placeholder="gitea.example.com" bind:value={regForm.registry} aria-label="Registry" />
+    <input class="input" placeholder="User name" bind:value={regForm.username} autocomplete="off" aria-label="User name" />
+    <input class="input font-mono" type="password" placeholder="Access token" bind:value={regForm.secret} autocomplete="new-password" aria-label="Password or access token" />
+  </div>
+  <div class="flex justify-end">
+    <button class="btn-primary" onclick={saveRegistry}
+      disabled={regBusy || !regForm.registry.trim() || !regForm.username.trim() || !regForm.secret.trim()}>
+      {regBusy ? "Saving…" : "Save login"}</button>
+  </div>
+  <p class="text-xs text-muted">Saving a login for a registry that already has one replaces it.</p>
 </div>
 
 <div class="flex items-center justify-between mb-2">

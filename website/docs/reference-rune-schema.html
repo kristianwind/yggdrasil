@@ -251,7 +251,7 @@ declared name as written) and <code>HOME=/data</code>.</p>
 <td><code>image</code></td>
 <td>string</td>
 <td>—</td>
-<td><strong>Required.</strong> The runtime image. Templated.</td>
+<td><strong>Required.</strong> The runtime image. Templated. Pulled anonymously unless a login is stored for its registry under <strong>Settings → Container registries</strong> — see <a href="#private-images">Private images</a>.</td>
 </tr>
 <tr>
 <td><code>data_path</code></td>
@@ -297,6 +297,21 @@ declared name as written) and <code>HOME=/data</code>.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="private-images">Private images</h3>
+<p>The panel pulls every image again on each start, and anonymously by default — a registry that
+refuses anonymous pulls fails the start with <code>No such image</code> or <code>unauthorized</code>. To run a
+private image, store a login for its registry under <strong>Settings → Container registries</strong>:
+the registry&rsquo;s host, a user name, and a password or access token (on Gitea or Forgejo, an
+access token with <code>read:package</code>).</p>
+<p>The login is matched by the registry the image names, after Docker&rsquo;s own normalisation:
+<code>gitea.example.com/kw/app:1</code> uses the login for <code>gitea.example.com</code>, and a bare <code>nginx</code> is
+<code>docker.io</code>. It is handed to Docker for that pull only, so nothing is written to the
+daemon&rsquo;s or the host&rsquo;s credential store, and no other registry is ever offered it. It
+covers the runtime image, <code>services:</code> images, and the <code>install</code> and <code>update</code> images. The
+<strong>Test</strong> button logs in to the registry so a wrong token shows up there, not as a server
+that will not start.</p>
+<p>A rune you share with someone else should still name a public image: their panel holds
+none of your logins.</p>
 <h3 id="data_path-and-the-working-directory"><code>data_path</code> and the working directory</h3>
 <p>Yggdrasil bind-mounts the server&rsquo;s data directory into the container. Games leave <code>data_path</code>
 unset: the mount lands on <code>/data</code> and the container&rsquo;s working directory is set to <code>/data</code>, so a
@@ -1571,7 +1586,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t3" href="#app_writable">app_writable</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t3" href="#tcpudp--one-host-port-both-protocols">tcp+udp — one host port, both protocols</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t3" href="#an-optional-sidecar">An optional sidecar</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#private-images">Private images</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t3" href="#app_writable">app_writable</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t3" href="#tcpudp--one-host-port-both-protocols">tcp+udp — one host port, both protocols</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t3" href="#an-optional-sidecar">An optional sidecar</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

@@ -181,6 +181,23 @@ Existing servers built from that rune pick the change up the next time their con
 recreated — a restart is enough, no recreating the server.</p>
 <p>Fetches are restricted to GitHub&rsquo;s own hosts, so this endpoint can&rsquo;t be turned into a
 fetch-anything proxy, and each file is capped at 512 KB.</p>
+<h4 id="your-own-gitea-or-forgejo">Your own Gitea or Forgejo</h4>
+<p>The same browser reads repositories on a self-hosted Gitea or Forgejo, private ones
+included. Put the server&rsquo;s address in <strong>Server</strong> (<code>https://gitea.example.com</code>), fill in the
+repository, folder and branch, add an access token for a private repository, and <strong>Save
+repo</strong>. The listing appears once it is saved.</p>
+<ul>
+<li><strong>The token</strong> needs read access to the repository: on Gitea, a personal access token with
+the <code>read:repository</code> scope. It is stored encrypted, used for this repository only, and
+never shown again.</li>
+<li><strong>The panel-wide GitHub token is never sent to another server.</strong> A repository on your
+own Gitea uses its own token, or none.</li>
+<li><strong>The panel only contacts servers a saved repository names</strong>, over HTTPS. That keeps the
+browser from being pointed at arbitrary addresses on your network.</li>
+<li><strong>Installed runes remember their server</strong>, so the update check asks the same Gitea for
+newer versions. Remove the last repository that names a server and those runes report
+their source as gone instead of being checked against GitHub.</li>
+</ul>
 <h3 id="upload-a-yaml">Upload a YAML</h3>
 <p><strong>Carve a rune (upload)</strong> takes a <code>.yaml</code> file directly — the same thing the GitHub
 browser does, when you already have the file. Also capped at 512 KB.</p>

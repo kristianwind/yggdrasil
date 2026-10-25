@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -51,13 +52,13 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 	// a recorded source (uploaded by hand) fall back to the default catalog by id,
 	// which is right for the ones that actually came from there.
 	type local struct {
-		name            string
-		version         int
-		repo, path, ref string
+		name                  string
+		version               int
+		host, repo, path, ref string
 	}
 	installed := map[string]local{}
 	rows, err := s.db.QueryContext(r.Context(),
-		"SELECT id, name, version, COALESCE(source_repo,''), COALESCE(source_path,''), COALESCE(source_ref,'') FROM gameskills WHERE builtin=0")
+		"SELECT id, name, version, COALESCE(source_host,''), COALESCE(source_repo,''), COALESCE(source_path,''), COALESCE(source_ref,'') FROM gameskills WHERE builtin=0")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -65,7 +66,7 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id string
 		var l local
-		if rows.Scan(&id, &l.name, &l.version, &l.repo, &l.path, &l.ref) == nil {
+		if rows.Scan(&id, &l.name, &l.version, &l.host, &l.repo, &l.path, &l.ref) == nil {
 			installed[id] = l
 		}
 	}
@@ -73,21 +74,25 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 
 	// Group installed runes by the source they should be checked against, so each
 	// distinct repo is fetched once. Empty source → the default catalog.
-	type src struct{ repo, path, ref string }
+	type src struct{ host, repo, path, ref string }
 	bysource := map[src][]string{} // source → rune ids
 	for id, l := range installed {
-		key := src{l.repo, l.path, l.ref}
+		key := src{l.host, l.repo, l.path, l.ref}
 		if key.repo == "" {
-			key = src{defaultRuneRepo, defaultRunePath, ""}
+			key = src{"", defaultRuneRepo, defaultRunePath, ""}
 		}
 		bysource[key] = append(bysource[key], id)
 	}
 
 	var notes []string
 	for source, ids := range bysource {
-		runes, err := s.cachedGithubRunes(r.Context(), source.repo, source.path, source.ref)
+		runes, err := s.cachedRunes(r.Context(), source.host, source.repo, source.path, source.ref)
 		if err != nil {
-			notes = append(notes, source.repo+": "+err.Error())
+			name := source.repo
+			if source.host != "" {
+				name = source.host + "/" + source.repo
+			}
+			notes = append(notes, name+": "+err.Error())
 			continue
 		}
 		repoVer := map[string]ghRune{}
@@ -121,17 +126,27 @@ func (s *Server) handleRuneUpdates(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, out)
 }
 
-// cachedGithubRunes lists a repo's runes, reusing the browser's 10-minute cache.
+// cachedGithubRunes lists a GitHub repo's runes, reusing the browser's 10-minute cache.
 func (s *Server) cachedGithubRunes(ctx context.Context, repo, path, ref string) ([]ghRune, error) {
-	token := s.effectiveGithubToken(ctx, repo, path, ref)
-	cacheKey := repo + "|" + path + "|" + ref + "|" + ghTokenFingerprint(token)
+	return s.cachedRunes(ctx, "", repo, path, ref)
+}
+
+// cachedRunes lists a repo's runes on any forge, reusing the browser's cache.
+// A host no saved repository names any more is not contacted: the rune keeps
+// its record, and the update check says the source is gone.
+func (s *Server) cachedRunes(ctx context.Context, host, repo, path, ref string) ([]ghRune, error) {
+	if !s.forgeHostKnown(ctx, host) {
+		return nil, fmt.Errorf("no saved repository names %s any more", host)
+	}
+	token := s.effectiveRuneToken(ctx, host, repo, path, ref)
+	cacheKey := host + "|" + repo + "|" + path + "|" + ref + "|" + ghTokenFingerprint(token)
 	ghRunesMu.Lock()
 	cached, ok := ghRunesCache[cacheKey]
 	ghRunesMu.Unlock()
 	if ok && time.Since(cached.at) < 10*time.Minute {
 		return cached.runes, nil
 	}
-	runes, err := fetchGithubRunes(ctx, repo, path, ref, token)
+	runes, err := fetchRunes(ctx, host, repo, path, ref, token)
 	if err != nil {
 		return nil, err
 	}

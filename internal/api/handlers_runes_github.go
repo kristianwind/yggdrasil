@@ -145,18 +145,28 @@ func (s *Server) githubToken(ctx context.Context) string {
 // falling back to any saved row for the repo when only the folder or branch
 // differs, since a credential grants access to a repository, not to a directory.
 func (s *Server) effectiveGithubToken(ctx context.Context, repo, path, ref string) string {
+	return s.effectiveRuneToken(ctx, "", repo, path, ref)
+}
+
+// effectiveRuneToken is effectiveGithubToken for any forge. A repository on a
+// self-hosted Gitea gets only the token saved with it: the panel-wide token is a
+// GitHub credential and is never sent anywhere else.
+func (s *Server) effectiveRuneToken(ctx context.Context, host, repo, path, ref string) string {
 	if repo != "" && s.cipher != nil {
 		var enc string
 		err := s.db.QueryRowContext(ctx, `
 			SELECT COALESCE(token_enc,'') FROM rune_repos
-			WHERE repo=? AND token_enc<>''
+			WHERE host=? AND repo=? AND token_enc<>''
 			ORDER BY (path=? AND COALESCE(ref,'main')=?) DESC, created_at
-			LIMIT 1`, repo, path, ref).Scan(&enc)
+			LIMIT 1`, host, repo, path, ref).Scan(&enc)
 		if err == nil && enc != "" {
 			if tok, derr := s.cipher.Decrypt(enc); derr == nil {
 				return strings.TrimSpace(tok)
 			}
 		}
+	}
+	if host != "" {
+		return ""
 	}
 	return s.githubToken(ctx)
 }
@@ -205,9 +215,18 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid repo or ref", http.StatusBadRequest)
 		return
 	}
+	host, herr := normalizeForgeHost(r.URL.Query().Get("host"))
+	if herr != nil {
+		jsonError(w, herr.Error(), http.StatusBadRequest)
+		return
+	}
+	if !s.forgeHostKnown(r.Context(), host) {
+		jsonError(w, "save this repository first — the panel only contacts servers a saved repository names", http.StatusBadRequest)
+		return
+	}
 
-	token := s.effectiveGithubToken(r.Context(), repo, path, ref)
-	cacheKey := repo + "|" + path + "|" + ref + "|" + ghTokenFingerprint(token)
+	token := s.effectiveRuneToken(r.Context(), host, repo, path, ref)
+	cacheKey := host + "|" + repo + "|" + path + "|" + ref + "|" + ghTokenFingerprint(token)
 	refresh := r.URL.Query().Get("refresh") == "1"
 
 	ghRunesMu.Lock()
@@ -229,7 +248,7 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 		fromCache = true
 	} else {
 		var err error
-		runes, err = fetchGithubRunes(r.Context(), repo, path, ref, token)
+		runes, err = fetchRunes(r.Context(), host, repo, path, ref, token)
 		if err != nil {
 			// Deliberately not 502: a proxy in front of the panel (Cloudflare
 			// Tunnel, nginx) may swap a Bad Gateway body for its own error page,
@@ -271,7 +290,7 @@ func (s *Server) handleGithubRunes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonOK(w, map[string]any{
-		"repo": repo, "path": path, "ref": ref, "runes": out,
+		"host": host, "repo": repo, "path": path, "ref": ref, "runes": out,
 		"fetched_at":    fetchedAt.UTC().Format(time.RFC3339),
 		"from_cache":    fromCache,
 		"cache_seconds": int(time.Since(fetchedAt).Seconds()),
@@ -450,8 +469,16 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 	// The download URL is all we have here, so recover the repo from it to pick the
 	// right credential — installing from a private repo must use the same token
 	// that could list it, not the panel-wide one.
+	var data []byte
+	var err error
+	srcHost := ""
 	srcRepo, srcPath, srcRef := parseRawGithubSource(req.DownloadURL)
-	data, err := fetchGithubRaw(ctx, req.DownloadURL, s.effectiveGithubToken(r.Context(), srcRepo, srcPath, srcRef))
+	if h, repo, path, ref, ok := parseGiteaRawSource(req.DownloadURL, s.forgeHosts(r.Context())); ok {
+		srcHost, srcRepo, srcPath, srcRef = h, repo, path, ref
+		data, err = fetchGiteaRaw(ctx, h, req.DownloadURL, s.effectiveRuneToken(r.Context(), h, repo, path, ref))
+	} else {
+		data, err = fetchGithubRaw(ctx, req.DownloadURL, s.effectiveGithubToken(r.Context(), srcRepo, srcPath, srcRef))
+	}
 	if err != nil {
 		// 400 rather than 502 for the same reason as the listing above: the
 		// reason must survive any proxy between the panel and the browser.
@@ -474,13 +501,14 @@ func (s *Server) handleInstallGithubRune(w http.ResponseWriter, r *http.Request)
 	// The source (parsed above) is recorded so the update check can compare against
 	// its own repo — works for any repo, not just the default catalog.
 	_, err = s.db.ExecContext(r.Context(), `
-		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin, source_repo, source_path, source_ref)
-		VALUES (?,?,?,?,?,0,?,?,?)
+		INSERT INTO gameskills (id, name, category, version, yaml_blob, builtin, source_repo, source_path, source_ref, source_host)
+		VALUES (?,?,?,?,?,0,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, category=excluded.category,
 			version=excluded.version, yaml_blob=excluded.yaml_blob,
-			source_repo=excluded.source_repo, source_path=excluded.source_path, source_ref=excluded.source_ref
-	`, gs.ID, gs.Name, gs.Category, gs.Version, string(data), srcRepo, srcPath, srcRef)
+			source_repo=excluded.source_repo, source_path=excluded.source_path, source_ref=excluded.source_ref,
+			source_host=excluded.source_host
+	`, gs.ID, gs.Name, gs.Category, gs.Version, string(data), srcRepo, srcPath, srcRef, srcHost)
 	if err != nil {
 		jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return

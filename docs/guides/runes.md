@@ -138,6 +138,24 @@ recreated — a restart is enough, no recreating the server.
 Fetches are restricted to GitHub's own hosts, so this endpoint can't be turned into a
 fetch-anything proxy, and each file is capped at 512 KB.
 
+#### Your own Gitea or Forgejo
+
+The same browser reads repositories on a self-hosted Gitea or Forgejo, private ones
+included. Put the server's address in **Server** (`https://gitea.example.com`), fill in the
+repository, folder and branch, add an access token for a private repository, and **Save
+repo**. The listing appears once it is saved.
+
+- **The token** needs read access to the repository: on Gitea, a personal access token with
+  the `read:repository` scope. It is stored encrypted, used for this repository only, and
+  never shown again.
+- **The panel-wide GitHub token is never sent to another server.** A repository on your
+  own Gitea uses its own token, or none.
+- **The panel only contacts servers a saved repository names**, over HTTPS. That keeps the
+  browser from being pointed at arbitrary addresses on your network.
+- **Installed runes remember their server**, so the update check asks the same Gitea for
+  newer versions. Remove the last repository that names a server and those runes report
+  their source as gone instead of being checked against GitHub.
+
 ### Upload a YAML
 
 **Carve a rune (upload)** takes a `.yaml` file directly — the same thing the GitHub

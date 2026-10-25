@@ -168,12 +168,12 @@ func (s *Server) buildPanelBundle(ctx context.Context, include map[string]bool) 
 		// panel's own token (or anonymous); a private one is then a visible 404
 		// telling you to add a token, not a credential exported by accident.
 		// HasToken travels so the import can say what is missing.
-		rows, err := s.db.QueryContext(ctx, "SELECT id, name, repo, path, COALESCE(ref,'main'), COALESCE(token_enc,'') FROM rune_repos")
+		rows, err := s.db.QueryContext(ctx, "SELECT id, name, COALESCE(host,''), repo, path, COALESCE(ref,'main'), COALESCE(token_enc,'') FROM rune_repos")
 		if err == nil {
 			for rows.Next() {
 				var d runeRepoDTO
 				var tokenEnc string
-				if rows.Scan(&d.ID, &d.Name, &d.Repo, &d.Path, &d.Ref, &tokenEnc) == nil {
+				if rows.Scan(&d.ID, &d.Name, &d.Host, &d.Repo, &d.Path, &d.Ref, &tokenEnc) == nil {
 					d.HasToken = tokenEnc != ""
 					b.RuneRepos = append(b.RuneRepos, d)
 				}
@@ -338,15 +338,20 @@ func (s *Server) applyPanelBundle(ctx context.Context, b panelBundle) map[string
 	}
 
 	for _, d := range b.RuneRepos {
+		host, herr := normalizeForgeHost(d.Host)
+		if herr != nil || !ghRepoRe.MatchString(d.Repo) {
+			summary["rune_repos_skipped"]++
+			continue
+		}
 		var have int
-		s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM rune_repos WHERE repo=? AND path=? AND COALESCE(ref,'main')=?",
-			d.Repo, d.Path, d.Ref).Scan(&have)
+		s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM rune_repos WHERE host=? AND repo=? AND path=? AND COALESCE(ref,'main')=?",
+			host, d.Repo, d.Path, d.Ref).Scan(&have)
 		if have > 0 {
 			summary["rune_repos_skipped"]++
 			continue
 		}
-		s.db.ExecContext(ctx, "INSERT INTO rune_repos (id, name, repo, path, ref) VALUES (?,?,?,?,?)",
-			uuid.New().String(), d.Name, d.Repo, d.Path, d.Ref)
+		s.db.ExecContext(ctx, "INSERT INTO rune_repos (id, name, host, repo, path, ref) VALUES (?,?,?,?,?,?)",
+			uuid.New().String(), d.Name, host, d.Repo, d.Path, d.Ref)
 		summary["rune_repos_added"]++
 		// The export leaves per-repo tokens behind on purpose; count the repos that
 		// will need one re-entered here, so a private repo failing to list later

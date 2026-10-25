@@ -14,8 +14,10 @@ import (
 // installed rune is checked for updates against wherever it came from.
 
 type runeRepoDTO struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Host is the forge: "" for GitHub, else a self-hosted Gitea/Forgejo base URL.
+	Host    string `json:"host,omitempty"`
 	Repo    string `json:"repo"` // owner/repo
 	Path    string `json:"path"`
 	Ref     string `json:"ref"`
@@ -34,7 +36,7 @@ func (s *Server) handleListRuneRepos(w http.ResponseWriter, r *http.Request) {
 		Repo: defaultRuneRepo, Path: defaultRunePath, Ref: defaultRuneRef, Default: true,
 	}}
 	rows, err := s.db.QueryContext(r.Context(),
-		"SELECT id, name, repo, path, COALESCE(ref,'main'), COALESCE(token_enc,'') FROM rune_repos ORDER BY created_at")
+		"SELECT id, name, COALESCE(host,''), repo, path, COALESCE(ref,'main'), COALESCE(token_enc,'') FROM rune_repos ORDER BY created_at")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -43,7 +45,7 @@ func (s *Server) handleListRuneRepos(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var d runeRepoDTO
 		var tokenEnc string
-		if rows.Scan(&d.ID, &d.Name, &d.Repo, &d.Path, &d.Ref, &tokenEnc) == nil {
+		if rows.Scan(&d.ID, &d.Name, &d.Host, &d.Repo, &d.Path, &d.Ref, &tokenEnc) == nil {
 			d.HasToken = tokenEnc != ""
 			list = append(list, d)
 		}
@@ -79,6 +81,12 @@ func (s *Server) handleCreateRuneRepo(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "repo must be owner/name", http.StatusBadRequest)
 		return
 	}
+	host, err := normalizeForgeHost(d.Host)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	d.Host = host
 	if d.Ref == "" {
 		d.Ref = "main"
 	}
@@ -96,13 +104,13 @@ func (s *Server) handleCreateRuneRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = s.db.ExecContext(r.Context(),
-		"INSERT INTO rune_repos (id, name, repo, path, ref, token_enc) VALUES (?,?,?,?,?,?)",
-		d.ID, d.Name, d.Repo, d.Path, d.Ref, tokenEnc)
+		"INSERT INTO rune_repos (id, name, host, repo, path, ref, token_enc) VALUES (?,?,?,?,?,?,?)",
+		d.ID, d.Name, d.Host, d.Repo, d.Path, d.Ref, tokenEnc)
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
 	}
-	s.auditLog(r, "rune_repo.add", "rune_repo:"+d.ID, map[string]string{"repo": d.Repo})
+	s.auditLog(r, "rune_repo.add", "rune_repo:"+d.ID, map[string]string{"host": d.Host, "repo": d.Repo})
 	d.HasToken, d.Token = tokenEnc != "", ""
 	jsonOK(w, d)
 }

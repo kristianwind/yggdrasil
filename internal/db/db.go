@@ -637,6 +637,11 @@ func migrate(db *sql.DB) error {
 	// owns, so reading someone else's private repo means holding their token — and
 	// with one slot that costs you access to your own.
 	addColumnIfMissing(db, "rune_repos", "token_enc", "TEXT NOT NULL DEFAULT ''")
+	// The forge a repository lives on: '' = GitHub, else the base URL of a
+	// self-hosted Gitea/Forgejo (https://gitea.example.com). An installed rune
+	// records the same, so its update check asks the right server.
+	addColumnIfMissing(db, "rune_repos", "host", "TEXT NOT NULL DEFAULT ''")
+	addColumnIfMissing(db, "gameskills", "source_host", "TEXT NOT NULL DEFAULT ''")
 	// Where a watcher came from: '' = user-made, 'rune' = seeded from the rune's
 	// watchers: block (kept distinct so a reinstall can top up missing rune defaults
 	// without ever touching rules the user made or edited).

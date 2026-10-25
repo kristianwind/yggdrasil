@@ -283,6 +283,18 @@ CREATE INDEX IF NOT EXISTS idx_log_watchers ON log_watchers(server_id, enabled);
 -- Rune repositories the user has added on top of the built-in community catalog,
 -- so they can browse/install from several sources and switch between them. The
 -- default catalog is always available and isn't stored here.
+-- Logins for container registries that refuse anonymous pulls (a private package
+-- on a self-hosted Gitea, a private GHCR image). Looked up by the registry an
+-- image names and handed to Docker for that pull only. secret_enc is the password
+-- or access token, encrypted at rest; it is never returned by the API.
+CREATE TABLE IF NOT EXISTS registry_logins (
+	id         TEXT PRIMARY KEY,
+	registry   TEXT NOT NULL UNIQUE,           -- host[:port], e.g. gitea.example.com or docker.io
+	username   TEXT NOT NULL DEFAULT '',
+	secret_enc TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS rune_repos (
 	id         TEXT PRIMARY KEY,
 	name       TEXT NOT NULL DEFAULT '',

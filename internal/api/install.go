@@ -184,7 +184,7 @@ func (s *Server) runInstall(serverID string) error {
 	}
 
 	s.install.publish(serverID, "Pulling install image "+image+" ...")
-	if err := s.docker.PullImage(ctx, image, w); err != nil {
+	if err := s.pullImage(ctx, image, w); err != nil {
 		s.install.publish(serverID, "WARN: image pull: "+err.Error())
 	}
 

@@ -644,6 +644,10 @@ The domain list is RBAC-filtered like the server list. Every integration setting
 | `POST` | `/api/panel/remote/import` | Admin | Start a pull. Returns **202** with `{job_id}` and copies in the background — it no longer blocks until the transfer finishes, because anything in front of the panel timed that out on a large server |
 | `GET` | `/api/panel/transfers/{id}` | Admin | A pull's status: `running`/`done`/`failed`, bytes copied, and on success the import's own `result` (ports moved, hostnames dropped). Forgotten 6h after it finishes |
 | `GET` | `/api/panel/transfers/{id}/log` | Admin | WebSocket: the pull's progress lines, with history so a late or reconnecting client catches up |
+| `GET` | `/api/registry-logins` | Admin | Stored container-registry logins: `[{id, registry, username, has_secret, created_at}]`. The password or token is never returned |
+| `POST` | `/api/registry-logins` | Admin | Save a login: `{registry, username, secret}`. `registry` is normalised to the host an image reference resolves to (`https://Gitea.Example.com/` → `gitea.example.com`, Docker Hub's names → `docker.io`); saving one for a registry that already has a login replaces it. Audited as `registry_login.save` |
+| `DELETE` | `/api/registry-logins/{id}` | Admin | Forget a login. Audited as `registry_login.delete` |
+| `POST` | `/api/registry-logins/{id}/test` | Admin | Log in to the registry with the stored login through the Docker daemon, storing nothing there: `{ok, registry, status}`, or `400` with the registry's refusal |
 | `GET` | `/api/settings/github` | Admin | Whether a GitHub token is stored (`{configured}`); the token itself is never returned |
 | `PUT` | `/api/settings/github` | Admin | Store or clear the GitHub token (`{token}`; empty clears). Lets the rune browser read **private** repos and lifts the 60-req/hour anonymous limit. A repository may override it with its own token — see `/api/rune-repos` — which is the only way to reach two private repos owned by different accounts |
 | `POST` | `/api/settings/github/test` | Admin | Verify the stored token and report the account it authenticates as |

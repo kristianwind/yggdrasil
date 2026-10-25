@@ -105,7 +105,7 @@ docker:
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
-| `image` | string | — | **Required.** The runtime image. Templated. |
+| `image` | string | — | **Required.** The runtime image. Templated. Pulled anonymously unless a login is stored for its registry under **Settings → Container registries** — see [Private images](#private-images). |
 | `data_path` | string | `/data` | Where the server's persistent directory mounts inside the container. |
 | `user` | string | the panel's own uid:gid | Overrides the runtime user. Templated. |
 | `keep_entrypoint` | bool | `false` | Run the image's own `ENTRYPOINT` instead of clearing it. |
@@ -113,6 +113,25 @@ docker:
 | `capabilities` | list of strings | — | Linux capabilities to add (`cap_add`). Allowlisted. |
 | `devices` | list of strings | — | Host devices to expose. Allowlisted. |
 | `sysctls` | map | — | Kernel parameters set in the container's namespace. Allowlisted. |
+
+### Private images
+
+The panel pulls every image again on each start, and anonymously by default — a registry that
+refuses anonymous pulls fails the start with `No such image` or `unauthorized`. To run a
+private image, store a login for its registry under **Settings → Container registries**:
+the registry's host, a user name, and a password or access token (on Gitea or Forgejo, an
+access token with `read:package`).
+
+The login is matched by the registry the image names, after Docker's own normalisation:
+`gitea.example.com/kw/app:1` uses the login for `gitea.example.com`, and a bare `nginx` is
+`docker.io`. It is handed to Docker for that pull only, so nothing is written to the
+daemon's or the host's credential store, and no other registry is ever offered it. It
+covers the runtime image, `services:` images, and the `install` and `update` images. The
+**Test** button logs in to the registry so a wrong token shows up there, not as a server
+that will not start.
+
+A rune you share with someone else should still name a public image: their panel holds
+none of your logins.
 
 ### `data_path` and the working directory
 

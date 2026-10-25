@@ -1960,6 +1960,30 @@ the nftables rules only ever touch ports 80/443 — never SSH.</p>
 </tr>
 <tr>
 <td><code>GET</code></td>
+<td><code>/api/registry-logins</code></td>
+<td>Admin</td>
+<td>Stored container-registry logins: <code>[{id, registry, username, has_secret, created_at}]</code>. The password or token is never returned</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/registry-logins</code></td>
+<td>Admin</td>
+<td>Save a login: <code>{registry, username, secret}</code>. <code>registry</code> is normalised to the host an image reference resolves to (<code>https://Gitea.Example.com/</code> → <code>gitea.example.com</code>, Docker Hub&rsquo;s names → <code>docker.io</code>); saving one for a registry that already has a login replaces it. Audited as <code>registry_login.save</code></td>
+</tr>
+<tr>
+<td><code>DELETE</code></td>
+<td><code>/api/registry-logins/{id}</code></td>
+<td>Admin</td>
+<td>Forget a login. Audited as <code>registry_login.delete</code></td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/api/registry-logins/{id}/test</code></td>
+<td>Admin</td>
+<td>Log in to the registry with the stored login through the Docker daemon, storing nothing there: <code>{ok, registry, status}</code>, or <code>400</code> with the registry&rsquo;s refusal</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
 <td><code>/api/settings/github</code></td>
 <td>Admin</td>
 <td>Whether a GitHub token is stored (<code>{configured}</code>); the token itself is never returned</td>

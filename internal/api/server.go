@@ -481,6 +481,11 @@ func (s *Server) buildRouter() *chi.Mux {
 		r.Get("/api/beacon/stats", s.requireAdmin(s.handleBeaconStats))
 
 		// Security advisories: pulled from the project's repo, shown as a banner.
+		// Logins for private container registries (admin; secrets write-only).
+		r.Get("/api/registry-logins", s.requireAdmin(s.handleListRegistryLogins))
+		r.Post("/api/registry-logins", s.requireAdmin(s.handleSaveRegistryLogin))
+		r.Delete("/api/registry-logins/{id}", s.requireAdmin(s.handleDeleteRegistryLogin))
+		r.Post("/api/registry-logins/{id}/test", s.requireAdmin(s.handleTestRegistryLogin))
 		r.Get("/api/advisories", s.requireAdmin(s.handleAdvisories))
 		r.Post("/api/advisories/{id}/ack", s.requireAdmin(s.handleAckAdvisory))
 

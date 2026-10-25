@@ -21,6 +21,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
@@ -186,8 +187,16 @@ func publishedPorts(ports []PortMapping) (nat.PortMap, nat.PortSet) {
 	return bindings, exposed
 }
 
+// PullImage pulls ref anonymously.
 func (c *Client) PullImage(ctx context.Context, ref string, out io.Writer) error {
-	rc, err := c.dc.ImagePull(ctx, ref, image.PullOptions{})
+	return c.PullImageAuth(ctx, ref, "", out)
+}
+
+// PullImageAuth pulls ref with registryAuth, an encoded registry.AuthConfig for
+// the registry ref names ("" = anonymous). Docker presents it to that registry
+// only.
+func (c *Client) PullImageAuth(ctx context.Context, ref, registryAuth string, out io.Writer) error {
+	rc, err := c.dc.ImagePull(ctx, ref, image.PullOptions{RegistryAuth: registryAuth})
 	if err != nil {
 		return fmt.Errorf("pull %s: %w", ref, err)
 	}
@@ -686,6 +695,17 @@ func calcCPUPercent(s *container.StatsResponse) float64 {
 
 func (c *Client) Inspect(ctx context.Context, id string) (container.InspectResponse, error) {
 	return c.dc.ContainerInspect(ctx, id)
+}
+
+// RegistryLogin checks a username and password (or token) against a registry,
+// through the daemon, without storing anything in it. It returns the registry's
+// status line on success.
+func (c *Client) RegistryLogin(ctx context.Context, server, username, password string) (string, error) {
+	res, err := c.dc.RegistryLogin(ctx, registry.AuthConfig{Username: username, Password: password, ServerAddress: server})
+	if err != nil {
+		return "", err
+	}
+	return res.Status, nil
 }
 
 // ExecOutput runs argv inside a running container — directly, with no shell, so

@@ -133,7 +133,7 @@ func (s *Server) runAppUpdate(id string, rt *serverRuntime) error {
 	script := gameskill.ApplyTemplate(rt.gs.Update.Script, rt.env)
 
 	pub("Pulling update image " + image + " ...")
-	if err := s.docker.PullImage(ctx, image, w); err != nil {
+	if err := s.pullImage(ctx, image, w); err != nil {
 		pub("WARN: image pull: " + err.Error())
 	}
 

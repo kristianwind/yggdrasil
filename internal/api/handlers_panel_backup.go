@@ -111,9 +111,9 @@ func (s *Server) runPanelBackup(ctx context.Context) (string, error) {
 	if cfg.Type == backup.PBSType {
 		// PBS stores deduplicated chunks of a directory, not a named blob; handing
 		// it one archive dedupes against nothing and the operator would never know.
-		return fail(fmt.Errorf("a Proxmox Backup Server target cannot hold the panel archive — choose a file target (local, NFS, SMB or SFTP)"))
+		return fail(fmt.Errorf("a Proxmox Backup Server target cannot hold the panel archive — choose a file target (local, NFS, SMB, SFTP or cloud storage)"))
 	}
-	tgt, err := backup.Open(*cfg)
+	tgt, err := s.openTarget(targetID, *cfg)
 	if err != nil {
 		return fail(fmt.Errorf("connect: %w", err))
 	}

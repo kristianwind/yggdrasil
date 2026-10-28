@@ -47,6 +47,9 @@ type DockerConfig struct {
 	// Overridable so an operator on an air-gapped or firewalled network can point
 	// it at their own mirror; empty means the default in internal/api/pbs.go.
 	PBSClientImage string `yaml:"pbs_client_image"`
+	// RcloneImage is the rclone used by the consumer-cloud backup targets
+	// (Jottacloud, Dropbox, …); empty means the default in internal/api/rclone.go.
+	RcloneImage string `yaml:"rclone_image"`
 }
 
 type PortConfig struct {

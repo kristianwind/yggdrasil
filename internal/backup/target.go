@@ -42,7 +42,13 @@ type Config struct {
 	// secret for s3, the account name and access key (or SAS token) for azure;
 	// for gcs, Password holds the service account's JSON key.
 	Bucket string `json:"bucket,omitempty"` // s3/gcs bucket, azure container
-	Region string `json:"region,omitempty"` // s3 only
+	Region string `json:"region,omitempty"` // s3 only; for rclone/webdav, the server flavour
+
+	// rclone: which service (a key of RcloneProviders), and the rclone.conf the
+	// panel built at setup. The conf is written by the panel only — never taken
+	// from a request, never sent to the browser.
+	Provider   string `json:"provider,omitempty"`
+	RcloneConf string `json:"rclone_conf,omitempty"`
 
 	// Proxmox Backup Server only.
 	Datastore   string `json:"datastore,omitempty"`
@@ -66,6 +72,8 @@ func Open(cfg Config) (Target, error) {
 		return openGCS(cfg)
 	case "azure":
 		return openAzure(cfg)
+	case RcloneType:
+		return nil, fmt.Errorf("rclone targets are opened by the panel, which runs rclone in a container")
 	case PBSType:
 		// Not a Target and cannot be made into one: PBS stores deduplicated
 		// chunks of a directory, not a named blob. It runs through its own
@@ -103,3 +111,6 @@ func Retention(objects []Object, keepN, keepDays int, now time.Time) []Object {
 	}
 	return toDelete
 }
+
+// RcloneType is the target type for every service reached through rclone.
+const RcloneType = "rclone"

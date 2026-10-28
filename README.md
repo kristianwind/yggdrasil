@@ -204,7 +204,8 @@ Reference: [configuration](docs/reference/configuration.md),
 **Automation & operations**
 - **Backups** to local / mounted NFS-CIFS, **SFTP**, **SMB**, Proxmox Backup Server, or the
   cloud — **Amazon S3** and S3-compatibles (R2, B2, Wasabi, MinIO…), **Google Cloud
-  Storage**, **Azure Blob Storage** — on-demand or
+  Storage**, **Azure Blob Storage** — or a cloud drive (**Jottacloud**, Dropbox, OneDrive,
+  Google Drive, Box, pCloud, Mega, Nextcloud/WebDAV) — on-demand or
   scheduled, with **restore** and **retention** (keep N / X days)
 - **Scheduler** (cron) for backups, restarts, updates, start/stop, console
   commands, and **in-game messages** with editable templates (`{{minutes}}`,

@@ -781,6 +781,7 @@
       share: "",
       bucket: "",
       region: "",
+      provider: "jottacloud",
       keep_n: 0,
       keep_days: 0,
     };
@@ -1631,8 +1632,13 @@
     loadAi();
   });
 
+  // Saving an rclone target logs in to the service, which takes seconds — and
+  // a Jottacloud token works once, so a second click must not send it again.
+  let savingTarget = $state(false);
   async function saveTarget() {
     if (!form.name) return toast("Name required", "warn");
+    if (savingTarget) return;
+    savingTarget = true;
     try {
       const body = { ...form, port: Number(form.port) || 0 };
       if (editingId) {
@@ -1648,6 +1654,8 @@
       await load();
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      savingTarget = false;
     }
   }
 
@@ -1664,7 +1672,7 @@
       // and break it on save — the same class of bug as the password, but with no
       // "leave blank to keep" to soften it.
       datastore: t.datastore || "", namespace: t.namespace || "", fingerprint: t.fingerprint || "",
-      bucket: t.bucket || "", region: t.region || "",
+      bucket: t.bucket || "", region: t.region || "", provider: t.provider || "jottacloud",
     };
     showCreate = true;
   }
@@ -1672,6 +1680,20 @@
   // Object storage: no host login, a bucket instead, and the path is a folder in it.
   const cloudTypes = ["s3", "gcs", "azure"];
   const isCloud = (t) => cloudTypes.includes(t);
+  // Services reached through rclone. Those marked oauth log in through
+  // `rclone authorize` on the admin's own computer, which prints a token.
+  const rcloneServices = [
+    { id: "jottacloud", label: "Jottacloud" },
+    { id: "dropbox", label: "Dropbox", oauth: true },
+    { id: "onedrive", label: "OneDrive", oauth: true },
+    { id: "drive", label: "Google Drive", oauth: true },
+    { id: "box", label: "Box", oauth: true },
+    { id: "pcloud", label: "pCloud", oauth: true },
+    { id: "mega", label: "Mega" },
+    { id: "webdav", label: "WebDAV / Nextcloud / ownCloud" },
+    { id: "custom", label: "Other (paste an rclone config section)" },
+  ];
+  const rcloneService = (id) => rcloneServices.find((x) => x.id === id) || rcloneServices[0];
 
   function newTarget() {
     editingId = null;
@@ -3280,7 +3302,7 @@
   {#each targets as t}
     <div class="flex items-center gap-3 px-4 py-3">
       <div class="flex-1">
-        <div class="font-medium">{t.name} <span class="badge bg-border text-muted ml-1">{t.type}</span></div>
+        <div class="font-medium">{t.name} <span class="badge bg-border text-muted ml-1">{t.type === "rclone" ? rcloneService(t.provider).label : t.type}</span></div>
         <div class="text-xs text-muted">
           {t.host ? t.host + " · " : ""}{t.bucket ? t.bucket + (t.path ? "/" : "") : ""}{t.path || (t.bucket ? "" : "(default)")}
           {#if t.keep_n || t.keep_days}
@@ -3656,6 +3678,7 @@
           <option value="s3">Amazon S3 / S3-compatible (R2, B2, Wasabi, MinIO…)</option>
           <option value="gcs">Google Cloud Storage</option>
           <option value="azure">Azure Blob Storage</option>
+          <option value="rclone">Cloud drive (Jottacloud, Dropbox, OneDrive, Google Drive, Box, …)</option>
         </select>
       </div>
 
@@ -3758,7 +3781,88 @@
         </div>
       {/if}
 
-      {#if form.type !== "local" && !isCloud(form.type)}
+      {#if form.type === "rclone"}
+        <div>
+          <label class="label" for="t-provider">Service</label>
+          <select id="t-provider" class="input" bind:value={form.provider}>
+            {#each rcloneServices as svc}
+              <option value={svc.id}>{svc.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="rounded border border-border bg-panel2 p-3 text-sm text-muted space-y-1">
+          {#if form.provider === "jottacloud"}
+            <div>In Jottacloud, open <strong>Settings → Security</strong> and choose
+              <strong>Generate</strong> under <em>Personal login token</em>. Paste it below.
+              The token works once: the panel trades it for a login of its own when you
+              save, so a failed save needs a fresh token.</div>
+          {:else if rcloneService(form.provider).oauth}
+            <div>{rcloneService(form.provider).label} logs in through a browser, so the login
+              happens on your own computer: install <a class="underline" href="https://rclone.org/install/" target="_blank" rel="noopener">rclone</a>,
+              run <code>rclone authorize "{form.provider}"</code>, sign in, and paste the
+              token it prints — the part starting with <code>{"{"}"access_token"</code>.</div>
+          {:else if form.provider === "mega"}
+            <div>The account's e-mail address and password. An account with two-step
+              login turned on cannot be used this way.</div>
+          {:else if form.provider === "webdav"}
+            <div>The WebDAV address and a login. For Nextcloud it is
+              <code>https://&lt;host&gt;/remote.php/dav/files/&lt;user&gt;</code>; use an
+              app password rather than the account's own.</div>
+          {:else}
+            <div>Paste one remote's section as <code>rclone config show &lt;name&gt;</code>
+              prints it. Any service rclone supports works this way.</div>
+          {/if}
+          {#if form.provider !== "dropbox" && form.provider !== "box"}
+            <div>{form.provider === "custom" ? "Most services want" : rcloneService(form.provider).label + " wants"} the whole file before accepting it,
+              so each archive is written to a temporary file on this host while it uploads:
+              the disk needs room for the largest backup.</div>
+          {/if}
+          <div>The login is stored encrypted, and refreshed tokens are saved as rclone
+            renews them.</div>
+        </div>
+        {#if form.provider === "webdav"}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label" for="t-host">Address</label>
+              <input id="t-host" class="input" bind:value={form.host} placeholder="https://cloud.example.com/remote.php/dav/files/me" />
+            </div>
+            <div>
+              <label class="label" for="t-vendor">Server</label>
+              <select id="t-vendor" class="input" bind:value={form.region}>
+                <option value="nextcloud">Nextcloud</option>
+                <option value="owncloud">ownCloud</option>
+                <option value="sharepoint">SharePoint</option>
+                <option value="">Other</option>
+              </select>
+            </div>
+          </div>
+        {/if}
+        {#if form.provider === "webdav" || form.provider === "mega"}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label" for="t-user">{form.provider === "mega" ? "E-mail" : "Username"}</label>
+              <input id="t-user" class="input" bind:value={form.username} autocomplete="off" />
+            </div>
+            <div>
+              <label class="label" for="t-pass">Password</label>
+              <input id="t-pass" class="input" type="password" bind:value={form.password} autocomplete="off" placeholder={editingId && form.has_password ? "leave blank to keep current" : ""} />
+            </div>
+          </div>
+        {:else if form.provider === "jottacloud"}
+          <div>
+            <label class="label" for="t-pass">Personal login token</label>
+            <input id="t-pass" class="input font-mono text-xs" type="password" bind:value={form.password} autocomplete="off" placeholder={editingId && form.has_password ? "leave blank to keep the current login" : ""} />
+          </div>
+        {:else}
+          <div>
+            <label class="label" for="t-pass">{form.provider === "custom" ? "rclone config section" : "Token"}</label>
+            <textarea id="t-pass" class="input font-mono text-xs h-24" bind:value={form.password} autocomplete="off" spellcheck="false"
+              placeholder={editingId && form.has_password ? "leave blank to keep the current login" : form.provider === "custom" ? "[myremote]\ntype = …" : '{"access_token":"…","token_type":"bearer",…}'}></textarea>
+          </div>
+        {/if}
+      {/if}
+
+      {#if form.type !== "local" && !isCloud(form.type) && form.type !== "rclone"}
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label" for="t-host">Host</label>
@@ -3823,9 +3927,9 @@
 
       {#if form.type !== "pbs"}
       <div>
-        <label class="label" for="t-path">{form.type === "local" ? "Directory path" : isCloud(form.type) ? `Folder in the ${form.type === "azure" ? "container" : "bucket"} (optional)` : "Remote path"}</label>
+        <label class="label" for="t-path">{form.type === "local" ? "Directory path" : form.type === "rclone" ? "Folder (optional)" : isCloud(form.type) ? `Folder in the ${form.type === "azure" ? "container" : "bucket"} (optional)` : "Remote path"}</label>
         <div class="flex gap-2">
-          <input id="t-path" class="input flex-1" bind:value={form.path} placeholder={form.type === "local" ? "/mnt/backups" : isCloud(form.type) ? "yggdrasil" : "backups"} />
+          <input id="t-path" class="input flex-1" bind:value={form.path} placeholder={form.type === "local" ? "/mnt/backups" : isCloud(form.type) || form.type === "rclone" ? "yggdrasil" : "backups"} />
           {#if form.type === "local"}
             <button class="btn-ghost shrink-0" type="button" onclick={() => (browseOpen ? (browseOpen = false) : openBrowse())}>
               {browseOpen ? "Close" : "Browse…"}
@@ -3877,7 +3981,7 @@
 
       <div class="flex gap-2 pt-2">
         <button class="btn-ghost flex-1" onclick={() => { showCreate = false; editingId = null; }}>Cancel</button>
-        <button class="btn-primary flex-1" onclick={saveTarget}>{editingId ? "Save changes" : "Create target"}</button>
+        <button class="btn-primary flex-1" onclick={saveTarget} disabled={savingTarget}>{savingTarget ? (form.type === "rclone" ? "Logging in…" : "Saving…") : editingId ? "Save changes" : "Create target"}</button>
       </div>
     </div>
   </div>

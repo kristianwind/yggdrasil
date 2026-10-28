@@ -6,7 +6,7 @@ put any of it — plus restarts, updates and in-game warnings — on a cron sche
 ## Backup targets
 
 A **target** is a place archives are stored. Admins configure them under
-**Settings → Integrations → Backup targets**; there are seven kinds.
+**Settings → Integrations → Backup targets**; there are eight kinds.
 
 | Type | UI label | What it is |
 | --- | --- | --- |
@@ -17,6 +17,7 @@ A **target** is a place archives are stored. Admins configure them under
 | `s3` | Amazon S3 / S3-compatible | A bucket on Amazon S3, or on anything that speaks its API: Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, Hetzner, MinIO. [Cloud storage below.](#cloud-storage) |
 | `gcs` | Google Cloud Storage | A bucket on Google Cloud, reached with a service-account key. |
 | `azure` | Azure Blob Storage | A container in an Azure storage account, reached with its access key or a SAS token. |
+| `rclone` | Cloud drive | Jottacloud, Dropbox, OneDrive, Google Drive, Box, pCloud, Mega or a WebDAV server such as Nextcloud — or any other service rclone supports. [Cloud drives below.](#cloud-drives) |
 
 Choose **+ New target**, name it, pick the type, and fill in what it asks for. Local
 wants a directory path (`/mnt/backups`); Yggdrasil creates it if it does not exist. SFTP
@@ -79,6 +80,54 @@ token needs read, write, delete and list permission on the container, and stops 
 the day it expires — the Test button will tell you, but a schedule will only tell you by
 failing. The access key does not expire. The endpoint field is for Azure's government and
 China clouds; leave it empty otherwise.
+
+## Cloud drives
+
+The consumer cloud services do not speak S3 and each has its own API, so Yggdrasil
+reaches them through [rclone](https://rclone.org), run in a short-lived container the
+same way the PBS client is (image `rclone/rclone`, pinned to a version; override it with
+`docker.rclone_image` in `config.yaml`). It stores the same tar.gz as every other file
+target, under the optional folder. Pick **Cloud drive** as the type, then the service.
+
+The login is set up once, when you save the target. Yggdrasil runs rclone's own
+configuration and keeps the result — an `rclone.conf` with one remote — encrypted with
+the target. Services that log in with OAuth hand out tokens that expire within the hour;
+rclone renews them as it goes, and the panel saves each renewed token back. The login is
+never sent to the browser, and an edit with the credential field left blank keeps it.
+
+**Jottacloud.** In Jottacloud, open **Settings → Security** and choose **Generate** under
+*Personal login token*. Paste it and save. The token works **once**: the panel trades it
+for a login of its own during the save, so if the save fails for any other reason, make a
+new token. Backups land in Jottacloud's *Archive* section, in the folder you gave.
+Jottacloud has no public API — rclone speaks the one Jottacloud's own apps use, which has
+been stable for years but could change without notice; if it does, backups fail and say
+so rather than going quiet.
+
+**Dropbox, OneDrive, Google Drive, Box, pCloud.** These log in through a browser, so the
+login happens on your own computer, not on the panel: install rclone, run
+`rclone authorize "dropbox"` (or `onedrive`, `drive`, `box`, `pcloud`), sign in, and paste
+the token it prints — the JSON starting with `{"access_token"`. No app has to be
+registered anywhere.
+
+**Mega.** The account's e-mail address and password. An account with two-step login
+cannot be used this way.
+
+**WebDAV, Nextcloud, ownCloud.** The WebDAV address, the server type and a login. For
+Nextcloud the address is `https://<host>/remote.php/dav/files/<user>`; use an app
+password rather than the account's own.
+
+**Anything else.** Choose *Other*, and paste one remote's section as
+`rclone config show <name>` prints it. Every service rclone supports works this way.
+
+Two things to know:
+
+- **Most services want the whole file before they accept it** — a checksum or a size up
+  front. For those rclone writes the archive to a temporary file inside its container (on
+  the panel host's Docker storage) before uploading, so that disk needs room for the
+  largest backup. Dropbox and Box take the archive as a stream and need no room; Jottacloud,
+  pCloud and WebDAV do, and so should be assumed of any other service.
+- **Consumer accounts are for your own data.** Their terms are written for people, not for
+  reselling storage; backing up your own servers is what they are for.
 
 ## Proxmox Backup Server
 

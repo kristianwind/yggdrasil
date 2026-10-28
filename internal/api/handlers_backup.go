@@ -42,6 +42,8 @@ type targetView struct {
 	// service-account JSON and the Azure key or SAS all live in Password.
 	Bucket string `json:"bucket,omitempty"`
 	Region string `json:"region,omitempty"`
+	// rclone: which service. Its login (the rclone.conf) never leaves the panel.
+	Provider string `json:"provider,omitempty"`
 	// HasPassword lets the editor show "leave blank to keep" instead of a bare
 	// empty field. The password itself is never sent to the browser.
 	HasPassword bool `json:"has_password"`
@@ -68,9 +70,9 @@ func (s *Server) handleListBackupTargets(w http.ResponseWriter, r *http.Request)
 		list = append(list, targetView{
 			ID: id, Name: name, Type: typ, Path: cfg.Path, Host: cfg.Host,
 			Port: cfg.Port, Username: cfg.Username, Share: cfg.Share,
-			KeepN: keepN, KeepDays: keepDays, HasPassword: cfg.Password != "",
+			KeepN: keepN, KeepDays: keepDays, HasPassword: cfg.Password != "" || cfg.RcloneConf != "",
 			Datastore: cfg.Datastore, Namespace: cfg.Namespace, Fingerprint: cfg.Fingerprint,
-			Bucket: cfg.Bucket, Region: cfg.Region,
+			Bucket: cfg.Bucket, Region: cfg.Region, Provider: cfg.Provider,
 		})
 	}
 	jsonOK(w, list)
@@ -86,6 +88,13 @@ func (s *Server) handleCreateBackupTarget(w http.ResponseWriter, r *http.Request
 	if err := decodeJSON(r, &req); err != nil || req.Name == "" || req.Type == "" {
 		jsonError(w, "name and type required", http.StatusBadRequest)
 		return
+	}
+	req.RcloneConf = "" // built by the panel, never taken from a request
+	if req.Type == backup.RcloneType {
+		if err := s.prepareRclone(r.Context(), &req.Config, nil); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	enc, err := s.encryptTargetConfig(req.Config)
 	if err != nil {
@@ -119,10 +128,15 @@ func (s *Server) handleUpdateBackupTarget(w http.ResponseWriter, r *http.Request
 	}
 	// A blank password from the edit form means "unchanged" — we never send the
 	// stored secret to the browser, so keep the existing one rather than wiping it.
-	if req.Password == "" {
-		if cur, err := s.loadTargetConfig(r.Context(), id); err == nil {
-			req.Password = cur.Password
+	cur, _ := s.loadTargetConfig(r.Context(), id)
+	req.RcloneConf = "" // built by the panel, never taken from a request
+	if req.Type == backup.RcloneType {
+		if err := s.prepareRclone(r.Context(), &req.Config, cur); err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
 		}
+	} else if req.Password == "" && cur != nil {
+		req.Password = cur.Password
 	}
 	enc, err := s.encryptTargetConfig(req.Config)
 	if err != nil {
@@ -208,7 +222,7 @@ func (s *Server) handleTestBackupTarget(w http.ResponseWriter, r *http.Request) 
 		jsonOK(w, map[string]string{"status": "ok"})
 		return
 	}
-	tgt, err := backup.Open(*cfg)
+	tgt, err := s.openTarget(id, *cfg)
 	if err != nil {
 		jsonError(w, "connect failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -323,7 +337,7 @@ func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {
 					jsonError(w, err.Error(), http.StatusBadGateway)
 					return
 				}
-			} else if tgt, err := backup.Open(*cfg); err == nil {
+			} else if tgt, err := s.openTarget(targetID, *cfg); err == nil {
 				tgt.Delete(r.Context(), path)
 				tgt.Close()
 			}
@@ -371,7 +385,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tgt, err := backup.Open(*cfg)
+	tgt, err := s.openTarget(targetID, *cfg)
 	if err != nil {
 		jsonError(w, "connect: "+err.Error(), http.StatusBadGateway)
 		return
@@ -420,7 +434,7 @@ func (s *Server) handleDownloadBackup(w http.ResponseWriter, r *http.Request) {
 			"proxmox-backup-client against your PBS directly.", http.StatusBadRequest)
 		return
 	}
-	tgt, err := backup.Open(*cfg)
+	tgt, err := s.openTarget(targetID, *cfg)
 	if err != nil {
 		jsonError(w, "connect: "+err.Error(), http.StatusBadGateway)
 		return
@@ -473,7 +487,7 @@ func (s *Server) verifyBackupByID(ctx context.Context, id string) (verifyResult,
 		return verifyResult{}, fmt.Errorf(
 			"Proxmox Backup Server verifies snapshots itself; run a Verify job on the PBS datastore")
 	}
-	tgt, err := backup.Open(*cfg)
+	tgt, err := s.openTarget(targetID, *cfg)
 	if err != nil {
 		return verifyResult{}, fmt.Errorf("connect: %w", err)
 	}
@@ -581,7 +595,7 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 		return nil
 	}
 
-	tgt, err := backup.Open(*cfg)
+	tgt, err := s.openTarget(targetID, *cfg)
 	if err != nil {
 		return fail("connect: " + err.Error())
 	}
@@ -609,6 +623,9 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	}()
 	size, err := tgt.Put(ctx, name, pr)
 	if err != nil {
+		// A target that gave up halfway has stopped reading, and the archive
+		// writer would otherwise block on the pipe forever.
+		pr.CloseWithError(err)
 		return fail("upload: " + err.Error())
 	}
 	skipped := <-skippedCh

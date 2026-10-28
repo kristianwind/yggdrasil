@@ -202,7 +202,9 @@ Reference: [configuration](docs/reference/configuration.md),
   in-app banner when a newer Yggdrasil is available, and can update itself
 
 **Automation & operations**
-- **Backups** to local / mounted NFS-CIFS, **SFTP**, or **SMB** — on-demand or
+- **Backups** to local / mounted NFS-CIFS, **SFTP**, **SMB**, Proxmox Backup Server, or the
+  cloud — **Amazon S3** and S3-compatibles (R2, B2, Wasabi, MinIO…), **Google Cloud
+  Storage**, **Azure Blob Storage** — on-demand or
   scheduled, with **restore** and **retention** (keep N / X days)
 - **Scheduler** (cron) for backups, restarts, updates, start/stop, console
   commands, and **in-game messages** with editable templates (`{{minutes}}`,

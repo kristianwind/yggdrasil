@@ -29,13 +29,20 @@ type Target interface {
 // It is stored as encrypted JSON, so adding a field is backward compatible: a
 // target written before the field existed decodes with it empty.
 type Config struct {
-	Type     string `json:"type"` // local | sftp | smb | pbs
+	Type     string `json:"type"` // local | sftp | smb | pbs | s3 | gcs | azure
 	Path     string `json:"path"` // base directory / remote path / share subpath
 	Host     string `json:"host,omitempty"`
 	Port     int    `json:"port,omitempty"`
 	Username string `json:"username,omitempty"` // for pbs: the auth-id, e.g. ygg@pbs!panel
 	Password string `json:"password,omitempty"` // for pbs: the API token secret
 	Share    string `json:"share,omitempty"`    // SMB share name
+
+	// Object storage. Host is the endpoint (empty = the provider's own), Path is
+	// a folder inside the bucket. Username/Password are the access key ID and
+	// secret for s3, the account name and access key (or SAS token) for azure;
+	// for gcs, Password holds the service account's JSON key.
+	Bucket string `json:"bucket,omitempty"` // s3/gcs bucket, azure container
+	Region string `json:"region,omitempty"` // s3 only
 
 	// Proxmox Backup Server only.
 	Datastore   string `json:"datastore,omitempty"`
@@ -53,6 +60,12 @@ func Open(cfg Config) (Target, error) {
 		return openSFTP(cfg)
 	case "smb":
 		return openSMB(cfg)
+	case "s3":
+		return openS3(cfg)
+	case "gcs":
+		return openGCS(cfg)
+	case "azure":
+		return openAzure(cfg)
 	case PBSType:
 		// Not a Target and cannot be made into one: PBS stores deduplicated
 		// chunks of a directory, not a named blob. It runs through its own

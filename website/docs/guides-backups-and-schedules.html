@@ -50,7 +50,7 @@
 put any of it — plus restarts, updates and in-game warnings — on a cron schedule.</p>
 <h2 id="backup-targets">Backup targets</h2>
 <p>A <strong>target</strong> is a place archives are stored. Admins configure them under
-<strong>Settings → Integrations → Backup targets</strong>; there are four kinds.</p>
+<strong>Settings → Integrations → Backup targets</strong>; there are seven kinds.</p>
 <table>
 <thead>
 <tr>
@@ -80,6 +80,21 @@ put any of it — plus restarts, updates and in-game warnings — on a cron sche
 <td>Proxmox Backup Server</td>
 <td>An existing PBS you already run. Deduplicated, incremental snapshots instead of nightly full archives. Port defaults to 8007. <a href="#proxmox-backup-server">Its own section below.</a></td>
 </tr>
+<tr>
+<td><code>s3</code></td>
+<td>Amazon S3 / S3-compatible</td>
+<td>A bucket on Amazon S3, or on anything that speaks its API: Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, Hetzner, MinIO. <a href="#cloud-storage">Cloud storage below.</a></td>
+</tr>
+<tr>
+<td><code>gcs</code></td>
+<td>Google Cloud Storage</td>
+<td>A bucket on Google Cloud, reached with a service-account key.</td>
+</tr>
+<tr>
+<td><code>azure</code></td>
+<td>Azure Blob Storage</td>
+<td>A container in an Azure storage account, reached with its access key or a SAS token.</td>
+</tr>
 </tbody>
 </table>
 <p>Choose <strong>+ New target</strong>, name it, pick the type, and fill in what it asks for. Local
@@ -95,8 +110,78 @@ The target list decrypts only enough to show you the path and host; passwords ar
 sent back to the browser and never logged.</p>
 <p>Two things to know about the SFTP target: it authenticates with a password (not a key),
 and it does not pin the host key. It suits a homelab NAS on your own network.</p>
+<h2 id="cloud-storage">Cloud storage</h2>
+<p>The three cloud targets store the same gzipped tar as local, SFTP and SMB, as one object
+per run, under <code>&lt;folder&gt;/&lt;server-name&gt;-&lt;id&gt;/&lt;timestamp&gt;.tar.gz</code>. The folder is optional;
+leave it empty to write at the top of the bucket. <strong>Create the bucket (or container)
+first</strong> — Yggdrasil never creates one, so a typo fails the Test instead of quietly making
+a new bucket somewhere you are paying for.</p>
+<p>The archive streams to the provider while it is being made, so nothing is written to the
+panel&rsquo;s disk on the way. It goes up in chunks — 64 MiB for S3, 16 MiB for Google and Azure —
+and one chunk at a time is held in memory. The chunk sizes put a ceiling on a single
+archive: 640 GB on S3, 800 GB on Azure, and Google&rsquo;s own limit of 5 TB per object.</p>
+<p><strong>Amazon S3 and compatibles.</strong> Bucket, region, access key ID and secret access key. Leave
+the endpoint empty for AWS itself; for anything else, the endpoint is the provider&rsquo;s S3
+host:</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Endpoint</th>
+<th>Region</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cloudflare R2</td>
+<td><code>&lt;account-id&gt;.r2.cloudflarestorage.com</code></td>
+<td><code>auto</code></td>
+</tr>
+<tr>
+<td>Backblaze B2</td>
+<td><code>s3.&lt;region&gt;.backblazeb2.com</code></td>
+<td>the region in the endpoint</td>
+</tr>
+<tr>
+<td>Wasabi</td>
+<td><code>s3.&lt;region&gt;.wasabisys.com</code></td>
+<td>the region in the endpoint</td>
+</tr>
+<tr>
+<td>DigitalOcean Spaces</td>
+<td><code>&lt;region&gt;.digitaloceanspaces.com</code></td>
+<td>the region in the endpoint</td>
+</tr>
+<tr>
+<td>Hetzner Object Storage</td>
+<td><code>&lt;region&gt;.your-objectstorage.com</code></td>
+<td>the region in the endpoint</td>
+</tr>
+<tr>
+<td>MinIO on your network</td>
+<td><code>http://192.168.1.10:9000</code></td>
+<td><code>us-east-1</code> unless you changed it</td>
+</tr>
+</tbody>
+</table>
+<p>An endpoint without <code>http://</code> is reached over HTTPS. Give the key permission to list,
+read, write and delete objects in that one bucket and nothing else — on AWS, an IAM policy
+with <code>s3:ListBucket</code> on the bucket and <code>s3:GetObject</code>, <code>s3:PutObject</code>, <code>s3:DeleteObject</code>
+on its objects.</p>
+<p><strong>Google Cloud Storage.</strong> In the Google Cloud console create a service account, give it
+the <strong>Storage Object Admin</strong> role on the bucket (not the project), then
+<strong>Keys → Add key → JSON</strong>, and paste the whole downloaded file into the key field. The
+key is stored encrypted like every other target secret. Google&rsquo;s S3-compatible endpoint is
+deliberately not used: it cannot take an upload whose size is unknown when it starts,
+which is exactly what a streamed archive is.</p>
+<p><strong>Azure Blob Storage.</strong> The storage account name, the container, and either the
+account&rsquo;s access key (<strong>Security + networking → Access keys</strong>) or a SAS token. A SAS
+token needs read, write, delete and list permission on the container, and stops working
+the day it expires — the Test button will tell you, but a schedule will only tell you by
+failing. The access key does not expire. The endpoint field is for Azure&rsquo;s government and
+China clouds; leave it empty otherwise.</p>
 <h2 id="proxmox-backup-server">Proxmox Backup Server</h2>
-<p>The first three targets all store the same thing: one gzipped tar per run, written whole
+<p>The other targets all store the same thing: one gzipped tar per run, written whole
 every time. That is simple and it is fine — until the server is 40 GB and the schedule is
 nightly.</p>
 <p>A <strong>PBS target</strong> works differently, and the difference is the entire point. Instead of
@@ -358,8 +443,9 @@ and leaves the badge alone.</p>
 <p><strong>Settings → Integrations → Backup verification</strong> has one switch: <em>Verify the latest
 backup of each server nightly</em>.</p>
 <p><strong>It is off by default</strong>, and deliberately so — it downloads each archive from its target,
-which costs real bandwidth on a remote SFTP or SMB store. Turn it on if your target is
-local or your link is cheap.</p>
+which costs real bandwidth on a remote SFTP or SMB store — and, on cloud storage, real
+money: most providers charge for data downloaded (egress). Turn it
+on if your target is local or your link is cheap.</p>
 <p>When on, the pass runs at most once per day and <strong>only checks the newest completed backup
 per server</strong>, which keeps the cost bounded and predictable. A background loop wakes every
 30 minutes and runs the pass if it has not run today, so a panel restart or a box that was
@@ -611,7 +697,7 @@ to have no say, do not grant <code>server.schedule</code>.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#proxmox-backup-server">Proxmox Backup Server</a><a class="t3" href="#what-you-need-on-the-pbs-side">What you need on the PBS side</a><a class="t3" href="#filling-in-the-target">Filling in the target</a><a class="t3" href="#how-snapshots-are-named">How snapshots are named</a><a class="t3" href="#what-is-different-from-the-other-targets">What is different from the other targets</a><a class="t3" href="#requirements">Requirements</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#cloud-storage">Cloud storage</a><a class="t2" href="#proxmox-backup-server">Proxmox Backup Server</a><a class="t3" href="#what-you-need-on-the-pbs-side">What you need on the PBS side</a><a class="t3" href="#filling-in-the-target">Filling in the target</a><a class="t3" href="#how-snapshots-are-named">How snapshots are named</a><a class="t3" href="#what-is-different-from-the-other-targets">What is different from the other targets</a><a class="t3" href="#requirements">Requirements</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

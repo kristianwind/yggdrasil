@@ -38,6 +38,10 @@ type targetView struct {
 	Datastore   string `json:"datastore,omitempty"`
 	Namespace   string `json:"namespace,omitempty"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	// Object storage (S3, Google Cloud Storage, Azure). The secret key, the
+	// service-account JSON and the Azure key or SAS all live in Password.
+	Bucket string `json:"bucket,omitempty"`
+	Region string `json:"region,omitempty"`
 	// HasPassword lets the editor show "leave blank to keep" instead of a bare
 	// empty field. The password itself is never sent to the browser.
 	HasPassword bool `json:"has_password"`
@@ -66,6 +70,7 @@ func (s *Server) handleListBackupTargets(w http.ResponseWriter, r *http.Request)
 			Port: cfg.Port, Username: cfg.Username, Share: cfg.Share,
 			KeepN: keepN, KeepDays: keepDays, HasPassword: cfg.Password != "",
 			Datastore: cfg.Datastore, Namespace: cfg.Namespace, Fingerprint: cfg.Fingerprint,
+			Bucket: cfg.Bucket, Region: cfg.Region,
 		})
 	}
 	jsonOK(w, list)

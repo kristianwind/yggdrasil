@@ -3,15 +3,22 @@ package backup
 import (
 	"context"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // The cloud targets are exercised against the emulators each provider's own
@@ -217,4 +224,60 @@ func TestOpenRejectsIncompleteCloudConfigs(t *testing.T) {
 			t.Errorf("Open(%+v) accepted", c)
 		}
 	}
+}
+
+// The emulator ignores tokens, so the service-account exchange is checked
+// against a fake token endpoint: what the panel signs, and that it reuses the
+// token instead of asking for one per request.
+func TestGCSServiceAccountToken(t *testing.T) {
+	pk, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: mustPKCS8(t, pk)}))
+
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		r.ParseForm() //nolint:errcheck
+		if r.Form.Get("grant_type") != "urn:ietf:params:oauth:grant-type:jwt-bearer" {
+			t.Errorf("grant_type = %q", r.Form.Get("grant_type"))
+		}
+		claims := jwt.MapClaims{}
+		if _, err := jwt.ParseWithClaims(r.Form.Get("assertion"), claims, func(*jwt.Token) (any, error) { return &pk.PublicKey, nil }); err != nil {
+			t.Errorf("assertion does not verify with the key's public half: %v", err)
+		}
+		if claims["iss"] != "backup@proj.iam.gserviceaccount.com" || claims["scope"] != gcsScope || claims["aud"] != "http://"+r.Host+"/token" {
+			t.Errorf("claims = %v", claims)
+		}
+		w.Write([]byte(`{"access_token":"tok-1","expires_in":3600}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	keyJSON, _ := json.Marshal(map[string]string{
+		"type": "service_account", "client_email": "backup@proj.iam.gserviceaccount.com",
+		"private_key": pemKey, "token_uri": srv.URL + "/token",
+	})
+	tgt, err := Open(Config{Type: "gcs", Bucket: "b", Password: string(keyJSON)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := tgt.(*gcsTarget)
+	for i := 0; i < 3; i++ {
+		tok, err := g.token(context.Background())
+		if err != nil || tok != "tok-1" {
+			t.Fatalf("token = %q, %v", tok, err)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("%d token requests for 3 uses, want 1", calls)
+	}
+}
+
+func mustPKCS8(t *testing.T, k *rsa.PrivateKey) []byte {
+	b, err := x509.MarshalPKCS8PrivateKey(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

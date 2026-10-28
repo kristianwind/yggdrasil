@@ -6,7 +6,7 @@ put any of it — plus restarts, updates and in-game warnings — on a cron sche
 ## Backup targets
 
 A **target** is a place archives are stored. Admins configure them under
-**Settings → Integrations → Backup targets**; there are four kinds.
+**Settings → Integrations → Backup targets**; there are seven kinds.
 
 | Type | UI label | What it is |
 | --- | --- | --- |
@@ -14,6 +14,9 @@ A **target** is a place archives are stored. Admins configure them under
 | `sftp` | SFTP | An SFTP server, reached over SSH with a username and password. Port defaults to 22. |
 | `smb` | SMB / CIFS (direct) | An SMB2 share, spoken natively with no host mount. Needs a share name. Port defaults to 445. |
 | `pbs` | Proxmox Backup Server | An existing PBS you already run. Deduplicated, incremental snapshots instead of nightly full archives. Port defaults to 8007. [Its own section below.](#proxmox-backup-server) |
+| `s3` | Amazon S3 / S3-compatible | A bucket on Amazon S3, or on anything that speaks its API: Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, Hetzner, MinIO. [Cloud storage below.](#cloud-storage) |
+| `gcs` | Google Cloud Storage | A bucket on Google Cloud, reached with a service-account key. |
+| `azure` | Azure Blob Storage | A container in an Azure storage account, reached with its access key or a SAS token. |
 
 Choose **+ New target**, name it, pick the type, and fill in what it asks for. Local
 wants a directory path (`/mnt/backups`); Yggdrasil creates it if it does not exist. SFTP
@@ -32,9 +35,54 @@ sent back to the browser and never logged.
 Two things to know about the SFTP target: it authenticates with a password (not a key),
 and it does not pin the host key. It suits a homelab NAS on your own network.
 
+## Cloud storage
+
+The three cloud targets store the same gzipped tar as local, SFTP and SMB, as one object
+per run, under `<folder>/<server-name>-<id>/<timestamp>.tar.gz`. The folder is optional;
+leave it empty to write at the top of the bucket. **Create the bucket (or container)
+first** — Yggdrasil never creates one, so a typo fails the Test instead of quietly making
+a new bucket somewhere you are paying for.
+
+The archive streams to the provider while it is being made, so nothing is written to the
+panel's disk on the way. It goes up in chunks — 64 MiB for S3, 16 MiB for Google and Azure —
+and one chunk at a time is held in memory. The chunk sizes put a ceiling on a single
+archive: 640 GB on S3, 800 GB on Azure, and Google's own limit of 5 TB per object.
+
+**Amazon S3 and compatibles.** Bucket, region, access key ID and secret access key. Leave
+the endpoint empty for AWS itself; for anything else, the endpoint is the provider's S3
+host:
+
+| Provider | Endpoint | Region |
+| --- | --- | --- |
+| Cloudflare R2 | `<account-id>.r2.cloudflarestorage.com` | `auto` |
+| Backblaze B2 | `s3.<region>.backblazeb2.com` | the region in the endpoint |
+| Wasabi | `s3.<region>.wasabisys.com` | the region in the endpoint |
+| DigitalOcean Spaces | `<region>.digitaloceanspaces.com` | the region in the endpoint |
+| Hetzner Object Storage | `<region>.your-objectstorage.com` | the region in the endpoint |
+| MinIO on your network | `http://192.168.1.10:9000` | `us-east-1` unless you changed it |
+
+An endpoint without `http://` is reached over HTTPS. Give the key permission to list,
+read, write and delete objects in that one bucket and nothing else — on AWS, an IAM policy
+with `s3:ListBucket` on the bucket and `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`
+on its objects.
+
+**Google Cloud Storage.** In the Google Cloud console create a service account, give it
+the **Storage Object Admin** role on the bucket (not the project), then
+**Keys → Add key → JSON**, and paste the whole downloaded file into the key field. The
+key is stored encrypted like every other target secret. Google's S3-compatible endpoint is
+deliberately not used: it cannot take an upload whose size is unknown when it starts,
+which is exactly what a streamed archive is.
+
+**Azure Blob Storage.** The storage account name, the container, and either the
+account's access key (**Security + networking → Access keys**) or a SAS token. A SAS
+token needs read, write, delete and list permission on the container, and stops working
+the day it expires — the Test button will tell you, but a schedule will only tell you by
+failing. The access key does not expire. The endpoint field is for Azure's government and
+China clouds; leave it empty otherwise.
+
 ## Proxmox Backup Server
 
-The first three targets all store the same thing: one gzipped tar per run, written whole
+The other targets all store the same thing: one gzipped tar per run, written whole
 every time. That is simple and it is fine — until the server is 40 GB and the schedule is
 nightly.
 
@@ -300,8 +348,9 @@ and leaves the badge alone.
 backup of each server nightly*.
 
 **It is off by default**, and deliberately so — it downloads each archive from its target,
-which costs real bandwidth on a remote SFTP or SMB store. Turn it on if your target is
-local or your link is cheap.
+which costs real bandwidth on a remote SFTP or SMB store — and, on cloud storage, real
+money: most providers charge for data downloaded (egress). Turn it
+on if your target is local or your link is cheap.
 
 When on, the pass runs at most once per day and **only checks the newest completed backup
 per server**, which keeps the cost bounded and predictable. A background loop wakes every

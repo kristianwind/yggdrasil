@@ -779,6 +779,8 @@
       namespace: "",
       fingerprint: "",
       share: "",
+      bucket: "",
+      region: "",
       keep_n: 0,
       keep_days: 0,
     };
@@ -1662,9 +1664,14 @@
       // and break it on save — the same class of bug as the password, but with no
       // "leave blank to keep" to soften it.
       datastore: t.datastore || "", namespace: t.namespace || "", fingerprint: t.fingerprint || "",
+      bucket: t.bucket || "", region: t.region || "",
     };
     showCreate = true;
   }
+
+  // Object storage: no host login, a bucket instead, and the path is a folder in it.
+  const cloudTypes = ["s3", "gcs", "azure"];
+  const isCloud = (t) => cloudTypes.includes(t);
 
   function newTarget() {
     editingId = null;
@@ -3275,7 +3282,7 @@
       <div class="flex-1">
         <div class="font-medium">{t.name} <span class="badge bg-border text-muted ml-1">{t.type}</span></div>
         <div class="text-xs text-muted">
-          {t.host ? t.host + " · " : ""}{t.path || "(default)"}
+          {t.host ? t.host + " · " : ""}{t.bucket ? t.bucket + (t.path ? "/" : "") : ""}{t.path || (t.bucket ? "" : "(default)")}
           {#if t.keep_n || t.keep_days}
             · retention: {t.keep_n ? `keep ${t.keep_n}` : ""}{t.keep_n && t.keep_days ? " / " : ""}{t.keep_days
               ? `${t.keep_days}d`
@@ -3646,6 +3653,9 @@
           <option value="sftp">SFTP</option>
           <option value="smb">SMB / CIFS (direct)</option>
           <option value="pbs">Proxmox Backup Server</option>
+          <option value="s3">Amazon S3 / S3-compatible (R2, B2, Wasabi, MinIO…)</option>
+          <option value="gcs">Google Cloud Storage</option>
+          <option value="azure">Azure Blob Storage</option>
         </select>
       </div>
 
@@ -3662,7 +3672,93 @@
         </div>
       {/if}
 
-      {#if form.type !== "local"}
+      {#if form.type === "s3"}
+        <div class="rounded border border-border bg-panel2 p-3 text-sm text-muted space-y-1">
+          <div>Works with Amazon S3 and any storage that speaks its API. Leave the
+            endpoint empty for AWS; for others it is, for example:</div>
+          <ul class="list-disc pl-5 font-mono text-xs">
+            <li>&lt;account-id&gt;.r2.cloudflarestorage.com <span class="font-sans">(Cloudflare R2, region <code>auto</code>)</span></li>
+            <li>s3.&lt;region&gt;.backblazeb2.com <span class="font-sans">(Backblaze B2)</span></li>
+            <li>s3.&lt;region&gt;.wasabisys.com <span class="font-sans">(Wasabi)</span></li>
+            <li>&lt;region&gt;.digitaloceanspaces.com <span class="font-sans">(DigitalOcean Spaces)</span></li>
+            <li>&lt;region&gt;.your-objectstorage.com <span class="font-sans">(Hetzner)</span></li>
+            <li>http://192.168.1.10:9000 <span class="font-sans">(MinIO on your network)</span></li>
+          </ul>
+          <div>The key needs to list, read, write and delete objects in the bucket.
+            Create the bucket first — the panel does not create it.</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="t-host">Endpoint (optional)</label>
+            <input id="t-host" class="input" bind:value={form.host} placeholder="empty = Amazon S3" />
+          </div>
+          <div>
+            <label class="label" for="t-region">Region</label>
+            <input id="t-region" class="input" bind:value={form.region} placeholder="eu-central-1" />
+          </div>
+        </div>
+        <div>
+          <label class="label" for="t-bucket">Bucket</label>
+          <input id="t-bucket" class="input" bind:value={form.bucket} />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="t-user">Access key ID</label>
+            <input id="t-user" class="input" bind:value={form.username} autocomplete="off" />
+          </div>
+          <div>
+            <label class="label" for="t-pass">Secret access key</label>
+            <input id="t-pass" class="input" type="password" bind:value={form.password} autocomplete="off" placeholder={editingId && form.has_password ? "leave blank to keep current" : ""} />
+          </div>
+        </div>
+      {/if}
+
+      {#if form.type === "gcs"}
+        <div class="rounded border border-border bg-panel2 p-3 text-sm text-muted space-y-1">
+          <div>In Google Cloud: create a service account, give it the
+            <strong>Storage Object Admin</strong> role on the bucket, then
+            <strong>Keys → Add key → JSON</strong> and paste the whole file below.</div>
+          <div>Create the bucket first — the panel does not create it.</div>
+        </div>
+        <div>
+          <label class="label" for="t-bucket">Bucket</label>
+          <input id="t-bucket" class="input" bind:value={form.bucket} />
+        </div>
+        <div>
+          <label class="label" for="t-pass">Service account key (JSON)</label>
+          <textarea id="t-pass" class="input font-mono text-xs h-28" bind:value={form.password} autocomplete="off" spellcheck="false"
+            placeholder={editingId && form.has_password ? "leave blank to keep current" : '{ "type": "service_account", … }'}></textarea>
+        </div>
+      {/if}
+
+      {#if form.type === "azure"}
+        <div class="rounded border border-border bg-panel2 p-3 text-sm text-muted space-y-1">
+          <div>Use the storage account's access key (<strong>Security + networking →
+            Access keys</strong>), or a SAS token with read, write, delete and list
+            permission on the container. Create the container first — the panel does
+            not create it.</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label" for="t-user">Storage account</label>
+            <input id="t-user" class="input" bind:value={form.username} autocomplete="off" />
+          </div>
+          <div>
+            <label class="label" for="t-bucket">Container</label>
+            <input id="t-bucket" class="input" bind:value={form.bucket} />
+          </div>
+        </div>
+        <div>
+          <label class="label" for="t-pass">Access key or SAS token</label>
+          <input id="t-pass" class="input" type="password" bind:value={form.password} autocomplete="off" placeholder={editingId && form.has_password ? "leave blank to keep current" : ""} />
+        </div>
+        <div>
+          <label class="label" for="t-host">Endpoint (optional)</label>
+          <input id="t-host" class="input" bind:value={form.host} placeholder="empty = https://<account>.blob.core.windows.net" />
+        </div>
+      {/if}
+
+      {#if form.type !== "local" && !isCloud(form.type)}
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label" for="t-host">Host</label>
@@ -3727,9 +3823,9 @@
 
       {#if form.type !== "pbs"}
       <div>
-        <label class="label" for="t-path">{form.type === "local" ? "Directory path" : "Remote path"}</label>
+        <label class="label" for="t-path">{form.type === "local" ? "Directory path" : isCloud(form.type) ? `Folder in the ${form.type === "azure" ? "container" : "bucket"} (optional)` : "Remote path"}</label>
         <div class="flex gap-2">
-          <input id="t-path" class="input flex-1" bind:value={form.path} placeholder={form.type === "local" ? "/mnt/backups" : "backups"} />
+          <input id="t-path" class="input flex-1" bind:value={form.path} placeholder={form.type === "local" ? "/mnt/backups" : isCloud(form.type) ? "yggdrasil" : "backups"} />
           {#if form.type === "local"}
             <button class="btn-ghost shrink-0" type="button" onclick={() => (browseOpen ? (browseOpen = false) : openBrowse())}>
               {browseOpen ? "Close" : "Browse…"}

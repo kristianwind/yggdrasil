@@ -139,7 +139,7 @@ func (t *azureTarget) do(ctx context.Context, method string, u *url.URL, query u
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
-		return nil, azureErr(resp)
+		return nil, azureErr(resp, t.sas != nil)
 	}
 	return resp, nil
 }
@@ -195,7 +195,7 @@ func (t *azureTarget) sign(req *http.Request, query url.Values) string {
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
 }
 
-func azureErr(resp *http.Response) error {
+func azureErr(resp *http.Response, sas bool) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
 	var e struct {
 		Code    string `xml:"Code"`
@@ -212,10 +212,16 @@ func azureErr(resp *http.Response) error {
 	switch e.Code {
 	case "ContainerNotFound":
 		hint = " — create the container first; the panel does not create it"
-	case "AuthenticationFailed":
-		hint = " — check the account name and the access key or SAS token (and that the SAS has not expired)"
-	case "AuthorizationPermissionMismatch", "AuthorizationResourceTypeMismatch", "AuthorizationFailure":
-		hint = " — a SAS token needs read, write, delete and list permission on the container"
+	case "AuthenticationFailed", "AuthorizationFailure":
+		// Azure answers a wrong key with either code, and an under-privileged
+		// SAS with the second; which one it is depends on what was sent.
+		if sas {
+			hint = " — check the SAS token: it needs read, write, delete and list permission on the container, and must not have expired"
+		} else {
+			hint = " — check the storage account name and its access key"
+		}
+	case "AuthorizationPermissionMismatch", "AuthorizationResourceTypeMismatch":
+		hint = " — the SAS token needs read, write, delete and list permission on the container"
 	}
 	return &azureError{Status: resp.StatusCode, msg: fmt.Sprintf("azure: %d %s%s", resp.StatusCode, msg, hint)}
 }

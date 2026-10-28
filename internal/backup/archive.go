@@ -1,5 +1,5 @@
 // Package backup creates and restores server archives and ships them to storage
-// targets (local/NFS/CIFS mount, SFTP, SMB). Credentials are encrypted at rest
+// targets (local/NFS/CIFS mount, SFTP, SMB, S3, GCS, Azure). Credentials are encrypted at rest
 // by the caller; this package never logs them.
 package backup
 

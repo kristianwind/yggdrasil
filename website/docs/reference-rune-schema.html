@@ -200,7 +200,7 @@ is left in the text as-is.</p>
 </tr>
 <tr>
 <td><code>&lt;NAME&gt;_PORT</code></td>
-<td>The allocated host port for each declared port, name uppercased — <code>game</code> becomes <code>GAME_PORT</code>.</td>
+<td>The allocated host port for each declared port, name uppercased — <code>game</code> becomes <code>GAME_PORT</code>. It overrides a variable of the same name, so never declare one: bind to the port&rsquo;s <code>default</code> inside the container and use <code>{{GAME_PORT}}</code> only to advertise the external port (Steam runes, which publish 1:1, are the exception).</td>
 </tr>
 <tr>
 <td><code>PUBLIC_URL</code></td>

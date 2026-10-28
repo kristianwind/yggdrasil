@@ -87,6 +87,10 @@ func TestRcloneErrNamesTheFix(t *testing.T) {
 	if !strings.Contains(err.Error(), "log in again") || strings.Contains(err.Error(), "2026/10/28") {
 		t.Errorf("err = %v", err)
 	}
+	err = rcloneErr("2026/10/28 19:43:49 NOTICE: Fatal error: failed to get oauth token: bad\n", errors.New("exit 1"))
+	if err.Error() != "rclone: failed to get oauth token: bad" {
+		t.Errorf("err = %v", err)
+	}
 }
 
 func TestRcloneRemotePaths(t *testing.T) {

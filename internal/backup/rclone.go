@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -104,6 +105,8 @@ func (t *rcloneTarget) exec(ctx context.Context, argv []string, stdin io.Reader,
 	return nil
 }
 
+var rcloneLogPrefix = regexp.MustCompile(`^\d{4}/\d\d/\d\d \d\d:\d\d:\d\d [A-Z]+\s*:\s*`)
+
 // rcloneErr keeps rclone's own last line, which is where the reason is.
 func rcloneErr(stderr string, err error) error {
 	lines := strings.Split(strings.TrimSpace(stderr), "\n")
@@ -114,10 +117,9 @@ func rcloneErr(stderr string, err error) error {
 			break
 		}
 	}
-	// Drop rclone's "2026/10/28 19:36:20 ERROR : " prefix.
-	if i := strings.Index(msg, " : "); i >= 0 && i < 40 {
-		msg = msg[i+3:]
-	}
+	// Drop rclone's "2026/10/28 19:36:20 ERROR : " / "NOTICE: Fatal error: " prefix.
+	msg = rcloneLogPrefix.ReplaceAllString(msg, "")
+	msg = strings.TrimPrefix(msg, "Fatal error: ")
 	if msg == "" {
 		return fmt.Errorf("rclone: %w", err)
 	}

@@ -50,7 +50,7 @@
 put any of it — plus restarts, updates and in-game warnings — on a cron schedule.</p>
 <h2 id="backup-targets">Backup targets</h2>
 <p>A <strong>target</strong> is a place archives are stored. Admins configure them under
-<strong>Settings → Integrations → Backup targets</strong>; there are seven kinds.</p>
+<strong>Settings → Integrations → Backup targets</strong>; there are eight kinds.</p>
 <table>
 <thead>
 <tr>
@@ -94,6 +94,11 @@ put any of it — plus restarts, updates and in-game warnings — on a cron sche
 <td><code>azure</code></td>
 <td>Azure Blob Storage</td>
 <td>A container in an Azure storage account, reached with its access key or a SAS token.</td>
+</tr>
+<tr>
+<td><code>rclone</code></td>
+<td>Cloud drive</td>
+<td>Jottacloud, Dropbox, OneDrive, Google Drive, Box, pCloud, Mega or a WebDAV server such as Nextcloud — or any other service rclone supports. <a href="#cloud-drives">Cloud drives below.</a></td>
 </tr>
 </tbody>
 </table>
@@ -180,6 +185,46 @@ token needs read, write, delete and list permission on the container, and stops 
 the day it expires — the Test button will tell you, but a schedule will only tell you by
 failing. The access key does not expire. The endpoint field is for Azure&rsquo;s government and
 China clouds; leave it empty otherwise.</p>
+<h2 id="cloud-drives">Cloud drives</h2>
+<p>The consumer cloud services do not speak S3 and each has its own API, so Yggdrasil
+reaches them through <a href="https://rclone.org">rclone</a>, run in a short-lived container the
+same way the PBS client is (image <code>rclone/rclone</code>, pinned to a version; override it with
+<code>docker.rclone_image</code> in <code>config.yaml</code>). It stores the same tar.gz as every other file
+target, under the optional folder. Pick <strong>Cloud drive</strong> as the type, then the service.</p>
+<p>The login is set up once, when you save the target. Yggdrasil runs rclone&rsquo;s own
+configuration and keeps the result — an <code>rclone.conf</code> with one remote — encrypted with
+the target. Services that log in with OAuth hand out tokens that expire within the hour;
+rclone renews them as it goes, and the panel saves each renewed token back. The login is
+never sent to the browser, and an edit with the credential field left blank keeps it.</p>
+<p><strong>Jottacloud.</strong> In Jottacloud, open <strong>Settings → Security</strong> and choose <strong>Generate</strong> under
+<em>Personal login token</em>. Paste it and save. The token works <strong>once</strong>: the panel trades it
+for a login of its own during the save, so if the save fails for any other reason, make a
+new token. Backups land in Jottacloud&rsquo;s <em>Archive</em> section, in the folder you gave.
+Jottacloud has no public API — rclone speaks the one Jottacloud&rsquo;s own apps use, which has
+been stable for years but could change without notice; if it does, backups fail and say
+so rather than going quiet.</p>
+<p><strong>Dropbox, OneDrive, Google Drive, Box, pCloud.</strong> These log in through a browser, so the
+login happens on your own computer, not on the panel: install rclone, run
+<code>rclone authorize &quot;dropbox&quot;</code> (or <code>onedrive</code>, <code>drive</code>, <code>box</code>, <code>pcloud</code>), sign in, and paste
+the token it prints — the JSON starting with <code>{&quot;access_token&quot;</code>. No app has to be
+registered anywhere.</p>
+<p><strong>Mega.</strong> The account&rsquo;s e-mail address and password. An account with two-step login
+cannot be used this way.</p>
+<p><strong>WebDAV, Nextcloud, ownCloud.</strong> The WebDAV address, the server type and a login. For
+Nextcloud the address is <code>https://&lt;host&gt;/remote.php/dav/files/&lt;user&gt;</code>; use an app
+password rather than the account&rsquo;s own.</p>
+<p><strong>Anything else.</strong> Choose <em>Other</em>, and paste one remote&rsquo;s section as
+<code>rclone config show &lt;name&gt;</code> prints it. Every service rclone supports works this way.</p>
+<p>Two things to know:</p>
+<ul>
+<li><strong>Most services want the whole file before they accept it</strong> — a checksum or a size up
+front. For those rclone writes the archive to a temporary file inside its container (on
+the panel host&rsquo;s Docker storage) before uploading, so that disk needs room for the
+largest backup. Dropbox and Box take the archive as a stream and need no room; Jottacloud,
+pCloud and WebDAV do, and so should be assumed of any other service.</li>
+<li><strong>Consumer accounts are for your own data.</strong> Their terms are written for people, not for
+reselling storage; backing up your own servers is what they are for.</li>
+</ul>
 <h2 id="proxmox-backup-server">Proxmox Backup Server</h2>
 <p>The other targets all store the same thing: one gzipped tar per run, written whole
 every time. That is simple and it is fine — until the server is 40 GB and the schedule is
@@ -697,7 +742,7 @@ to have no say, do not grant <code>server.schedule</code>.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#cloud-storage">Cloud storage</a><a class="t2" href="#proxmox-backup-server">Proxmox Backup Server</a><a class="t3" href="#what-you-need-on-the-pbs-side">What you need on the PBS side</a><a class="t3" href="#filling-in-the-target">Filling in the target</a><a class="t3" href="#how-snapshots-are-named">How snapshots are named</a><a class="t3" href="#what-is-different-from-the-other-targets">What is different from the other targets</a><a class="t3" href="#requirements">Requirements</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#backup-targets">Backup targets</a><a class="t2" href="#cloud-storage">Cloud storage</a><a class="t2" href="#cloud-drives">Cloud drives</a><a class="t2" href="#proxmox-backup-server">Proxmox Backup Server</a><a class="t3" href="#what-you-need-on-the-pbs-side">What you need on the PBS side</a><a class="t3" href="#filling-in-the-target">Filling in the target</a><a class="t3" href="#how-snapshots-are-named">How snapshots are named</a><a class="t3" href="#what-is-different-from-the-other-targets">What is different from the other targets</a><a class="t3" href="#requirements">Requirements</a><a class="t2" href="#what-a-backup-contains">What a backup contains</a><a class="t2" href="#the-archive-format-stated-plainly">The archive format, stated plainly</a><a class="t2" href="#naming-and-layout">Naming and layout</a><a class="t2" href="#running-a-backup">Running a backup</a><a class="t2" href="#restoring">Restoring</a><a class="t2" href="#retention">Retention</a><a class="t2" href="#verify">Verify</a><a class="t3" href="#nightly-auto-verify">Nightly auto-verify</a><a class="t2" href="#the-backup-coverage-nudge">The backup-coverage nudge</a><a class="t2" href="#schedules">Schedules</a><a class="t3" href="#cron">Cron</a><a class="t3" href="#scope">Scope</a><a class="t3" href="#actions">Actions</a><a class="t3" href="#message-templates">Message templates</a><a class="t3" href="#warning-players-before-a-scheduled-restart">Warning players before a scheduled restart</a><a class="t3" href="#skipping-when-players-are-online">Skipping when players are online</a><a class="t3" href="#run-history">Run history</a><a class="t3" href="#one-notification-per-firing">One notification per firing</a><a class="t2" href="#who-can-do-what-with-schedules">Who can do what with schedules</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

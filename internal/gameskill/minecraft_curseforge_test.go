@@ -180,7 +180,7 @@ func TestMinecraftJavaSetpropWritesValueLiterally(t *testing.T) {
 // up with the panel unable to talk to it.
 func TestMinecraftJavaReStampsRCON(t *testing.T) {
 	gs := loadMinecraftJava(t)
-	for _, want := range []string{"setprop enable-rcon true", `setprop rcon.port "$RCON_PORT"`, `setprop rcon.password "$RCON_PASSWORD"`} {
+	for _, want := range []string{"setprop enable-rcon true", "setprop rcon.port 25575", `setprop rcon.password "$RCON_PASSWORD"`} {
 		if !strings.Contains(gs.Startup.Command, want) {
 			t.Errorf("startup does not re-stamp RCON: %q missing", want)
 		}

@@ -848,6 +848,7 @@ func serverPortMappings(gs *gameskill.Gameskill, ports map[string]int) []docker.
 
 // neither command just gets the (longer, rune-tunable) SIGTERM grace.
 func (s *Server) gracefulStop(ctx context.Context, containerID string, gs *gameskill.Gameskill) error {
+	s.docker.MarkStopping(containerID) // before the stop command, which can end it by itself
 	if gs.Startup.SaveCommand != "" {
 		s.docker.SendStdin(ctx, containerID, gs.Startup.SaveCommand)
 		time.Sleep(2 * time.Second) // let the save flush before we ask it to stop
@@ -1327,6 +1328,13 @@ func (s *Server) handleConsole(w http.ResponseWriter, r *http.Request) {
 // The fallback keeps that console usable — but it says so, because a command that
 // silently goes nowhere is the bug this function exists to fix.
 func (s *Server) consoleSend(ctx context.Context, serverID, command string, stdin io.Writer) []string {
+	// Typing the rune's stop command is a stop, not a server that went away by
+	// itself: the reconciler must not start it again.
+	if s.isStopCommand(ctx, serverID, command) {
+		if cid := s.containerID(serverID); cid != "" {
+			s.docker.MarkStopping(cid)
+		}
+	}
 	reply, err := s.rconExec(ctx, serverID, command)
 	if err == nil {
 		// Plenty of commands answer with nothing; don't echo a blank line for them.

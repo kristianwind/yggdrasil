@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -29,6 +30,11 @@ import (
 
 type Client struct {
 	dc *client.Client
+	// stops records when this client last asked each container to stop, keyed
+	// by container id. A container that exits cleanly looks the same whether the
+	// panel stopped it or something else did, and only the second one should be
+	// brought back; see StoppedByPanel.
+	stops sync.Map
 }
 
 func New(host string) (*Client, error) {
@@ -419,12 +425,28 @@ func (c *Client) Stop(ctx context.Context, id string, timeoutSec int) error {
 	if timeoutSec <= 0 {
 		timeoutSec = 30
 	}
+	c.MarkStopping(id)
 	return c.dc.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeoutSec})
 }
 
 func (c *Client) Restart(ctx context.Context, id string) error {
 	t := 30
+	c.MarkStopping(id)
 	return c.dc.ContainerRestart(ctx, id, container.StopOptions{Timeout: &t})
+}
+
+// MarkStopping records that the panel is about to stop a container, for a stop
+// that begins before Stop is called: a rune's stop command typed into stdin
+// ends the process on its own.
+func (c *Client) MarkStopping(id string) {
+	c.stops.Store(id, time.Now())
+}
+
+// StoppedByPanel reports whether the panel asked this container to stop within
+// the last `within`.
+func (c *Client) StoppedByPanel(id string, within time.Duration) bool {
+	v, ok := c.stops.Load(id)
+	return ok && time.Since(v.(time.Time)) < within
 }
 
 // restartPolicyFor maps the "start automatically after a reboot" setting to a

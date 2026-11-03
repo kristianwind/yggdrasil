@@ -47,6 +47,8 @@ type Server struct {
 	osUpd    osUpdateCache // host OS update status, refreshed on a TTL
 	phpCheck phpCheckState // the PHP versions on the host and in servers, and how supported they are
 
+	revive reviveState // clean exits started again by the reconciler; see revive.go
+
 	// booting is true while startAutostartServers is still bringing the fleet
 	// back, until bootDeadline at the latest. See reconcileStatuses.
 	booting      atomic.Bool

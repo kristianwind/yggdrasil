@@ -54,6 +54,7 @@ func (s *Server) wipeServer(ctx context.Context, id string, backupFirst bool, ta
 	// 2. Graceful stop + remove the container.
 	if srv.ContainerID != "" {
 		if rt.gs.Startup.Stop != "" {
+			s.docker.MarkStopping(srv.ContainerID)
 			s.docker.SendStdin(ctx, srv.ContainerID, rt.gs.Startup.Stop)
 			time.Sleep(3 * time.Second) // let the world save before we stop
 		}

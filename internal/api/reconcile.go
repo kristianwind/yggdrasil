@@ -430,6 +430,16 @@ func (s *Server) reconcileStatuses() {
 			if s.shouldRecordCrash(x.id) {
 				s.recordCrash(x.id, x.cid, exitCode)
 			}
+			// A clean exit nobody asked for, on a server meant to stay up, is
+			// started again rather than torn down; see revive.go.
+			if s.reviveCandidate(x.id, x.cid, exitCode) && s.reviveServer(x.id, x.cid, exitCode) {
+				continue
+			}
+			// Every running→stopped change made here is logged. This one used
+			// to be silent, and when the tunnel servers went down nothing
+			// showed when or why.
+			log.Printf("reconcile: %s (%s) exited with code %d — marked stopped, its port forwards and tunnel routes released",
+				s.serverName(x.id), x.id, exitCode)
 			s.db.Exec("UPDATE servers SET status='stopped' WHERE id=?", x.id)
 			s.clearWatchdog(x.id)
 			s.clearResourceAlarms(x.id)

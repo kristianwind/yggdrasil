@@ -410,6 +410,11 @@ func (s *Server) sendToServer(serverID, command string) error {
 	if err != nil {
 		return fmt.Errorf("load runtime: %w", err)
 	}
+	if matchesStopCommand(rt.gs, command) {
+		if cid := s.containerID(serverID); cid != "" {
+			s.docker.MarkStopping(cid)
+		}
+	}
 	if rt.gs.RCON != nil && rt.gs.RCON.Enabled {
 		port := rt.ports["rcon"]
 		if port == 0 {

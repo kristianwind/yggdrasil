@@ -643,6 +643,7 @@ ports:
 | `name` | string | **Required.** The port's role. Becomes `<NAME>_PORT` and `PORT_<name>`. |
 | `default` | int | The container-side port. |
 | `protocol` | string | **Required.** Exactly `tcp`, `udp`, or `tcp+udp`. |
+| `fixed` | bool | Publish on the host at exactly `default`, never a port from the range. See [Fixed ports](#fixed-ports). |
 
 ### `tcp+udp` — one host port, both protocols
 
@@ -675,7 +676,30 @@ allocator walks the range sequentially and test-binds each candidate; it deliber
 `default`, because well-known game ports are the ones that get scanned. `default` is only the
 container side of the mapping.
 
-Steam runes are the exception: they publish 1:1, so the container port equals the allocated host
+### Fixed ports
+
+Some protocols cannot be told a port. Another mail server delivers to 25 and nothing else, a mail
+client is configured with 465 and 993, a Windows client looks for SMB on 445, a resolver asks DNS on
+53. For those, mark the port `fixed`:
+
+```yaml
+ports:
+  - { name: smtp, default: 25, protocol: tcp, fixed: true }
+  - { name: web, default: 8080, protocol: tcp }
+```
+
+A fixed port is published on the host at exactly `default`, which is also the container port. If
+that number is taken when the server is created, creation fails, and the error names what holds the
+port: one of the panel's servers by name, another container, or another program on the host. The
+same happens at start, if something took the port while the server was stopped. The panel never
+moves a fixed port to a free number on its own, because a mail server on port 25012 is not a mail
+server. An admin can still change it by hand under the server's **Ports**, for a setup that relays
+mail to it on another port. Two servers from a rune with fixed ports cannot run on one host; cloning
+one fails the same way.
+
+`fixed` needs a `default` between 1 and 65535, or the rune is refused.
+
+Steam runes are the other exception: they publish 1:1, so the container port equals the allocated host
 port. A Steam server registers its bind port with the Steam master server, so bind, publish and
 advertised port all have to be the same number. This is what makes `-port={{GAME_PORT}}` correct in
 a Steam rune's startup command.
@@ -1009,6 +1033,27 @@ backup:
 Paths relative to the server's data dir, archived into the backup tarball. Files and directories
 both work; there is no globbing, and a listed path that doesn't exist is skipped rather than failing
 the backup. Omit `include`, or leave it empty, to archive the whole data dir.
+
+### `pause`
+
+```yaml
+backup:
+  include: ["."]
+  pause: true
+```
+
+A backup normally reads the files while the server runs. For a database that writes all the time —
+RocksDB, MariaDB, PostgreSQL, SQLite in WAL mode — that copies files from different moments, and the
+restore can be a database that does not open. `pause: true` freezes the server's containers, the app
+and every sidecar, for as long as the archive takes to read, and resumes them after. The copy is then
+crash-consistent: what a power cut would have left, which those databases are built to recover from.
+
+While paused, the server does not answer: connections wait, mail senders retry later, the watchdog
+leaves it alone. To keep the pause short the archive is written to the panel's own disk while paused
+and uploaded once the server runs again, so the disk needs room for one archive. A Proxmox Backup
+Server target reads the directory itself, so there the pause lasts the whole run (usually short, since
+only changed chunks are sent). Docker may mark a container unhealthy for one health check after the
+pause; the next check clears it.
 
 ## `anticheat`
 

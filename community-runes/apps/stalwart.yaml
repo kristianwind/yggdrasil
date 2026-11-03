@@ -1,0 +1,122 @@
+gameskill:
+  id: stalwart
+  name: "Stalwart Mail"
+  category: "Apps"
+  description: >
+    A complete mail server in one container: SMTP, IMAP, POP3, JMAP, CalDAV,
+    CardDAV and WebDAV, with spam filtering, DKIM/SPF/DMARC and Let's Encrypt
+    built in, plus optional virus scanning by ClamAV.
+
+    Mail has to be on its real ports, so this rune takes 25, 465 and 993 on the
+    host itself — creating it fails, naming what is in the way, if anything else
+    already uses them. The machine needs a public IP with port 25 open in both
+    directions and a reverse DNS (PTR) record for that IP pointing at the mail
+    hostname; mail cannot go through a Cloudflare tunnel. Plan on 1.5 GB of RAM
+    with virus scanning, 300 MB without.
+
+    First start: open the web port's /admin and sign in as admin with the
+    password printed in the Console (or the setup password below). The wizard
+    asks for the mail hostname and domain. Choose Console under Logging, and your
+    DNS provider under Automatic DNS — Cloudflare among them — so certificates
+    and the DKIM/SPF/DMARC records are made for you. Then restart the server
+    here. After setup the web admin only works over HTTPS on its own name: give
+    this server a domain under Domains (a different name from the mail host,
+    which must stay a plain DNS record), and the panel tells Stalwart the address.
+
+    Virus scanning needs one setting in Stalwart after setup: Settings › MTA ›
+    Filters › Milters › create, host clamav, port 7357, stage Data, then restart.
+    Infected mail is then refused while it is being delivered, and if the scanner
+    is down mail is deferred rather than let through unscanned.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # The image runs a single binary that carries cap_net_bind_service, so it binds
+  # 25/465/993 as the panel's own service account — no root, no PUID to get
+  # wrong. Its two volumes both live in the server's folder: the data store at
+  # data_path and the config file (written by the setup wizard) as an extra
+  # volume, so a backup or a move takes both.
+  docker:
+    image: "stalwartlabs/stalwart:v1"
+    data_path: /var/lib/stalwart
+    extra_volumes:
+      - /etc/stalwart
+
+  variables:
+    - key: RECOVERY_ADMIN_PASSWORD
+      name: "Setup password (optional)"
+      type: string
+      default: ""
+      secret: true
+      hint: >
+        Leave empty to use the one-time password Stalwart prints in the Console on
+        first start. Set it to sign in to /admin as "admin" with a password you
+        choose, also later if you are ever locked out.
+    - key: VIRUS_SCAN
+      name: "Virus scanning (ClamAV)"
+      type: bool
+      default: true
+      hint: "Runs ClamAV beside the mail server. Uses about 1.2 GB of RAM."
+
+  # Two things are decided at start rather than fixed in env: the recovery admin
+  # only exists when a password was set (an empty one would be a login with no
+  # password), and Stalwart takes the public URL only over HTTPS — the panel's
+  # PUBLIC_URL is https only when the server has a domain, and an http one would
+  # make Stalwart refuse to start its web admin at all.
+  startup:
+    command: |
+      if [ -n "$RECOVERY_ADMIN_PASSWORD" ]; then export STALWART_RECOVERY_ADMIN="admin:$RECOVERY_ADMIN_PASSWORD"; fi
+      case "$PUBLIC_URL" in https://*) export STALWART_PUBLIC_URL="$PUBLIC_URL" ;; esac
+      exec /usr/local/bin/stalwart --config /etc/stalwart/config.json
+    done_regex: 'Network listener started'
+    stop_timeout: 30
+
+  ports:
+    # HTTP: the setup wizard, and the web admin behind a domain.
+    - { name: web, default: 8080, protocol: tcp }
+    # Mail. Another server delivers to 25 and a mail client is told 465 and 993;
+    # none of them can be asked to use a different number.
+    - { name: smtp, default: 25, protocol: tcp, fixed: true }
+    - { name: submissions, default: 465, protocol: tcp, fixed: true }
+    - { name: imaps, default: 993, protocol: tcp, fixed: true }
+
+  # ClamAV with its milter on 7357. The image's own clamav-milter.conf leaves
+  # OnInfected at Quarantine, which asks the MTA to hold the message — Stalwart
+  # has no such hold and would deliver it, so it is set to Reject. The image's
+  # init, given a command, starts none of its services and sets
+  # CLAMAV_NO_CLAMD=true for the command; that is reset before init runs again,
+  # or the milter comes up with no scanner behind it and every message is
+  # deferred. No data_path: the signatures ship in the image and the daily
+  # update is fetched at start, which keeps 300 MB of signatures out of every
+  # mail backup.
+  services:
+    - name: clamav
+      image: "clamav/clamav:stable"
+      enabled: "{{VIRUS_SCAN}}"
+      env:
+        CLAMAV_NO_MILTERD: "false"
+        TINI_SUBREAPER: "1"
+      command:
+        - sh
+        - -c
+        - >-
+          sed -i -e 's/^#\?OnInfected .*/OnInfected Reject/' -e 's/^#\?AddHeader .*/AddHeader Replace/' /etc/clamav/clamav-milter.conf &&
+          export CLAMAV_NO_CLAMD=false &&
+          exec /init
+
+  watchers:
+    - name: "Certificate request failed"
+      pattern: 'acme\.(auth-error|order-invalid|dns-error)'
+    # A few at a time is ClamAV starting up (about 30 s); more is ClamAV gone,
+    # and every message is being deferred.
+    - name: "Virus scanner unreachable"
+      pattern: 'milter\.(timeout|io-error|parse-error)'
+      threshold: 5
+      window_secs: 600
+
+  # The data store is RocksDB, written constantly; pausing for the copy gives a
+  # store that opens after a restore. The config file and the data store are
+  # both under the server's folder.
+  backup:
+    include: ["."]
+    pause: true

@@ -73,3 +73,35 @@ func TestShippedRunesDoNotShadowInjectedPorts(t *testing.T) {
 	}
 	t.Logf("checked %d non-Steam runes", checked)
 }
+
+// fixed and pause are read from a rune, and a fixed port without a number to
+// fix it at is refused instead of publishing port 0.
+func TestFixedPortsAndBackupPauseParse(t *testing.T) {
+	gs, err := Parse([]byte(`gameskill:
+  id: m
+  name: M
+  docker: { image: "x/y:1" }
+  startup: { command: "true" }
+  ports:
+    - { name: smtp, default: 25, protocol: tcp, fixed: true }
+    - { name: web, default: 8080, protocol: tcp }
+  backup: { include: ["."], pause: true }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gs.Ports[0].Fixed || gs.Ports[1].Fixed || gs.Backup == nil || !gs.Backup.Pause {
+		t.Errorf("parsed %+v / %+v", gs.Ports, gs.Backup)
+	}
+	_, err = Parse([]byte(`gameskill:
+  id: m
+  name: M
+  docker: { image: "x/y:1" }
+  startup: { command: "true" }
+  ports:
+    - { name: smtp, protocol: tcp, fixed: true }
+`))
+	if err == nil || !strings.Contains(err.Error(), "fixed") {
+		t.Errorf("fixed port without default: err = %v", err)
+	}
+}

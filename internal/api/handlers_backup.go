@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -563,10 +564,11 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 		return fail("server not found")
 	}
 	var include []string
+	var pause bool
 	var yamlBlob string
 	if s.db.QueryRow("SELECT yaml_blob FROM gameskills WHERE id=?", gameskillID).Scan(&yamlBlob) == nil {
 		if gs, err := gameskill.Parse([]byte(yamlBlob)); err == nil && gs.Backup != nil {
-			include = gs.Backup.Include
+			include, pause = gs.Backup.Include, gs.Backup.Pause
 		}
 	}
 
@@ -580,7 +582,14 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	// is no tar.gz to stream and no object name to store it under. Handing it the
 	// archive would dedupe against nothing — see internal/backup/pbs.go.
 	if cfg.Type == backup.PBSType {
+		// PBS reads the directory itself, so a pause has to last the whole run.
+		// It only sends what changed, so that is usually short.
+		unpause := func() {}
+		if pause {
+			unpause = s.pauseServer(ctx, serverID)
+		}
 		snapshot, size, perr := s.runPBSBackup(ctx, *cfg, serverID, dataDir, include)
+		unpause()
 		if perr != nil {
 			return fail(perr.Error())
 		}
@@ -611,24 +620,50 @@ func (s *Server) runBackup(serverID, targetID, backupID string) error {
 	}
 	name := fmt.Sprintf("%s-%s/%s.tar.gz", slugName(s.serverName(serverID)), short, time.Now().UTC().Format("20060102-150405"))
 
-	// Stream the archive straight to the target. Unreadable files are skipped
-	// (not fatal) and reported back over skippedCh so a partial archive is
-	// surfaced rather than silently passed off as complete.
-	pr, pw := io.Pipe()
-	skippedCh := make(chan []string, 1)
-	go func() {
-		skipped, err := backup.Archive(dataDir, include, pw)
-		skippedCh <- skipped
-		pw.CloseWithError(err)
-	}()
-	size, err := tgt.Put(ctx, name, pr)
-	if err != nil {
-		// A target that gave up halfway has stopped reading, and the archive
-		// writer would otherwise block on the pipe forever.
-		pr.CloseWithError(err)
-		return fail("upload: " + err.Error())
+	var skipped []string
+	var size int64
+	if pause {
+		// Archive to the panel's disk while the server is frozen, then thaw it
+		// and upload. Streaming straight to the target would keep a mail server
+		// frozen for as long as the slowest upload takes.
+		f, ferr := os.CreateTemp(s.pbsStagingRoot(), "ygg-backup-*.tar.gz")
+		if ferr != nil {
+			return fail("staging file: " + ferr.Error())
+		}
+		defer os.Remove(f.Name()) //nolint:errcheck
+		defer f.Close()           //nolint:errcheck
+		unpause := s.pauseServer(ctx, serverID)
+		skipped, err = backup.Archive(dataDir, include, f)
+		unpause()
+		if err != nil {
+			return fail("archive: " + err.Error())
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return fail("staging file: " + err.Error())
+		}
+		if size, err = tgt.Put(ctx, name, f); err != nil {
+			return fail("upload: " + err.Error())
+		}
+	} else {
+		// Stream the archive straight to the target. Unreadable files are skipped
+		// (not fatal) and reported back over skippedCh so a partial archive is
+		// surfaced rather than silently passed off as complete.
+		pr, pw := io.Pipe()
+		skippedCh := make(chan []string, 1)
+		go func() {
+			skipped, err := backup.Archive(dataDir, include, pw)
+			skippedCh <- skipped
+			pw.CloseWithError(err)
+		}()
+		size, err = tgt.Put(ctx, name, pr)
+		if err != nil {
+			// A target that gave up halfway has stopped reading, and the archive
+			// writer would otherwise block on the pipe forever.
+			pr.CloseWithError(err)
+			return fail("upload: " + err.Error())
+		}
+		skipped = <-skippedCh
 	}
-	skipped := <-skippedCh
 
 	s.db.Exec("UPDATE backups SET status='done', path=?, size_bytes=?, completed_at=? WHERE id=?",
 		name, size, time.Now().UTC().Format(time.RFC3339), backupID)
@@ -784,4 +819,50 @@ func (s *Server) loadTargetConfig(ctx context.Context, targetID string) (*backup
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// backupPaused holds the servers frozen for a backup right now. The watchdog
+// skips them: a paused server does not answer its query, and restarting it
+// halfway through the copy is the one thing that must not happen.
+var backupPaused sync.Map
+
+// pauseServer freezes the running containers of a server — the app and every
+// sidecar — and returns the function that thaws them. Thawing never fails
+// silently: a server left paused is a server that is down.
+func (s *Server) pauseServer(ctx context.Context, serverID string) func() {
+	if s.docker == nil {
+		return func() {}
+	}
+	cs, err := s.docker.FindByLabel(ctx, "yggdrasil.server_id", serverID)
+	if err != nil {
+		log.Printf("backup: server %s: cannot list containers to pause, copying it live: %v", serverID, err)
+		return func() {}
+	}
+	backupPaused.Store(serverID, true)
+	var paused []string
+	for _, c := range cs {
+		if c.State != "running" {
+			continue
+		}
+		if err := s.docker.Pause(ctx, c.ID); err != nil {
+			log.Printf("backup: server %s: pause %s failed, copying it live: %v", serverID, c.ID[:12], err)
+			continue
+		}
+		paused = append(paused, c.ID)
+	}
+	start := time.Now()
+	return func() {
+		uctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		for _, id := range paused {
+			if err := s.docker.Unpause(uctx, id); err != nil {
+				log.Printf("backup: server %s: UNPAUSE %s FAILED, the server is frozen: %v", serverID, id[:12], err)
+				s.notifyServer(serverID, "❌ "+s.serverName(serverID)+" could not be resumed after its backup — it is paused. Restart it from the panel.")
+			}
+		}
+		backupPaused.Delete(serverID)
+		if len(paused) > 0 {
+			log.Printf("backup: server %s: paused %d container(s) for %s", serverID, len(paused), time.Since(start).Round(time.Millisecond))
+		}
+	}
 }

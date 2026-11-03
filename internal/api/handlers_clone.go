@@ -82,6 +82,17 @@ func (s *Server) handleCloneServer(w http.ResponseWriter, r *http.Request) {
 		taken = map[int]bool{}
 	}
 	for _, p := range gs.Ports {
+		if p.Fixed {
+			// Two servers cannot both have port 25; say so rather than clone one
+			// that can never start.
+			if err := s.validatePortChoice(r.Context(), p.Default, taken); err != nil {
+				jsonError(w, fixedPortErr(p, err).Error(), http.StatusConflict)
+				return
+			}
+			allocated[p.Name] = p.Default
+			taken[p.Default] = true
+			continue
+		}
 		hostPort, err := s.allocatePort(r.Context(), p.Default, taken)
 		if err != nil {
 			jsonError(w, "port allocation failed: "+err.Error(), http.StatusInternalServerError)

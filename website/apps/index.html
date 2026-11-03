@@ -3,10 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supported apps &amp; games — Yggdrasil Panel</title>
-<meta name="description" content="73 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta name="description" content="74 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <link rel="canonical" href="https://yggdrasilpanel.com/apps/">
 <meta property="og:title" content="Supported apps &amp; games — Yggdrasil Panel">
-<meta property="og:description" content="73 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta property="og:description" content="74 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://yggdrasilpanel.com/apps/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -70,7 +70,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 </nav>
 <main class="wrap">
   <h1>Supported apps &amp; games</h1>
-  <p class="lede">73 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
+  <p class="lede">74 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
 <h2>Games <span class="count">8</span></h2>
 <div class="grid"><div class="app" title="DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)">
   <div class="ic"><span class="glyph">🎮</span></div>
@@ -105,7 +105,7 @@ After uploading those, press Start. See the Grasscutter wiki for client redirect
   <div class="ic"><img loading="lazy" src="/icons/terraria.png" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Terraria</div><div class="desc">Terraria dedicated server (official build from terraria.</div></div>
 </div></div>
-<h2>Apps <span class="count">65</span></h2>
+<h2>Apps <span class="count">66</span></h2>
 <div class="grid"><div class="app" title="Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole. The admin UI runs on the panel-allocated web port; first launch shows a setup wizard. NOTE: the DNS service lands on the panel-allocated high port, not :53 — to use it as your real network DNS you need a fixed/host port mapping, which the panel&#39;s per-server port model doesn&#39;t provide.">
   <div class="ic"><img loading="lazy" src="/icons/adguardhome.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">AdGuard Home</div><div class="desc">Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole.</div></div>
@@ -286,7 +286,7 @@ Needs no reverse proxy of its own: give it a Subdomain (NPM / Cloudflare Tunnel)
   <div class="meta"><div class="name">Redirect (domain forwarder)</div><div class="desc">Point one domain at another.</div></div>
 </div><div class="app" title="A network share, the way a NAS does it: one SMB folder that Windows, macOS and Linux mount natively — `\\host\NAS`, `smb://host/NAS` — with no client software and no web interface. Use the server&#39;s own file area, or point the share at existing storage with an admin host mount.
 Files written from a client land in the panel&#39;s group with group write, so the Files tab can edit them; files you put there from the panel are visible over SMB and a client can read, replace or delete them. Both sides share one folder rather than one side owning it. (One rough edge: a client cannot write *into* a file the panel created, only replace it — which is what Windows and macOS do when they save anyway.)
-⚠️ Two things to do after creating it. **Set the port to 445** under Ports — SMB clients expect 445 and Windows cannot be told to use another one, while a new server is given a port from the panel&#39;s own range (needs panel v0.2.230 or newer: before that the panel refused to assign any port below 1024). And **set a password**: the share has one account, `nas`, and it is the password below that lets a client in.
+The share is on port 445, because Windows cannot be told to use another one; creating it fails, naming what is in the way, if something on the host already has 445 (a Samba installed on the host itself, for instance). Needs panel v0.3.34 or newer, which can fix a port; on an older panel, set the port to 445 by hand under Ports. **Set a password**: the share has one account, `nas`, and it is the password below that lets a client in.
 Network discovery (seeing the server in &#34;Network&#34;) is deliberately off. It needs host networking, which the panel does not use, so mount by address.
 ">
   <div class="ic"><span class="glyph">📦</span></div>
@@ -297,6 +297,13 @@ Network discovery (seeing the server in &#34;Network&#34;) is deliberately off. 
 </div><div class="app" title="PVR for Usenet and BitTorrent — monitors and manages your TV series, grabbing episodes as they release. Part of the *arr media stack.">
   <div class="ic"><img loading="lazy" src="/icons/sonarr.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Sonarr</div><div class="desc">PVR for Usenet and BitTorrent — monitors and manages your TV series, grabbing episodes as they release.</div></div>
+</div><div class="app" title="A complete mail server in one container: SMTP, IMAP, POP3, JMAP, CalDAV, CardDAV and WebDAV, with spam filtering, DKIM/SPF/DMARC and Let&#39;s Encrypt built in, plus optional virus scanning by ClamAV.
+Mail has to be on its real ports, so this rune takes 25, 465 and 993 on the host itself — creating it fails, naming what is in the way, if anything else already uses them. The machine needs a public IP with port 25 open in both directions and a reverse DNS (PTR) record for that IP pointing at the mail hostname; mail cannot go through a Cloudflare tunnel. Plan on 1.5 GB of RAM with virus scanning, 300 MB without.
+First start: open the web port&#39;s /admin and sign in as admin with the password printed in the Console (or the setup password below). The wizard asks for the mail hostname and domain. Choose Console under Logging, and your DNS provider under Automatic DNS — Cloudflare among them — so certificates and the DKIM/SPF/DMARC records are made for you. Then restart the server here. After setup the web admin only works over HTTPS on its own name: give this server a domain under Domains (a different name from the mail host, which must stay a plain DNS record), and the panel tells Stalwart the address.
+Virus scanning needs one setting in Stalwart after setup: Settings › MTA › Filters › Milters › create, host clamav, port 7357, stage Data, then restart. Infected mail is then refused while it is being delivered, and if the scanner is down mail is deferred rather than let through unscanned.
+">
+  <div class="ic"><img loading="lazy" src="/icons/stalwart.svg" alt="" width="40" height="40"></div>
+  <div class="meta"><div class="name">Stalwart Mail<span class="badge">stack</span></div><div class="desc">A complete mail server in one container: SMTP, IMAP, POP3, JMAP, CalDAV, CardDAV and WebDAV, with spam filtering, DKIM/SPF/DMARC and Let&#39;s Encrypt built in, plu…</div></div>
 </div><div class="app" title="Host a static website (HTML / CSS / JS / images) with nginx. The server&#39;s file area IS the web root — upload your site from the Files tab (drag &amp; drop a folder or several files at once) and it&#39;s served immediately. Give it a Subdomain (NPM / Cloudflare) to publish it on the internet.
 ">
   <div class="ic"><span class="glyph">📦</span></div>

@@ -880,6 +880,11 @@ raw-text view a click away. Anything else opens as raw text.</p>
 <td>string</td>
 <td><strong>Required.</strong> Exactly <code>tcp</code>, <code>udp</code>, or <code>tcp+udp</code>.</td>
 </tr>
+<tr>
+<td><code>fixed</code></td>
+<td>bool</td>
+<td>Publish on the host at exactly <code>default</code>, never a port from the range. See <a href="#fixed-ports">Fixed ports</a>.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="tcpudp--one-host-port-both-protocols"><code>tcp+udp</code> — one host port, both protocols</h3>
@@ -905,7 +910,24 @@ default, see <a href="reference-configuration.html">Configuration</a>) and publi
 allocator walks the range sequentially and test-binds each candidate; it deliberately ignores
 <code>default</code>, because well-known game ports are the ones that get scanned. <code>default</code> is only the
 container side of the mapping.</p>
-<p>Steam runes are the exception: they publish 1:1, so the container port equals the allocated host
+<h3 id="fixed-ports">Fixed ports</h3>
+<p>Some protocols cannot be told a port. Another mail server delivers to 25 and nothing else, a mail
+client is configured with 465 and 993, a Windows client looks for SMB on 445, a resolver asks DNS on
+53. For those, mark the port <code>fixed</code>:</p>
+<pre><code class="language-yaml">ports:
+  - { name: smtp, default: 25, protocol: tcp, fixed: true }
+  - { name: web, default: 8080, protocol: tcp }
+</code></pre>
+<p>A fixed port is published on the host at exactly <code>default</code>, which is also the container port. If
+that number is taken when the server is created, creation fails, and the error names what holds the
+port: one of the panel&rsquo;s servers by name, another container, or another program on the host. The
+same happens at start, if something took the port while the server was stopped. The panel never
+moves a fixed port to a free number on its own, because a mail server on port 25012 is not a mail
+server. An admin can still change it by hand under the server&rsquo;s <strong>Ports</strong>, for a setup that relays
+mail to it on another port. Two servers from a rune with fixed ports cannot run on one host; cloning
+one fails the same way.</p>
+<p><code>fixed</code> needs a <code>default</code> between 1 and 65535, or the rune is refused.</p>
+<p>Steam runes are the other exception: they publish 1:1, so the container port equals the allocated host
 port. A Steam server registers its bind port with the Steam master server, so bind, publish and
 advertised port all have to be the same number. This is what makes <code>-port={{GAME_PORT}}</code> correct in
 a Steam rune&rsquo;s startup command.</p>
@@ -1279,6 +1301,22 @@ bodies (100 MB on the free plan).</p>
 <p>Paths relative to the server&rsquo;s data dir, archived into the backup tarball. Files and directories
 both work; there is no globbing, and a listed path that doesn&rsquo;t exist is skipped rather than failing
 the backup. Omit <code>include</code>, or leave it empty, to archive the whole data dir.</p>
+<h3 id="pause"><code>pause</code></h3>
+<pre><code class="language-yaml">backup:
+  include: [&quot;.&quot;]
+  pause: true
+</code></pre>
+<p>A backup normally reads the files while the server runs. For a database that writes all the time —
+RocksDB, MariaDB, PostgreSQL, SQLite in WAL mode — that copies files from different moments, and the
+restore can be a database that does not open. <code>pause: true</code> freezes the server&rsquo;s containers, the app
+and every sidecar, for as long as the archive takes to read, and resumes them after. The copy is then
+crash-consistent: what a power cut would have left, which those databases are built to recover from.</p>
+<p>While paused, the server does not answer: connections wait, mail senders retry later, the watchdog
+leaves it alone. To keep the pause short the archive is written to the panel&rsquo;s own disk while paused
+and uploaded once the server runs again, so the disk needs room for one archive. A Proxmox Backup
+Server target reads the directory itself, so there the pause lasts the whole run (usually short, since
+only changed chunks are sent). Docker may mark a container unhealthy for one health check after the
+pause; the next check clears it.</p>
 <h2 id="anticheat"><code>anticheat</code></h2>
 <pre><code class="language-yaml">anticheat:
   antixray:
@@ -1586,7 +1624,7 @@ since the container is rebuilt from the rune every time.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#private-images">Private images</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t3" href="#app_writable">app_writable</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t3" href="#tcpudp--one-host-port-both-protocols">tcp+udp — one host port, both protocols</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t3" href="#an-optional-sidecar">An optional sidecar</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#the-file">The file</a><a class="t2" href="#templating-and-injected-values">Templating and injected values</a><a class="t2" href="#docker">docker</a><a class="t3" href="#private-images">Private images</a><a class="t3" href="#data_path-and-the-working-directory">data_path and the working directory</a><a class="t3" href="#user-image-user-and-the-etcpasswd-shim">user, image USER, and the /etc/passwd shim</a><a class="t3" href="#keep_entrypoint">keep_entrypoint</a><a class="t3" href="#extra_volumes">extra_volumes</a><a class="t3" href="#capabilities-devices-sysctls">capabilities, devices, sysctls</a><a class="t2" href="#two-container-patterns">Two container patterns</a><a class="t2" href="#variables">variables</a><a class="t3" href="#pattern--for-values-with-a-shape">pattern — for values with a shape</a><a class="t2" href="#install">install</a><a class="t2" href="#update">update</a><a class="t3" href="#app_writable">app_writable</a><a class="t2" href="#startup">startup</a><a class="t3" href="#command-vs-exec">command vs exec</a><a class="t3" href="#done_regex">done_regex</a><a class="t3" href="#stopping-cleanly">Stopping cleanly</a><a class="t2" href="#config_files">config_files</a><a class="t2" href="#ports">ports</a><a class="t3" href="#tcpudp--one-host-port-both-protocols">tcp+udp — one host port, both protocols</a><a class="t3" href="#fixed-ports">Fixed ports</a><a class="t2" href="#services--app-stacks">services — app stacks</a><a class="t3" href="#an-optional-sidecar">An optional sidecar</a><a class="t2" href="#query">query</a><a class="t2" href="#rcon">rcon</a><a class="t2" href="#steam">steam</a><a class="t2" href="#bans">bans</a><a class="t2" href="#players">players</a><a class="t2" href="#events">events</a><a class="t2" href="#admin_log">admin_log</a><a class="t2" href="#watchers">watchers</a><a class="t2" href="#wipe">wipe</a><a class="t2" href="#restart">restart</a><a class="t2" href="#import">import</a><a class="t2" href="#backup">backup</a><a class="t3" href="#pause">pause</a><a class="t2" href="#anticheat">anticheat</a><a class="t2" href="#fields-the-panel-parses-but-doesnt-use">Fields the panel parses but doesn’t use</a><a class="t2" href="#a-complete-rune">A complete rune</a><a class="t2" href="#authoring-a-new-rune">Authoring a new rune</a><a class="t2" href="#see-also">See also</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

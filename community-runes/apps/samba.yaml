@@ -15,17 +15,17 @@ gameskill:
     *into* a file the panel created, only replace it — which is what Windows and
     macOS do when they save anyway.)
 
-    ⚠️ Two things to do after creating it. **Set the port to 445** under Ports —
-    SMB clients expect 445 and Windows cannot be told to use another one, while a
-    new server is given a port from the panel's own range (needs panel v0.2.230 or
-    newer: before that the panel refused to assign any port below 1024). And **set
-    a password**: the share has one account, `nas`, and it is the password below
-    that lets a client in.
+    The share is on port 445, because Windows cannot be told to use another one;
+    creating it fails, naming what is in the way, if something on the host
+    already has 445 (a Samba installed on the host itself, for instance). Needs
+    panel v0.3.34 or newer, which can fix a port; on an older panel, set the port
+    to 445 by hand under Ports. **Set a password**: the share has one account,
+    `nas`, and it is the password below that lets a client in.
 
     Network discovery (seeing the server in "Network") is deliberately off. It
     needs host networking, which the panel does not use, so mount by address.
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # Samba must run as root (it binds 445 and switches identity per connection),
@@ -122,7 +122,7 @@ gameskill:
     done_regex: 'smbd version .* started'
 
   ports:
-    - { name: smb, default: 445, protocol: tcp }
+    - { name: smb, default: 445, protocol: tcp, fixed: true }
 
   # Existing storage belongs OUTSIDE this data dir. As an admin, open this
   # server's Settings → "Host mounts" and add it, e.g.:

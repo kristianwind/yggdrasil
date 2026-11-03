@@ -19,16 +19,18 @@ gameskill:
     asks for the mail hostname and domain. Choose Console under Logging, and your
     DNS provider under Automatic DNS — Cloudflare among them — so certificates
     and the DKIM/SPF/DMARC records are made for you. Then restart the server
-    here. After setup the web admin only works over HTTPS on its own name: give
-    this server a domain under Domains (a different name from the mail host,
-    which must stay a plain DNS record), and the panel tells Stalwart the address.
+    here. After setup the web admin only works over HTTPS on its own name. Two
+    ways: if 443 is free on this host, set the https port to 443 under Ports and
+    use https://<mail hostname>/admin; or give this server a domain under Domains
+    (a different name from the mail host, which must stay a plain DNS record),
+    and the panel tells Stalwart that address.
 
     Virus scanning needs one setting in Stalwart after setup: Settings › MTA ›
     Filters › Milters › create, host clamav, port 7357, stage Data, then restart.
     Infected mail is then refused while it is being delivered, and if the scanner
     is down mail is deferred rather than let through unscanned.
   author: "yggdrasil-community"
-  version: 1
+  version: 2
   icon: "app"
 
   # The image runs a single binary that carries cap_net_bind_service, so it binds
@@ -79,6 +81,12 @@ gameskill:
     - { name: smtp, default: 25, protocol: tcp, fixed: true }
     - { name: submissions, default: 465, protocol: tcp, fixed: true }
     - { name: imaps, default: 993, protocol: tcp, fixed: true }
+    # HTTPS with Stalwart's own certificate: the web admin, JMAP, autoconfig and
+    # MTA-STS, and Let's Encrypt's TLS-ALPN check. Not fixed, because plenty of
+    # hosts already serve websites on 443. On a host where 443 is free, change
+    # this server's https port to 443 under Ports: then the mail hostname is also
+    # the admin address and no domain or tunnel is needed.
+    - { name: https, default: 443, protocol: tcp }
 
   # ClamAV with its milter on 7357. The image's own clamav-milter.conf leaves
   # OnInfected at Quarantine, which asks the MTA to hold the message — Stalwart

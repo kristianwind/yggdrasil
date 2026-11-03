@@ -3,10 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supported apps &amp; games — Yggdrasil Panel</title>
-<meta name="description" content="74 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta name="description" content="75 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <link rel="canonical" href="https://yggdrasilpanel.com/apps/">
 <meta property="og:title" content="Supported apps &amp; games — Yggdrasil Panel">
-<meta property="og:description" content="74 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
+<meta property="og:description" content="75 self-hosted apps and game servers you can run in one click with Yggdrasil Panel.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://yggdrasilpanel.com/apps/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -70,7 +70,7 @@ footer{border-top:1px solid var(--bd);color:var(--mut);text-align:center;padding
 </nav>
 <main class="wrap">
   <h1>Supported apps &amp; games</h1>
-  <p class="lede">74 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
+  <p class="lede">75 one-click runes and counting — self-hosted apps and dedicated game servers, each installed, configured and kept running by the panel. Multi-container apps (marked <span class="badge">stack</span>) bring their own database.</p>
 <h2>Games <span class="count">8</span></h2>
 <div class="grid"><div class="app" title="DayZ dedicated server (SteamCMD; requires a Steam account that owns DayZ)">
   <div class="ic"><span class="glyph">🎮</span></div>
@@ -105,7 +105,7 @@ After uploading those, press Start. See the Grasscutter wiki for client redirect
   <div class="ic"><img loading="lazy" src="/icons/terraria.png" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Terraria</div><div class="desc">Terraria dedicated server (official build from terraria.</div></div>
 </div></div>
-<h2>Apps <span class="count">66</span></h2>
+<h2>Apps <span class="count">67</span></h2>
 <div class="grid"><div class="app" title="Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole. The admin UI runs on the panel-allocated web port; first launch shows a setup wizard. NOTE: the DNS service lands on the panel-allocated high port, not :53 — to use it as your real network DNS you need a fixed/host port mapping, which the panel&#39;s per-server port model doesn&#39;t provide.">
   <div class="ic"><img loading="lazy" src="/icons/adguardhome.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">AdGuard Home</div><div class="desc">Network-wide ad &amp; tracker blocker + local DNS, with a friendlier UI than Pi-hole.</div></div>
@@ -126,6 +126,12 @@ Add your printers by IP address under Printers. Automatic discovery and the virt
 </div><div class="app" title="Lightweight server and Docker monitoring with a clean dashboard, historical CPU/memory/disk/network charts and configurable alerts. This is the Beszel hub (web UI + datastore, built on PocketBase). To monitor a machine, install the Beszel agent on it and add it from this UI with the key the hub shows. Very low overhead.">
   <div class="ic"><img loading="lazy" src="/icons/beszel.svg" alt="" width="40" height="40"></div>
   <div class="meta"><div class="name">Beszel</div><div class="desc">Lightweight server and Docker monitoring with a clean dashboard, historical CPU/memory/disk/network charts and configurable alerts.</div></div>
+</div><div class="app" title="Webmail for a Stalwart mail server: mail, calendar, contacts and files in one place, signing in with the mail account&#39;s own address and password. It talks to Stalwart over JMAP, so it needs nothing but Stalwart&#39;s HTTPS address.
+Give this server a domain under Domains (for example webmail.example.com) and set the Stalwart address below. Stalwart then needs two settings, both under Settings › Network › HTTP in its web admin, followed by a restart: under Security, turn on Permissive CORS policy, because the browser talks to Stalwart from the webmail&#39;s own address; and under General › Proxy, set Client IP source to X-Forwarded-For with 1 trusted hop. Without the second, Stalwart counts every failed sign-in as coming from this server and can end up blocking it, which locks everyone out of webmail at once. Only set it if nothing else reaches Stalwart&#39;s HTTPS port through a proxy that you do not control.
+Nothing is sent anywhere but your mail server: telemetry, the update check, the hosted push relay, online translation and the extension marketplace are all switched off.
+">
+  <div class="ic"><span class="glyph">📦</span></div>
+  <div class="meta"><div class="name">Bulwark Webmail</div><div class="desc">Webmail for a Stalwart mail server: mail, calendar, contacts and files in one place, signing in with the mail account&#39;s own address and password.</div></div>
 </div><div class="app" title="Host a site with Caddy and a Caddyfile you own. The server&#39;s file area holds the config and the site side by side: edit &#34;Caddyfile&#34; from the Files tab, put the site in &#34;site/&#34;, and restart to apply. Good when a static host is not enough — redirects, rewrites, custom headers, basic auth, or proxying a path through to another server.
 Use &#34;Static site&#34; instead if you only need files served; it needs no config at all. Use this when you want to say how they are served.
 One thing to know before you pick it: Caddy is famous for getting HTTPS certificates by itself, and that will NOT happen here. Issuing one requires the internet to reach this container on ports 80 and 443, and the panel publishes every server on its own assigned port instead. The shipped Caddyfile therefore serves plain HTTP and expects the proxy already in front of it — NPM, or a Cloudflare tunnel — to terminate TLS, which is how every other published site here already works. Everything else Caddy does works normally. It can also be the front door for a whole host — reverse-proxying the other servers on the box behind one name each. Two notes if you use it that way: move its ports to 80/443 from Settings after creating it (a rune cannot claim a privileged port itself), and address the other servers as 172.17.0.1:&lt;port&gt;, not localhost — inside a container, localhost is the container.

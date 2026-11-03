@@ -444,6 +444,11 @@ func (s *Server) handleSetCloudflareSettings(w http.ResponseWriter, r *http.Requ
 
 // handleTestCloudflare verifies the token, resolves the zone from the base domain,
 // and confirms the tunnel config is reachable.
+//
+// A failed test answers 422, not 502. The panel is often reached through the
+// very Cloudflare it is testing, and Cloudflare replaces an origin's 502 with
+// its own error page. The message that says which half failed never reached
+// the browser, and the operator was left with a bare "HTTP 502".
 func (s *Server) handleTestCloudflare(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token      string `json:"token"`
@@ -476,7 +481,7 @@ func (s *Server) handleTestCloudflare(w http.ResponseWriter, r *http.Request) {
 		}
 		resolved, err := c.ResolveZoneID(base)
 		if err != nil {
-			jsonError(w, "couldn't read the zone for "+base+" — the token needs Zone → DNS: Edit (and Zone: Read). ("+err.Error()+")", http.StatusBadGateway)
+			jsonError(w, "couldn't read the zone for "+base+" — the token needs Zone → DNS: Edit (and Zone: Read). ("+err.Error()+")", http.StatusUnprocessableEntity)
 			return
 		}
 		zone = resolved
@@ -485,7 +490,7 @@ func (s *Server) handleTestCloudflare(w http.ResponseWriter, r *http.Request) {
 	}
 	// 2) Tunnel access — confirms Account → Cloudflare Tunnel: Edit + correct ids.
 	if err := c.CheckTunnel(); err != nil {
-		jsonError(w, "DNS/zone OK, but the tunnel isn't reachable — check the Account ID + Tunnel ID and give the token Account → Cloudflare Tunnel: Edit. ("+err.Error()+")", http.StatusBadGateway)
+		jsonError(w, "DNS/zone OK, but the tunnel isn't reachable — check the Account ID + Tunnel ID and give the token Account → Cloudflare Tunnel: Edit. ("+err.Error()+")", http.StatusUnprocessableEntity)
 		return
 	}
 	jsonOK(w, map[string]any{"ok": true, "zone_id": zone})

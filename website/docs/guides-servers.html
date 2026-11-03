@@ -273,6 +273,14 @@ recovers from a crash mid-run), off sets <code>no</code>. Toggling it updates th
 container immediately, so it takes effect on the very next reboot — you don&rsquo;t have to
 restart the server for the change to count. Crash recovery for an autostart-off server
 is the <a href="#watchdog-auto-heal">watchdog</a>&rsquo;s job if you want it.</p>
+<p>Docker&rsquo;s <code>on-failure</code> does not count a clean exit (code 0, or a SIGTERM the program
+handles) as a failure, so it never brings that back. With autostart on, the panel
+does. A server that stops cleanly without the panel being asked to stop it is started
+again within about 20 seconds, its tunnel routes and DNS records left as they were.
+Stopping it from outside the panel, for example <code>docker stop</code>, counts the same way.
+Stopping it in the panel, or typing the rune&rsquo;s stop command in the console, is a stop
+and is left alone. If a server keeps exiting, after three restarts in an hour it is
+left stopped, and the panel log says so (<code>reconcile:</code> lines).</p>
 <h2 id="clone">Clone</h2>
 <p><strong>⧉ Clone</strong> stands up &ldquo;another one like this&rdquo;: same rune, variables, resource limits,
 host mounts, autostart, port-forward, and watchdog settings, with a fresh set of ports

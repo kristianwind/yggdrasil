@@ -1,0 +1,74 @@
+gameskill:
+  id: bulwark
+  name: "Bulwark Webmail"
+  category: "Apps"
+  description: >
+    Webmail for a Stalwart mail server: mail, calendar, contacts and files in
+    one place, signing in with the mail account's own address and password. It
+    talks to Stalwart over JMAP, so it needs nothing but Stalwart's HTTPS
+    address.
+
+    Give this server a domain under Domains (for example webmail.example.com)
+    and set the Stalwart address below. Stalwart then needs two settings, both
+    under Settings › Network › HTTP in its web admin, followed by a restart:
+    under Security, turn on Permissive CORS policy, because the browser talks to
+    Stalwart from the webmail's own address; and under General › Proxy, set
+    Client IP source to X-Forwarded-For with 1 trusted hop. Without the second,
+    Stalwart counts every failed sign-in as coming from this server and can end
+    up blocking it, which locks everyone out of webmail at once. Only set it if
+    nothing else reaches Stalwart's HTTPS port through a proxy that you do not
+    control.
+
+    Nothing is sent anywhere but your mail server: telemetry, the update check,
+    the hosted push relay, online translation and the extension marketplace are
+    all switched off.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # A Next.js server listening on 3000. Its state (a generated session secret,
+  # the admin login, per-user settings) lives in /app/data, which is the
+  # server's folder; losing it signs everyone out.
+  docker:
+    image: "ghcr.io/bulwarkmail/webmail:1"
+    data_path: /app/data
+    env:
+      # One switch for every outbound call to a third party, and telemetry and
+      # the update check named on their own as well, so a later release that
+      # moves one of them out from under the first switch still finds it off.
+      NO_THIRD_PARTY_TRAFFIC: "true"
+      BULWARK_TELEMETRY: "off"
+      BULWARK_UPDATE_CHECK: "off"
+
+  variables:
+    - key: JMAP_SERVER_URL
+      name: "Stalwart address"
+      type: string
+      default: ""
+      hint: >
+        Stalwart's HTTPS address, for example https://mail.example.com. Leave it
+        empty to choose the server in Bulwark's setup wizard instead.
+    - key: ADMIN_PASSWORD
+      name: "Admin password (optional)"
+      type: string
+      default: ""
+      secret: true
+      hint: >
+        Turns on Bulwark's own admin pages at /admin (branding, policies,
+        plugins). Read only on first start. Leave empty to keep them off.
+
+  # Empty variables are left out of the environment rather than passed as empty
+  # strings: an empty JMAP_SERVER_URL would count as set and skip the setup
+  # wizard with no server to talk to.
+  startup:
+    command: |
+      [ -n "$JMAP_SERVER_URL" ] || unset JMAP_SERVER_URL
+      [ -n "$ADMIN_PASSWORD" ] || unset ADMIN_PASSWORD
+      cd /app && exec node server.js
+    done_regex: 'Ready in'
+
+  ports:
+    - { name: web, default: 3000, protocol: tcp }
+
+  backup:
+    include: ["."]

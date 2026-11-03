@@ -138,6 +138,10 @@ func (s *Server) runWatchdog() {
 		if s.wd.isQuarantined(x.id) || s.wd.inCooldown(x.id, now) {
 			continue
 		}
+		// Frozen for a backup: it cannot answer, and that is not a hang.
+		if _, ok := backupPaused.Load(x.id); ok {
+			continue
+		}
 		// Only servers whose rune declares a query can be health-checked.
 		rt, err := s.loadRuntime(context.Background(), x.id)
 		if err != nil || rt.gs.Query == nil {

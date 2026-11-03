@@ -238,7 +238,17 @@ func (s *Server) sidecarPorts(ctx context.Context, id string, svc gameskill.Serv
 		s.db.QueryRowContext(ctx, "SELECT port FROM port_allocations WHERE server_id=? AND name=?", id, key).Scan(&hostPort)
 		if hostPort == 0 {
 			taken, _ := s.docker.UsedHostPorts(ctx)
-			hp, err := s.allocatePort(ctx, p.Default, taken)
+			var hp int
+			var err error
+			if p.Fixed {
+				if err = s.validatePortChoice(ctx, p.Default, taken); err == nil {
+					hp = p.Default
+				} else {
+					log.Printf("server %s: sidecar %s: %v", id, svc.Name, fixedPortErr(p, err))
+				}
+			} else {
+				hp, err = s.allocatePort(ctx, p.Default, taken)
+			}
 			if err != nil {
 				continue // no free port — skip publishing this one rather than fail the stack
 			}

@@ -785,6 +785,26 @@ func (c *Client) ExitDetail(ctx context.Context, id string) (exitCode int, oomKi
 // UsedHostPorts returns the set of host ports currently published by any
 // container (running or not). This is the authoritative view for avoiding port
 // conflicts, independent of Docker's userland-proxy mode.
+// Pause freezes every process in a container; Unpause lets them run again.
+func (c *Client) Pause(ctx context.Context, id string) error   { return c.dc.ContainerPause(ctx, id) }
+func (c *Client) Unpause(ctx context.Context, id string) error { return c.dc.ContainerUnpause(ctx, id) }
+
+// HostPortHolder names the container publishing a host port, "" if none does.
+func (c *Client) HostPortHolder(ctx context.Context, port int) string {
+	containers, err := c.dc.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return ""
+	}
+	for _, ct := range containers {
+		for _, p := range ct.Ports {
+			if int(p.PublicPort) == port && len(ct.Names) > 0 {
+				return strings.TrimPrefix(ct.Names[0], "/")
+			}
+		}
+	}
+	return ""
+}
+
 func (c *Client) UsedHostPorts(ctx context.Context) (map[int]bool, error) {
 	containers, err := c.dc.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {

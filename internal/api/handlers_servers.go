@@ -366,6 +366,15 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 			taken[desired] = true
 			continue
 		}
+		if p.Fixed {
+			if err := s.validatePortChoice(r.Context(), p.Default, taken); err != nil {
+				jsonError(w, fixedPortErr(p, err).Error(), http.StatusConflict)
+				return
+			}
+			allocatedPorts[p.Name] = p.Default
+			taken[p.Default] = true
+			continue
+		}
 		hostPort, err := s.allocatePort(r.Context(), p.Default, taken)
 		if err != nil {
 			jsonError(w, "port allocation failed: "+err.Error(), http.StatusInternalServerError)
@@ -878,9 +887,20 @@ func (s *Server) recreateAndStart(ctx context.Context, id string) error {
 	for _, hp := range ports {
 		taken[hp] = true
 	}
+	fixedPorts := map[string]gameskill.Port{}
+	for _, p := range gs.Ports {
+		if p.Fixed {
+			fixedPorts[p.Name] = p
+		}
+	}
 	for name, hp := range ports {
 		if !dockerUsed[hp] && hostPortAvailable(hp) {
 			continue
+		}
+		// A fixed port is not moved: a mail server answering on 25012 is not a
+		// mail server. Refuse to start and say what holds it.
+		if fp, ok := fixedPorts[name]; ok && hp == fp.Default {
+			return fixedPortErr(fp, fmt.Errorf("in use by %s", s.portHolder(ctx, hp)))
 		}
 		delete(taken, hp)
 		newPort, aerr := s.allocatePort(ctx, hp, taken)

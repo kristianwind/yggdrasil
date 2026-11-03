@@ -403,6 +403,12 @@ type Port struct {
 	// (port_allocations.port is the primary key), so a udp entry beside a tcp one
 	// always lands on a different number.
 	Protocol string `yaml:"protocol" json:"protocol"`
+	// Fixed publishes the port on the host at exactly Default instead of a port
+	// from the panel's range. For protocols the other side cannot be told a port
+	// for: mail (25, 465, 993 — another mail server delivers to 25, full stop),
+	// DNS on 53, an SMB share on 445. If the port is taken the server does not
+	// start, and the error says by what; it is never quietly moved elsewhere.
+	Fixed bool `yaml:"fixed,omitempty" json:"fixed,omitempty"`
 }
 
 // Protocols lists the protocols this port is published on, lowest-common-
@@ -446,6 +452,15 @@ type BattlEyeConfig struct {
 
 type Backup struct {
 	Include []string `yaml:"include" json:"include"`
+	// Pause freezes the server's containers (the app and its sidecars) while the
+	// archive is read, so a database that writes all the time — RocksDB, MariaDB,
+	// Postgres — is copied as one moment instead of as files from different
+	// moments, which can restore to a database that does not open. The copy is
+	// crash-consistent: what a power cut would have left, which every such
+	// database is built to recover from. The archive is written to the panel's
+	// disk while paused and uploaded after, so the pause lasts as long as reading
+	// the data takes, not as long as the upload.
+	Pause bool `yaml:"pause,omitempty" json:"pause,omitempty"`
 }
 
 // file wrapper for top-level "gameskill:" key
@@ -517,6 +532,9 @@ func validate(gs *Gameskill) error {
 		// thing every reader and every grep has to know about forever.
 		if p.Protocol != "tcp" && p.Protocol != "udp" && p.Protocol != "tcp+udp" {
 			return fmt.Errorf("port %q has invalid protocol %q (want tcp, udp or tcp+udp)", p.Name, p.Protocol)
+		}
+		if p.Fixed && (p.Default < 1 || p.Default > 65535) {
+			return fmt.Errorf("port %q is fixed but has no default to fix it at", p.Name)
 		}
 	}
 

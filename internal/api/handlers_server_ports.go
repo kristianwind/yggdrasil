@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kristianwind/yggdrasil/internal/gameskill"
 )
 
 // validatePortChoice reports whether an explicitly-requested host port may be
@@ -23,9 +25,33 @@ func (s *Server) validatePortChoice(ctx context.Context, port int, taken map[int
 		return fmt.Errorf("already chosen for another port on this server")
 	}
 	if !s.portAvailable(ctx, port) {
-		return fmt.Errorf("already in use")
+		return fmt.Errorf("already in use by %s", s.portHolder(ctx, port))
 	}
 	return nil
+}
+
+// portHolder says what has a host port, for an error message someone can act
+// on: one of the panel's own servers, another container, or something else.
+func (s *Server) portHolder(ctx context.Context, port int) string {
+	var name string
+	s.db.QueryRowContext(ctx, `SELECT COALESCE(s.name,'')
+		FROM port_allocations p LEFT JOIN servers s ON s.id = p.server_id
+		WHERE p.port=?`, port).Scan(&name) //nolint:errcheck
+	if name != "" {
+		return "the server " + strconv.Quote(name)
+	}
+	if s.docker != nil {
+		if c := s.docker.HostPortHolder(ctx, port); c != "" {
+			return "the container " + strconv.Quote(c)
+		}
+	}
+	return "another program on this host"
+}
+
+// fixedPortErr is the error for a rune port that must be exact and is not free.
+func fixedPortErr(p gameskill.Port, why error) error {
+	return fmt.Errorf("port %q must be exactly %d (this rune cannot use another number), but it is %v — "+
+		"free that port, or change this server's port by hand under Ports if you really mean to", p.Name, p.Default, why)
 }
 
 // handleUpdateServerPorts changes one or more of a server's host ports after

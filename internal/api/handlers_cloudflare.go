@@ -433,6 +433,9 @@ func (s *Server) handleSetCloudflareSettings(w http.ResponseWriter, r *http.Requ
 	s.closeWhatIntegrationOpened(r.Context(), "cloudflare",
 		s.getSetting(r.Context(), "cf_enabled") == "1", req.Enabled, s.cfRemoveServer)
 	s.setSetting(r.Context(), "cf_enabled", boolStr(req.Enabled))
+	// A token copied from Cloudflare's page often carries a trailing space or
+	// newline, and Cloudflare answers that with "Invalid request headers".
+	req.Token = strings.TrimSpace(req.Token)
 	if req.Token != "" {
 		if enc, err := s.cipher.Encrypt(req.Token); err == nil {
 			s.setSetting(r.Context(), "cf_api_token", enc)
@@ -458,7 +461,7 @@ func (s *Server) handleTestCloudflare(w http.ResponseWriter, r *http.Request) {
 		BaseDomain string `json:"base_domain"`
 	}
 	decodeJSON(r, &req)
-	token := req.Token
+	token := strings.TrimSpace(req.Token)
 	if token == "" {
 		if enc := s.getSetting(r.Context(), "cf_api_token"); enc != "" {
 			token, _ = s.cipher.Decrypt(enc)

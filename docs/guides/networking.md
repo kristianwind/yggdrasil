@@ -285,11 +285,13 @@ never comes up — so nothing the panel provisions is reachable, with no error a
 There is no warning when the panel has no `cloudflared` server of its own. A panel sitting behind a
 connector someone else runs is a normal setup, and the panel has nothing to compare against.
 
-### The Cloudflare token permission is called "Argo Tunnel (Legacy)"
+### The Cloudflare token permission: "Cloudflare Tunnel" or "Argo Tunnel (Legacy)"
 
-Cloudflare's token UI does not offer a permission labelled "Cloudflare Tunnel". The permission
-Yggdrasil needs is listed as **Argo Tunnel (Legacy) → Edit**, scoped to the whole **account** — that
-is the tunnel API permission under its old name. Add **Zone → DNS: Edit** for the zone holding your
+The permission Yggdrasil needs is **Account → Cloudflare Tunnel → Edit**, scoped to the whole
+**account**. Cloudflare has listed it under both names: for a while the token UI offered only
+**Argo Tunnel (Legacy)**, its old name, and in November 2026 the token list shows it as
+**Cloudflare Tunnel** again. Pick whichever of the two your dashboard shows. Without it the
+test reports `Authentication failed (code 9106)` on the tunnel half, after DNS has passed. Add **Zone → DNS: Edit** for the zone holding your
 base domain and the token is complete — *for tunnels and domains*.
 
 🔴 **IP blocking needs a third permission: Zone → Firewall Services: Edit.** Cloudflare's IP Access

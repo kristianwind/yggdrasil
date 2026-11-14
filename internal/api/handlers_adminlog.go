@@ -2,11 +2,14 @@ package api
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kristianwind/yggdrasil/internal/gameskill"
@@ -99,13 +102,39 @@ func extractTime(re *regexp.Regexp, line string) string {
 
 // readTail returns up to the last max bytes of a file (whole file if smaller),
 // dropping any partial first line so parsing starts on a clean line boundary.
-func readTail(path string, max int64) (string, error) {
-	b, err := os.ReadFile(path)
+//
+// path is relative to dataDir and opened through an os.Root, so a log path that
+// has become a symlink out of the data directory is an error, not a read. Only
+// the tail is ever loaded: this used to read the whole file to keep the end.
+func readTail(dataDir, path string, max int64) (string, error) {
+	root, err := openDataRoot(dataDir)
 	if err != nil {
 		return "", err
 	}
-	if int64(len(b)) > max {
-		b = b[int64(len(b))-max:]
+	defer root.Close()
+	f, err := root.OpenFile(rootRel(path), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s is not a regular file", path)
+	}
+	truncated := info.Size() > max
+	if truncated {
+		if _, err := f.Seek(info.Size()-max, io.SeekStart); err != nil {
+			return "", err
+		}
+	}
+	b, err := io.ReadAll(io.LimitReader(f, max))
+	if err != nil {
+		return "", err
+	}
+	if truncated {
 		if nl := bytes.IndexByte(b, '\n'); nl >= 0 && nl+1 < len(b) {
 			b = b[nl+1:] // skip the truncated partial line
 		}
@@ -114,9 +143,14 @@ func readTail(path string, max int64) (string, error) {
 }
 
 // newestAdminLog resolves the rune's glob under the data dir (jailed) and returns
-// the most recently modified matching file.
+// the most recently modified matching file, as a path relative to dataDir.
 func (s *Server) newestAdminLog(dataDir, pattern string) string {
 	matches, _ := filepath.Glob(filepath.Join(dataDir, pattern))
+	root, err := openDataRoot(dataDir)
+	if err != nil {
+		return ""
+	}
+	defer root.Close()
 	var newest string
 	var newestMod int64
 	for _, m := range matches {
@@ -124,17 +158,17 @@ func (s *Server) newestAdminLog(dataDir, pattern string) string {
 		if err != nil {
 			continue
 		}
-		safe, ok := safeJoin(dataDir, rel)
-		if !ok || safe == dataDir {
+		rel = rootRel(rel)
+		if rel == "." {
 			continue
 		}
-		info, err := os.Stat(safe)
-		if err != nil || info.IsDir() {
+		info, err := root.Stat(rel)
+		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
 		if info.ModTime().UnixNano() > newestMod {
 			newestMod = info.ModTime().UnixNano()
-			newest = safe
+			newest = rel
 		}
 	}
 	return newest
@@ -172,7 +206,7 @@ func (s *Server) handleAdminLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.File = filepath.Base(file)
-	content, err := readTail(file, adminLogTailBytes)
+	content, err := readTail(srv.DataDir, file, adminLogTailBytes)
 	if err != nil {
 		jsonOK(w, resp)
 		return

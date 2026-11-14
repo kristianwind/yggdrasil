@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"net/http"
 	"os"
 	"unicode/utf8"
@@ -21,13 +22,18 @@ const (
 // snapshotFileVersion records the current contents of full (a text file within the
 // server's data dir) before it's overwritten. Best-effort: silently skips missing,
 // directory, binary, or oversized files.
-func (s *Server) snapshotFileVersion(serverID, relPath, full string) {
-	info, err := os.Stat(full)
-	if err != nil || info.IsDir() || info.Size() > fileVersionMaxBytes {
+func (s *Server) snapshotFileVersion(serverID, relPath string, root *os.Root, name string) {
+	info, err := root.Stat(name)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > fileVersionMaxBytes {
 		return
 	}
-	old, err := os.ReadFile(full)
-	if err != nil || !utf8.Valid(old) {
+	f, err := root.Open(name)
+	if err != nil {
+		return
+	}
+	old, err := io.ReadAll(io.LimitReader(f, fileVersionMaxBytes+1))
+	f.Close()
+	if err != nil || len(old) > fileVersionMaxBytes || !utf8.Valid(old) {
 		return
 	}
 	s.db.Exec("INSERT INTO file_versions (id, server_id, path, content, size) VALUES (?,?,?,?,?)",

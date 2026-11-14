@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -215,14 +216,16 @@ func (s *Server) installOne(ctx context.Context, dataDir string, p modProfile, g
 	if err != nil {
 		return err
 	}
-	dest, ok := safeJoin(dataDir, p.Folder+"/"+filepath.Base(f.Filename))
-	if !ok {
-		return fmt.Errorf("unsafe filename %q", f.Filename)
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	dest := rootRel(p.Folder + "/" + filepath.Base(f.Filename))
+	root, err := openDataRoot(dataDir)
+	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
+	defer root.Close()
+	if err := root.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	if err := root.WriteFile(dest, data, 0o644); err != nil {
 		return err
 	}
 	*installed = append(*installed, filepath.Base(f.Filename))
@@ -423,8 +426,11 @@ func (s *Server) handleModUpdate(w http.ResponseWriter, r *http.Request) {
 	// rebuild was already overwritten in place).
 	removed := false
 	if len(installed) > 0 && installed[0] != old {
-		if os.Remove(oldPath) == nil {
-			removed = true
+		if rel, err := filepath.Rel(dataDir, oldPath); err == nil {
+			if root, err := openDataRoot(dataDir); err == nil {
+				removed = root.Remove(rel) == nil
+				root.Close()
+			}
 		}
 	}
 	s.auditLog(r, "mod.update", "server:"+id, map[string]any{"from": old, "installed": installed})
@@ -462,7 +468,14 @@ func (s *Server) handleModRemove(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid filename", http.StatusBadRequest)
 		return
 	}
-	if err := os.Remove(dest); err != nil {
+	rmErr := error(fs.ErrInvalid)
+	if rel, err := filepath.Rel(dataDir, dest); err == nil {
+		if root, err := openDataRoot(dataDir); err == nil {
+			rmErr = root.Remove(rel)
+			root.Close()
+		}
+	}
+	if err := rmErr; err != nil {
 		if os.IsNotExist(err) {
 			jsonError(w, "not installed", http.StatusNotFound)
 			return

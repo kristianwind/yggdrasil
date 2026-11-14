@@ -293,6 +293,14 @@ func guardDelegateEnv(gs *gameskill.Gameskill, env map[string]string) error {
 	ctxs := codeContexts(gs)
 	for k, raw := range env {
 		v, ok := declared[k]
+		if k == "SERVER_NAME" && !ok {
+			// Not a variable: the panel injects the server's name under this key,
+			// and runes template it into start commands like any other value.
+			if why := delegateValueError(ctxs[k], raw); why != "" {
+				return fmt.Errorf("the server's name %s, because this server's start or install script uses it. An admin can set it to anything", why)
+			}
+			continue
+		}
 		if !ok {
 			return fmt.Errorf("%s is not one of this server's settings — only an admin can set it", k)
 		}

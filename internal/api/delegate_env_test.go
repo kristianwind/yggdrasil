@@ -144,6 +144,24 @@ func TestDelegateEnvIsCheckedOnUpdateAndAnAdminIsNot(t *testing.T) {
 	if !strings.Contains(envJSON, "1.21.4") || strings.Contains(envJSON, "SOMETHING_ELSE") || strings.Contains(envJSON, "; id;") {
 		t.Errorf("stored env is %s", envJSON)
 	}
+	// The name is a template value too ({{SERVER_NAME}}); Rust's start command
+	// has +server.hostname "{{SERVER_NAME}}".
+	rust := loadRune(t, "../../community-runes/games/rust.yaml")
+	if codeContexts(rust)["SERVER_NAME"] == 0 {
+		t.Fatal("rust.yaml no longer templates SERVER_NAME into its start command — pick another rune for this check")
+	}
+	if guardDelegateEnv(rust, map[string]string{"SERVER_NAME": `x" ; id ; "`}) == nil {
+		t.Error("a delegate may rename a Rust server into its own start command")
+	}
+	if err := guardDelegateEnv(rust, map[string]string{"SERVER_NAME": "Kristians Rust — vanilla (EU)"}); err != nil {
+		t.Errorf("an ordinary name was refused: %v", err)
+	}
+	if w := updateServerAs(t, s, serverID, delegate, `{"env":{"SERVER_NAME":"x"}}`); w.Code != 403 {
+		t.Errorf("delegate set SERVER_NAME as a variable: %d", w.Code)
+	}
+	if w := updateServerAs(t, s, serverID, delegate, `{"name":"Our survival world"}`); w.Code != 200 {
+		t.Errorf("delegate rename: %d %s", w.Code, w.Body.String())
+	}
 	admin := &auth.Claims{UserID: "a1", Username: "admin", Role: "admin"}
 	if w := updateServerAs(t, s, serverID, admin, evil); w.Code != 200 {
 		t.Errorf("an admin was refused: %d %s", w.Code, w.Body.String())

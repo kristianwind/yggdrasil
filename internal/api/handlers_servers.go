@@ -359,6 +359,11 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		if req.Mods != nil {
 			supplied["MODS"] = strings.TrimSpace(*req.Mods)
 		}
+		if _, set := supplied["SERVER_NAME"]; set {
+			jsonError(w, "SERVER_NAME is the server's name — set that instead", http.StatusForbidden)
+			return
+		}
+		supplied["SERVER_NAME"] = req.Name
 		if err := guardDelegateEnv(gs, supplied); err != nil {
 			jsonError(w, err.Error(), http.StatusForbidden)
 			return
@@ -548,6 +553,20 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if req.Name != nil && *req.Name != "" && !isAdmin(r) {
+		// The name is templated into scripts as {{SERVER_NAME}}, so renaming is
+		// the same question as setting a variable.
+		var gs *gameskill.Gameskill
+		if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+			gs = rt.gs
+		}
+		if gs != nil {
+			if err := guardDelegateEnv(gs, map[string]string{"SERVER_NAME": *req.Name}); err != nil {
+				jsonError(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
+	}
 	if (len(req.Env) > 0 || req.Mods != nil) && !isAdmin(r) {
 		changed := map[string]string{}
 		for k, v := range req.Env {
@@ -557,6 +576,10 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Mods != nil {
 			changed["MODS"] = strings.TrimSpace(*req.Mods)
+		}
+		if _, set := changed["SERVER_NAME"]; set {
+			jsonError(w, "SERVER_NAME is the server's name — set that instead", http.StatusForbidden)
+			return
 		}
 		var gs *gameskill.Gameskill
 		if rt, err := s.loadRuntime(r.Context(), id); err == nil {

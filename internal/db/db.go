@@ -3,6 +3,8 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -30,6 +32,26 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1) // SQLite writer serialization
+	// SQLite creates its file 0644 and gives the -wal and -shm files the same
+	// mode, in a directory the installer makes 0755 — so any local account could
+	// read password hashes, email addresses and the audit log. Group-readable is
+	// kept for an operator in the yggdrasil group; "other" gets nothing. Done
+	// before the first statement so the WAL is born with the right mode, and
+	// again after for the files an older version already left behind.
+	tighten := func() {
+		if path == "" || strings.HasPrefix(path, ":memory:") || strings.HasPrefix(path, "file:") {
+			return
+		}
+		for _, f := range []string{path, path + "-wal", path + "-shm"} {
+			if fi, err := os.Stat(f); err == nil && fi.Mode().Perm()&0o007 != 0 {
+				os.Chmod(f, fi.Mode().Perm()&^0o007) //nolint:errcheck
+			}
+		}
+	}
+	if err := db.Ping(); err == nil {
+		tighten()
+	}
+	defer tighten()
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)

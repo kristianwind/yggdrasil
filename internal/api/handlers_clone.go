@@ -42,6 +42,16 @@ func (s *Server) handleCloneServer(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	decodeJSON(r, &req)
+	if req.Name != "" && !isAdmin(r) {
+		// A name is templated into the rune's scripts as {{SERVER_NAME}}; see
+		// guardDelegateEnv.
+		if rt, err := s.loadRuntime(r.Context(), srcID); err == nil {
+			if err := guardDelegateEnv(rt.gs, map[string]string{"SERVER_NAME": req.Name}); err != nil {
+				jsonError(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
+	}
 
 	// Pull the source's stored config directly (env_json is kept in its encrypted
 	// form and copied verbatim, so secret values survive without re-encryption).

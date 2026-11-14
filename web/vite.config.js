@@ -12,7 +12,9 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8080",
-        changeOrigin: true,
+        // Not changeOrigin: the panel compares Origin with Host, port included, so
+        // the Host it sees has to be the one the browser is on.
+        changeOrigin: false,
         ws: true,
       },
     },

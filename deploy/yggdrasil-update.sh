@@ -19,15 +19,26 @@ BIN="/usr/local/bin/yggdrasil"
 TAG=""
 
 write_status() { # <state> <message>
+  # Written beside the target and moved over it, never written THROUGH it. This
+  # runs as root in a directory the panel's user owns: with "> $STATUS" and a
+  # plain chown, a .update-status that had been made a symlink would have had its
+  # target truncated and handed to the panel's user — any file on the host.
+  # mktemp refuses an existing name, mv -T replaces a link instead of following
+  # it, and chown -h acts on the name, not on what it points to.
+  local tmp
+  tmp="$(mktemp "$STATE_DIR/.update-status.XXXXXX" 2>/dev/null)" || return 0
   printf '{"state":"%s","tag":"%s","message":"%s","at":"%s"}\n' \
     "$1" "$TAG" "$(printf '%s' "$2" | tr -d '"\n')" "$(date -u +%FT%TZ 2>/dev/null)" \
-    > "$STATUS" 2>/dev/null || true
-  chown yggdrasil:yggdrasil "$STATUS" 2>/dev/null || true
+    > "$tmp" 2>/dev/null || true
+  chown -h yggdrasil:yggdrasil "$tmp" 2>/dev/null || true
+  chmod 0644 "$tmp" 2>/dev/null || true
+  mv -fT "$tmp" "$STATUS" 2>/dev/null || rm -f "$tmp"
 }
 
 # Consume the request (sanitized to the tag charset) and remove it so the path
 # unit re-arms and we never loop.
-[ -f "$REQ" ] && TAG="$(head -n1 "$REQ" | tr -dc 'v0-9.')"
+# Only a regular file is read: as a symlink it could name anything root can read.
+[ -f "$REQ" ] && [ ! -L "$REQ" ] && TAG="$(head -n1 "$REQ" | tr -dc 'v0-9.')"
 rm -f "$REQ"
 
 if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then

@@ -42,6 +42,19 @@ Some things look like findings but are the design. Knowing the boundary saves ev
   action on it. A way for a delegate to exceed their grants **is** a vulnerability — please report it.
   Two such bugs were found and fixed in `v0.2.143` and `v0.2.147`.
 
+## Give the panel its own hostname
+
+Browsers do not treat a port as a boundary for cookies: a page on `http://host:8081` is
+sent the cookies of `http://host:8080`. If the panel and one of the servers it runs are
+reached on the **same hostname or IP**, that server's pages receive the panel's session
+cookie. The panel refuses requests and WebSockets whose origin is another port, so such a
+page cannot *act* through your browser — but it can still be handed the cookie itself,
+and nothing on the panel's side can prevent that.
+
+Put the panel on a hostname that nothing else is served from (`panel.example.com`, not a
+path or a port on the same name as a site). Behind a tunnel or a reverse proxy this is
+already the case.
+
 ## Secrets
 
 `auth.secret_key` in `/etc/yggdrasil/config.yaml` signs sessions and derives the AES-256-GCM key that

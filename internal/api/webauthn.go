@@ -318,5 +318,5 @@ func (s *Server) handleWALoginFinish(w http.ResponseWriter, r *http.Request) {
 	s.db.ExecContext(r.Context(),
 		"UPDATE webauthn_credentials SET cred_json=?, last_used=datetime('now') WHERE cred_id=?", string(cj), cred.ID)
 	s.auditLog(r, "webauthn.login", "user:"+resolved.id, nil)
-	s.issueSession(w, resolved.id, resolved.username, resolved.role, resolved.tokenVer)
+	s.issueSession(w, resolved.id, resolved.username, resolved.role, resolved.tokenVer, requestIsHTTPS(r))
 }

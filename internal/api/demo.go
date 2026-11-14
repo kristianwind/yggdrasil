@@ -60,6 +60,12 @@ func (s *Server) demoGuard(next http.Handler) http.Handler {
 		}
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			// Some GETs are not "looking": an export is every stored secret,
+			// decrypted, and the demo's admin password is published on purpose.
+			if demoRefusedRead(r.URL.Path) {
+				jsonError(w, "This is a public demo — exports and downloads are switched off.", http.StatusForbidden)
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -70,4 +76,22 @@ func (s *Server) demoGuard(next http.Handler) http.Handler {
 		jsonError(w, "This is a public demo — it shows real data but nothing can be changed.",
 			http.StatusForbidden)
 	})
+}
+
+// demoRefusedRead names the GETs a public demo must not answer: the ones that
+// hand over data in bulk, secrets included.
+func demoRefusedRead(path string) bool {
+	path = strings.TrimSuffix(path, "/")
+	switch path {
+	case "/api/panel/export", "/api/migration/export", "/api/audit/export":
+		return true
+	}
+	if rest, ok := strings.CutPrefix(path, "/api/servers/"); ok {
+		_, tail, _ := strings.Cut(rest, "/")
+		return tail == "export" || tail == "files/download"
+	}
+	if rest, ok := strings.CutPrefix(path, "/api/backups/"); ok {
+		return strings.HasSuffix(rest, "/download")
+	}
+	return false
 }

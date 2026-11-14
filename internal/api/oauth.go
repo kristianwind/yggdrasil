@@ -113,9 +113,29 @@ func (s *Server) handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs []string `json:"redirect_uris"`
 		ClientName   string   `json:"client_name"`
 	}
+	// Open does not have to mean unmetered. Nobody is signed in here, every call
+	// writes a row, and nothing ever deleted one: a loop filled the disk the
+	// panel's own database lives on.
+	if !oauthRegisterLimiter.allow(r.RemoteAddr) {
+		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "too many registrations — try again in a minute")
+		return
+	}
 	if err := decodeJSON(r, &req); err != nil || len(req.RedirectURIs) == 0 {
 		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "redirect_uris is required")
 		return
+	}
+	if len(req.RedirectURIs) > oauthMaxRedirectURIs {
+		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "too many redirect_uris")
+		return
+	}
+	for _, u := range req.RedirectURIs {
+		if len(u) > oauthMaxRedirectURILen {
+			oauthError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uri is too long")
+			return
+		}
+	}
+	if len(req.ClientName) > 200 {
+		req.ClientName = req.ClientName[:200]
 	}
 	for _, u := range req.RedirectURIs {
 		if err := validateRedirectURI(u); err != nil {
@@ -134,6 +154,7 @@ func (s *Server) handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not register the client")
 		return
 	}
+	s.pruneIdleOAuthClients(r.Context())
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, map[string]any{
 		"client_id":                  id,
@@ -191,14 +212,11 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	p := readAuthorizeParams(q)
 
-	if q.Get("response_type") != "code" {
-		oauthRedirectError(w, r, p, "unsupported_response_type", "only response_type=code is supported")
-		return
-	}
-	if q.Get("code_challenge_method") != "S256" || p.Challenge == "" {
-		oauthRedirectError(w, r, p, "invalid_request", "PKCE with code_challenge_method=S256 is required")
-		return
-	}
+	// The client and its redirect_uri are checked BEFORE anything is allowed to
+	// redirect. The two parameter checks used to come first, and each of them
+	// answers by sending the browser to redirect_uri — so a link to this panel
+	// with a bad response_type and any redirect_uri at all was an open redirect,
+	// from a hostname the victim trusts.
 	client, err := s.oauthClient(r, p.ClientID)
 	if err != nil {
 		// No redirect here: an unknown client_id or a redirect_uri it never
@@ -209,6 +227,14 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	if !client.allows(p.RedirectURI) {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "redirect_uri does not match this client's registration")
+		return
+	}
+	if q.Get("response_type") != "code" {
+		oauthRedirectError(w, r, p, "unsupported_response_type", "only response_type=code is supported")
+		return
+	}
+	if q.Get("code_challenge_method") != "S256" || p.Challenge == "" {
+		oauthRedirectError(w, r, p, "invalid_request", "PKCE with code_challenge_method=S256 is required")
 		return
 	}
 	renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(), CSRF: s.consent.issue()})
@@ -338,6 +364,12 @@ func (s *Server) tokenFromRefresh(w http.ResponseWriter, r *http.Request) {
 		"SELECT client_id, user_id, resource FROM oauth_tokens WHERE refresh_hash=? AND refresh_hash<>''", hash).
 		Scan(&clientID, &userID, &resource); err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "unknown refresh token")
+		return
+	}
+	// A refresh token belongs to the client it was issued to. Only checked when
+	// the request names one, so a client that never sent it keeps working.
+	if cid := r.PostForm.Get("client_id"); cid != "" && cid != clientID {
+		oauthError(w, http.StatusBadRequest, "invalid_grant", "this refresh token was issued to a different client")
 		return
 	}
 	// Rotation: the old pair dies here, so a stolen refresh token is single-use
@@ -700,4 +732,29 @@ func isLocalHost(host string) bool {
 	}
 	ip := net.ParseIP(h)
 	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+}
+
+const (
+	oauthMaxRedirectURIs   = 10
+	oauthMaxRedirectURILen = 2048
+	// oauthMaxIdleClients is how many registered clients may exist that hold no
+	// token and have no code in flight. A real install has a handful.
+	oauthMaxIdleClients = 200
+)
+
+// oauthRegisterLimiter is separate from loginLimiter so that registering clients
+// cannot spend somebody's login attempts, or the other way round.
+var oauthRegisterLimiter = &rateLimiter{counts: make(map[string][]time.Time)}
+
+// pruneIdleOAuthClients keeps the number of unused client registrations bounded
+// by deleting the oldest beyond oauthMaxIdleClients. A client that holds a token
+// or has a code in flight is never touched, and below the cap nothing is: a
+// connector that was disconnected last month can still come back with the
+// client_id it remembers.
+func (s *Server) pruneIdleOAuthClients(ctx context.Context) {
+	s.db.ExecContext(ctx, `DELETE FROM oauth_clients WHERE id IN (
+		SELECT c.id FROM oauth_clients c
+		WHERE NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.client_id=c.id)
+		  AND NOT EXISTS (SELECT 1 FROM oauth_codes  o WHERE o.client_id=c.id)
+		ORDER BY c.created_at DESC, c.rowid DESC LIMIT -1 OFFSET ?)`, oauthMaxIdleClients) //nolint:errcheck
 }

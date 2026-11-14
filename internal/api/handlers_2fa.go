@@ -21,6 +21,16 @@ func (s *Server) handle2FAStatus(w http.ResponseWriter, r *http.Request) {
 // returns the secret + otpauth URI for the user's authenticator app.
 func (s *Server) handle2FASetup(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromContext(r.Context())
+	// Starting an enrolment overwrites the secret and clears the enabled flag, so
+	// on an account that already has 2FA this one request — no code asked — was
+	// "turn 2FA off". handle2FADisable demands a code precisely so that a borrowed
+	// session cannot do that; this was the way round it.
+	var enabled int
+	s.db.QueryRowContext(r.Context(), "SELECT COALESCE(totp_enabled,0) FROM users WHERE id=?", claims.UserID).Scan(&enabled) //nolint:errcheck
+	if enabled == 1 {
+		jsonError(w, "two-factor is already on for this account — turn it off first, which needs a code", http.StatusConflict)
+		return
+	}
 	secret, err := totp.GenerateSecret()
 	if err != nil {
 		jsonError(w, "generate secret", http.StatusInternalServerError)

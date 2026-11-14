@@ -366,6 +366,12 @@ func (s *Server) mcpResolveServer(r *http.Request, args map[string]any) (string,
 	if q == "" {
 		return "", fmt.Errorf("which server? Pass its name as shown in the panel (list_servers shows them)")
 	}
+	// Resolve only among the servers this caller may see. The lookup used to run
+	// over all of them, and a miss answers with the list — so any delegate with a
+	// connector could read every server name on the panel by asking for one that
+	// does not exist, and probe ids by prefix. (Loaded before the query below:
+	// see visibleServerIDs for why the order matters.)
+	visible, all := s.visibleServerIDs(r)
 	rows, err := s.db.QueryContext(r.Context(), "SELECT id, name FROM servers")
 	if err != nil {
 		return "", fmt.Errorf("could not read the server list")
@@ -376,6 +382,9 @@ func (s *Server) mcpResolveServer(r *http.Request, args map[string]any) (string,
 	for rows.Next() {
 		var id, name string
 		if rows.Scan(&id, &name) != nil {
+			continue
+		}
+		if !all && !visible[id] {
 			continue
 		}
 		names = append(names, name)

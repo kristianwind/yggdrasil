@@ -30,7 +30,7 @@ var wsUpgrader = websocket.Upgrader{
 	// e.g. CLI/automation) are allowed.
 	CheckOrigin: func(r *http.Request) bool {
 		o := r.Header.Get("Origin")
-		return o == "" || sameOriginHost(o, r.Host)
+		return o == "" || sameOriginHost(o, r.Host, viaProxy(r))
 	},
 }
 

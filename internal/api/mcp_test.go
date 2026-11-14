@@ -151,6 +151,23 @@ func TestMCPResolveServerByName(t *testing.T) {
 	s.db.Exec("INSERT INTO servers (id, name, gameskill_id, data_dir, status) VALUES ('aaaa1111','Bimmelim','mc','/tmp','running')")
 	s.db.Exec("INSERT INTO servers (id, name, gameskill_id, data_dir, status) VALUES ('bbbb2222','bimmelim','mc','/tmp','stopped')")
 	req := httptest.NewRequest("GET", "/", nil)
+	req = req.WithContext(withClaims(req.Context(), &auth.Claims{UserID: "u1", Username: "kw", Role: "admin"}))
+
+	// Somebody granted one server sees one server — in the match AND in the miss.
+	s.db.Exec("INSERT INTO users (id, username, password_hash, role) VALUES ('u2','kid','x','user')")
+	s.db.Exec("INSERT INTO permissions (id, user_id, scope_type, scope_id, perms) VALUES ('p1','u2','server','bbbb2222','server.view')")
+	kid := httptest.NewRequest("GET", "/", nil)
+	kid = kid.WithContext(withClaims(kid.Context(), &auth.Claims{UserID: "u2", Username: "kid", Role: "user"}))
+	if id, err := s.mcpResolveServer(kid, map[string]any{"server": "bimmelim"}); err != nil || id != "bbbb2222" {
+		t.Errorf("a delegate could not resolve their own server: %v %q", err, id)
+	}
+	if _, err := s.mcpResolveServer(kid, map[string]any{"server": "aaaa1111"}); err == nil {
+		t.Error("a delegate resolved a server they have no grant on")
+	}
+	_, miss := s.mcpResolveServer(kid, map[string]any{"server": "nope"})
+	if miss == nil || strings.Contains(miss.Error(), "Bimmelim") || !strings.Contains(miss.Error(), "bimmelim") {
+		t.Errorf("the miss must list the caller's servers and no others: %v", miss)
+	}
 
 	if _, err := s.mcpResolveServer(req, map[string]any{"server": "Bimmelim"}); err != nil {
 		t.Errorf("an exact name should win over a case-insensitive twin: %v", err)

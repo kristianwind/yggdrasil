@@ -180,7 +180,7 @@ func redactURI(u *url.URL) string {
 func (s *Server) buildRouter() *chi.Mux {
 	r := chi.NewRouter()
 
-	r.Use(middleware.RealIP)
+	r.Use(clientIP)
 	r.Use(accessLogger)
 	r.Use(middleware.Recoverer)
 	// NOTE: no global request timeout — WebSocket streams (console/logs/install)
@@ -680,20 +680,54 @@ func (s *Server) secureHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// sameOriginHost reports whether an Origin header's host matches the request host
-// (hostname only, ignoring port). Used to block cross-site WebSocket hijacking and
-// cross-origin state-changing requests. Behind the TLS proxy/tunnel both reflect
-// the public hostname, so legitimate same-origin traffic passes.
-func sameOriginHost(origin, host string) bool {
+// sameOriginHost reports whether an Origin header names the address this request
+// was sent to. Used to block cross-site WebSocket hijacking and cross-origin
+// state-changing requests. Behind the TLS proxy/tunnel both reflect the public
+// hostname, so legitimate same-origin traffic passes.
+//
+// The port counts. It did not, and that was the hole: cookies ignore ports and
+// SameSite treats two ports on one host as the same site, so the panel's session
+// cookie is sent with a request made by a page on http://host:8081 to the panel
+// on http://host:8080 — and :8081 is very often one of the panel's own servers,
+// whose content a delegate or a compromised WordPress controls. With the port
+// ignored, that page could create an admin or open a console.
+//
+// One case cannot be decided from here and is let through as before: a Host with
+// no port, an Origin with an unusual one, and a proxy in between. nginx's $host
+// drops the port, so a panel published on https://x:8443 looks exactly like that.
+func sameOriginHost(origin, host string, proxied bool) bool {
 	u, err := url.Parse(origin)
 	if err != nil || u.Hostname() == "" {
 		return false
 	}
-	reqHost := host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		reqHost = h
+	reqHost, reqPort := host, ""
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		reqHost, reqPort = h, p
 	}
-	return strings.EqualFold(u.Hostname(), reqHost)
+	if !strings.EqualFold(u.Hostname(), strings.Trim(reqHost, "[]")) {
+		return false
+	}
+	defaultPort := map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443"}[strings.ToLower(u.Scheme)]
+	originPort := u.Port()
+	if originPort == "" {
+		originPort = defaultPort
+	}
+	if reqPort == "" {
+		return originPort == defaultPort || proxied
+	}
+	if reqPort == originPort {
+		return true
+	}
+	// "x:443" behind a proxy that terminates TLS and forwards the Host as it came.
+	return proxied && (reqPort == "80" || reqPort == "443") && originPort == defaultPort
+}
+
+// viaProxy reports whether a reverse proxy handled this request. A page cannot
+// add these headers to a cross-origin request without a preflight, which the
+// CORS policy refuses — so their presence says something about the path, not
+// about what the page wanted.
+func viaProxy(r *http.Request) bool {
+	return r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Forwarded-Proto") != "" || r.Header.Get("X-Forwarded-Host") != ""
 }
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
@@ -704,7 +738,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// isn't the only CSRF layer.
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			if o := r.Header.Get("Origin"); o != "" && !sameOriginHost(o, r.Host) {
+			if o := r.Header.Get("Origin"); o != "" && !sameOriginHost(o, r.Host, viaProxy(r)) {
 				jsonError(w, "cross-origin request blocked", http.StatusForbidden)
 				return
 			}
@@ -856,7 +890,14 @@ func scopeAllows(claims *auth.Claims, method, path string) bool {
 		if path == "/api/servers" {
 			return true
 		}
-		return strings.HasPrefix(path, "/api/servers/") && strings.HasSuffix(path, "/export")
+		// Exactly /api/servers/{id}/export. A suffix match also let through
+		// …/logs/export and …/install/log/export, which the line above says it does not.
+		rest, ok := strings.CutPrefix(path, "/api/servers/")
+		if !ok {
+			return false
+		}
+		id, tail, ok := strings.Cut(rest, "/")
+		return ok && id != "" && tail == "export"
 
 	case auth.ScopeLink:
 		// Enough for another panel to show this one's servers and operate them.

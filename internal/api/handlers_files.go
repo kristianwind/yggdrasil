@@ -8,13 +8,16 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -99,6 +102,32 @@ func safeJoin(dataDir, rel string) (string, bool) {
 	return rp, true
 }
 
+// openDataRoot opens a server's data directory as an os.Root, and rootRel turns
+// a client-supplied path into the name to use inside it.
+//
+// safeJoin answers "is this path inside the data dir RIGHT NOW" and hands back a
+// plain path, which the caller then opens — a second resolution, some time
+// later, of a tree whose contents belong to whoever runs code in the server's
+// container. Swap a directory for a symlink between the two and the panel reads
+// or writes wherever it points, as the panel's own user: /etc/yggdrasil/config.yaml
+// holds the key that signs sessions. A root has no such gap; the kernel confines
+// every component of every operation, and a symlink that leaves the directory is
+// an error rather than a destination.
+//
+// Everything a files handler does to disk goes through one of these. safeJoin
+// remains for callers that only need the path as a string.
+func openDataRoot(dataDir string) (*os.Root, error) {
+	return os.OpenRoot(dataDir)
+}
+
+func rootRel(rel string) string {
+	clean := strings.TrimPrefix(filepath.Clean("/"+strings.TrimSpace(rel)), "/")
+	if clean == "" {
+		return "."
+	}
+	return clean
+}
+
 // serverDataDir resolves the server's data directory and enforces the
 // ServerFiles permission, writing the appropriate error response on failure.
 func (s *Server) serverDataDir(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -128,16 +157,24 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rel := filePathParam(r)
-	dir, ok := safeJoin(dataDir, rel)
-	if !ok {
-		jsonError(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-	entries, err := os.ReadDir(dir)
+	root, err := openDataRoot(dataDir)
 	if err != nil {
 		fileError(w, "list", rel, err)
 		return
 	}
+	defer root.Close()
+	dir, err := root.Open(rootRel(rel))
+	if err != nil {
+		fileError(w, "list", rel, err)
+		return
+	}
+	entries, err := dir.ReadDir(-1)
+	dir.Close()
+	if err != nil {
+		fileError(w, "list", rel, err)
+		return
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	list := []fileEntry{}
 	for _, e := range entries {
 		info, err := e.Info()
@@ -186,17 +223,42 @@ func (s *Server) handleReadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rel := filePathParam(r)
-	full, ok := safeJoin(dataDir, rel)
-	if !ok {
-		jsonError(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-	data, err := os.ReadFile(full)
+	root, err := openDataRoot(dataDir)
 	if err != nil {
 		fileError(w, "read", rel, err)
 		return
 	}
-	if len(data) > 5*1024*1024 {
+	defer root.Close()
+	// O_NONBLOCK so a FIFO somebody left in the data dir is refused below instead
+	// of hanging this request for good; it means nothing for a regular file.
+	f, err := root.OpenFile(rootRel(rel), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		fileError(w, "read", rel, err)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		fileError(w, "read", rel, err)
+		return
+	}
+	if !info.Mode().IsRegular() {
+		jsonError(w, "not a file", http.StatusBadRequest)
+		return
+	}
+	// Decide on the size BEFORE reading: this used to load the whole file and
+	// then measure it, so one large file was the panel's memory.
+	const maxEdit = 5 * 1024 * 1024
+	if info.Size() > maxEdit {
+		jsonError(w, "file too large to edit (>5MB)", http.StatusRequestEntityTooLarge)
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxEdit+1))
+	if err != nil {
+		fileError(w, "read", rel, err)
+		return
+	}
+	if len(data) > maxEdit {
 		jsonError(w, "file too large to edit (>5MB)", http.StatusRequestEntityTooLarge)
 		return
 	}
@@ -216,27 +278,33 @@ func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	full, ok := safeJoin(dataDir, req.Path)
-	if !ok {
+	root, err := openDataRoot(dataDir)
+	if err != nil {
+		fileError(w, "write", req.Path, err)
+		return
+	}
+	defer root.Close()
+	name := rootRel(req.Path)
+	if name == "." {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
-		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
+	if err := root.MkdirAll(filepath.Dir(name), 0755); err != nil {
+		fileError(w, "write", req.Path, err)
 		return
 	}
 	// Snapshot the current contents before overwriting, so edits can be rolled back.
-	s.snapshotFileVersion(chi.URLParam(r, "id"), req.Path, full)
-	err := os.WriteFile(full, []byte(req.Content), 0644)
+	s.snapshotFileVersion(chi.URLParam(r, "id"), req.Path, root, name)
+	err = root.WriteFile(name, []byte(req.Content), 0644)
 	if err != nil && errors.Is(err, os.ErrPermission) {
 		// Likely a root-owned file left by a SteamCMD install. Repair ownership
 		// via a root container and retry once.
 		if rerr := s.repairDataPerms(r.Context(), chi.URLParam(r, "id"), req.Path); rerr == nil {
-			err = os.WriteFile(full, []byte(req.Content), 0644)
+			err = root.WriteFile(name, []byte(req.Content), 0644)
 		}
 	}
 	if err != nil {
-		jsonError(w, "write: "+err.Error(), http.StatusInternalServerError)
+		fileError(w, "write", req.Path, err)
 		return
 	}
 	s.auditLog(r, "file.write", "server:"+chi.URLParam(r, "id"), map[string]string{"path": req.Path})
@@ -258,13 +326,19 @@ func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "path required", http.StatusBadRequest)
 		return
 	}
-	full, ok := safeJoin(dataDir, req.Path)
-	if !ok || full == dataDir {
+	name := rootRel(req.Path)
+	if name == "." {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	if err := os.MkdirAll(full, 0755); err != nil {
-		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
+	root, err := openDataRoot(dataDir)
+	if err != nil {
+		fileError(w, "create", req.Path, err)
+		return
+	}
+	defer root.Close()
+	if err := root.MkdirAll(name, 0755); err != nil {
+		fileError(w, "create", req.Path, err)
 		return
 	}
 	s.auditLog(r, "file.mkdir", "server:"+chi.URLParam(r, "id"), map[string]string{"path": req.Path})
@@ -276,13 +350,20 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	full, ok := safeJoin(dataDir, filePathParam(r))
-	if !ok || full == dataDir {
+	rel := filePathParam(r)
+	name := rootRel(rel)
+	if name == "." {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	if err := os.RemoveAll(full); err != nil {
-		jsonError(w, "delete: "+err.Error(), http.StatusInternalServerError)
+	root, err := openDataRoot(dataDir)
+	if err != nil {
+		fileError(w, "delete", rel, err)
+		return
+	}
+	defer root.Close()
+	if err := root.RemoveAll(name); err != nil {
+		fileError(w, "delete", rel, err)
 		return
 	}
 	s.auditLog(r, "file.delete", "server:"+chi.URLParam(r, "id"), nil)
@@ -304,7 +385,8 @@ const uploadDir = backup.UploadScratchDir
 // the number the client puts in the form.
 type uploadState struct {
 	next    int
-	tmp     string
+	dataDir string
+	tmp     string // relative to dataDir
 	started time.Time
 }
 
@@ -344,7 +426,10 @@ func (t *uploadTracker) sweep(olderThan time.Duration) {
 	defer t.mu.Unlock()
 	for id, st := range t.m {
 		if time.Since(st.started) > olderThan {
-			os.Remove(st.tmp) //nolint:errcheck
+			if root, err := openDataRoot(st.dataDir); err == nil {
+				root.Remove(st.tmp) //nolint:errcheck
+				root.Close()
+			}
 			delete(t.m, id)
 		}
 	}
@@ -379,13 +464,19 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	if n := strings.TrimSpace(r.FormValue("name")); n != "" {
 		name = n
 	}
-	dest, ok := safeJoin(dataDir, filepath.Join(rel, filepath.Base(name)))
-	if !ok {
+	dest := rootRel(filepath.Join(rel, filepath.Base(name)))
+	if dest == "." {
 		jsonError(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
-		jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
+	root, err := openDataRoot(dataDir)
+	if err != nil {
+		fileError(w, "upload", rel, err)
+		return
+	}
+	defer root.Close()
+	if err := root.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		fileError(w, "upload", rel, err)
 		return
 	}
 
@@ -393,9 +484,9 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	if count <= 1 {
 		// Whole file in one request — unchanged, and still what a small file and
 		// any existing API client does.
-		out, err := os.Create(dest)
+		out, err := root.Create(dest)
 		if err != nil {
-			jsonError(w, "create: "+err.Error(), http.StatusInternalServerError)
+			fileError(w, "upload", rel, err)
 			return
 		}
 		defer out.Close()
@@ -422,12 +513,12 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	st, known := s.uploads.get(id)
 	if index == 0 {
-		if err := os.MkdirAll(filepath.Join(dataDir, uploadDir), 0755); err != nil {
-			jsonError(w, "mkdir: "+err.Error(), http.StatusInternalServerError)
+		if err := root.MkdirAll(uploadDir, 0755); err != nil {
+			fileError(w, "upload", rel, err)
 			return
 		}
-		st = &uploadState{tmp: filepath.Join(dataDir, uploadDir, id+".part"), started: time.Now()}
-		os.Remove(st.tmp) //nolint:errcheck
+		st = &uploadState{dataDir: dataDir, tmp: filepath.Join(uploadDir, id+".part"), started: time.Now()}
+		root.Remove(st.tmp) //nolint:errcheck
 		s.uploads.put(id, st)
 	} else if !known {
 		// The panel restarted, or the upload was swept. Say which, because the
@@ -440,9 +531,23 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := os.OpenFile(st.tmp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if st.dataDir != dataDir {
+		// An upload id belongs to the server it was started on.
+		jsonError(w, "this upload is no longer in progress — start it again", http.StatusConflict)
+		return
+	}
+	// The part file sits in the data dir, which the server's container can write
+	// to — so between two chunks it can be swapped for a symlink to any file the
+	// panel may write, and the next chunk would be appended there. The root
+	// refuses a link that leaves the directory; O_NOFOLLOW refuses one that stays
+	// inside it, and O_EXCL on the first chunk refuses a file somebody else made.
+	flags := os.O_WRONLY | os.O_APPEND | syscall.O_NOFOLLOW
+	if index == 0 {
+		flags |= os.O_CREATE | os.O_EXCL
+	}
+	out, err := root.OpenFile(st.tmp, flags, 0644)
 	if err != nil {
-		jsonError(w, "create: "+err.Error(), http.StatusInternalServerError)
+		fileError(w, "upload", rel, err)
 		return
 	}
 	if _, err := io.Copy(out, file); err != nil {
@@ -462,8 +567,8 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	// Last chunk: the assembled file becomes the real one in a single rename, so
 	// nothing ever observes it half-written under its final name.
-	if err := os.Rename(st.tmp, dest); err != nil {
-		os.Remove(st.tmp) //nolint:errcheck
+	if err := root.Rename(st.tmp, dest); err != nil {
+		root.Remove(st.tmp) //nolint:errcheck
 		s.uploads.drop(id)
 		jsonError(w, "finish: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -478,18 +583,27 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	full, ok := safeJoin(dataDir, filePathParam(r))
-	if !ok {
-		jsonError(w, "invalid path", http.StatusBadRequest)
+	rel := filePathParam(r)
+	root, err := openDataRoot(dataDir)
+	if err != nil {
+		fileError(w, "download", rel, err)
 		return
 	}
-	info, err := os.Stat(full)
-	if err != nil || info.IsDir() {
+	defer root.Close()
+	f, err := root.OpenFile(rootRel(rel), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
 		jsonError(w, "not a file", http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(full)+"\"")
-	http.ServeFile(w, r, full)
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		jsonError(w, "not a file", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(rootRel(rel))}))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeContent(w, r, "", info.ModTime(), f)
 }
 
 // fileError turns an os error into a response that says what happened without
@@ -511,6 +625,9 @@ func fileError(w http.ResponseWriter, op, rel string, err error) {
 		name = "that path"
 	}
 	switch {
+	case strings.Contains(err.Error(), "path escapes"):
+		// os.Root refusing a symlink (or a ..) that leaves the data directory.
+		jsonError(w, "invalid path", http.StatusBadRequest)
 	case errors.Is(err, fs.ErrNotExist):
 		jsonError(w, name+": no such file or directory", http.StatusNotFound)
 	case errors.Is(err, fs.ErrPermission):

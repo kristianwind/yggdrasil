@@ -190,6 +190,18 @@ func Restore(r io.Reader, destDir string) error {
 	if err != nil {
 		return err
 	}
+	// Every write goes through an os.Root, so the kernel confines each path
+	// component to destDir. The lexical checks below were the only defence
+	// before, and they say nothing about what is ALREADY on disk: the data dir is
+	// not emptied first, and whoever runs code in the server's container can
+	// leave "plugins -> /etc/yggdrasil" there and then restore a backup that has
+	// a plugins/config.yaml in it. O_NOFOLLOW only ever covered the last
+	// component, never the parents MkdirAll walks through.
+	root, err := os.OpenRoot(absDest)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -202,14 +214,22 @@ func Restore(r io.Reader, destDir string) error {
 		if target != absDest && !strings.HasPrefix(target, absDest+string(os.PathSeparator)) {
 			return fmt.Errorf("archive entry escapes destination: %s", hdr.Name)
 		}
+		rel, err := filepath.Rel(absDest, target)
+		if err != nil {
+			return err
+		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
-				return err
+			if rel == "." {
+				continue
+			}
+			if err := root.MkdirAll(rel, os.FileMode(hdr.Mode)|0o700); err != nil {
+				return fmt.Errorf("restore %s: %w", hdr.Name, err)
 			}
 		case tar.TypeSymlink:
-			// Zip-slip via symlink: reject links pointing outside the destination,
-			// otherwise a later entry could be written through them onto host files.
+			// Zip-slip via symlink: reject links pointing outside the destination.
+			// This check is lexical and can be fooled by a chain of links; the
+			// root is what actually stops a later entry being written through one.
 			resolved := hdr.Linkname
 			if !filepath.IsAbs(resolved) {
 				resolved = filepath.Join(filepath.Dir(target), resolved)
@@ -218,20 +238,22 @@ func Restore(r io.Reader, destDir string) error {
 			if resolved != absDest && !strings.HasPrefix(resolved, absDest+string(os.PathSeparator)) {
 				return fmt.Errorf("archive symlink escapes destination: %s -> %s", hdr.Name, hdr.Linkname)
 			}
-			os.MkdirAll(filepath.Dir(target), 0755)
-			os.Remove(target)
-			if err := os.Symlink(hdr.Linkname, target); err != nil {
-				return err
+			if err := root.MkdirAll(filepath.Dir(rel), 0755); err != nil {
+				return fmt.Errorf("restore %s: %w", hdr.Name, err)
+			}
+			root.Remove(rel) //nolint:errcheck
+			if err := root.Symlink(hdr.Linkname, rel); err != nil {
+				return fmt.Errorf("restore %s: %w", hdr.Name, err)
 			}
 		default:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return err
+			if err := root.MkdirAll(filepath.Dir(rel), 0755); err != nil {
+				return fmt.Errorf("restore %s: %w", hdr.Name, err)
 			}
 			// O_NOFOLLOW: if target already exists as a symlink, fail instead of
 			// writing through it (symlink-then-file ordering defense).
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY|syscall.O_NOFOLLOW, os.FileMode(hdr.Mode))
+			f, err := root.OpenFile(rel, os.O_CREATE|os.O_TRUNC|os.O_WRONLY|syscall.O_NOFOLLOW, os.FileMode(hdr.Mode))
 			if err != nil {
-				return err
+				return fmt.Errorf("restore %s: %w", hdr.Name, err)
 			}
 			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // size bounded by archive
 				f.Close()

@@ -4,9 +4,11 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"context"
+
 	"github.com/kristianwind/yggdrasil/internal/auth"
 	"github.com/kristianwind/yggdrasil/internal/notify"
 )
@@ -67,6 +69,15 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// One mail per account per few minutes, whoever asks and from wherever. The
+	// per-IP limit above is the only other brake, and an address is cheap: without
+	// this, a known username is a way to fill somebody's inbox from the operator's
+	// own mail server — and, because each new link cancels the last, to make sure
+	// the link they are trying to click never works.
+	if !resetMailCooldown.allow(userID) {
+		generic()
+		return
+	}
 	token, hash, err := auth.GenerateResetToken()
 	if err != nil {
 		generic()
@@ -195,3 +206,28 @@ func (s *Server) resetLinkBase(ctx context.Context, r *http.Request) string {
 	}
 	return strings.TrimRight(host, "/")
 }
+
+// cooldown allows one event per key per window.
+type cooldown struct {
+	mu     sync.Mutex
+	window time.Duration
+	last   map[string]time.Time
+}
+
+func (c *cooldown) allow(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	for k, t := range c.last { // one entry per user at most, so this stays tiny
+		if now.Sub(t) > c.window {
+			delete(c.last, k)
+		}
+	}
+	if _, recent := c.last[key]; recent {
+		return false
+	}
+	c.last[key] = now
+	return true
+}
+
+var resetMailCooldown = &cooldown{window: 2 * time.Minute, last: map[string]time.Time{}}

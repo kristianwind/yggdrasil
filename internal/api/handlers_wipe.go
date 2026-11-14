@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -84,6 +83,11 @@ func (s *Server) wipePaths(dataDir string, patterns []string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	root, err := openDataRoot(base)
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
 	n := 0
 	for _, pat := range patterns {
 		pat = strings.TrimSpace(pat)
@@ -96,11 +100,13 @@ func (s *Server) wipePaths(dataDir string, patterns []string) (int, error) {
 			if err != nil {
 				continue
 			}
-			safe, ok := safeJoin(base, rel)
-			if !ok || safe == base { // never delete the data dir itself
+			rel = rootRel(rel)
+			if rel == "." { // never delete the data dir itself
 				continue
 			}
-			if os.RemoveAll(safe) == nil {
+			// Through the root: a match that is (or sits under) a symlink out of
+			// the data dir is refused, and a symlink itself is removed, not followed.
+			if root.RemoveAll(rel) == nil {
 				n++
 			}
 		}

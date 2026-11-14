@@ -30,7 +30,7 @@ var wsUpgrader = websocket.Upgrader{
 	// e.g. CLI/automation) are allowed.
 	CheckOrigin: func(r *http.Request) bool {
 		o := r.Header.Get("Origin")
-		return o == "" || sameOriginHost(o, r.Host)
+		return o == "" || sameOriginHost(o, r.Host, viaProxy(r))
 	},
 }
 
@@ -349,6 +349,52 @@ func (s *Server) handleCreateServer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !isAdmin(r) {
+		// Only what the caller supplied: the rune's own defaults are the rune
+		// author's, and were an admin's to approve.
+		supplied := map[string]string{}
+		for k, v := range req.Env {
+			supplied[k] = v
+		}
+		if req.Mods != nil {
+			supplied["MODS"] = strings.TrimSpace(*req.Mods)
+		}
+		if _, set := supplied["SERVER_NAME"]; set {
+			jsonError(w, "SERVER_NAME is the server's name — set that instead", http.StatusForbidden)
+			return
+		}
+		supplied["SERVER_NAME"] = req.Name
+		if err := guardDelegateEnv(gs, supplied); err != nil {
+			jsonError(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		// A hostname and a host port are not a delegate's to claim — the same
+		// rule handleUpdateServer and PUT …/ports have. Create was the way round
+		// both: a subdomain here reached NPM and Cloudflare on first start, where
+		// an existing proxy host for that name is deleted and re-pointed.
+		if strings.TrimSpace(req.Subdomain) != "" {
+			jsonError(w, "only an admin can give a server a hostname", http.StatusForbidden)
+			return
+		}
+		for _, p := range req.Ports {
+			if p > 0 { // the form sends 0 for "pick one for me"
+				jsonError(w, "only an admin can choose a server's ports", http.StatusForbidden)
+				return
+			}
+		}
+	}
+	if sub := normalizeSubdomain(req.Subdomain); sub != "" {
+		host := strings.ToLower(sub)
+		var routeClash, subClash int
+		s.db.QueryRowContext(r.Context(),
+			"SELECT COUNT(*) FROM server_routes WHERE LOWER(hostname)=?", host).Scan(&routeClash)
+		s.db.QueryRowContext(r.Context(),
+			"SELECT COUNT(*) FROM servers WHERE LOWER(COALESCE(subdomain,''))=?", host).Scan(&subClash)
+		if routeClash+subClash > 0 {
+			jsonError(w, "that hostname is already used by a server on this panel", http.StatusConflict)
+			return
+		}
+	}
 
 	taken, _ := s.docker.UsedHostPorts(r.Context())
 	if taken == nil {
@@ -505,6 +551,43 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 				jsonError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+		}
+	}
+	if req.Name != nil && *req.Name != "" && !isAdmin(r) {
+		// The name is templated into scripts as {{SERVER_NAME}}, so renaming is
+		// the same question as setting a variable.
+		var gs *gameskill.Gameskill
+		if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+			gs = rt.gs
+		}
+		if gs != nil {
+			if err := guardDelegateEnv(gs, map[string]string{"SERVER_NAME": *req.Name}); err != nil {
+				jsonError(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
+	}
+	if (len(req.Env) > 0 || req.Mods != nil) && !isAdmin(r) {
+		changed := map[string]string{}
+		for k, v := range req.Env {
+			if v != secretMask {
+				changed[k] = v
+			}
+		}
+		if req.Mods != nil {
+			changed["MODS"] = strings.TrimSpace(*req.Mods)
+		}
+		if _, set := changed["SERVER_NAME"]; set {
+			jsonError(w, "SERVER_NAME is the server's name — set that instead", http.StatusForbidden)
+			return
+		}
+		var gs *gameskill.Gameskill
+		if rt, err := s.loadRuntime(r.Context(), id); err == nil {
+			gs = rt.gs
+		}
+		if err := guardDelegateEnv(gs, changed); err != nil {
+			jsonError(w, err.Error(), http.StatusForbidden)
+			return
 		}
 	}
 	if req.HostMounts != nil {

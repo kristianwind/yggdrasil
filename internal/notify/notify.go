@@ -160,7 +160,14 @@ func sendTelegram(cfg Config, text string) error {
 }
 
 func sendDiscord(cfg Config, text string) error {
-	return postJSON(cfg.URL, map[string]string{"content": text})
+	// allowed_mentions with an empty parse list: nothing in the text pings anyone.
+	// Alerts quote log lines, and a log line is whatever a visitor or a player
+	// typed — "@everyone" in a chat message or a User-Agent used to arrive in the
+	// admin's channel as a real @everyone.
+	return postJSON(cfg.URL, map[string]any{
+		"content":          text,
+		"allowed_mentions": map[string]any{"parse": []string{}},
+	})
 }
 
 func sendWebhook(cfg Config, text string) error {

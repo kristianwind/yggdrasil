@@ -231,7 +231,7 @@ func (s *Server) handleAdminLogDigest(w http.ResponseWriter, r *http.Request) {
 		jsonOK(w, map[string]string{"summary": "No activity has been logged yet."})
 		return
 	}
-	content, err := readTail(file, adminLogTailBytes)
+	content, err := readTail(srv.DataDir, file, adminLogTailBytes)
 	if err != nil {
 		jsonError(w, "could not read the admin log", http.StatusBadGateway)
 		return

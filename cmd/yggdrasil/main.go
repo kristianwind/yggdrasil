@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -15,6 +16,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -196,6 +199,10 @@ func run(cfgPath string) error {
 		Addr:              addr,
 		Handler:           srv,
 		ReadHeaderTimeout: 10 * time.Second,
+		// Reap keep-alive connections nobody is using. Not a read or write
+		// timeout: uploads, downloads and the console streams are long on purpose
+		// (a hijacked WebSocket is outside this anyway).
+		IdleTimeout: 2 * time.Minute,
 	}
 
 	go func() {
@@ -302,6 +309,10 @@ func loadBuiltinGameskills(database *sql.DB) error {
 	return nil
 }
 
+// emptySecretKeyRe matches a secret_key line whose value is empty: nothing, ""
+// or ”, optionally followed by a comment.
+var emptySecretKeyRe = regexp.MustCompile(`(?m)^([ \t]*secret_key:)[ \t]*(""|'')?([ \t]*(#.*)?)$`)
+
 // persistSecret appends a generated secret key to the config file if absent.
 func persistSecret(cfgPath, key string) error {
 	data, err := os.ReadFile(cfgPath)
@@ -309,7 +320,16 @@ func persistSecret(cfgPath, key string) error {
 		return err
 	}
 	if strings.Contains(string(data), "secret_key") {
-		return nil
+		// The file names the key but the loader read it as empty. That is the
+		// shipped example (`secret_key: ""`), and returning here — as this did —
+		// meant a new key on every start: every session dropped and, worse, every
+		// stored credential encrypted under a key that no longer exists. Fill the
+		// empty value in where it stands.
+		filled := emptySecretKeyRe.ReplaceAll(data, []byte("${1} "+strconv.Quote(key)+"${3}"))
+		if bytes.Equal(filled, data) {
+			return fmt.Errorf("%s has a secret_key the panel could not read; set auth.secret_key there", cfgPath)
+		}
+		return os.WriteFile(cfgPath, filled, 0600)
 	}
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
 		return err

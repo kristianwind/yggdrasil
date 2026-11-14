@@ -84,6 +84,27 @@ The API attaches the caller's effective permissions to each server it returns, a
 UI uses that to hide tabs and buttons a delegate cannot use. Admins always receive the
 full list.
 
+### What a delegate can put in a server's settings
+
+`server.control` includes editing the server's settings — version, world name, MOTD,
+mod list. A rune's install and start scripts are built from those settings, and the
+install script runs as root in its container, so for someone who is not an admin two
+rules apply:
+
+- **Only the settings the rune declares.** A key that is not in the rune's `variables`
+  is refused.
+- **A setting that ends up inside a script, an image name or a uid cannot contain the
+  characters that would let it stop being a value** — `"`, `` ` ``, `$`, `\` and line
+  breaks where the rune quotes it, and anything but letters, digits and
+  `_ . , : @ % + = / -` where it does not. Numbers, switches and drop-downs are already
+  closed sets.
+
+The error names the setting and says an admin can set it. Admins are not checked: an
+admin can upload a rune, which is the same power stated openly.
+
+A delegate also cannot give a server a hostname or pick its host ports, at create or
+afterwards. Both are an admin's to hand out.
+
 ## Scopes, and how a grant is matched
 
 A grant lives at one of four scopes:
@@ -309,7 +330,14 @@ Two independent limits sit in front of the login endpoints.
 `/api/auth/login` and on both passkey login steps. Over that, the request gets a 429
 ("too many login attempts").
 
-**Per-account lockout.** Because a source address can be spoofed via `X-Forwarded-For`,
+The source address is the connection's own, with its port dropped. `X-Forwarded-For` is
+only read when the connection comes from somewhere a proxy could be — loopback, a
+private network, the tailnet, or Cloudflare — and it is read from the right, because
+each proxy appends the address it saw and everything to the left of that is the client's
+own claim. Someone already on your LAN can still claim another address; someone on the
+internet cannot.
+
+**Per-account lockout.** Because addresses are cheap either way,
 there is also a limit keyed on the username itself: 10 failed attempts within 15 minutes
 locks that username for 15 minutes, regardless of where the attempts come from. A
 successful login clears the counter. Failures counted include an unknown or disabled

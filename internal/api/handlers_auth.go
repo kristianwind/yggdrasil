@@ -205,13 +205,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	loginAccountLock.reset(acctKey) // successful auth clears the failure counter
-	s.issueSession(w, userID, req.Username, role, tokenVer)
+	s.issueSession(w, userID, req.Username, role, tokenVer, requestIsHTTPS(r))
 }
 
 // issueSession mints a JWT for a fully-authenticated user, sets it as the
 // session cookie, and writes the standard login JSON response. Shared by the
 // password/2FA login and the passkey (WebAuthn) login.
-func (s *Server) issueSession(w http.ResponseWriter, userID, username, role string, tokenVer int) {
+func (s *Server) issueSession(w http.ResponseWriter, userID, username, role string, tokenVer int, secure bool) {
 	token, err := auth.GenerateToken(userID, username, role, tokenVer, s.cfg.Auth.SecretKey, s.cfg.Auth.SessionTTL)
 	if err != nil {
 		jsonError(w, "internal error", http.StatusInternalServerError)
@@ -224,6 +224,10 @@ func (s *Server) issueSession(w http.ResponseWriter, userID, username, role stri
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
 		MaxAge:   s.cfg.Auth.SessionTTL * 3600,
+		// Secure when this login arrived over HTTPS, so the cookie is never
+		// offered to a plain-http request for the same name. Not unconditionally:
+		// a panel on http://<lan-ip>:8080 would then never get its cookie back.
+		Secure: secure,
 	})
 	jsonOK(w, map[string]interface{}{
 		"token":    token,

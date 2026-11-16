@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -120,6 +121,9 @@ func New(cfg *config.Config, db *sql.DB, dc *docker.Client, webFS embed.FS, docs
 	s.transfers = newTransferJobs()
 	s.startStatusReconciler()
 	s.startHealthChecks()
+	// Before anything starts a container, so no start reads a value this is
+	// rewriting. It is quick: one pass over the servers table.
+	s.encryptStoredSecrets(context.Background())
 	s.booting.Store(true)
 	s.bootDeadline = time.Now().Add(autostartGrace)
 	go s.startAutostartServers()

@@ -282,6 +282,15 @@ func (s *Server) connectorTunnelID(ctx context.Context) (tunnelID, serverName, r
 			continue
 		}
 		tok := strings.TrimSpace(env["TUNNEL_TOKEN"])
+		// Stored encrypted since #395 — and read raw here, so on every panel
+		// whose token got encrypted this check has been comparing ciphertext,
+		// finding no tunnel id, and staying silent. "Silent" is this function's
+		// word for "nothing to compare", so nobody could tell.
+		if s.cipher != nil {
+			if dec, err := s.cipher.Decrypt(tok); err == nil {
+				tok = strings.TrimSpace(dec)
+			}
+		}
 		if id := tunnelIDFromToken(tok); id != "" {
 			return id, name, tok
 		}

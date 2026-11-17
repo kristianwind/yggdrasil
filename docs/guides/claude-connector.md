@@ -66,6 +66,14 @@ PKCE, and exchanges the resulting code for a token bound to this panel's MCP end
 stored hashed, are rejected if presented to any other address, and refresh tokens rotate on every
 use.
 
+### Read the address on the approval page
+
+Anyone can register an app with the panel and give it any name — "Claude" included — so the name
+on the approval page proves nothing. What the page leads with is the address the approval will be
+**sent to**, which the app cannot fake. For Claude that is `claude.ai`. Any other address gets a
+red warning, and a page you reached from a link somebody else sent you is a reason to press
+**Cancel**: approving it gives whoever runs that address your permissions on this panel.
+
 The MCP endpoint itself is Streamable HTTP: JSON-RPC in a POST, one JSON object back. There is no
 server-initiated stream and no session id, so `GET` and `DELETE` answer `405` — which is how the
 transport spec says to advertise exactly that.

@@ -132,6 +132,12 @@ nothing to configure. Claude registers itself
 PKCE, and exchanges the resulting code for a token bound to this panel&rsquo;s MCP endpoint. Tokens are
 stored hashed, are rejected if presented to any other address, and refresh tokens rotate on every
 use.</p>
+<h3 id="read-the-address-on-the-approval-page">Read the address on the approval page</h3>
+<p>Anyone can register an app with the panel and give it any name — &ldquo;Claude&rdquo; included — so the name
+on the approval page proves nothing. What the page leads with is the address the approval will be
+<strong>sent to</strong>, which the app cannot fake. For Claude that is <code>claude.ai</code>. Any other address gets a
+red warning, and a page you reached from a link somebody else sent you is a reason to press
+<strong>Cancel</strong>: approving it gives whoever runs that address your permissions on this panel.</p>
 <p>The MCP endpoint itself is Streamable HTTP: JSON-RPC in a POST, one JSON object back. There is no
 server-initiated stream and no session id, so <code>GET</code> and <code>DELETE</code> answer <code>405</code> — which is how the
 transport spec says to advertise exactly that.</p>
@@ -168,7 +174,7 @@ transport spec says to advertise exactly that.</p>
     </div>
   </article>
 </main>
-<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#adding-it">Adding it</a><a class="t2" href="#what-claude-can-do">What Claude can do</a><a class="t2" href="#safety">Safety</a><a class="t2" href="#how-the-connection-is-authorized">How the connection is authorized</a><a class="t2" href="#when-it-does-not-connect">When it does not connect</a></aside>
+<aside class="toc"><div class="toch">On this page</div><a class="t2" href="#adding-it">Adding it</a><a class="t2" href="#what-claude-can-do">What Claude can do</a><a class="t2" href="#safety">Safety</a><a class="t2" href="#how-the-connection-is-authorized">How the connection is authorized</a><a class="t3" href="#read-the-address-on-the-approval-page">Read the address on the approval page</a><a class="t2" href="#when-it-does-not-connect">When it does not connect</a></aside>
 </div>
 <script src="docs.js"></script>
 </body>

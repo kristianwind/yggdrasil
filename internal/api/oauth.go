@@ -237,7 +237,7 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		oauthRedirectError(w, r, p, "invalid_request", "PKCE with code_challenge_method=S256 is required")
 		return
 	}
-	renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(), CSRF: s.consent.issue()})
+	renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(), CSRF: s.consent.issue(), Dest: destinationOf(p.RedirectURI)})
 }
 
 // handleAuthorizeSubmit is the POST from the consent screen — same-site, so the
@@ -272,7 +272,7 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		// Not logged in on this browser. Re-render the same consent screen with a
 		// prompt rather than losing the request — the user opens the panel, signs
 		// in, and presses Allow again.
-		renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(),
+		renderConsent(w, consentView{Client: client.Name, Params: p, PanelName: s.panelName(), Dest: destinationOf(p.RedirectURI),
 			NeedLogin: true, CSRF: s.consent.issue()})
 		return
 	}
@@ -529,6 +529,42 @@ type consentView struct {
 	Params    authorizeParams
 	NeedLogin bool
 	CSRF      string
+	Dest      consentDestination
+}
+
+// consentDestination is where an approval is sent, as the consent page states it.
+//
+// The page used to name only the client, and the client names itself at
+// registration — which anyone may do. So a stranger could register "Claude"
+// with their own server as the redirect, send an admin a link to this panel's
+// real consent page, and the admin would see "Connect Claude to ygg-prod?",
+// press Allow, and hand that server a connection with the admin's rights. The
+// one fact on the page that the stranger cannot choose is where the approval
+// goes. Now that is what the page leads with.
+type consentDestination struct {
+	Host    string // the redirect's host, exactly as it will be contacted
+	Known   bool   // a host this page recognises: Claude's own
+	IsLocal bool   // a program on the approving person's own computer
+}
+
+// knownConnectorHosts are the hosts a consent page names without a warning.
+// Exact names only: a suffix match would let "claude.ai.evil.example" in.
+var knownConnectorHosts = map[string]bool{
+	"claude.ai":  true,
+	"claude.com": true,
+}
+
+func destinationOf(redirectURI string) consentDestination {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		return consentDestination{Host: redirectURI}
+	}
+	host := strings.ToLower(u.Hostname())
+	switch host {
+	case "localhost", "127.0.0.1", "::1":
+		return consentDestination{Host: u.Host, IsLocal: true}
+	}
+	return consentDestination{Host: host, Known: knownConnectorHosts[host]}
 }
 
 // Consent nonces. One is minted when the consent page is rendered, carried in
@@ -627,11 +663,21 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
  button{flex:1;padding:.6rem 1rem;border-radius:8px;border:1px solid var(--border);font-size:.95rem;cursor:pointer}
  .allow{background:var(--accent);color:#04210f;font-weight:600;border-color:transparent}
  .deny{background:transparent;color:var(--muted)}
+ .dest{border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;margin:.75rem 0;font-size:.95rem}
+ .dest b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1rem;word-break:break-all}
+ .danger{background:#3b1010;border:1px solid #7a1f1f;color:#fecaca;padding:.7rem .8rem;border-radius:8px;font-size:.9rem;margin:.75rem 0}
+ .danger b{color:#fff}
  .warn{background:#3b2a10;border:1px solid #6b4c15;color:#f5d58a;padding:.7rem .8rem;border-radius:8px;font-size:.9rem}
  a{color:var(--accent)}
 </style></head>
 <body><div class="card">
-<h1>Connect <span class="who">{{.Client}}</span> to {{.PanelName}}?</h1>
+<h1>Connect an app to {{.PanelName}}?</h1>
+<div class="dest">The connection will be sent to <b>{{.Dest.Host}}</b>{{if .Dest.IsLocal}} — a program on this computer{{end}}.
+<br><span style="color:var(--muted);font-size:.85rem">It calls itself &ldquo;{{.Client}}&rdquo;. Any app can choose that name; the address above it cannot.</span></div>
+{{if not .Dest.Known}}{{if not .Dest.IsLocal}}
+<div class="danger"><b>This is not Claude.</b> Claude connects through claude.ai. Only press Allow if you set up an app
+at <b>{{.Dest.Host}}</b> yourself, just now. If you got here from a link somebody sent you, press Cancel.</div>
+{{end}}{{end}}
 {{if .NeedLogin}}
 <div class="warn">You are not signed in to this panel in this browser. <a href="/" target="_blank">Open the panel</a>,
 sign in, then press Allow again.</div>

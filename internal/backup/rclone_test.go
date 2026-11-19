@@ -95,7 +95,7 @@ func TestRcloneErrNamesTheFix(t *testing.T) {
 
 func TestRcloneRemotePaths(t *testing.T) {
 	for p, want := range map[string]string{"": "ygg:a.tar.gz", "/": "ygg:a.tar.gz", "backups/": "ygg:backups/a.tar.gz", "/x/y": "ygg:x/y/a.tar.gz"} {
-		tg, err := OpenRclone(Config{RcloneConf: "[ygg]\ntype = memory\n", Path: p}, &scriptedRclone{}, &sync.Mutex{}, nil)
+		tg, err := OpenRclone(Config{RcloneConf: "[ygg]\ntype = memory\n", Path: p}, &scriptedRclone{}, &sync.Mutex{}, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

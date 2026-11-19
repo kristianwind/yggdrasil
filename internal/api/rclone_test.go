@@ -61,7 +61,7 @@ func TestRcloneTargetAgainstWebDAV(t *testing.T) {
 	}
 
 	var saved [][]byte
-	tgt, err := backup.OpenRclone(cfg, rcloneRunner{s}, &sync.Mutex{}, func(b []byte) { saved = append(saved, b) })
+	tgt, err := backup.OpenRclone(cfg, rcloneRunner{s}, &sync.Mutex{}, nil, func(b []byte) { saved = append(saved, b) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestRcloneTargetAgainstWebDAV(t *testing.T) {
 	if err := s.prepareRclone(ctx, &bad, nil); err != nil {
 		t.Fatal(err)
 	}
-	bt, _ := backup.OpenRclone(bad, rcloneRunner{s}, &sync.Mutex{}, nil)
+	bt, _ := backup.OpenRclone(bad, rcloneRunner{s}, &sync.Mutex{}, nil, nil)
 	if _, err := bt.List(ctx); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Errorf("wrong password: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestRcloneRefreshedLoginIsStored(t *testing.T) {
 	s.db.Exec("UPDATE backup_targets SET config_enc=? WHERE id='t1'", enc2) //nolint:errcheck
 
 	fake := &fakeRclone{next: []byte("[ygg]\ntype = dropbox\ntoken = new\n")}
-	tgt, err := backup.OpenRclone(cfg, fake, rcloneLock("t1"), func(b []byte) { s.saveRcloneConf("t1", b) })
+	tgt, err := backup.OpenRclone(cfg, fake, rcloneLock("t1"), nil, func(b []byte) { s.saveRcloneConf("t1", b) })
 	if err != nil {
 		t.Fatal(err)
 	}

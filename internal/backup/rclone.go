@@ -59,6 +59,7 @@ type rcloneTarget struct {
 	run    RcloneRunner
 	base   string // "ygg:folder"
 	onConf func([]byte)
+	load   func() []byte // the login as stored now; nil = use conf
 
 	mu   *sync.Mutex // one run at a time per target: two refreshes racing can invalidate each other's token
 	conf []byte
@@ -67,7 +68,16 @@ type rcloneTarget struct {
 // OpenRclone opens an rclone target. onConf is called with the config whenever
 // a run changed it (a refreshed token), so it can be stored. mu serialises runs
 // against the same login; the caller keeps one per target.
-func OpenRclone(cfg Config, run RcloneRunner, mu *sync.Mutex, onConf func([]byte)) (Target, error) {
+//
+// load, when set, returns the login as it is stored at this moment, and every
+// run starts from that rather than from the copy taken at open. Two targets
+// opened from one login (two servers' nightly backups, a retention pass) each
+// held their own copy, and with a provider whose refresh tokens are single-use
+// — Jottacloud — the first run to refresh revoked the token the other was
+// still holding. That one then failed with invalid_grant, or worse, wrote its
+// dead copy back over the live one. The lock alone could not prevent it: it
+// orders the runs, and the copy was taken before the queue.
+func OpenRclone(cfg Config, run RcloneRunner, mu *sync.Mutex, load func() []byte, onConf func([]byte)) (Target, error) {
 	if run == nil {
 		return nil, errors.New("rclone: docker is not available")
 	}
@@ -78,7 +88,7 @@ func OpenRclone(cfg Config, run RcloneRunner, mu *sync.Mutex, onConf func([]byte
 	if folder == "." {
 		folder = ""
 	}
-	return &rcloneTarget{run: run, base: rcloneRemote + ":" + folder, onConf: onConf, mu: mu, conf: []byte(cfg.RcloneConf)}, nil
+	return &rcloneTarget{run: run, base: rcloneRemote + ":" + folder, onConf: onConf, load: load, mu: mu, conf: []byte(cfg.RcloneConf)}, nil
 }
 
 func (t *rcloneTarget) remote(name string) string {
@@ -92,6 +102,11 @@ func (t *rcloneTarget) remote(name string) string {
 func (t *rcloneTarget) exec(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.load != nil {
+		if cur := t.load(); len(cur) > 0 {
+			t.conf = cur
+		}
+	}
 	newConf, stderr, err := t.run.RunRclone(ctx, t.conf, argv, stdin, stdout)
 	if len(newConf) > 0 && !bytes.Equal(newConf, t.conf) {
 		t.conf = newConf

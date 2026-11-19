@@ -20,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/kristianwind/yggdrasil/internal/auth"
+	"github.com/kristianwind/yggdrasil/internal/backup"
 	"github.com/kristianwind/yggdrasil/internal/config"
 	"github.com/kristianwind/yggdrasil/internal/crypto"
 	"github.com/kristianwind/yggdrasil/internal/docker"
@@ -27,6 +28,8 @@ import (
 )
 
 type Server struct {
+	// rcloneRun replaces the Docker-backed rclone runner in tests.
+	rcloneRun backup.RcloneRunner
 	cfg       *config.Config
 	db        *sql.DB
 	docker    *docker.Client

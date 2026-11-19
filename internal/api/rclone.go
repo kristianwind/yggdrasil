@@ -93,7 +93,17 @@ func (s *Server) openTarget(targetID string, cfg backup.Config) (backup.Target, 
 	if s.docker != nil {
 		run = rcloneRunner{s}
 	}
-	return backup.OpenRclone(cfg, run, rcloneLock(targetID), func(conf []byte) {
+	if s.rcloneRun != nil {
+		run = s.rcloneRun
+	}
+	load := func() []byte {
+		cur, err := s.loadTargetConfig(context.Background(), targetID)
+		if err != nil || cur.Type != backup.RcloneType {
+			return nil
+		}
+		return []byte(cur.RcloneConf)
+	}
+	return backup.OpenRclone(cfg, run, rcloneLock(targetID), load, func(conf []byte) {
 		s.saveRcloneConf(targetID, conf)
 	})
 }

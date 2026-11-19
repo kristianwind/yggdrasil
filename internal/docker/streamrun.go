@@ -95,7 +95,7 @@ func (c *Client) RunStream(ctx context.Context, opts StreamOptions) (map[string]
 		}()
 	}
 	_, copyErr := stdcopy.StdCopy(opts.Stdout, opts.Stderr, hj.Reader)
-	if copyErr != nil {
+	if copyErr != nil || ctx.Err() != nil {
 		// The reader of the output went away (a restore cancelled halfway).
 		// Stop the container rather than wait for it to notice.
 		kctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -103,22 +103,34 @@ func (c *Client) RunStream(ctx context.Context, opts StreamOptions) (map[string]
 		cancel()
 	}
 
-	statusCh, errCh := c.dc.ContainerWait(ctx, cid, container.WaitConditionNotRunning)
+	// Waiting and collecting outlive the caller's context. A run that was
+	// cancelled or timed out may already have changed the files it was asked to
+	// hand back — rclone refreshes its login in the first minutes of a long
+	// upload, and with a single-use refresh token the old one is dead from that
+	// moment. Returning without reading the file kept the dead one.
+	tail, cancelTail := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	defer cancelTail()
+	statusCh, errCh := c.dc.ContainerWait(tail, cid, container.WaitConditionNotRunning)
 	var exitCode int64
+	var waitErr error
 	select {
 	case err := <-errCh:
-		if err != nil {
-			return nil, err
-		}
+		waitErr = err
 	case st := <-statusCh:
 		exitCode = st.StatusCode
 	}
 
 	files := map[string][]byte{}
 	for _, p := range opts.Collect {
-		if b, err := c.readFile(ctx, cid, p); err == nil {
+		if b, err := c.readFile(tail, cid, p); err == nil {
 			files[p] = b
 		}
+	}
+	if ctx.Err() != nil {
+		return files, ctx.Err()
+	}
+	if waitErr != nil {
+		return files, waitErr
 	}
 	if copyErr != nil {
 		return files, fmt.Errorf("output stream: %w", copyErr)

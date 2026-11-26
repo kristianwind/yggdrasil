@@ -1,0 +1,62 @@
+gameskill:
+  id: spoolman
+  name: "Spoolman"
+  category: "Apps"
+  description: >
+    Keep track of your 3D-printer filament: every spool, how much is left on
+    it, what it cost and where it is stored. Klipper (Moonraker), OctoPrint
+    and Bambuddy can report what each print used, so the remaining weight
+    stays right without anyone weighing spools.
+
+    Spoolman has no login of its own. Anyone who can reach its address can
+    read and change your inventory, so keep it on your own network, or put it
+    behind Cloudflare Access before you give it a domain.
+  author: "yggdrasil-community"
+  version: 1
+  icon: "app"
+
+  # Pattern A: the panel clears the image's entrypoint and runs the app as its
+  # own service account. As root, the upstream entrypoint would usermod the
+  # "app" user to PUID — 1000 by default — and gosu to it, so every file the
+  # app writes would belong to 1000 and the panel would lose the server's files
+  # (the PUID trap). Started directly, that code never runs.
+  #
+  # SPOOLMAN_DIR_DATA puts the SQLite database, the app's own nightly backups
+  # and its cache in the server's folder; the image default is a path under
+  # /home/app that the panel's account cannot write. data_path is set, so the
+  # image keeps its own working directory, which Spoolman needs: it reads its
+  # version from ./pyproject.toml.
+  #
+  # SPOOLMAN_UPDATE_CHECK is off: left on, the app asks api.github.com about new
+  # releases every day. A Restart in the panel already pulls the newest image.
+  # The filament catalogue (donkie.github.io/SpoolmanDB) is left on: it is a
+  # download of public spool data that the "add filament" form fills itself
+  # from, and it sends nothing about this install.
+  docker:
+    image: "ghcr.io/donkie/spoolman:latest"
+    data_path: /data
+    env:
+      SPOOLMAN_DIR_DATA: /data
+      SPOOLMAN_UPDATE_CHECK: "FALSE"
+
+  variables:
+    - key: TZ
+      name: "Time zone"
+      type: string
+      default: "Europe/Copenhagen"
+      pattern: '^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$'
+      hint: "An IANA time zone, for example Europe/Copenhagen"
+
+  # exec: uvicorn must be PID 1 to get SIGTERM, or every stop ends in SIGKILL
+  # in the middle of a SQLite write. The cd is belt and braces for the working
+  # directory described above.
+  startup:
+    command: "cd /home/app/spoolman && exec uvicorn spoolman.main:app --host 0.0.0.0 --port 8000"
+    done_regex: 'Uvicorn running on|Application startup complete'
+    stop_timeout: 30
+
+  ports:
+    - { name: web, default: 8000, protocol: tcp }
+
+  backup:
+    include: ["."]

@@ -651,6 +651,7 @@
               <div class="min-w-0 flex-1">
                 <div class="font-medium truncate">
                   {r.name || r.filename}
+                  {#if r.version}<span class="text-muted text-xs font-normal font-mono">v{r.version}</span>{/if}
                   {#if r.category}<span class="text-muted text-xs font-normal">· {r.category}</span>{/if}
                 </div>
                 {#if r.description}
@@ -663,10 +664,14 @@
                 {/if}
               </div>
               {#if r.installed}
-                <span class="badge bg-accent2/15 text-accent shrink-0">installed</span>
-                <button class="btn-ghost text-xs shrink-0" onclick={() => installGh(r)} disabled={ghBusy === r.download_url}
+                {@const newer = !r.builtin && r.version && r.installed_version && r.version > r.installed_version}
+                <span class="badge shrink-0 {newer ? 'bg-warn/15 text-warn' : 'bg-accent2/15 text-accent'}"
+                  title={newer ? `You have v${r.installed_version}; this repository has v${r.version}.` : r.builtin ? "Ships with the panel and updates with it." : ""}>
+                  installed{#if r.installed_version}&nbsp;v{r.installed_version}{/if}
+                </span>
+                <button class="{newer ? 'btn-primary' : 'btn-ghost text-xs'} shrink-0" onclick={() => installGh(r)} disabled={ghBusy === r.download_url}
                   title="Re-download this rune from GitHub and overwrite the installed copy with the latest version. All existing servers using it pick up the changes (no need to recreate them).">
-                  Reinstall
+                  {ghBusy === r.download_url ? "Installing…" : newer ? `Update to v${r.version}` : "Reinstall"}
                 </button>
               {:else if !r.parse_error}
                 <button class="btn-primary shrink-0" onclick={() => installGh(r)} disabled={ghBusy === r.download_url}>
